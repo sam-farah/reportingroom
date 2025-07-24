@@ -105,24 +105,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/worksheets/:id/ocr", isAuthenticated, async (req, res) => {
     try {
+      console.log("OCR processing request for worksheet ID:", req.params.id);
       const worksheetId = parseInt(req.params.id);
-      const worksheet = await storage.getWorksheet(worksheetId);
       
+      if (isNaN(worksheetId)) {
+        return res.status(400).json({ error: "Invalid worksheet ID" });
+      }
+      
+      const worksheet = await storage.getWorksheet(worksheetId);
       if (!worksheet) {
+        console.error("Worksheet not found for ID:", worksheetId);
         return res.status(404).json({ error: "Worksheet not found" });
       }
 
+      console.log("Found worksheet:", worksheet);
+
       // Read the uploaded file and convert to base64
       const filePath = path.join(uploadDir, worksheet.filename);
+      console.log("Looking for file at:", filePath);
+      
       if (!fs.existsSync(filePath)) {
+        console.error("Worksheet file not found at path:", filePath);
         return res.status(404).json({ error: "File not found" });
       }
 
       const fileBuffer = fs.readFileSync(filePath);
       const base64Image = fileBuffer.toString('base64');
+      console.log("File read successfully, base64 length:", base64Image.length);
 
       // Extract patient data using OCR
+      console.log("Starting OCR processing...");
       const ocrResult = await extractPatientDataFromWorksheet(base64Image);
+      console.log("OCR result:", ocrResult);
       
       // Update worksheet with OCR results
       const updatedWorksheet = await storage.updateWorksheet(worksheetId, {
@@ -132,6 +146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ocrProcessed: true
       });
 
+      console.log("Worksheet updated successfully");
       res.json({ 
         worksheet: updatedWorksheet, 
         ocrResult,
@@ -139,7 +154,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("OCR processing error:", error);
-      res.status(500).json({ error: "Failed to process OCR" });
+      console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
+      
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      res.status(500).json({ 
+        error: "Failed to process OCR",
+        details: errorMessage 
+      });
     }
   });
 
@@ -287,6 +308,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Logo upload error:", error);
       res.status(500).json({ error: "Failed to upload logo" });
+    }
+  });
+
+  // Test OpenAI connection endpoint
+  app.get("/api/test-openai", isAuthenticated, async (req, res) => {
+    try {
+      console.log("Testing OpenAI connection...");
+      const testResult = await extractPatientDataFromWorksheet("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
+      console.log("OpenAI test successful:", testResult);
+      res.json({ status: "OpenAI connection working", result: testResult });
+    } catch (error) {
+      console.error("OpenAI test failed:", error);
+      res.status(500).json({ 
+        error: "OpenAI connection failed", 
+        details: error instanceof Error ? error.message : "Unknown error" 
+      });
     }
   });
 

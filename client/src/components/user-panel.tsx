@@ -53,13 +53,20 @@ export default function UserPanel() {
 
   const ocrMutation = useMutation({
     mutationFn: async (worksheetId: number) => {
+      console.log('Starting OCR for worksheet ID:', worksheetId);
       const response = await fetch(`/api/worksheets/${worksheetId}/ocr`, {
         method: 'POST',
       });
-      if (!response.ok) throw new Error('OCR processing failed');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('OCR processing failed:', errorData);
+        throw new Error(errorData.details || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
       return response.json();
     },
     onSuccess: (data) => {
+      console.log('OCR processing successful:', data);
       if (data.ocrResult) {
         setPatientName(data.ocrResult.patientName || "");
         setPatientDob(data.ocrResult.patientDob || "");
@@ -70,10 +77,24 @@ export default function UserPanel() {
         });
       }
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('OCR processing error:', error);
+      
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+
       toast({
         title: "OCR Processing Failed",
-        description: "Please enter patient information manually",
+        description: error.message || "Please enter patient information manually",
         variant: "destructive",
       });
     },
