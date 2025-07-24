@@ -230,7 +230,7 @@ export default function UserPanel() {
                 maxSize={10 * 1024 * 1024}
               />
               <p className="text-xs text-gray-500 mt-2">
-                Only image files are supported (JPEG, PNG, GIF, WebP). PDF files cannot be processed.
+                Supports image files (JPEG, PNG, GIF, WebP). For PDF files, please convert to image format first using online tools or by exporting as image.
               </p>
 
               {/* OCR Results */}
