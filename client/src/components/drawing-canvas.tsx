@@ -411,35 +411,125 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     </div>
   );
 
-  const FullscreenCanvas = () => (
-    <div className="flex flex-col h-full">
-      {/* Fullscreen Header */}
-      <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-        <div className="flex items-center gap-4">
-          <h3 className="text-lg font-semibold">Vascular Worksheet Drawing</h3>
-          <Select value={selectedTemplate} onValueChange={(value: keyof typeof VASCULAR_TEMPLATES) => setSelectedTemplate(value)}>
-            <SelectTrigger className="w-64">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(VASCULAR_TEMPLATES).map(([key, template]) => (
-                <SelectItem key={key} value={key}>
-                  {template.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <Button variant="outline" onClick={() => setIsFullscreen(false)}>
-          <X className="w-4 h-4 mr-1" />
-          Exit Fullscreen
-        </Button>
-      </div>
+  const FullscreenCanvas = () => {
+    const fullscreenCanvasRef = useRef<HTMLCanvasElement>(null);
 
-      {/* Fullscreen Toolbar */}
-      <div className="flex items-center gap-4 p-4 border-b bg-white">
-        <div className="flex items-center gap-2">
+    useEffect(() => {
+      if (!isFullscreen) return;
+      
+      const canvas = fullscreenCanvasRef.current;
+      if (!canvas) return;
+
+      // Set explicit canvas dimensions
+      canvas.width = 1200;
+      canvas.height = 800;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Clear and load template
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Load the selected template
+      if (selectedTemplate === 'lower-limb-arterial') {
+        drawLowerLimbArterialTemplate(ctx, canvas.width, canvas.height);
+      } else if (selectedTemplate === 'lower-limb-venous') {
+        drawLowerLimbVenousTemplate(ctx, canvas.width, canvas.height);
+      } else if (selectedTemplate === 'aorto-iliac') {
+        drawAortoIliacTemplate(ctx, canvas.width, canvas.height);
+      }
+    }, [isFullscreen, selectedTemplate]);
+
+    const fullscreenStartDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = fullscreenCanvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      setIsDrawing(true);
+      const coords = getCanvasCoordinates(canvas, e);
+
+      if (currentTool === 'pen') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = strokeWidth;
+      } else if (currentTool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineWidth = strokeWidth * 3;
+      }
+
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(coords.x, coords.y);
+    };
+
+    const fullscreenDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!isDrawing) return;
+
+      const canvas = fullscreenCanvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const coords = getCanvasCoordinates(canvas, e);
+      ctx.lineTo(coords.x, coords.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(coords.x, coords.y);
+    };
+
+    const fullscreenStopDrawing = () => {
+      setIsDrawing(false);
+    };
+
+    const fullscreenSave = () => {
+      const canvas = fullscreenCanvasRef.current;
+      if (!canvas) return;
+
+      const imageData = canvas.toDataURL('image/png');
+      const templateName = VASCULAR_TEMPLATES[selectedTemplate].name;
+      
+      onWorksheetCreated(imageData, templateName);
+      setIsFullscreen(false);
+      
+      toast({
+        title: "Worksheet Created",
+        description: `${templateName} worksheet has been created successfully`,
+      });
+    };
+
+    return (
+      <div className="w-full h-full flex flex-col bg-white">
+        {/* Header */}
+        <div className="flex items-center justify-between p-3 border-b bg-gray-50 shrink-0">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold">Vascular Worksheet Drawing</h3>
+            <Select value={selectedTemplate} onValueChange={(value: keyof typeof VASCULAR_TEMPLATES) => setSelectedTemplate(value)}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(VASCULAR_TEMPLATES).map(([key, template]) => (
+                  <SelectItem key={key} value={key}>
+                    {template.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <Button variant="outline" onClick={() => setIsFullscreen(false)}>
+            <X className="w-4 h-4 mr-1" />
+            Exit
+          </Button>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-3 p-3 border-b bg-white shrink-0">
           <Button
             variant={currentTool === 'pen' ? 'default' : 'outline'}
             size="sm"
@@ -456,87 +546,66 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
             <Eraser className="w-4 h-4 mr-1" />
             Eraser
           </Button>
-        </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Color:</label>
+          
+          <Separator orientation="vertical" className="h-6" />
+          
           <input
             type="color"
             value={strokeColor}
             onChange={(e) => setStrokeColor(e.target.value)}
             className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
           />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Size:</label>
+          
           <input
             type="range"
             min="1"
-            max="20"
+            max="15"
             value={strokeWidth}
             onChange={(e) => setStrokeWidth(Number(e.target.value))}
-            className="w-24"
+            className="w-20"
           />
-          <span className="text-sm w-8">{strokeWidth}</span>
-        </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={undo}>
-            <RotateCcw className="w-4 h-4 mr-1" />
-            Undo
-          </Button>
+          <span className="text-sm w-6">{strokeWidth}</span>
+          
+          <Separator orientation="vertical" className="h-6" />
+          
           <Button variant="outline" size="sm" onClick={clearCanvas}>
             Clear
           </Button>
-          <Button variant="outline" size="sm" onClick={downloadImage}>
-            <Download className="w-4 h-4 mr-1" />
-            Download
-          </Button>
-          <Button onClick={() => { saveWorksheet(); setIsFullscreen(false); }} className="medical-btn-primary">
+          <Button onClick={fullscreenSave} className="medical-btn-primary">
             <Save className="w-4 h-4 mr-1" />
             Use Worksheet
           </Button>
         </div>
-      </div>
 
-      {/* Fullscreen Canvas */}
-      <div className="flex-1 p-4 overflow-auto bg-gray-100">
-        <div className="flex justify-center items-center min-h-full">
-          <div className="bg-white shadow-lg rounded-lg p-2">
+        {/* Canvas Area */}
+        <div className="flex-1 overflow-auto bg-gray-100 p-4">
+          <div className="flex justify-center">
             <canvas
-              ref={canvasRef}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              className="cursor-crosshair border border-gray-300 rounded"
-              style={{ 
-                display: 'block', 
-                touchAction: 'none',
+              ref={fullscreenCanvasRef}
+              onMouseDown={fullscreenStartDrawing}
+              onMouseMove={fullscreenDraw}
+              onMouseUp={fullscreenStopDrawing}
+              onMouseLeave={fullscreenStopDrawing}
+              className="border-2 border-gray-300 bg-white cursor-crosshair shadow-lg"
+              style={{
                 width: '1200px',
-                height: '800px'
+                height: '800px',
+                maxWidth: '100%',
+                maxHeight: '100%'
               }}
             />
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>
       <CompactCanvas />
       
       <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
-        <DialogContent className="max-w-[98vw] max-h-[98vh] w-[98vw] h-[98vh] p-0 overflow-hidden">
+        <DialogContent className="max-w-[99vw] max-h-[99vh] w-[99vw] h-[99vh] p-0">
           <DialogHeader className="sr-only">
             <DialogTitle>Fullscreen Drawing Canvas</DialogTitle>
           </DialogHeader>
