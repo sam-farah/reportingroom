@@ -85,12 +85,66 @@ export default function AdminPanel() {
 
   const handleWorksheetUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) setWorksheetFile(file);
+    if (file) {
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File Too Large",
+          description: "Please select a file smaller than 10MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+      if (!allowedTypes.includes(file.type)) {
+        toast({
+          title: "Invalid File Type",
+          description: "Please select an image (JPG, PNG, GIF, WebP) or PDF file",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setWorksheetFile(file);
+    }
   };
 
   const handleReportUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) setReportFile(file);
+    if (file) {
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File Too Large",
+          description: "Please select a file smaller than 10MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Validate file type
+      const allowedTypes = [
+        'application/pdf', 
+        'application/msword', 
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg', 
+        'image/png', 
+        'image/gif', 
+        'image/webp'
+      ];
+      if (!allowedTypes.includes(file.type)) {
+        toast({
+          title: "Invalid File Type",
+          description: "Please select a PDF, DOC, DOCX, or image file",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setReportFile(file);
+    }
   };
 
   const handleAddTrainingPair = () => {
@@ -137,13 +191,14 @@ export default function AdminPanel() {
             <div className="space-y-6">
               {/* Worksheet Upload */}
               <div>
-                <Label>Worksheet</Label>
+                <Label>Worksheet (Images & PDFs)</Label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[var(--medical-primary)] transition-colors cursor-pointer mt-2">
                   <Upload className="text-2xl text-gray-400 mb-2 mx-auto" />
                   <p className="text-sm text-gray-600 mb-2">Upload worksheet example</p>
+                  <p className="text-xs text-gray-500 mb-3">Supports: JPG, PNG, GIF, WebP, PDF</p>
                   <input
                     type="file"
-                    accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
+                    accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,image/*,application/pdf"
                     onChange={handleWorksheetUpload}
                     className="hidden"
                     id="worksheet-upload"
@@ -152,20 +207,26 @@ export default function AdminPanel() {
                     Choose File
                   </Label>
                   {worksheetFile && (
-                    <p className="text-xs text-gray-600 mt-2">{worksheetFile.name}</p>
+                    <div className="mt-2 p-2 bg-gray-50 rounded border">
+                      <p className="text-xs text-gray-700 font-medium">{worksheetFile.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {(worksheetFile.size / 1024 / 1024).toFixed(2)} MB • {worksheetFile.type}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
 
               {/* Report Upload */}
               <div>
-                <Label>Corresponding Report</Label>
+                <Label>Corresponding Report (Images & Documents)</Label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[var(--medical-primary)] transition-colors cursor-pointer mt-2">
                   <Upload className="text-2xl text-gray-400 mb-2 mx-auto" />
                   <p className="text-sm text-gray-600 mb-2">Upload corresponding report</p>
+                  <p className="text-xs text-gray-500 mb-3">Supports: PDF, DOC, DOCX, JPG, PNG</p>
                   <input
                     type="file"
-                    accept=".pdf,.doc,.docx"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     onChange={handleReportUpload}
                     className="hidden"
                     id="report-upload"
@@ -174,7 +235,12 @@ export default function AdminPanel() {
                     Choose File
                   </Label>
                   {reportFile && (
-                    <p className="text-xs text-gray-600 mt-2">{reportFile.name}</p>
+                    <div className="mt-2 p-2 bg-gray-50 rounded border">
+                      <p className="text-xs text-gray-700 font-medium">{reportFile.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {(reportFile.size / 1024 / 1024).toFixed(2)} MB • {reportFile.type}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
