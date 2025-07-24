@@ -38,9 +38,10 @@ Preferred communication style: Simple, everyday language.
 **Rationale**: Drizzle ORM provides excellent TypeScript integration and performance. PostgreSQL offers robust data integrity and querying capabilities for medical data.
 
 ### Authentication and Authorization
-- **Current State**: Basic session-based authentication framework
-- **Session Management**: connect-pg-simple for PostgreSQL session storage
-- **Security**: No authentication currently implemented (development phase)
+- **Authentication System**: Replit OpenID Connect integration
+- **Session Management**: PostgreSQL-backed sessions with connect-pg-simple
+- **Security**: Full authentication required for all API endpoints
+- **User Management**: Automatic user creation/updates via OpenID claims
 
 **Rationale**: Session-based authentication is appropriate for this medical application where security and audit trails are critical.
 

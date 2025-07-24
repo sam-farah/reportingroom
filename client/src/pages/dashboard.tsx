@@ -1,11 +1,17 @@
 import { useState } from "react";
-import { HeartPulse, User, Settings } from "lucide-react";
+import { HeartPulse, User, Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 import UserPanel from "@/components/user-panel";
 import AdminPanel from "@/components/admin-panel";
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [activePanel, setActivePanel] = useState<"user" | "admin">("user");
+
+  const handleLogout = () => {
+    window.location.href = "/api/logout";
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -42,8 +48,19 @@ export default function Dashboard() {
               
               <div className="flex items-center space-x-3">
                 <div className="text-sm text-gray-700">
-                  <span>Dr. Sarah Johnson</span>
+                  <span>{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}</span>
+                  {user?.email && user?.firstName && (
+                    <div className="text-xs text-gray-500">{user.email}</div>
+                  )}
                 </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleLogout}
+                  className="text-gray-600 hover:text-gray-900"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
               </div>
             </div>
           </div>

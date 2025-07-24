@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Upload, FileText, Download, Printer, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import ReportPreview from "./report-preview";
 import type { Worksheet, Physician, Report } from "@shared/schema";
@@ -24,7 +25,31 @@ export default function UserPanel() {
 
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
+    retry: (failureCount, error) => {
+      if (isUnauthorizedError(error as Error)) {
+        return false;
+      }
+      return failureCount < 3;
+    },
   });
+
+  // Handle authentication errors
+  useEffect(() => {
+    const handleAuthError = (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+      }
+    };
+
+    // You can add error handling here if needed
+  }, [toast]);
 
   const ocrMutation = useMutation({
     mutationFn: async (worksheetId: number) => {

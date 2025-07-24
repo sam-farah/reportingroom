@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -32,9 +33,23 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  
+  // Auth middleware
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
   // Physicians API
-  app.get("/api/physicians", async (req, res) => {
+  app.get("/api/physicians", isAuthenticated, async (req, res) => {
     try {
       const physicians = await storage.getAllPhysicians();
       res.json(physicians);
@@ -43,7 +58,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/physicians", async (req, res) => {
+  app.post("/api/physicians", isAuthenticated, async (req, res) => {
     try {
       const validatedData = insertPhysicianSchema.parse(req.body);
       const physician = await storage.createPhysician(validatedData);
@@ -54,7 +69,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Worksheets API
-  app.get("/api/worksheets", async (req, res) => {
+  app.get("/api/worksheets", isAuthenticated, async (req, res) => {
     try {
       const worksheets = await storage.getAllWorksheets();
       res.json(worksheets);
@@ -63,7 +78,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/worksheets/upload", upload.single('worksheet'), async (req, res) => {
+  app.post("/api/worksheets/upload", isAuthenticated, upload.single('worksheet'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -88,7 +103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/worksheets/:id/ocr", async (req, res) => {
+  app.post("/api/worksheets/:id/ocr", isAuthenticated, async (req, res) => {
     try {
       const worksheetId = parseInt(req.params.id);
       const worksheet = await storage.getWorksheet(worksheetId);
@@ -129,7 +144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reports API
-  app.get("/api/reports", async (req, res) => {
+  app.get("/api/reports", isAuthenticated, async (req, res) => {
     try {
       const reports = await storage.getAllReports();
       res.json(reports);
@@ -138,7 +153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/reports/generate", async (req, res) => {
+  app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       const { worksheetId, physicianId, logoUrl } = req.body;
       
@@ -191,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Training API
-  app.get("/api/training", async (req, res) => {
+  app.get("/api/training", isAuthenticated, async (req, res) => {
     try {
       const trainingPairs = await storage.getAllTrainingPairs();
       res.json(trainingPairs);
@@ -200,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/training", upload.fields([
+  app.post("/api/training", isAuthenticated, upload.fields([
     { name: 'worksheet', maxCount: 1 },
     { name: 'report', maxCount: 1 }
   ]), async (req, res) => {
@@ -235,7 +250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Logo upload endpoint
-  app.post("/api/upload-logo", upload.single('logo'), async (req, res) => {
+  app.post("/api/upload-logo", isAuthenticated, upload.single('logo'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No logo file uploaded" });
