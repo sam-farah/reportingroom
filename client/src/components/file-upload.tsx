@@ -28,7 +28,10 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Upload failed');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Upload failed: ${response.status}`);
+      }
       return response.json();
     },
     onSuccess: (worksheet) => {
@@ -39,11 +42,12 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
         description: "Worksheet uploaded successfully",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
       setUploadProgress(0);
+      console.error('File upload error:', error);
       toast({
         title: "Upload Failed",
-        description: "Failed to upload worksheet. Please try again.",
+        description: error.message || "Failed to upload worksheet. Please try again.",
         variant: "destructive",
       });
     },

@@ -20,14 +20,18 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|pdf/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const allowedMimeTypes = [
+      'image/jpeg',
+      'image/jpg', 
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ];
     
-    if (mimetype && extname) {
-      return cb(null, true);
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
     } else {
-      cb(new Error('Only images (JPEG, PNG) and PDF files are allowed'));
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Please upload images only (JPEG, PNG, GIF, WebP). PDF files are not supported for OCR processing.`));
     }
   }
 });

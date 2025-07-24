@@ -143,7 +143,7 @@ export default function AdminPanel() {
                   <p className="text-sm text-gray-600 mb-2">Upload worksheet example</p>
                   <input
                     type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
+                    accept=".jpg,.jpeg,.png,.gif,.webp"
                     onChange={handleWorksheetUpload}
                     className="hidden"
                     id="worksheet-upload"
