@@ -7,7 +7,7 @@ import path from "path";
 import fs from "fs";
 import { insertPhysicianSchema, insertTrainingPairSchema, insertWorksheetSchema, insertReportSchema } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet } from "./services/openai";
-// PDF conversion not supported in this environment
+import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -27,13 +27,13 @@ const upload = multer({
       'image/png',
       'image/gif',
       'image/webp',
-
+      'application/pdf'
     ];
     
     if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Unsupported file type: ${file.mimetype}. Please upload images only (JPEG, PNG, GIF, WebP). For PDF files, please convert them to image format first.`));
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Please upload images (JPEG, PNG, GIF, WebP) or PDF files.`));
     }
   }
 });
@@ -135,18 +135,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "File not found" });
       }
 
-      // Check if it's a PDF file
-      if (path.extname(worksheet.filename).toLowerCase() === '.pdf') {
-        return res.status(400).json({ 
-          error: "PDF files require conversion", 
-          details: "Please convert your PDF to an image format (JPEG, PNG, GIF, WebP) before uploading. You can use online tools or export your PDF as an image." 
-        });
+      let base64Image: string;
+      
+      // Handle PDF files by converting to image first
+      if (isPdfFile(worksheet.filename)) {
+        console.log("Converting PDF to image for OCR processing...");
+        base64Image = await convertPdfToImage(filePath);
+        console.log("PDF converted successfully, base64 length:", base64Image.length);
+      } else {
+        // Handle regular image files
+        const fileBuffer = fs.readFileSync(filePath);
+        base64Image = fileBuffer.toString('base64');
+        console.log("Image file read successfully, base64 length:", base64Image.length);
       }
-
-      // Handle regular image files
-      const fileBuffer = fs.readFileSync(filePath);
-      const base64Image = fileBuffer.toString('base64');
-      console.log("Image file read successfully, base64 length:", base64Image.length);
 
       // Extract patient data using OCR
       console.log("Starting OCR processing...");
@@ -219,18 +220,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Worksheet file not found" });
       }
 
-      // Check if it's a PDF file
-      if (path.extname(worksheet.filename).toLowerCase() === '.pdf') {
-        return res.status(400).json({ 
-          error: "PDF files require conversion", 
-          details: "Please convert your PDF to an image format (JPEG, PNG, GIF, WebP) before uploading. You can use online tools or export your PDF as an image." 
-        });
+      let base64Image: string;
+      
+      // Handle PDF files by converting to image first
+      if (isPdfFile(worksheet.filename)) {
+        console.log("Converting PDF to image for report generation...");
+        base64Image = await convertPdfToImage(filePath);
+        console.log("PDF converted successfully, base64 length:", base64Image.length);
+      } else {
+        // Handle regular image files
+        const fileBuffer = fs.readFileSync(filePath);
+        base64Image = fileBuffer.toString('base64');
+        console.log("Image file read successfully, base64 length:", base64Image.length);
       }
-
-      // Handle regular image files
-      const fileBuffer = fs.readFileSync(filePath);
-      const base64Image = fileBuffer.toString('base64');
-      console.log("Image file read successfully, base64 length:", base64Image.length);
 
       // Get training data for context
       const trainingData = await storage.getAllTrainingPairs();

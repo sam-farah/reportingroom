@@ -226,11 +226,11 @@ export default function UserPanel() {
               
               <FileUpload
                 onFileUploaded={handleWorksheetUploaded}
-                accept=".jpg,.jpeg,.png,.gif,.webp"
+                accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
                 maxSize={10 * 1024 * 1024}
               />
               <p className="text-xs text-gray-500 mt-2">
-                Supports image files (JPEG, PNG, GIF, WebP). For PDF files, please convert to image format first using online tools or by exporting as image.
+                Supports image files (JPEG, PNG, GIF, WebP) and PDF files. PDFs will be automatically converted to images for processing.
               </p>
 
               {/* OCR Results */}
