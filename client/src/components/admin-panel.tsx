@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import type { TrainingPair, Physician } from "@shared/schema";
 
@@ -28,7 +29,7 @@ export default function AdminPanel() {
   const uploadTrainingMutation = useMutation({
     mutationFn: async () => {
       if (!worksheetFile || !reportFile || !category || !complexityLevel) {
-        throw new Error("All fields are required");
+        throw new Error("Please fill in all fields and upload both files");
       }
 
       const formData = new FormData();
@@ -42,7 +43,10 @@ export default function AdminPanel() {
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Upload failed');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -56,10 +60,24 @@ export default function AdminPanel() {
       setComplexityLevel("");
       queryClient.invalidateQueries({ queryKey: ["/api/training"] });
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('Training upload error:', error);
+      
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+
       toast({
         title: "Upload Failed",
-        description: "Failed to upload training data",
+        description: error.message || "Failed to upload training data",
         variant: "destructive",
       });
     },
@@ -76,6 +94,22 @@ export default function AdminPanel() {
   };
 
   const handleAddTrainingPair = () => {
+    console.log('Starting training upload with:', {
+      worksheetFile: worksheetFile?.name,
+      reportFile: reportFile?.name,
+      category,
+      complexityLevel
+    });
+    
+    if (!worksheetFile || !reportFile || !category || !complexityLevel) {
+      toast({
+        title: "Missing Information",
+        description: "Please upload both files and select category and complexity level",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     uploadTrainingMutation.mutate();
   };
 
@@ -227,9 +261,13 @@ export default function AdminPanel() {
                 </div>
               </div>
 
-              <Button className="w-full mt-4 bg-[var(--medical-success)] hover:bg-[var(--medical-success)]/80 text-white">
+              <Button 
+                onClick={handleAddTrainingPair}
+                disabled={uploadTrainingMutation.isPending || !worksheetFile || !reportFile || !category || !complexityLevel}
+                className="w-full mt-4 bg-[var(--medical-success)] hover:bg-[var(--medical-success)]/80 text-white disabled:opacity-50"
+              >
                 <Play className="w-4 h-4 mr-2" />
-                Start Training
+                {uploadTrainingMutation.isPending ? "Uploading..." : "Start Training"}
               </Button>
             </CardContent>
           </Card>
