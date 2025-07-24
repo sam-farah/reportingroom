@@ -74,6 +74,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/physicians/:id", isAuthenticated, async (req, res) => {
+    try {
+      const physicianId = parseInt(req.params.id);
+      if (isNaN(physicianId)) {
+        return res.status(400).json({ error: "Invalid physician ID" });
+      }
+
+      const validatedData = insertPhysicianSchema.partial().parse(req.body);
+      const physician = await storage.updatePhysician(physicianId, validatedData);
+      
+      if (!physician) {
+        return res.status(404).json({ error: "Physician not found" });
+      }
+      
+      res.json(physician);
+    } catch (error) {
+      console.error("Update physician error:", error);
+      res.status(400).json({ error: "Invalid physician data" });
+    }
+  });
+
   // Worksheets API
   app.get("/api/worksheets", isAuthenticated, async (req, res) => {
     try {

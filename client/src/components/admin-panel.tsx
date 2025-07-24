@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +18,16 @@ export default function AdminPanel() {
   const [reportFile, setReportFile] = useState<File | null>(null);
   const [category, setCategory] = useState("");
   const [complexityLevel, setComplexityLevel] = useState("");
+  
+  // Physician editing state
+  const [editingPhysician, setEditingPhysician] = useState<Physician | null>(null);
+  const [isAddingPhysician, setIsAddingPhysician] = useState(false);
+  const [physicianForm, setPhysicianForm] = useState({
+    name: "",
+    title: "",
+    specialty: "",
+    signatureUrl: ""
+  });
 
   const { data: trainingPairs = [] } = useQuery<TrainingPair[]>({
     queryKey: ["/api/training"],
@@ -145,6 +156,122 @@ export default function AdminPanel() {
       
       setReportFile(file);
     }
+  };
+
+  // Physician mutations
+  const createPhysicianMutation = useMutation({
+    mutationFn: async (physician: typeof physicianForm) => {
+      const response = await fetch('/api/physicians', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(physician),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Physician Added",
+        description: "New physician added successfully",
+      });
+      setIsAddingPhysician(false);
+      setPhysicianForm({ name: "", title: "", specialty: "", signatureUrl: "" });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => { window.location.href = "/api/login"; }, 500);
+        return;
+      }
+      toast({
+        title: "Failed to Add Physician",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updatePhysicianMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: number; updates: typeof physicianForm }) => {
+      const response = await fetch(`/api/physicians/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Physician Updated",
+        description: "Physician information updated successfully",
+      });
+      setEditingPhysician(null);
+      setPhysicianForm({ name: "", title: "", specialty: "", signatureUrl: "" });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => { window.location.href = "/api/login"; }, 500);
+        return;
+      }
+      toast({
+        title: "Failed to Update Physician",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEditPhysician = (physician: Physician) => {
+    setEditingPhysician(physician);
+    setPhysicianForm({
+      name: physician.name,
+      title: physician.title,
+      specialty: physician.specialty,
+      signatureUrl: physician.signatureUrl || ""
+    });
+  };
+
+  const handleSavePhysician = () => {
+    if (!physicianForm.name || !physicianForm.title || !physicianForm.specialty) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (editingPhysician) {
+      updatePhysicianMutation.mutate({ id: editingPhysician.id, updates: physicianForm });
+    } else {
+      createPhysicianMutation.mutate(physicianForm);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPhysician(null);
+    setIsAddingPhysician(false);
+    setPhysicianForm({ name: "", title: "", specialty: "", signatureUrl: "" });
   };
 
   const handleAddTrainingPair = () => {
@@ -355,17 +482,103 @@ export default function AdminPanel() {
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-900">{physician.name}</p>
-                        <p className="text-xs text-gray-600">{physician.specialty}</p>
+                        <p className="text-xs text-gray-600">{physician.specialty} • {physician.title}</p>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" className="medical-text-primary hover:bg-blue-50">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="medical-text-primary hover:bg-blue-50"
+                      onClick={() => handleEditPhysician(physician)}
+                    >
                       <Edit className="w-4 h-4" />
                     </Button>
                   </div>
                 ))}
               </div>
 
-              <Button variant="secondary" className="w-full mt-4">
+              {/* Physician Form (Edit/Add) */}
+              {(editingPhysician || isAddingPhysician) && (
+                <div className="mt-4 p-4 border rounded-lg bg-white">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3">
+                    {editingPhysician ? 'Edit Physician' : 'Add New Physician'}
+                  </h3>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="physician-name">Full Name *</Label>
+                      <Input
+                        id="physician-name"
+                        value={physicianForm.name}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhysicianForm({ ...physicianForm, name: e.target.value })}
+                        placeholder="Dr. John Smith"
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="physician-title">Title *</Label>
+                      <Input
+                        id="physician-title"
+                        value={physicianForm.title}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhysicianForm({ ...physicianForm, title: e.target.value })}
+                        placeholder="MD, PhD"
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="physician-specialty">Specialty *</Label>
+                      <Select 
+                        value={physicianForm.specialty} 
+                        onValueChange={(value) => setPhysicianForm({ ...physicianForm, specialty: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select specialty" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Radiologist">Radiologist</SelectItem>
+                          <SelectItem value="Sonographer">Sonographer</SelectItem>
+                          <SelectItem value="Vascular Surgeon">Vascular Surgeon</SelectItem>
+                          <SelectItem value="Cardiologist">Cardiologist</SelectItem>
+                          <SelectItem value="Emergency Medicine">Emergency Medicine</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="physician-signature">Signature URL (Optional)</Label>
+                      <Input
+                        id="physician-signature"
+                        value={physicianForm.signatureUrl}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhysicianForm({ ...physicianForm, signatureUrl: e.target.value })}
+                        placeholder="/signatures/physician-name.png"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex space-x-2 mt-4">
+                    <Button 
+                      onClick={handleSavePhysician}
+                      disabled={createPhysicianMutation.isPending || updatePhysicianMutation.isPending}
+                      className="medical-btn-primary"
+                    >
+                      {(createPhysicianMutation.isPending || updatePhysicianMutation.isPending) ? 
+                        'Saving...' : 
+                        (editingPhysician ? 'Update' : 'Add')
+                      }
+                    </Button>
+                    <Button variant="outline" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <Button 
+                variant="secondary" 
+                className="w-full mt-4"
+                onClick={() => setIsAddingPhysician(true)}
+                disabled={!!editingPhysician || isAddingPhysician}
+              >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Physician
               </Button>
