@@ -203,7 +203,7 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     });
   };
 
-  const getCanvasCoordinates = (canvas: HTMLCanvasElement, e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getCanvasCoordinates = (canvas: HTMLCanvasElement, e: React.MouseEvent<HTMLCanvasElement> | PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
@@ -214,7 +214,8 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     };
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
     if (currentTool === 'text') return;
     
     const canvas = canvasRef.current;
@@ -245,7 +246,8 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     ctx.moveTo(coords.x, coords.y);
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
     if (!isDrawing || currentTool === 'text') return;
 
     const canvas = canvasRef.current;
@@ -258,8 +260,6 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     
     ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(coords.x, coords.y);
   };
 
   // Touch/stylus event handlers for mobile/tablet support
@@ -410,9 +410,10 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
           onMouseMove={draw}
           onMouseUp={stopDrawing}
           onMouseLeave={stopDrawing}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          onPointerDown={startDrawing}
+          onPointerMove={draw}
+          onPointerUp={stopDrawing}
+          onPointerLeave={stopDrawing}
           className="cursor-crosshair block bg-white w-full"
           style={{ height: '300px', touchAction: 'none' }}
         />
@@ -454,7 +455,8 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
       }
     }, [isFullscreen, selectedTemplate]);
 
-    const fullscreenStartDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const fullscreenStartDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
       const canvas = fullscreenCanvasRef.current;
       if (!canvas) return;
 
@@ -482,7 +484,8 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
       ctx.moveTo(coords.x, coords.y);
     };
 
-    const fullscreenDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const fullscreenDraw = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
       if (!isDrawing) return;
 
       const canvas = fullscreenCanvasRef.current;
@@ -494,8 +497,6 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
       const coords = getCanvasCoordinates(canvas, e);
       ctx.lineTo(coords.x, coords.y);
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(coords.x, coords.y);
     };
 
     const fullscreenStopDrawing = () => {
@@ -669,9 +670,10 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
               onMouseMove={fullscreenDraw}
               onMouseUp={fullscreenStopDrawing}
               onMouseLeave={fullscreenStopDrawing}
-              onTouchStart={fullscreenHandleTouchStart}
-              onTouchMove={fullscreenHandleTouchMove}
-              onTouchEnd={fullscreenHandleTouchEnd}
+              onPointerDown={fullscreenStartDrawing}
+              onPointerMove={fullscreenDraw}
+              onPointerUp={fullscreenStopDrawing}
+              onPointerLeave={fullscreenStopDrawing}
               className="border-2 border-gray-300 bg-white cursor-crosshair shadow-lg"
               style={{
                 width: '1200px',
