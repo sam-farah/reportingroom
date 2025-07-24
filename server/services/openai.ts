@@ -1,0 +1,146 @@
+import OpenAI from "openai";
+
+// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+const openai = new OpenAI({ 
+  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key"
+});
+
+export interface OCRResult {
+  patientName: string | null;
+  patientDob: string | null;
+  examDate: string | null;
+  confidence: number;
+}
+
+export interface ReportData {
+  patientName: string;
+  patientDob: string;
+  examDate: string;
+  studyType: string;
+  indication: string;
+  findings: string;
+  impression: string;
+}
+
+export async function extractPatientDataFromWorksheet(base64Image: string): Promise<OCRResult> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert medical OCR system. Extract patient information from ultrasound worksheets. 
+          Focus on finding:
+          - Patient name (look for "Patient:", "Name:", or similar labels)
+          - Date of birth (look for "DOB:", "Date of Birth:", or similar)
+          - Exam date (look for "Date:", "Exam Date:", or current date)
+          
+          Return JSON with: { "patientName": string|null, "patientDob": string|null, "examDate": string|null, "confidence": number }
+          
+          If text is unclear or not found, return null for that field. Confidence should be 0-1.`
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Extract patient information from this ultrasound worksheet:"
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${base64Image}`
+              }
+            }
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 500,
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    
+    return {
+      patientName: result.patientName || null,
+      patientDob: result.patientDob || null,
+      examDate: result.examDate || null,
+      confidence: Math.max(0, Math.min(1, result.confidence || 0))
+    };
+  } catch (error) {
+    console.error("OCR extraction failed:", error);
+    throw new Error("Failed to extract patient data from worksheet");
+  }
+}
+
+export async function generateReportFromWorksheet(
+  base64Image: string, 
+  extractedData: OCRResult,
+  trainingData: any[] = []
+): Promise<ReportData> {
+  try {
+    const trainingContext = trainingData.length > 0 
+      ? `\n\nReference training examples:\n${trainingData.map(t => `Category: ${t.category}\nComplexity: ${t.complexityLevel}`).join('\n')}`
+      : '';
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert radiologist AI assistant. Generate a professional ultrasound report based on the worksheet image and extracted patient data.
+
+          Use this structure:
+          - Study Type: (e.g., "Abdominal Ultrasound", "Pelvic Ultrasound")
+          - Indication: (reason for exam)
+          - Findings: (detailed observations, multiple paragraphs)
+          - Impression: (concise summary and conclusions)
+
+          Write in professional medical language. Be thorough but concise.
+          
+          Return JSON with: {
+            "studyType": string,
+            "indication": string, 
+            "findings": string,
+            "impression": string
+          }${trainingContext}`
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Generate a report for this ultrasound worksheet. 
+              Patient: ${extractedData.patientName || 'Not specified'}
+              DOB: ${extractedData.patientDob || 'Not specified'}
+              Exam Date: ${extractedData.examDate || new Date().toLocaleDateString()}`
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${base64Image}`
+              }
+            }
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1500,
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    
+    return {
+      patientName: extractedData.patientName || "Not specified",
+      patientDob: extractedData.patientDob || "Not specified",
+      examDate: extractedData.examDate || new Date().toLocaleDateString(),
+      studyType: result.studyType || "Ultrasound Examination",
+      indication: result.indication || "Clinical evaluation",
+      findings: result.findings || "No significant findings documented.",
+      impression: result.impression || "Further evaluation may be needed."
+    };
+  } catch (error) {
+    console.error("Report generation failed:", error);
+    throw new Error("Failed to generate report from worksheet");
+  }
+}
