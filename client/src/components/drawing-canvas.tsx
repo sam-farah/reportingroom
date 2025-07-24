@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Palette, Eraser, Download, RotateCcw, Type, Save } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Palette, Eraser, Download, RotateCcw, Type, Save, Maximize2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface DrawingCanvasProps {
@@ -35,18 +36,24 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [selectedTemplate, setSelectedTemplate] = useState<keyof typeof VASCULAR_TEMPLATES>('lower-limb-arterial');
   const [lastPath, setLastPath] = useState<ImageData | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Set canvas size for better responsive display
-    canvas.width = 600;
-    canvas.height = 400;
+    // Set canvas size based on fullscreen mode
+    if (isFullscreen) {
+      canvas.width = Math.min(1200, window.innerWidth - 100);
+      canvas.height = Math.min(800, window.innerHeight - 200);
+    } else {
+      canvas.width = 600;
+      canvas.height = 400;
+    }
 
     // Load template background
     loadTemplate();
-  }, [selectedTemplate]);
+  }, [selectedTemplate, isFullscreen]);
 
   const loadTemplate = async () => {
     const canvas = canvasRef.current;
@@ -286,7 +293,7 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     link.click();
   };
 
-  return (
+  const CompactCanvas = () => (
     <div className="space-y-4">
       {/* Template Selection */}
       <div className="flex items-center gap-2">
@@ -305,60 +312,36 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
         </Select>
       </div>
 
-      {/* Drawing Tools */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant={currentTool === 'pen' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setCurrentTool('pen')}
-          >
-            <Palette className="w-3 h-3 mr-1" />
-            Pen
-          </Button>
-          <Button
-            variant={currentTool === 'eraser' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setCurrentTool('eraser')}
-          >
-            <Eraser className="w-3 h-3 mr-1" />
-            Eraser
-          </Button>
-          
-          <div className="flex items-center gap-1 ml-2">
-            <input
-              type="color"
-              value={strokeColor}
-              onChange={(e) => setStrokeColor(e.target.value)}
-              className="w-6 h-6 border border-gray-300 rounded cursor-pointer"
-            />
-            <input
-              type="range"
-              min="1"
-              max="10"
-              value={strokeWidth}
-              onChange={(e) => setStrokeWidth(Number(e.target.value))}
-              className="w-16"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={undo} className="flex-1">
-            <RotateCcw className="w-3 h-3 mr-1" />
-            Undo
-          </Button>
-          <Button variant="outline" size="sm" onClick={clearCanvas} className="flex-1">
-            Clear
-          </Button>
-          <Button onClick={saveWorksheet} className="medical-btn-primary flex-1">
-            <Save className="w-3 h-3 mr-1" />
-            Use
-          </Button>
-        </div>
+      {/* Quick Tools */}
+      <div className="flex gap-2">
+        <Button
+          variant={currentTool === 'pen' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setCurrentTool('pen')}
+        >
+          <Palette className="w-3 h-3 mr-1" />
+          Pen
+        </Button>
+        <Button
+          variant={currentTool === 'eraser' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setCurrentTool('eraser')}
+        >
+          <Eraser className="w-3 h-3 mr-1" />
+          Eraser
+        </Button>
+        
+        <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Maximize2 className="w-3 h-3 mr-1" />
+              Full Screen
+            </Button>
+          </DialogTrigger>
+        </Dialog>
       </div>
 
-      {/* Canvas */}
+      {/* Small Canvas Preview */}
       <div className="border border-gray-300 rounded-lg overflow-hidden">
         <canvas
           ref={canvasRef}
@@ -367,13 +350,139 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
           onMouseUp={stopDrawing}
           onMouseLeave={stopDrawing}
           className="cursor-crosshair block bg-white w-full"
-          style={{ height: '400px' }}
+          style={{ height: '300px' }}
         />
       </div>
       
       <p className="text-xs text-gray-500 mt-2">
-        Select a vascular template, draw on the worksheet, then click "Use" to process with OCR.
+        Click "Full Screen" for detailed drawing or draw directly here.
       </p>
     </div>
+  );
+
+  const FullscreenCanvas = () => (
+    <div className="flex flex-col h-full">
+      {/* Fullscreen Header */}
+      <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+        <div className="flex items-center gap-4">
+          <h3 className="text-lg font-semibold">Vascular Worksheet Drawing</h3>
+          <Select value={selectedTemplate} onValueChange={(value: keyof typeof VASCULAR_TEMPLATES) => setSelectedTemplate(value)}>
+            <SelectTrigger className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(VASCULAR_TEMPLATES).map(([key, template]) => (
+                <SelectItem key={key} value={key}>
+                  {template.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <Button variant="outline" onClick={() => setIsFullscreen(false)}>
+          <X className="w-4 h-4 mr-1" />
+          Exit Fullscreen
+        </Button>
+      </div>
+
+      {/* Fullscreen Toolbar */}
+      <div className="flex items-center gap-4 p-4 border-b bg-white">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={currentTool === 'pen' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setCurrentTool('pen')}
+          >
+            <Palette className="w-4 h-4 mr-1" />
+            Pen
+          </Button>
+          <Button
+            variant={currentTool === 'eraser' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setCurrentTool('eraser')}
+          >
+            <Eraser className="w-4 h-4 mr-1" />
+            Eraser
+          </Button>
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium">Color:</label>
+          <input
+            type="color"
+            value={strokeColor}
+            onChange={(e) => setStrokeColor(e.target.value)}
+            className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium">Size:</label>
+          <input
+            type="range"
+            min="1"
+            max="20"
+            value={strokeWidth}
+            onChange={(e) => setStrokeWidth(Number(e.target.value))}
+            className="w-24"
+          />
+          <span className="text-sm w-8">{strokeWidth}</span>
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={undo}>
+            <RotateCcw className="w-4 h-4 mr-1" />
+            Undo
+          </Button>
+          <Button variant="outline" size="sm" onClick={clearCanvas}>
+            Clear
+          </Button>
+          <Button variant="outline" size="sm" onClick={downloadImage}>
+            <Download className="w-4 h-4 mr-1" />
+            Download
+          </Button>
+          <Button onClick={saveWorksheet} className="medical-btn-primary">
+            <Save className="w-4 h-4 mr-1" />
+            Use Worksheet
+          </Button>
+        </div>
+      </div>
+
+      {/* Fullscreen Canvas */}
+      <div className="flex-1 p-4 overflow-auto bg-gray-100">
+        <div className="flex justify-center">
+          <div className="border border-gray-300 rounded-lg overflow-hidden bg-white shadow-lg">
+            <canvas
+              ref={canvasRef}
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+              className="cursor-crosshair block"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <CompactCanvas />
+      
+      <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Fullscreen Drawing Canvas</DialogTitle>
+          </DialogHeader>
+          <FullscreenCanvas />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
