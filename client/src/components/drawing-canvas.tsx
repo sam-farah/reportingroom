@@ -44,8 +44,9 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
 
     // Set canvas size based on fullscreen mode
     if (isFullscreen) {
-      canvas.width = Math.min(1200, window.innerWidth - 100);
-      canvas.height = Math.min(800, window.innerHeight - 200);
+      // Use larger canvas dimensions for fullscreen
+      canvas.width = 1200;
+      canvas.height = 800;
     } else {
       canvas.width = 600;
       canvas.height = 400;
@@ -83,100 +84,103 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
   };
 
   const drawLowerLimbArterialTemplate = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const margin = 50;
+    const margin = 40;
+    const scale = isFullscreen ? 1.5 : 1;
     
     // Title
     ctx.fillStyle = '#000000';
-    ctx.font = '20px Arial';
-    ctx.fillText('LOWER LIMB ARTERIAL ULTRASOUND', margin, 30);
+    ctx.font = `${Math.round(18 * scale)}px Arial`;
+    ctx.fillText('LOWER LIMB ARTERIAL ULTRASOUND', margin, 35 * scale);
     
     // Patient info section
-    ctx.font = '12px Arial';
-    ctx.strokeRect(margin, 50, width - 2 * margin, 80);
-    ctx.fillText('Patient Name: ____________________', margin + 10, 75);
-    ctx.fillText('DOB: ____________', margin + 300, 75);
-    ctx.fillText('Date: ____________', margin + 500, 75);
-    ctx.fillText('Indication: ________________________________', margin + 10, 105);
+    ctx.font = `${Math.round(11 * scale)}px Arial`;
+    ctx.strokeRect(margin, 50 * scale, width - 2 * margin, 70 * scale);
+    ctx.fillText('Patient Name: ____________________', margin + 10, 75 * scale);
+    ctx.fillText('DOB: ____________', margin + (280 * scale), 75 * scale);
+    ctx.fillText('Date: ____________', margin + (450 * scale), 75 * scale);
+    ctx.fillText('Indication: ________________________________', margin + 10, 105 * scale);
     
     // Arterial segments
-    const segmentHeight = 60;
+    const segmentHeight = 55 * scale;
     const segments = [
       'Aorta', 'Common Iliac', 'External Iliac', 'Common Femoral', 
       'Superficial Femoral', 'Popliteal', 'Anterior Tibial', 
       'Posterior Tibial', 'Peroneal'
     ];
     
-    let yPos = 160;
+    let yPos = 140 * scale;
     segments.forEach((segment, index) => {
       ctx.strokeRect(margin, yPos, width - 2 * margin, segmentHeight);
-      ctx.fillText(segment, margin + 10, yPos + 20);
+      ctx.fillText(segment, margin + 10, yPos + (18 * scale));
       
       // Add measurement fields
-      ctx.fillText('PSV: ______ cm/s', margin + 200, yPos + 20);
-      ctx.fillText('EDV: ______ cm/s', margin + 350, yPos + 20);
-      ctx.fillText('RI: ______', margin + 500, yPos + 20);
-      ctx.fillText('Waveform: ____________', margin + 10, yPos + 45);
+      ctx.fillText('PSV: ______ cm/s', margin + (180 * scale), yPos + (18 * scale));
+      ctx.fillText('EDV: ______ cm/s', margin + (320 * scale), yPos + (18 * scale));
+      ctx.fillText('RI: ______', margin + (460 * scale), yPos + (18 * scale));
+      ctx.fillText('Waveform: ____________', margin + 10, yPos + (40 * scale));
       
-      yPos += segmentHeight + 5;
+      yPos += segmentHeight + (4 * scale);
     });
   };
 
   const drawLowerLimbVenousTemplate = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const margin = 50;
+    const margin = 40;
+    const scale = isFullscreen ? 1.5 : 1;
     
     // Title
     ctx.fillStyle = '#000000';
-    ctx.font = '20px Arial';
-    ctx.fillText('LOWER LIMB VENOUS DUPLEX', margin, 30);
+    ctx.font = `${Math.round(18 * scale)}px Arial`;
+    ctx.fillText('LOWER LIMB VENOUS DUPLEX', margin, 35 * scale);
     
     // Patient info section
-    ctx.font = '12px Arial';
-    ctx.strokeRect(margin, 50, width - 2 * margin, 80);
-    ctx.fillText('Patient Name: ____________________', margin + 10, 75);
-    ctx.fillText('DOB: ____________', margin + 300, 75);
-    ctx.fillText('Date: ____________', margin + 500, 75);
-    ctx.fillText('Indication: ________________________________', margin + 10, 105);
+    ctx.font = `${Math.round(11 * scale)}px Arial`;
+    ctx.strokeRect(margin, 50 * scale, width - 2 * margin, 70 * scale);
+    ctx.fillText('Patient Name: ____________________', margin + 10, 75 * scale);
+    ctx.fillText('DOB: ____________', margin + (280 * scale), 75 * scale);
+    ctx.fillText('Date: ____________', margin + (450 * scale), 75 * scale);
+    ctx.fillText('Indication: ________________________________', margin + 10, 105 * scale);
     
     // Venous segments
-    const segmentHeight = 70;
+    const segmentHeight = 65 * scale;
     const segments = [
       'IVC', 'Common Iliac', 'External Iliac', 'Common Femoral', 
       'Femoral', 'Deep Femoral', 'Popliteal', 'Posterior Tibial', 
       'Peroneal', 'Great Saphenous', 'Small Saphenous'
     ];
     
-    let yPos = 160;
+    let yPos = 140 * scale;
     segments.forEach((segment, index) => {
       ctx.strokeRect(margin, yPos, width - 2 * margin, segmentHeight);
-      ctx.fillText(segment, margin + 10, yPos + 20);
+      ctx.fillText(segment, margin + 10, yPos + (18 * scale));
       
       // Add assessment fields
-      ctx.fillText('Compressibility: □ Full □ Partial □ None', margin + 200, yPos + 20);
-      ctx.fillText('Flow: □ Spontaneous □ Augmented □ Absent', margin + 10, yPos + 45);
-      ctx.fillText('Reflux: □ None □ <0.5s □ >0.5s', margin + 400, yPos + 45);
+      ctx.fillText('Compressibility: □ Full □ Partial □ None', margin + (170 * scale), yPos + (18 * scale));
+      ctx.fillText('Flow: □ Spontaneous □ Augmented □ Absent', margin + 10, yPos + (40 * scale));
+      ctx.fillText('Reflux: □ None □ <0.5s □ >0.5s', margin + (350 * scale), yPos + (40 * scale));
       
-      yPos += segmentHeight + 5;
+      yPos += segmentHeight + (4 * scale);
     });
   };
 
   const drawAortoIliacTemplate = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const margin = 50;
+    const margin = 40;
+    const scale = isFullscreen ? 1.5 : 1;
     
     // Title
     ctx.fillStyle = '#000000';
-    ctx.font = '20px Arial';
-    ctx.fillText('AORTO-ILIAC ULTRASOUND', margin, 30);
+    ctx.font = `${Math.round(18 * scale)}px Arial`;
+    ctx.fillText('AORTO-ILIAC ULTRASOUND', margin, 35 * scale);
     
     // Patient info section
-    ctx.font = '12px Arial';
-    ctx.strokeRect(margin, 50, width - 2 * margin, 80);
-    ctx.fillText('Patient Name: ____________________', margin + 10, 75);
-    ctx.fillText('DOB: ____________', margin + 300, 75);
-    ctx.fillText('Date: ____________', margin + 500, 75);
-    ctx.fillText('Indication: ________________________________', margin + 10, 105);
+    ctx.font = `${Math.round(11 * scale)}px Arial`;
+    ctx.strokeRect(margin, 50 * scale, width - 2 * margin, 70 * scale);
+    ctx.fillText('Patient Name: ____________________', margin + 10, 75 * scale);
+    ctx.fillText('DOB: ____________', margin + (280 * scale), 75 * scale);
+    ctx.fillText('Date: ____________', margin + (450 * scale), 75 * scale);
+    ctx.fillText('Indication: ________________________________', margin + 10, 105 * scale);
     
     // Aortic segments
-    const segmentHeight = 80;
+    const segmentHeight = 75 * scale;
     const segments = [
       'Proximal Aorta', 'Mid Aorta', 'Distal Aorta', 
       'Right Common Iliac', 'Left Common Iliac',
@@ -184,18 +188,18 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
       'Right Internal Iliac', 'Left Internal Iliac'
     ];
     
-    let yPos = 160;
+    let yPos = 140 * scale;
     segments.forEach((segment, index) => {
       ctx.strokeRect(margin, yPos, width - 2 * margin, segmentHeight);
-      ctx.fillText(segment, margin + 10, yPos + 20);
+      ctx.fillText(segment, margin + 10, yPos + (18 * scale));
       
       // Add measurement fields
-      ctx.fillText('Diameter: ______ cm', margin + 200, yPos + 20);
-      ctx.fillText('PSV: ______ cm/s', margin + 400, yPos + 20);
-      ctx.fillText('EDV: ______ cm/s', margin + 200, yPos + 45);
-      ctx.fillText('Plaque: □ None □ <50% □ 50-70% □ >70%', margin + 10, yPos + 65);
+      ctx.fillText('Diameter: ______ cm', margin + (170 * scale), yPos + (18 * scale));
+      ctx.fillText('PSV: ______ cm/s', margin + (350 * scale), yPos + (18 * scale));
+      ctx.fillText('EDV: ______ cm/s', margin + (170 * scale), yPos + (40 * scale));
+      ctx.fillText('Plaque: □ None □ <50% □ 50-70% □ >70%', margin + 10, yPos + (60 * scale));
       
-      yPos += segmentHeight + 5;
+      yPos += segmentHeight + (4 * scale);
     });
   };
 
@@ -514,7 +518,14 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
               className="cursor-crosshair block"
-              style={{ display: 'block', touchAction: 'none' }}
+              style={{ 
+                display: 'block', 
+                touchAction: 'none',
+                maxWidth: '100%',
+                maxHeight: '70vh',
+                width: 'auto',
+                height: 'auto'
+              }}
             />
           </div>
         </div>
