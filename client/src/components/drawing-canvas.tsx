@@ -262,24 +262,37 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     ctx.moveTo(coords.x, coords.y);
   };
 
-  // Touch event handlers for mobile/tablet support
+  // Touch/stylus event handlers for mobile/tablet support
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousedown', {
+    const canvas = e.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const mouseEvent = {
       clientX: touch.clientX,
-      clientY: touch.clientY
-    });
+      clientY: touch.clientY,
+      currentTarget: canvas,
+      preventDefault: () => {}
+    };
     startDrawing(mouseEvent as any);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+    if (!isDrawing) return;
+    
     const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousemove', {
+    const canvas = e.currentTarget;
+    
+    const mouseEvent = {
       clientX: touch.clientX,
-      clientY: touch.clientY
-    });
+      clientY: touch.clientY,
+      currentTarget: canvas,
+      preventDefault: () => {}
+    };
     draw(mouseEvent as any);
   };
 
@@ -448,6 +461,9 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
+      // Save current state for undo
+      setLastPath(ctx.getImageData(0, 0, canvas.width, canvas.height));
+
       setIsDrawing(true);
       const coords = getCanvasCoordinates(canvas, e);
 
@@ -484,6 +500,45 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
 
     const fullscreenStopDrawing = () => {
       setIsDrawing(false);
+      const canvas = fullscreenCanvasRef.current;
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      ctx.beginPath();
+    };
+
+    // Touch/stylus handlers for fullscreen
+    const fullscreenHandleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const mouseEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        currentTarget: e.currentTarget,
+        preventDefault: () => {}
+      };
+      fullscreenStartDrawing(mouseEvent as any);
+    };
+
+    const fullscreenHandleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      if (!isDrawing) return;
+      
+      const touch = e.touches[0];
+      const mouseEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        currentTarget: e.currentTarget,
+        preventDefault: () => {}
+      };
+      fullscreenDraw(mouseEvent as any);
+    };
+
+    const fullscreenHandleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      fullscreenStopDrawing();
     };
 
     const fullscreenSave = () => {
@@ -568,8 +623,36 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
           
           <Separator orientation="vertical" className="h-6" />
           
-          <Button variant="outline" size="sm" onClick={clearCanvas}>
+          <Button variant="outline" size="sm" onClick={() => {
+            const canvas = fullscreenCanvasRef.current;
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            
+            // Clear and reload template
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (selectedTemplate === 'lower-limb-arterial') {
+              drawLowerLimbArterialTemplate(ctx, canvas.width, canvas.height);
+            } else if (selectedTemplate === 'lower-limb-venous') {
+              drawLowerLimbVenousTemplate(ctx, canvas.width, canvas.height);
+            } else if (selectedTemplate === 'aorto-iliac') {
+              drawAortoIliacTemplate(ctx, canvas.width, canvas.height);
+            }
+          }}>
             Clear
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => {
+            if (!lastPath) return;
+            const canvas = fullscreenCanvasRef.current;
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            ctx.putImageData(lastPath, 0, 0);
+          }}>
+            <RotateCcw className="w-4 h-4 mr-1" />
+            Undo
           </Button>
           <Button onClick={fullscreenSave} className="medical-btn-primary">
             <Save className="w-4 h-4 mr-1" />
@@ -586,12 +669,16 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
               onMouseMove={fullscreenDraw}
               onMouseUp={fullscreenStopDrawing}
               onMouseLeave={fullscreenStopDrawing}
+              onTouchStart={fullscreenHandleTouchStart}
+              onTouchMove={fullscreenHandleTouchMove}
+              onTouchEnd={fullscreenHandleTouchEnd}
               className="border-2 border-gray-300 bg-white cursor-crosshair shadow-lg"
               style={{
                 width: '1200px',
                 height: '800px',
                 maxWidth: '100%',
-                maxHeight: '100%'
+                maxHeight: '100%',
+                touchAction: 'none'
               }}
             />
           </div>
