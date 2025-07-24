@@ -109,7 +109,11 @@ export default function UserPanel() {
         }),
       });
 
-      if (!response.ok) throw new Error('Report generation failed');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Report generation failed:', errorData);
+        throw new Error(errorData.details || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
       return response.json();
     },
     onSuccess: (report) => {
@@ -120,10 +124,24 @@ export default function UserPanel() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('Report generation error:', error);
+      
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+
       toast({
         title: "Generation Failed",
-        description: "Failed to generate report. Please try again.",
+        description: error.message || "Failed to generate report. Please try again.",
         variant: "destructive",
       });
     },

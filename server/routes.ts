@@ -155,24 +155,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
+      console.log("Report generation request:", req.body);
       const { worksheetId, physicianId, logoUrl } = req.body;
       
+      if (!worksheetId) {
+        return res.status(400).json({ error: "Worksheet ID is required" });
+      }
+      
+      if (!physicianId) {
+        return res.status(400).json({ error: "Physician ID is required" });
+      }
+
       const worksheet = await storage.getWorksheet(worksheetId);
       if (!worksheet) {
+        console.error("Worksheet not found for ID:", worksheetId);
         return res.status(404).json({ error: "Worksheet not found" });
       }
 
+      console.log("Found worksheet:", worksheet);
+
       // Read the worksheet file
       const filePath = path.join(uploadDir, worksheet.filename);
+      console.log("Looking for file at:", filePath);
+      
       if (!fs.existsSync(filePath)) {
+        console.error("Worksheet file not found at path:", filePath);
         return res.status(404).json({ error: "Worksheet file not found" });
       }
 
       const fileBuffer = fs.readFileSync(filePath);
       const base64Image = fileBuffer.toString('base64');
+      console.log("File read successfully, base64 length:", base64Image.length);
 
       // Get training data for context
       const trainingData = await storage.getAllTrainingPairs();
+      console.log("Training data count:", trainingData.length);
 
       // Generate report using AI
       const ocrData = {
@@ -182,7 +199,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confidence: 1.0
       };
 
+      console.log("Generating report with OCR data:", ocrData);
       const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData);
+      console.log("Report generated successfully:", reportData);
       
       // Create report in storage
       const report = await storage.createReport({
@@ -198,10 +217,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         logoUrl
       });
 
+      console.log("Report saved to storage:", report.id);
       res.json(report);
     } catch (error) {
       console.error("Report generation error:", error);
-      res.status(500).json({ error: "Failed to generate report" });
+      console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
+      
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      res.status(500).json({ 
+        error: "Failed to generate report",
+        details: errorMessage 
+      });
     }
   });
 
