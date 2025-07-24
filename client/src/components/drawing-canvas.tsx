@@ -400,8 +400,8 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          className="cursor-crosshair block bg-white"
-          style={{ width: '100%', height: '300px', touchAction: 'none' }}
+          className="cursor-crosshair block bg-white w-full"
+          style={{ height: '300px', touchAction: 'none' }}
         />
       </div>
       
@@ -506,8 +506,8 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
 
       {/* Fullscreen Canvas */}
       <div className="flex-1 p-4 overflow-auto bg-gray-100">
-        <div className="flex justify-center">
-          <div className="border border-gray-300 rounded-lg overflow-hidden bg-white shadow-lg">
+        <div className="flex justify-center items-center min-h-full">
+          <div className="bg-white shadow-lg rounded-lg p-2">
             <canvas
               ref={canvasRef}
               onMouseDown={startDrawing}
@@ -517,14 +517,12 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
-              className="cursor-crosshair block"
+              className="cursor-crosshair border border-gray-300 rounded"
               style={{ 
                 display: 'block', 
                 touchAction: 'none',
-                maxWidth: '100%',
-                maxHeight: '70vh',
-                width: 'auto',
-                height: 'auto'
+                width: '1200px',
+                height: '800px'
               }}
             />
           </div>
@@ -538,7 +536,7 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
       <CompactCanvas />
       
       <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full p-0">
+        <DialogContent className="max-w-[98vw] max-h-[98vh] w-[98vw] h-[98vh] p-0 overflow-hidden">
           <DialogHeader className="sr-only">
             <DialogTitle>Fullscreen Drawing Canvas</DialogTitle>
           </DialogHeader>
