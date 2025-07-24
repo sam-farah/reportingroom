@@ -199,6 +199,17 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     });
   };
 
+  const getCanvasCoordinates = (canvas: HTMLCanvasElement, e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (currentTool === 'text') return;
     
@@ -212,12 +223,22 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     setLastPath(ctx.getImageData(0, 0, canvas.width, canvas.height));
 
     setIsDrawing(true);
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const coords = getCanvasCoordinates(canvas, e);
 
+    // Set up drawing style
+    if (currentTool === 'pen') {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = strokeWidth;
+    } else if (currentTool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineWidth = strokeWidth * 3;
+    }
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.moveTo(coords.x, coords.y);
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -229,26 +250,49 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    if (currentTool === 'pen') {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = strokeColor;
-      ctx.lineWidth = strokeWidth;
-    } else if (currentTool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.lineWidth = strokeWidth * 3;
-    }
-
-    ctx.lineCap = 'round';
-    ctx.lineTo(x, y);
+    const coords = getCanvasCoordinates(canvas, e);
+    
+    ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(coords.x, coords.y);
+  };
+
+  // Touch event handlers for mobile/tablet support
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const mouseEvent = new MouseEvent('mousedown', {
+      clientX: touch.clientX,
+      clientY: touch.clientY
+    });
+    startDrawing(mouseEvent as any);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const mouseEvent = new MouseEvent('mousemove', {
+      clientX: touch.clientX,
+      clientY: touch.clientY
+    });
+    draw(mouseEvent as any);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    stopDrawing();
   };
 
   const stopDrawing = () => {
     setIsDrawing(false);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.beginPath();
   };
 
   const clearCanvas = () => {
@@ -349,8 +393,11 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
           onMouseMove={draw}
           onMouseUp={stopDrawing}
           onMouseLeave={stopDrawing}
-          className="cursor-crosshair block bg-white w-full"
-          style={{ height: '300px' }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="cursor-crosshair block bg-white"
+          style={{ width: '100%', height: '300px', touchAction: 'none' }}
         />
       </div>
       
@@ -446,7 +493,7 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
             <Download className="w-4 h-4 mr-1" />
             Download
           </Button>
-          <Button onClick={saveWorksheet} className="medical-btn-primary">
+          <Button onClick={() => { saveWorksheet(); setIsFullscreen(false); }} className="medical-btn-primary">
             <Save className="w-4 h-4 mr-1" />
             Use Worksheet
           </Button>
@@ -463,7 +510,11 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
               onMouseMove={draw}
               onMouseUp={stopDrawing}
               onMouseLeave={stopDrawing}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
               className="cursor-crosshair block"
+              style={{ display: 'block', touchAction: 'none' }}
             />
           </div>
         </div>
