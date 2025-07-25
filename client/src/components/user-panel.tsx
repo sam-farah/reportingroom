@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, FileText, Download, Printer, Image } from "lucide-react";
+import { Upload, FileText, Download, Printer, Image, CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ export default function UserPanel() {
   const [patientName, setPatientName] = useState("");
   const [patientDob, setPatientDob] = useState("");
   const [examDate, setExamDate] = useState(new Date().toISOString().split('T')[0]);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'uploaded' | 'processing' | 'completed'>('idle');
 
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
@@ -68,18 +69,20 @@ export default function UserPanel() {
     },
     onSuccess: (data) => {
       console.log('OCR processing successful:', data);
+      setUploadStatus('completed');
       if (data.ocrResult) {
         setPatientName(data.ocrResult.patientName || "");
         setPatientDob(data.ocrResult.patientDob || "");
         setExamDate(data.ocrResult.examDate || new Date().toISOString().split('T')[0]);
         toast({
-          title: "OCR Processing Complete",
+          title: "OCR Complete",
           description: `Patient data extracted with ${Math.round(data.ocrResult.confidence * 100)}% confidence`,
         });
       }
     },
     onError: (error: Error) => {
       console.error('OCR processing error:', error);
+      setUploadStatus('completed'); // Still mark as completed even if OCR fails
       
       if (isUnauthorizedError(error)) {
         toast({
@@ -171,8 +174,19 @@ export default function UserPanel() {
 
   const handleWorksheetUploaded = (worksheet: Worksheet) => {
     setSelectedWorksheet(worksheet);
-    // Automatically start OCR processing
-    ocrMutation.mutate(worksheet.id);
+    setUploadStatus('uploaded');
+    
+    // Reset form state
+    setPatientName("");
+    setPatientDob("");
+    setExamDate(new Date().toISOString().split('T')[0]);
+    setGeneratedReport(null);
+    
+    // Brief delay to show upload success, then start OCR processing
+    setTimeout(() => {
+      setUploadStatus('processing');
+      ocrMutation.mutate(worksheet.id);
+    }, 500);
   };
 
   const handleWorksheetCreated = async (imageData: string, templateName: string) => {
@@ -290,6 +304,37 @@ export default function UserPanel() {
                 <p className="text-xs text-gray-500 mt-2">
                   Supports image files (JPEG, PNG, GIF, WebP) and PDF files. PDFs will be automatically converted to images for processing.
                 </p>
+
+                {/* Upload Status Indicators */}
+                {uploadStatus !== 'idle' && (
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg border">
+                    <div className="space-y-2">
+                      {/* File Upload Status */}
+                      <div className="flex items-center space-x-2">
+                        {uploadStatus === 'uploaded' || uploadStatus === 'processing' || uploadStatus === 'completed' ? (
+                          <CheckCircle className="w-4 h-4 text-green-600" />
+                        ) : (
+                          <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                        )}
+                        <span className="text-sm text-gray-700">File uploaded successfully</span>
+                      </div>
+
+                      {/* OCR Processing Status */}
+                      {(uploadStatus === 'processing' || uploadStatus === 'completed') && (
+                        <div className="flex items-center space-x-2">
+                          {uploadStatus === 'completed' ? (
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                          )}
+                          <span className="text-sm text-gray-700">
+                            {uploadStatus === 'completed' ? 'OCR processing complete' : 'Processing OCR...'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* OCR Results */}
