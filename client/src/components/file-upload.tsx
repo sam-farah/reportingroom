@@ -93,6 +93,7 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
 
   const startCamera = async () => {
     try {
+      console.log('Starting camera...');
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment', // Use back camera on mobile devices
@@ -101,11 +102,17 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
         }
       });
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        setStream(mediaStream);
-        setShowCamera(true);
-      }
+      console.log('Camera stream obtained:', mediaStream);
+      setStream(mediaStream);
+      setShowCamera(true);
+      
+      // Set video source after state update
+      setTimeout(() => {
+        if (videoRef.current && mediaStream) {
+          videoRef.current.srcObject = mediaStream;
+          console.log('Video source set');
+        }
+      }, 100);
     } catch (error) {
       console.error('Error accessing camera:', error);
       toast({
@@ -125,24 +132,38 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
   };
 
   const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    console.log('Capture photo clicked');
+    if (!videoRef.current || !canvasRef.current) {
+      console.error('Video or canvas ref not available');
+      return;
+    }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
     
-    if (!context) return;
+    if (!context) {
+      console.error('Canvas context not available');
+      return;
+    }
+
+    console.log('Video dimensions:', video.videoWidth, video.videoHeight);
 
     // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
 
     // Draw the video frame to canvas
     context.drawImage(video, 0, 0);
 
     // Convert canvas to blob
     canvas.toBlob((blob) => {
-      if (!blob) return;
+      if (!blob) {
+        console.error('Failed to create blob from canvas');
+        return;
+      }
+
+      console.log('Photo captured, blob size:', blob.size);
 
       // Create a file from the blob
       const file = new File([blob], `worksheet-${Date.now()}.jpg`, {
@@ -198,6 +219,10 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
         </div>
       )}
 
+      <div className="text-sm text-gray-500 mb-2">
+        Debug: showCamera = {showCamera ? 'true' : 'false'}, hasStream = {stream ? 'true' : 'false'}
+      </div>
+      
       {!showCamera ? (
         <>
           <div
@@ -238,18 +263,26 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
         </>
       ) : (
         <div className="space-y-4">
+          <div className="text-center text-gray-600 mb-4">
+            <p className="text-lg font-medium">Camera Active</p>
+            <p className="text-sm">Position your worksheet in the camera view</p>
+          </div>
+          
           <div className="relative bg-black rounded-lg overflow-hidden">
             <video
               ref={videoRef}
               autoPlay
               playsInline
+              muted
               className="w-full h-auto max-h-96 object-contain"
+              onLoadedMetadata={() => console.log('Video metadata loaded')}
+              onError={(e) => console.error('Video error:', e)}
             />
             <Button
               onClick={stopCamera}
               variant="secondary"
               size="sm"
-              className="absolute top-2 right-2"
+              className="absolute top-2 right-2 z-10"
             >
               <X className="w-4 h-4" />
             </Button>
@@ -258,14 +291,17 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
           <div className="flex justify-center gap-4">
             <Button
               onClick={capturePhoto}
-              className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
+              size="lg"
+              className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2 px-8 py-3"
             >
-              <Camera className="w-4 h-4" />
+              <Camera className="w-5 h-5" />
               Capture Photo
             </Button>
             <Button
               onClick={stopCamera}
               variant="outline"
+              size="lg"
+              className="px-8 py-3"
             >
               Cancel
             </Button>
