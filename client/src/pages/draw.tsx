@@ -109,13 +109,23 @@ export default function Draw() {
 
       const img = new Image();
       img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
+        // Calculate dimensions to fit the available space
+        const containerWidth = isFullscreen ? window.innerWidth - 280 : canvas.parentElement?.clientWidth || 800;
+        const containerHeight = isFullscreen ? window.innerHeight - 120 : 600;
+        
+        const scale = Math.min(
+          containerWidth / img.width,
+          containerHeight / img.height
+        );
+        
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       };
       img.src = selectedTemplate.imageUrl;
     }
-  }, [selectedTemplate]);
+  }, [selectedTemplate, isFullscreen]);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current || currentTool.type === 'text') return;
@@ -183,6 +193,32 @@ export default function Draw() {
       document.exitFullscreen?.();
     }
     setIsFullscreen(!isFullscreen);
+    
+    // Re-initialize canvas with new dimensions after fullscreen toggle
+    setTimeout(() => {
+      if (selectedTemplate && canvasRef.current) {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const img = new Image();
+        img.onload = () => {
+          const containerWidth = !isFullscreen ? window.innerWidth - 280 : canvas.parentElement?.clientWidth || 800;
+          const containerHeight = !isFullscreen ? window.innerHeight - 120 : 600;
+          
+          const scale = Math.min(
+            containerWidth / img.width,
+            containerHeight / img.height
+          );
+          
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        };
+        img.src = selectedTemplate.imageUrl;
+      }
+    }, 100);
   };
 
   const addTextAnnotation = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -424,7 +460,7 @@ export default function Draw() {
         <div className={`${isFullscreen ? 'flex-1 flex items-center justify-center bg-white p-4' : ''}`}>
           <Card className={`${isFullscreen ? 'border-0 shadow-none w-full h-full' : 'lg:col-span-3'}`}>
           <CardContent className={`${isFullscreen ? 'p-0 h-full flex items-center justify-center' : 'p-4'}`}>
-            <div className={`border rounded-lg overflow-auto ${isFullscreen ? 'w-full h-full' : 'max-h-[600px]'}`}>
+            <div className={`border rounded-lg ${isFullscreen ? 'w-full h-full flex items-center justify-center' : 'max-h-[600px] overflow-auto'}`}>
               <canvas
                 ref={canvasRef}
                 onMouseDown={startDrawing}
@@ -438,9 +474,11 @@ export default function Draw() {
                 onClick={addTextAnnotation}
                 className="cursor-crosshair"
                 style={{ 
-                  display: 'block', 
-                  maxWidth: '100%',
-                  touchAction: 'none' // Enable stylus/touch drawing
+                  display: 'block',
+                  maxWidth: isFullscreen ? 'calc(100vw - 320px)' : '100%',
+                  maxHeight: isFullscreen ? 'calc(100vh - 140px)' : '600px',
+                  touchAction: 'none', // Enable stylus/touch drawing
+                  objectFit: 'contain'
                 }}
               />
             </div>
