@@ -15,6 +15,8 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 - **Enhanced Search Functionality** - Filter reports by patient name or study type with automatic page reset
 - **Professional UI Enhancement** - Improved grid layout supporting up to 4 columns on larger screens
 - **Template System Integration** - Seamless connection between templates and report generation/editing
+- **Standardized Export Formatting** - Unified PDF and DOCX report styling with consistent headers, sections, and professional layout
+- **Dedicated Physician Management** - Separate page for managing physician profiles with CRUD operations and navigation integration
 
 ## User Preferences
 
