@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, FileText, Download, Printer, Image, CheckCircle, Loader2, FileDown } from "lucide-react";
+import { Upload, FileText, Download, Printer, Image, CheckCircle, Loader2, FileDown, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
