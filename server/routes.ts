@@ -315,10 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Report not found" });
       }
 
-      // Import puppeteer dynamically
-      const puppeteer = await import('puppeteer');
-      
-      // Generate PDF content using HTML template
+      // Generate PDF content using HTML template (will return HTML for browser PDF conversion)
       const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -463,32 +460,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 </body>
 </html>`;
 
-      // Launch browser and generate PDF
-      const browser = await puppeteer.default.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
+      // Since Puppeteer has environment issues, return printable HTML that browsers can convert to PDF
+      // Users can use Ctrl+P -> Print to PDF in any browser
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Disposition', `inline; filename="${report.patientName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${report.examDate}.html"`);
       
-      const page = await browser.newPage();
-      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+      // Add print instructions to the HTML
+      const printableHtml = htmlContent.replace(
+        '<body>',
+        `<body>
+        <div id="print-instructions" class="no-print" style="background: #e3f2fd; padding: 15px; margin-bottom: 20px; border-radius: 8px; border-left: 4px solid #1976d2;">
+          <h3 style="margin: 0 0 10px 0; color: #1976d2;">📄 PDF Generation Instructions</h3>
+          <p style="margin: 0; font-size: 14px; color: #333;">
+            <strong>To save as PDF:</strong> Press <kbd>Ctrl+P</kbd> (or <kbd>Cmd+P</kbd> on Mac), then select "Save as PDF" as the destination.
+            <br><strong>For best results:</strong> Use A4 paper size and include background graphics.
+          </p>
+          <button onclick="window.print()" style="margin-top: 10px; background: #1976d2; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+            🖨️ Print/Save as PDF
+          </button>
+        </div>`
+      );
       
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        margin: {
-          top: '1cm',
-          right: '1cm',
-          bottom: '1cm',
-          left: '1cm'
-        },
-        printBackground: true
-      });
-      
-      await browser.close();
-
-      // Set proper PDF headers
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${report.patientName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${report.examDate}.pdf"`);
-      res.send(pdfBuffer);
+      res.send(printableHtml);
       
     } catch (error) {
       console.error("PDF generation error:", error);
