@@ -4,6 +4,7 @@ import {
   worksheets,
   reports,
   trainingPairs,
+  reportTemplates,
   type User,
   type UpsertUser,
   type Physician,
@@ -13,7 +14,9 @@ import {
   type Report,
   type InsertReport,
   type TrainingPair,
-  type InsertTrainingPair
+  type InsertTrainingPair,
+  type ReportTemplate,
+  type InsertReportTemplate
 } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -46,6 +49,13 @@ export interface IStorage {
   getTrainingPair(id: number): Promise<TrainingPair | undefined>;
   createTrainingPair(trainingPair: InsertTrainingPair): Promise<TrainingPair>;
   getTrainingPairsByCategory(category: string): Promise<TrainingPair[]>;
+  
+  getAllReportTemplates(): Promise<ReportTemplate[]>;
+  getReportTemplate(id: number): Promise<ReportTemplate | undefined>;
+  createReportTemplate(template: InsertReportTemplate): Promise<ReportTemplate>;
+  updateReportTemplate(id: number, template: Partial<InsertReportTemplate>): Promise<ReportTemplate | undefined>;
+  deleteReportTemplate(id: number): Promise<void>;
+  getDefaultTemplate(): Promise<ReportTemplate | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -177,6 +187,45 @@ export class DatabaseStorage implements IStorage {
 
   async getTrainingPairsByCategory(category: string): Promise<TrainingPair[]> {
     return await db.select().from(trainingPairs).where(eq(trainingPairs.category, category));
+  }
+
+  // Report Template operations
+  async getAllReportTemplates(): Promise<ReportTemplate[]> {
+    return await db.select().from(reportTemplates);
+  }
+
+  async getReportTemplate(id: number): Promise<ReportTemplate | undefined> {
+    const [template] = await db.select().from(reportTemplates).where(eq(reportTemplates.id, id));
+    return template;
+  }
+
+  async createReportTemplate(insertTemplate: InsertReportTemplate): Promise<ReportTemplate> {
+    const [template] = await db
+      .insert(reportTemplates)
+      .values(insertTemplate)
+      .returning();
+    return template;
+  }
+
+  async updateReportTemplate(id: number, updates: Partial<InsertReportTemplate>): Promise<ReportTemplate | undefined> {
+    const [template] = await db
+      .update(reportTemplates)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(reportTemplates.id, id))
+      .returning();
+    return template;
+  }
+
+  async deleteReportTemplate(id: number): Promise<void> {
+    await db.delete(reportTemplates).where(eq(reportTemplates.id, id));
+  }
+
+  async getDefaultTemplate(): Promise<ReportTemplate | undefined> {
+    const [template] = await db.select().from(reportTemplates).where(eq(reportTemplates.isDefault, true));
+    return template;
   }
 }
 

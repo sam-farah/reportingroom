@@ -5,7 +5,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { insertPhysicianSchema, insertTrainingPairSchema, insertWorksheetSchema, insertReportSchema } from "@shared/schema";
+import { insertPhysicianSchema, insertTrainingPairSchema, insertWorksheetSchema, insertReportSchema, insertReportTemplateSchema } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 
@@ -744,6 +744,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Logo upload error:", error);
       res.status(500).json({ error: "Failed to upload logo" });
+    }
+  });
+
+  // Report Templates API
+  app.get("/api/templates", isAuthenticated, async (req, res) => {
+    try {
+      const templates = await storage.getAllReportTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error("Get templates error:", error);
+      res.status(500).json({ error: "Failed to fetch templates" });
+    }
+  });
+
+  app.get("/api/templates/default", isAuthenticated, async (req, res) => {
+    try {
+      const template = await storage.getDefaultTemplate();
+      res.json(template);
+    } catch (error) {
+      console.error("Get default template error:", error);
+      res.status(500).json({ error: "Failed to fetch default template" });
+    }
+  });
+
+  app.post("/api/templates", isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertReportTemplateSchema.parse(req.body);
+      const template = await storage.createReportTemplate(validatedData);
+      res.json(template);
+    } catch (error) {
+      console.error("Create template error:", error);
+      res.status(400).json({ error: "Invalid template data" });
+    }
+  });
+
+  app.patch("/api/templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      if (isNaN(templateId)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+
+      const validatedData = insertReportTemplateSchema.partial().parse(req.body);
+      const template = await storage.updateReportTemplate(templateId, validatedData);
+      
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      console.error("Update template error:", error);
+      res.status(400).json({ error: "Invalid template data" });
+    }
+  });
+
+  app.delete("/api/templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      if (isNaN(templateId)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+
+      await storage.deleteReportTemplate(templateId);
+      res.json({ message: "Template deleted successfully" });
+    } catch (error) {
+      console.error("Delete template error:", error);
+      res.status(500).json({ error: "Failed to delete template" });
     }
   });
 

@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { HeartPulse, User, Settings, LogOut } from "lucide-react";
+import { HeartPulse, User, Settings, LogOut, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import UserPanel from "@/components/user-panel";
 import AdminPanel from "@/components/admin-panel";
+import Templates from "./templates";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [activePanel, setActivePanel] = useState<"user" | "admin">("user");
+  const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates">("user");
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -35,6 +36,14 @@ export default function Dashboard() {
                 >
                   <User className="w-4 h-4 mr-2" />
                   User Panel
+                </Button>
+                <Button
+                  variant={activePanel === "templates" ? "default" : "ghost"}
+                  className={activePanel === "templates" ? "medical-btn-secondary" : ""}
+                  onClick={() => setActivePanel("templates")}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Templates
                 </Button>
                 <Button
                   variant={activePanel === "admin" ? "default" : "ghost"}
@@ -68,7 +77,13 @@ export default function Dashboard() {
       </nav>
 
       {/* Main Content */}
-      {activePanel === "user" ? <UserPanel /> : <AdminPanel />}
+      {activePanel === "user" ? (
+        <UserPanel />
+      ) : activePanel === "templates" ? (
+        <Templates />
+      ) : (
+        <AdminPanel />
+      )}
     </div>
   );
 }

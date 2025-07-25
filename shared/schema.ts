@@ -80,6 +80,50 @@ export const trainingPairs = pgTable("training_pairs", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });
 
+export const reportTemplates = pgTable("report_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  templateType: text("template_type").notNull(), // 'pdf' or 'docx' or 'both'
+  
+  // Header configuration
+  showHeader: boolean("show_header").default(true),
+  clinicName: text("clinic_name"),
+  clinicAddress: text("clinic_address"),
+  clinicPhone: text("clinic_phone"),
+  showLogo: boolean("show_logo").default(true),
+  
+  // Patient info configuration
+  patientInfoLayout: text("patient_info_layout").default('grid'), // 'grid', 'list', 'compact'
+  showPatientId: boolean("show_patient_id").default(false),
+  
+  // Content sections
+  showStudyType: boolean("show_study_type").default(true),
+  showIndication: boolean("show_indication").default(true),
+  showFindings: boolean("show_findings").default(true),
+  showImpression: boolean("show_impression").default(true),
+  
+  // Footer configuration
+  showFooter: boolean("show_footer").default(true),
+  footerText: text("footer_text"),
+  showReportId: boolean("show_report_id").default(true),
+  showGenerationDate: boolean("show_generation_date").default(true),
+  
+  // Physician signature
+  showSignature: boolean("show_signature").default(true),
+  signaturePosition: text("signature_position").default('right'), // 'left', 'right', 'center'
+  
+  // Styling options
+  primaryColor: text("primary_color").default('#0066cc'),
+  fontFamily: text("font_family").default('Arial'),
+  fontSize: text("font_size").default('12px'),
+  
+  isDefault: boolean("is_default").default(false),
+  userId: text("user_id"), // Optional: for user-specific templates
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
@@ -102,6 +146,12 @@ export const insertTrainingPairSchema = createInsertSchema(trainingPairs).omit({
   uploadedAt: true,
 });
 
+export const insertReportTemplateSchema = createInsertSchema(reportTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type Physician = typeof physicians.$inferSelect;
 export type InsertPhysician = z.infer<typeof insertPhysicianSchema>;
 export type Worksheet = typeof worksheets.$inferSelect;
@@ -110,3 +160,5 @@ export type Report = typeof reports.$inferSelect;
 export type InsertReport = z.infer<typeof insertReportSchema>;
 export type TrainingPair = typeof trainingPairs.$inferSelect;
 export type InsertTrainingPair = z.infer<typeof insertTrainingPairSchema>;
+export type ReportTemplate = typeof reportTemplates.$inferSelect;
+export type InsertReportTemplate = z.infer<typeof insertReportTemplateSchema>;
