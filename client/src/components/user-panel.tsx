@@ -73,7 +73,39 @@ export default function UserPanel() {
       if (data.ocrResult) {
         setPatientName(data.ocrResult.patientName || "");
         setPatientDob(data.ocrResult.patientDob || "");
-        setExamDate(data.ocrResult.examDate || new Date().toISOString().split('T')[0]);
+        
+        // Parse exam date from various formats to YYYY-MM-DD
+        let examDateFormatted = "";
+        if (data.ocrResult.examDate) {
+          const examDateStr = data.ocrResult.examDate;
+          console.log('Raw exam date from OCR:', examDateStr);
+          
+          // Try to parse various date formats
+          let parsedDate = null;
+          
+          // Format: 7.7.23 or 7/7/23 or 07.07.23 etc.
+          if (examDateStr.match(/^\d{1,2}[\.\/]\d{1,2}[\.\/]\d{2,4}$/)) {
+            const parts = examDateStr.split(/[\.\/]/);
+            let day = parseInt(parts[0]);
+            let month = parseInt(parts[1]);
+            let year = parseInt(parts[2]);
+            
+            // Handle 2-digit years
+            if (year < 100) {
+              year = year > 50 ? 1900 + year : 2000 + year;
+            }
+            
+            parsedDate = new Date(year, month - 1, day);
+          }
+          
+          if (parsedDate && !isNaN(parsedDate.getTime())) {
+            examDateFormatted = parsedDate.toISOString().split('T')[0];
+            console.log('Parsed exam date:', examDateFormatted);
+          }
+        }
+        
+        setExamDate(examDateFormatted || new Date().toISOString().split('T')[0]);
+        
         toast({
           title: "OCR Complete",
           description: `Patient data extracted with ${Math.round(data.ocrResult.confidence * 100)}% confidence`,
