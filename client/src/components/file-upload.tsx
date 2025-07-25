@@ -118,7 +118,7 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
       } catch (exactError) {
         console.log('Exact facingMode failed, trying ideal:', exactError);
         // Fallback to ideal instead of exact
-        constraints.video.facingMode = facingMode;
+        constraints.video.facingMode = facingMode as any;
         mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
       }
       
