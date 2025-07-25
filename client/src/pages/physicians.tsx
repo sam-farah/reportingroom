@@ -61,9 +61,10 @@ export default function Physicians() {
   }, []);
 
   // Fetch physicians
-  const { data: physicians = [], isLoading: physiciansLoading } = useQuery({
+  const { data: physicians = [], isLoading: physiciansLoading, error: physiciansError } = useQuery({
     queryKey: ["/api/physicians"],
     enabled: isAuthenticated,
+    retry: false,
   });
 
   // Add physician mutation
@@ -367,7 +368,28 @@ export default function Physicians() {
     deletePhysicianMutation.mutate(id);
   };
 
-  if (isLoading || physiciansLoading) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-300">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 dark:text-gray-300">Please log in to access physician management.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (physiciansLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
         <div className="text-center">
@@ -377,6 +399,20 @@ export default function Physicians() {
       </div>
     );
   }
+
+  // Handle error states (like unauthorized)
+  useEffect(() => {
+    if (physiciansError && isUnauthorizedError(physiciansError as Error)) {
+      toast({
+        title: "Authentication Required",
+        description: "Redirecting to login...",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/api/login";
+      }, 1000);
+    }
+  }, [physiciansError, toast]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
