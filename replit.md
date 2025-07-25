@@ -18,6 +18,8 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 - **Standardized Export Formatting** - Unified PDF and DOCX report styling with consistent headers, sections, and professional layout
 - **Dedicated Physician Management** - Separate page for managing physician profiles with CRUD operations and navigation integration
 - **Advanced Signature System** - Dual signature options with file upload and stylus drawing capabilities for physician authentication
+- **Sonographer Management System** - Complete CRUD operations for sonographer profiles with initials matching integration
+- **Enhanced Camera Capture** - Portrait-mode camera with front/back camera switching, live preview, and direct worksheet photography
 
 ## User Preferences
 

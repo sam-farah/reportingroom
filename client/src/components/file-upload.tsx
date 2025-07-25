@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { CloudUpload, Upload as UploadIcon, Camera, X } from "lucide-react";
+import { CloudUpload, Upload as UploadIcon, Camera, X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,7 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showCamera, setShowCamera] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment'>('environment');
 
   // Cleanup camera stream on unmount
   useEffect(() => {
@@ -91,12 +92,18 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
     uploadMutation.mutate(file);
   };
 
-  const startCamera = async () => {
+  const startCamera = async (facingMode: 'user' | 'environment' = 'environment') => {
     try {
-      console.log('Starting camera...');
+      console.log('Starting camera with facing mode:', facingMode);
+      
+      // Stop existing stream if any
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment', // Use back camera on mobile devices
+          facingMode: facingMode, // Use specified camera
           width: { ideal: 1080 }, // Portrait orientation - width smaller than height
           height: { ideal: 1920 }, // Portrait orientation - height larger than width
           aspectRatio: { ideal: 9/16 } // 9:16 aspect ratio for portrait
@@ -105,6 +112,7 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
       
       console.log('Camera stream obtained:', mediaStream);
       setStream(mediaStream);
+      setCurrentFacingMode(facingMode);
       setShowCamera(true);
       
       // Set video source after state update
@@ -118,10 +126,15 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
       console.error('Error accessing camera:', error);
       toast({
         title: "Camera Access Failed",
-        description: "Unable to access camera. Please check permissions.",
+        description: "Unable to access camera. Please check permissions or try switching cameras.",
         variant: "destructive",
       });
     }
+  };
+
+  const switchCamera = () => {
+    const newFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+    startCamera(newFacingMode);
   };
 
   const stopCamera = () => {
@@ -265,6 +278,9 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
           <div className="text-center text-gray-600 mb-4">
             <p className="text-lg font-medium">Camera Active - Portrait Mode</p>
             <p className="text-sm">Hold your device vertically and position worksheet in frame</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Using: {currentFacingMode === 'environment' ? 'Back Camera' : 'Front Camera'}
+            </p>
           </div>
           
           <div className="relative bg-black rounded-lg overflow-hidden max-w-sm mx-auto">
@@ -278,14 +294,24 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
               onLoadedMetadata={() => console.log('Video metadata loaded')}
               onError={(e) => console.error('Video error:', e)}
             />
-            <Button
-              onClick={stopCamera}
-              variant="secondary"
-              size="sm"
-              className="absolute top-2 right-2 z-10"
-            >
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="absolute top-2 right-2 z-10 flex gap-2">
+              <Button
+                onClick={switchCamera}
+                variant="secondary"
+                size="sm"
+                title="Switch Camera"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={stopCamera}
+                variant="secondary"
+                size="sm"
+                title="Close Camera"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
           
           <div className="flex justify-center gap-4">
