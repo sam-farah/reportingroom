@@ -8,6 +8,7 @@ import Dashboard from "@/pages/dashboard";
 import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 import Templates from "@/pages/templates";
+import ReportingRoom from "@/pages/reporting-room";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -20,6 +21,7 @@ function Router() {
         <>
           <Route path="/" component={Dashboard} />
           <Route path="/templates" component={Templates} />
+          <Route path="/reporting-room" component={ReportingRoom} />
         </>
       )}
       <Route component={NotFound} />

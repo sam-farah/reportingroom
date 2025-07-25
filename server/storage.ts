@@ -19,7 +19,7 @@ import {
   type InsertReportTemplate
 } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 // Interface for storage operations
 export interface IStorage {
@@ -42,6 +42,7 @@ export interface IStorage {
   getAllReports(): Promise<Report[]>;
   getReport(id: number): Promise<Report | undefined>;
   getReportsByWorksheet(worksheetId: number): Promise<Report[]>;
+  getRecentReports(limit: number): Promise<Report[]>;
   createReport(report: InsertReport): Promise<Report>;
   updateReport(id: number, report: Partial<InsertReport>): Promise<Report | undefined>;
   
@@ -149,6 +150,14 @@ export class DatabaseStorage implements IStorage {
 
   async getReportsByWorksheet(worksheetId: number): Promise<Report[]> {
     return await db.select().from(reports).where(eq(reports.worksheetId, worksheetId));
+  }
+
+  async getRecentReports(limit: number): Promise<Report[]> {
+    return await db
+      .select()
+      .from(reports)
+      .orderBy(desc(reports.generatedAt))
+      .limit(limit);
   }
 
   async createReport(insertReport: InsertReport): Promise<Report> {

@@ -232,6 +232,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get recent reports (last 50)
+  app.get("/api/reports/recent", isAuthenticated, async (req, res) => {
+    try {
+      const reports = await storage.getRecentReports(50);
+      res.json(reports);
+    } catch (error) {
+      console.error("Get recent reports error:", error);
+      res.status(500).json({ error: "Failed to fetch recent reports" });
+    }
+  });
+
   app.patch("/api/reports/:id", isAuthenticated, async (req, res) => {
     try {
       const reportId = parseInt(req.params.id);
