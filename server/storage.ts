@@ -19,7 +19,13 @@ import {
   type ReportTemplate,
   type InsertReportTemplate,
   type Sonographer,
-  type InsertSonographerData
+  type InsertSonographerData,
+  worksheetTemplates,
+  digitalWorksheets,
+  type WorksheetTemplate,
+  type DigitalWorksheet,
+  type InsertWorksheetTemplate,
+  type InsertDigitalWorksheet
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -68,6 +74,18 @@ export interface IStorage {
   createSonographer(sonographer: InsertSonographerData): Promise<Sonographer>;
   updateSonographer(id: number, sonographer: Partial<InsertSonographerData>): Promise<Sonographer | undefined>;
   deleteSonographer(id: number): Promise<void>;
+
+  getAllWorksheetTemplates(): Promise<WorksheetTemplate[]>;
+  getWorksheetTemplate(id: number): Promise<WorksheetTemplate | undefined>;
+  createWorksheetTemplate(template: InsertWorksheetTemplate): Promise<WorksheetTemplate>;
+  updateWorksheetTemplate(id: number, template: Partial<InsertWorksheetTemplate>): Promise<WorksheetTemplate | undefined>;
+  deleteWorksheetTemplate(id: number): Promise<void>;
+
+  getAllDigitalWorksheets(): Promise<DigitalWorksheet[]>;
+  getDigitalWorksheet(id: number): Promise<DigitalWorksheet | undefined>;
+  createDigitalWorksheet(worksheet: InsertDigitalWorksheet): Promise<DigitalWorksheet>;
+  updateDigitalWorksheet(id: number, worksheet: Partial<InsertDigitalWorksheet>): Promise<DigitalWorksheet | undefined>;
+  deleteDigitalWorksheet(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -302,6 +320,80 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSonographer(id: number): Promise<void> {
     await db.delete(sonographers).where(eq(sonographers.id, id));
+  }
+
+  // Worksheet Template operations
+  async getAllWorksheetTemplates(): Promise<WorksheetTemplate[]> {
+    return await db.select().from(worksheetTemplates).orderBy(worksheetTemplates.name);
+  }
+
+  async getWorksheetTemplate(id: number): Promise<WorksheetTemplate | undefined> {
+    const [template] = await db
+      .select()
+      .from(worksheetTemplates)
+      .where(eq(worksheetTemplates.id, id));
+    return template;
+  }
+
+  async createWorksheetTemplate(templateData: InsertWorksheetTemplate): Promise<WorksheetTemplate> {
+    const [template] = await db
+      .insert(worksheetTemplates)
+      .values(templateData)
+      .returning();
+    return template;
+  }
+
+  async updateWorksheetTemplate(id: number, templateData: Partial<InsertWorksheetTemplate>): Promise<WorksheetTemplate | undefined> {
+    const [template] = await db
+      .update(worksheetTemplates)
+      .set({
+        ...templateData,
+        updatedAt: new Date(),
+      })
+      .where(eq(worksheetTemplates.id, id))
+      .returning();
+    return template;
+  }
+
+  async deleteWorksheetTemplate(id: number): Promise<void> {
+    await db.delete(worksheetTemplates).where(eq(worksheetTemplates.id, id));
+  }
+
+  // Digital Worksheet operations
+  async getAllDigitalWorksheets(): Promise<DigitalWorksheet[]> {
+    return await db.select().from(digitalWorksheets).orderBy(desc(digitalWorksheets.createdAt));
+  }
+
+  async getDigitalWorksheet(id: number): Promise<DigitalWorksheet | undefined> {
+    const [worksheet] = await db
+      .select()
+      .from(digitalWorksheets)
+      .where(eq(digitalWorksheets.id, id));
+    return worksheet;
+  }
+
+  async createDigitalWorksheet(worksheetData: InsertDigitalWorksheet): Promise<DigitalWorksheet> {
+    const [worksheet] = await db
+      .insert(digitalWorksheets)
+      .values(worksheetData)
+      .returning();
+    return worksheet;
+  }
+
+  async updateDigitalWorksheet(id: number, worksheetData: Partial<InsertDigitalWorksheet>): Promise<DigitalWorksheet | undefined> {
+    const [worksheet] = await db
+      .update(digitalWorksheets)
+      .set({
+        ...worksheetData,
+        updatedAt: new Date(),
+      })
+      .where(eq(digitalWorksheets.id, id))
+      .returning();
+    return worksheet;
+  }
+
+  async deleteDigitalWorksheet(id: number): Promise<void> {
+    await db.delete(digitalWorksheets).where(eq(digitalWorksheets.id, id));
   }
 }
 

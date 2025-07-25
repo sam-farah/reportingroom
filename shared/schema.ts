@@ -125,6 +125,37 @@ export const reportTemplates = pgTable("report_templates", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Worksheet templates table for blank worksheet uploads
+export const worksheetTemplates = pgTable("worksheet_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category").notNull(), // 'vascular', 'cardiac', 'abdominal', etc.
+  imageUrl: text("image_url").notNull(), // Path to the blank worksheet image
+  originalFilename: text("original_filename").notNull(),
+  userId: text("user_id"), // Optional: for user-specific templates
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Digital worksheets table for drawn/annotated worksheets
+export const digitalWorksheets = pgTable("digital_worksheets", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id").references(() => worksheetTemplates.id),
+  patientName: text("patient_name"),
+  patientDob: text("patient_dob"),
+  examDate: text("exam_date"),
+  studyType: text("study_type"),
+  drawingData: text("drawing_data"), // JSON string of canvas drawing data
+  annotations: text("annotations"), // JSON string of text annotations
+  completedAt: timestamp("completed_at"),
+  userId: text("user_id"),
+  sonographerId: integer("sonographer_id").references(() => sonographers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
@@ -141,6 +172,12 @@ export const sonographers = pgTable("sonographers", {
 
 export type Sonographer = typeof sonographers.$inferSelect;
 export type InsertSonographer = typeof sonographers.$inferInsert;
+
+export type WorksheetTemplate = typeof worksheetTemplates.$inferSelect;
+export type InsertWorksheetTemplate = typeof worksheetTemplates.$inferInsert;
+
+export type DigitalWorksheet = typeof digitalWorksheets.$inferSelect;
+export type InsertDigitalWorksheet = typeof digitalWorksheets.$inferInsert;
 
 export const insertPhysicianSchema = createInsertSchema(physicians).omit({
   id: true,
@@ -168,6 +205,18 @@ export const insertTrainingPairSchema = createInsertSchema(trainingPairs).omit({
 });
 
 export const insertReportTemplateSchema = createInsertSchema(reportTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWorksheetTemplateSchema = createInsertSchema(worksheetTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDigitalWorksheetSchema = createInsertSchema(digitalWorksheets).omit({
   id: true,
   createdAt: true,
   updatedAt: true,

@@ -83,13 +83,27 @@ const defaultFormData: TemplateFormData = {
 
 export default function Templates() {
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<'reports' | 'worksheets'>('reports');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ReportTemplate | null>(null);
   const [formData, setFormData] = useState<TemplateFormData>(defaultFormData);
+  const [showWorksheetDialog, setShowWorksheetDialog] = useState(false);
+  const [worksheetForm, setWorksheetForm] = useState({
+    name: '',
+    description: '',
+    category: 'vascular',
+    file: null as File | null
+  });
 
   // Fetch all templates
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ["/api/templates"],
+    retry: false,
+  });
+
+  // Fetch worksheet templates
+  const { data: worksheetTemplates = [], isLoading: isLoadingWorksheets } = useQuery({
+    queryKey: ["/api/worksheet-templates"],
     retry: false,
   });
 
@@ -198,6 +212,54 @@ export default function Templates() {
     },
   });
 
+  // Worksheet template mutations
+  const createWorksheetMutation = useMutation({
+    mutationFn: async (formData: FormData) => {
+      const response = await fetch("/api/worksheet-templates", {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) throw new Error("Failed to create worksheet template");
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Worksheet Template Created",
+        description: "Your worksheet template has been uploaded successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/worksheet-templates"] });
+      setShowWorksheetDialog(false);
+      setWorksheetForm({ name: '', description: '', category: 'vascular', file: null });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to create worksheet template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteWorksheetMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/worksheet-templates/${id}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Worksheet Template Deleted",
+        description: "The worksheet template has been removed successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/worksheet-templates"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Deletion Failed",
+        description: error.message || "Failed to delete worksheet template",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCreateTemplate = () => {
     setEditingTemplate(null);
     setFormData(defaultFormData);
@@ -297,7 +359,32 @@ export default function Templates() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  if (isLoading) {
+  const handleCreateWorksheet = () => {
+    if (!worksheetForm.file || !worksheetForm.name.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please provide a name and select a worksheet file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('worksheetFile', worksheetForm.file);
+    formData.append('name', worksheetForm.name.trim());
+    formData.append('description', worksheetForm.description.trim());
+    formData.append('category', worksheetForm.category);
+
+    createWorksheetMutation.mutate(formData);
+  };
+
+  const handleDeleteWorksheet = (id: number) => {
+    if (confirm("Are you sure you want to delete this worksheet template?")) {
+      deleteWorksheetMutation.mutate(id);
+    }
+  };
+
+  if (isLoading || isLoadingWorksheets) {
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center h-64">
@@ -314,19 +401,50 @@ export default function Templates() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Report Templates</h1>
-          <p className="text-gray-600 mt-1">Create and manage custom report layouts for PDF and DOCX exports</p>
+          <h1 className="text-2xl font-bold text-gray-900">Templates</h1>
+          <p className="text-gray-600 mt-1">
+            {activeTab === 'reports' 
+              ? 'Create and manage custom report layouts for PDF and DOCX exports'
+              : 'Upload and manage blank worksheet templates for digital drawing'
+            }
+          </p>
         </div>
-        <Button onClick={handleCreateTemplate} className="medical-btn-primary">
-          <Plus className="w-4 h-4 mr-2" />
-          New Template
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant={activeTab === 'reports' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('reports')}
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            Reports
+          </Button>
+          <Button
+            variant={activeTab === 'worksheets' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('worksheets')}
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            Worksheets
+          </Button>
+          {activeTab === 'reports' ? (
+            <Button onClick={handleCreateTemplate} className="medical-btn-primary">
+              <Plus className="w-4 h-4 mr-2" />
+              New Template
+            </Button>
+          ) : (
+            <Button onClick={() => setShowWorksheetDialog(true)} className="medical-btn-primary">
+              <Plus className="w-4 h-4 mr-2" />
+              Upload Worksheet
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Templates Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {templates.map((template: ReportTemplate) => (
-          <Card key={template.id} className="hover:shadow-md transition-shadow">
+      {/* Content Based on Active Tab */}
+      {activeTab === 'reports' ? (
+        <>
+          {/* Report Templates Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {templates.map((template: ReportTemplate) => (
+              <Card key={template.id} className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center">
@@ -381,22 +499,84 @@ export default function Templates() {
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+              </Card>
+            ))}
 
-        {templates.length === 0 && (
-          <div className="col-span-full text-center py-12">
-            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Templates Yet</h3>
-            <p className="text-gray-600 mb-4">Create your first report template to customize how your reports look</p>
-            <Button onClick={handleCreateTemplate} className="medical-btn-primary">
-              <Plus className="w-4 h-4 mr-2" />
-              Create First Template
-            </Button>
+            {templates.length === 0 && (
+              <div className="col-span-full text-center py-12">
+                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Templates Yet</h3>
+                <p className="text-gray-600 mb-4">Create your first report template to customize how your reports look</p>
+                <Button onClick={handleCreateTemplate} className="medical-btn-primary">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create First Template
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <>
+          {/* Worksheet Templates Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {worksheetTemplates.map((worksheet: any) => (
+              <Card key={worksheet.id} className="hover:shadow-md transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center">
+                      <Settings className="w-4 h-4 mr-2 text-green-600" />
+                      {worksheet.name}
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteWorksheet(worksheet.id)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-3">
+                    <img 
+                      src={worksheet.imageUrl} 
+                      alt={worksheet.name}
+                      className="w-full h-32 object-cover rounded border"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-600 mb-2">
+                    {worksheet.description || "No description provided"}
+                  </p>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">Category:</span>
+                      <span className="font-medium capitalize">{worksheet.category}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">File:</span>
+                      <span className="font-medium text-blue-600">{worksheet.originalFilename}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {worksheetTemplates.length === 0 && (
+              <div className="col-span-full text-center py-12">
+                <Settings className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Worksheet Templates Yet</h3>
+                <p className="text-gray-600 mb-4">Upload blank worksheet templates that sonographers can draw on digitally</p>
+                <Button onClick={() => setShowWorksheetDialog(true)} className="medical-btn-primary">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Upload First Template
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Template Editor Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -724,6 +904,87 @@ export default function Templates() {
                 : editingTemplate
                 ? "Update Template"
                 : "Create Template"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Worksheet Upload Dialog */}
+      <Dialog open={showWorksheetDialog} onOpenChange={setShowWorksheetDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload Worksheet Template</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="worksheetName">Template Name *</Label>
+              <Input
+                id="worksheetName"
+                value={worksheetForm.name}
+                onChange={(e) => setWorksheetForm(prev => ({...prev, name: e.target.value}))}
+                placeholder="e.g., Carotid Duplex Worksheet"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="worksheetDescription">Description</Label>
+              <Textarea
+                id="worksheetDescription"
+                value={worksheetForm.description}
+                onChange={(e) => setWorksheetForm(prev => ({...prev, description: e.target.value}))}
+                placeholder="Brief description of this worksheet..."
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="worksheetCategory">Category</Label>
+              <Select
+                value={worksheetForm.category}
+                onValueChange={(value) => setWorksheetForm(prev => ({...prev, category: value}))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="vascular">Vascular</SelectItem>
+                  <SelectItem value="cardiac">Cardiac</SelectItem>
+                  <SelectItem value="abdominal">Abdominal</SelectItem>
+                  <SelectItem value="obstetric">Obstetric</SelectItem>
+                  <SelectItem value="general">General</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="worksheetFile">Worksheet File *</Label>
+              <Input
+                id="worksheetFile"
+                type="file"
+                accept="image/*,.pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setWorksheetForm(prev => ({...prev, file}));
+                }}
+              />
+              <p className="text-xs text-gray-500">Upload a blank worksheet template (PNG, JPG, or PDF)</p>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-2 mt-6">
+            <Button
+              variant="outline"
+              onClick={() => setShowWorksheetDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateWorksheet}
+              disabled={createWorksheetMutation.isPending}
+              className="medical-btn-primary"
+            >
+              {createWorksheetMutation.isPending ? "Uploading..." : "Upload Template"}
             </Button>
           </div>
         </DialogContent>

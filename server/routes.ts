@@ -1242,6 +1242,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Worksheet template routes
+  app.get("/api/worksheet-templates", isAuthenticated, async (req, res) => {
+    try {
+      const templates = await storage.getAllWorksheetTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching worksheet templates:", error);
+      res.status(500).json({ message: "Failed to fetch worksheet templates" });
+    }
+  });
+
+  app.post("/api/worksheet-templates", isAuthenticated, upload.single('worksheetFile'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No worksheet file uploaded" });
+      }
+
+      const { name, description, category } = req.body;
+      
+      const templateData = {
+        name,
+        description,
+        category,
+        imageUrl: `/uploads/${req.file.filename}`,
+        originalFilename: req.file.originalname,
+        userId: (req.user as any)?.claims?.sub,
+      };
+
+      const template = await storage.createWorksheetTemplate(templateData);
+      res.status(201).json(template);
+    } catch (error) {
+      console.error("Error creating worksheet template:", error);
+      res.status(500).json({ message: "Failed to create worksheet template" });
+    }
+  });
+
+  app.delete("/api/worksheet-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteWorksheetTemplate(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting worksheet template:", error);
+      res.status(500).json({ message: "Failed to delete worksheet template" });
+    }
+  });
+
+  // Digital worksheet routes
+  app.get("/api/digital-worksheets", isAuthenticated, async (req, res) => {
+    try {
+      const worksheets = await storage.getAllDigitalWorksheets();
+      res.json(worksheets);
+    } catch (error) {
+      console.error("Error fetching digital worksheets:", error);
+      res.status(500).json({ message: "Failed to fetch digital worksheets" });
+    }
+  });
+
+  app.post("/api/digital-worksheets", isAuthenticated, async (req, res) => {
+    try {
+      const worksheetData = {
+        ...req.body,
+        userId: (req.user as any)?.claims?.sub,
+      };
+
+      const worksheet = await storage.createDigitalWorksheet(worksheetData);
+      res.status(201).json(worksheet);
+    } catch (error) {
+      console.error("Error creating digital worksheet:", error);
+      res.status(500).json({ message: "Failed to create digital worksheet" });
+    }
+  });
+
   // Serve uploaded files
   app.use('/uploads', (req, res, next) => {
     const filePath = path.join(uploadDir, req.path);

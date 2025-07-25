@@ -10,6 +10,7 @@ import NotFound from "@/pages/not-found";
 import Templates from "@/pages/templates";
 import ReportingRoom from "@/pages/reporting-room";
 import Physicians from "@/pages/physicians";
+import Draw from "@/pages/draw";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -24,6 +25,7 @@ function Router() {
           <Route path="/templates" component={Templates} />
           <Route path="/reporting-room" component={ReportingRoom} />
           <Route path="/physicians" component={Physicians} />
+          <Route path="/draw" component={Draw} />
         </>
       )}
       <Route component={NotFound} />
