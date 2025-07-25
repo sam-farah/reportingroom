@@ -2,7 +2,16 @@
 
 ## Overview
 
-JustScan is a full-stack web application designed to automate the generation of medical ultrasound reports using AI technology. The system allows users to upload ultrasound worksheets, process them using OCR and AI analysis, and generate professionally formatted medical reports with physician signatures.
+JustScan is a full-stack web application designed to automate the generation of medical ultrasound reports using AI technology. The system allows users to upload ultrasound worksheets (both images and PDFs), process them using OCR and AI analysis, and generate professionally formatted medical reports with physician signatures. The system now includes complete PDF processing capabilities and browser-based PDF generation for medical record keeping.
+
+## Recent Changes
+
+**July 25, 2025:**
+- **PDF Processing Pipeline Completed** - Fixed critical PDF detection and conversion issues
+- **PDF Download Functionality** - Implemented browser-based PDF generation using printable HTML pages
+- **Robust File Handling** - Resolved filename detection issues for PDF vs image processing
+- **ImageMagick Integration** - Successfully integrated PDF-to-PNG conversion with Ghostscript
+- **Error Recovery** - Comprehensive error handling and diagnostic logging for file processing
 
 ## User Preferences
 
