@@ -457,8 +457,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 </head>
 <body>
     <div class="header">
-        <div class="clinic-name">JustScan Medical Imaging</div>
-        <div class="report-title">Ultrasound Examination Report</div>
+        <div class="clinic-name">Reporting Room Medical</div>
+        <div class="report-title">Medical Examination Report</div>
     </div>
 
     <div class="patient-info">

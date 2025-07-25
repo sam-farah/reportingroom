@@ -15,7 +15,7 @@ export default function Landing() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <HeartPulse className="text-[var(--medical-primary)] text-2xl mr-3" />
-              <span className="text-xl font-semibold text-gray-900">JustScan</span>
+              <span className="text-xl font-semibold text-gray-900">Reporting Room</span>
             </div>
             <Button onClick={handleLogin} className="medical-btn-primary">
               Sign In
@@ -90,7 +90,7 @@ export default function Landing() {
 
           {/* How it Works */}
           <div className="mt-20">
-            <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">How JustScan Works</h2>
+            <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">How Reporting Room Works</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="text-center">
                 <div className="w-16 h-16 bg-[var(--medical-primary)] rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-xl">
@@ -128,7 +128,7 @@ export default function Landing() {
       <footer className="bg-gray-50 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-gray-600">
-            <p>&copy; 2024 JustScan. AI-powered medical reporting made simple.</p>
+            <p>&copy; 2024 Reporting Room. AI-powered medical reporting made simple.</p>
           </div>
         </div>
       </footer>

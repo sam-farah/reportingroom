@@ -1,20 +1,20 @@
-# JustScan - Medical Ultrasound Report Generation System
+# Reporting Room - Medical Report Generation System
 
 ## Overview
 
-JustScan is a full-stack web application designed to automate the generation of medical ultrasound reports using AI technology. The system allows users to upload ultrasound worksheets (both images and PDFs), process them using OCR and AI analysis, and generate professionally formatted medical reports with physician signatures. The system now includes complete PDF processing capabilities and browser-based PDF generation for medical record keeping.
+Reporting Room is a comprehensive full-stack web application designed to automate the generation of medical reports using AI technology. The system allows users to upload ultrasound worksheets (both images and PDFs), process them using OCR and AI analysis, and generate professionally formatted medical reports with physician signatures. The system now includes complete PDF processing capabilities and browser-based PDF generation for medical record keeping.
 
 ## Recent Changes
 
 **July 25, 2025:**
-- **PDF Processing Pipeline Completed** - Fixed critical PDF detection and conversion issues
-- **PDF Download Functionality** - Implemented browser-based PDF generation using printable HTML pages
-- **DOCX Download Capability** - Added Microsoft Word document export with professional formatting
-- **Physician Delete Feature** - Added secure deletion with confirmation dialogs and red trash icons
-- **Dual Format Downloads** - Users can now export reports in both PDF and DOCX formats
-- **Robust File Handling** - Resolved filename detection issues for PDF vs image processing
-- **ImageMagick Integration** - Successfully integrated PDF-to-PNG conversion with Ghostscript
-- **Error Recovery** - Comprehensive error handling and diagnostic logging for file processing
+- **Application Rebranding** - Renamed from "JustScan" to "Reporting Room" across all interfaces and documentation
+- **Comprehensive Reporting Room Feature** - Built complete report management system with pagination (12 reports per page)
+- **Report Editing & Template Switching** - Full edit dialog with template selection and field modification capabilities
+- **Dual Format Export System** - PDF and DOCX export with customizable styling based on selected templates
+- **Advanced Pagination Controls** - Smart navigation with numbered pages, previous/next buttons, and search integration
+- **Enhanced Search Functionality** - Filter reports by patient name or study type with automatic page reset
+- **Professional UI Enhancement** - Improved grid layout supporting up to 4 columns on larger screens
+- **Template System Integration** - Seamless connection between templates and report generation/editing
 
 ## User Preferences
 

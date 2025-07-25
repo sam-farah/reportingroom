@@ -24,7 +24,7 @@ export default function Dashboard() {
             <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center">
                 <HeartPulse className="text-[var(--medical-primary)] text-2xl mr-3" />
-                <span className="text-xl font-semibold text-gray-900">JustScan</span>
+                <span className="text-xl font-semibold text-gray-900">Reporting Room</span>
               </div>
             </div>
             
