@@ -315,7 +315,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Report not found" });
       }
 
-      // Generate PDF content using simple HTML template
+      // Import puppeteer dynamically
+      const puppeteer = await import('puppeteer');
+      
+      // Generate PDF content using HTML template
       const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -460,14 +463,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 </body>
 </html>`;
 
-      // Set PDF headers
+      // Launch browser and generate PDF
+      const browser = await puppeteer.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+      
+      const page = await browser.newPage();
+      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+      
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        margin: {
+          top: '1cm',
+          right: '1cm',
+          bottom: '1cm',
+          left: '1cm'
+        },
+        printBackground: true
+      });
+      
+      await browser.close();
+
+      // Set proper PDF headers
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${report.patientName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${report.examDate}.pdf"`);
-      
-      // For now, send HTML content (browsers can print to PDF)
-      // In production, you'd use a library like puppeteer to generate actual PDF
-      res.setHeader('Content-Type', 'text/html');
-      res.send(htmlContent);
+      res.send(pdfBuffer);
       
     } catch (error) {
       console.error("PDF generation error:", error);
