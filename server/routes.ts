@@ -54,6 +54,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Signature upload endpoint
+  app.post("/api/upload-signature", isAuthenticated, upload.single('signature'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const signatureUrl = `/uploads/${req.file.filename}`;
+      res.json({ url: signatureUrl });
+    } catch (error) {
+      console.error("Signature upload error:", error);
+      res.status(500).json({ error: "Failed to upload signature" });
+    }
+  });
+
   // Physicians API
   app.get("/api/physicians", isAuthenticated, async (req, res) => {
     try {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { UserPlus, Trash2, Edit, Users } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw } from "lucide-react";
 
 export default function Physicians() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -24,6 +25,11 @@ export default function Physicians() {
     title: "",
     specialty: "",
   });
+  const [signatureMode, setSignatureMode] = useState<"upload" | "draw">("upload");
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -40,6 +46,20 @@ export default function Physicians() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
+  // Set up canvas drawing properties
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }, []);
+
   // Fetch physicians
   const { data: physicians = [], isLoading: physiciansLoading } = useQuery({
     queryKey: ["/api/physicians"],
@@ -55,6 +75,11 @@ export default function Physicians() {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
       setIsAddDialogOpen(false);
       setNewPhysician({ name: "", title: "", specialty: "" });
+      setSignatureFile(null);
+      clearCanvas();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       toast({
         title: "Success",
         description: "Physician added successfully",
@@ -84,11 +109,16 @@ export default function Physicians() {
   const updatePhysicianMutation = useMutation({
     mutationFn: async (physician: Physician) => {
       const { id, ...updateData } = physician;
-      return await apiRequest("PUT", `/api/physicians/${id}`, updateData);
+      return await apiRequest("PATCH", `/api/physicians/${id}`, updateData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
       setEditingPhysician(null);
+      setSignatureFile(null);
+      clearCanvas();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       toast({
         title: "Success",
         description: "Physician updated successfully",
@@ -113,6 +143,59 @@ export default function Physicians() {
       });
     },
   });
+
+  const handleUpdatePhysician = async () => {
+    if (!editingPhysician) return;
+    
+    try {
+      let signatureUrl = editingPhysician.signatureUrl;
+
+      // Handle signature updates if a new one is provided
+      if (signatureMode === "upload" && signatureFile) {
+        const formData = new FormData();
+        formData.append('signature', signatureFile);
+        
+        const uploadResponse = await fetch('/api/upload-signature', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (uploadResponse.ok) {
+          const { url } = await uploadResponse.json();
+          signatureUrl = url;
+        }
+      } else if (signatureMode === "draw") {
+        const blob = await getCanvasBlob();
+        if (blob) {
+          const formData = new FormData();
+          formData.append('signature', blob, 'signature.png');
+          
+          const uploadResponse = await fetch('/api/upload-signature', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (uploadResponse.ok) {
+            const { url } = await uploadResponse.json();
+            signatureUrl = url;
+          }
+        }
+      }
+
+      const updatedPhysician = {
+        ...editingPhysician,
+        signatureUrl
+      };
+
+      updatePhysicianMutation.mutate(updatedPhysician);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to process signature",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Delete physician mutation
   const deletePhysicianMutation = useMutation({
@@ -146,7 +229,79 @@ export default function Physicians() {
     },
   });
 
-  const handleAddPhysician = () => {
+  // Signature drawing functions
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.beginPath();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    ctx.moveTo(clientX - rect.left, clientY - rect.top);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    ctx.lineTo(clientX - rect.left, clientY - rect.top);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const getCanvasBlob = (): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        resolve(null);
+        return;
+      }
+      canvas.toBlob(resolve, 'image/png');
+    });
+  };
+
+  const handleSignatureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Invalid File",
+          description: "Please select an image file",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSignatureFile(file);
+    }
+  };
+
+  const handleAddPhysician = async () => {
     if (!newPhysician.name.trim()) {
       toast({
         title: "Validation Error",
@@ -155,21 +310,58 @@ export default function Physicians() {
       });
       return;
     }
-    addPhysicianMutation.mutate(newPhysician);
-  };
 
-  const handleUpdatePhysician = () => {
-    if (!editingPhysician) return;
-    if (!editingPhysician.name.trim()) {
+    try {
+      let signatureUrl = null;
+
+      // Handle signature upload if provided
+      if (signatureMode === "upload" && signatureFile) {
+        const formData = new FormData();
+        formData.append('signature', signatureFile);
+        
+        const uploadResponse = await fetch('/api/upload-signature', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (uploadResponse.ok) {
+          const { url } = await uploadResponse.json();
+          signatureUrl = url;
+        }
+      } else if (signatureMode === "draw") {
+        const blob = await getCanvasBlob();
+        if (blob) {
+          const formData = new FormData();
+          formData.append('signature', blob, 'signature.png');
+          
+          const uploadResponse = await fetch('/api/upload-signature', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (uploadResponse.ok) {
+            const { url } = await uploadResponse.json();
+            signatureUrl = url;
+          }
+        }
+      }
+
+      const physicianData = {
+        ...newPhysician,
+        ...(signatureUrl && { signatureUrl })
+      };
+
+      addPhysicianMutation.mutate(physicianData);
+    } catch (error) {
       toast({
-        title: "Validation Error",
-        description: "Physician name is required",
+        title: "Error",
+        description: "Failed to process signature",
         variant: "destructive",
       });
-      return;
     }
-    updatePhysicianMutation.mutate(editingPhysician);
   };
+
+
 
   const handleDeletePhysician = (id: number) => {
     deletePhysicianMutation.mutate(id);
@@ -245,6 +437,83 @@ export default function Physicians() {
                     onChange={(e) => setNewPhysician(prev => ({...prev, specialty: e.target.value}))}
                   />
                 </div>
+                
+                {/* Signature Section */}
+                <div className="space-y-3">
+                  <Label>Signature (Optional)</Label>
+                  <Tabs value={signatureMode} onValueChange={(value) => setSignatureMode(value as "upload" | "draw")}>
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="upload">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload
+                      </TabsTrigger>
+                      <TabsTrigger value="draw">
+                        <Pen className="w-4 h-4 mr-2" />
+                        Draw
+                      </TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="upload" className="space-y-3">
+                      <div>
+                        <Input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleSignatureFileChange}
+                          className="cursor-pointer"
+                        />
+                        {signatureFile && (
+                          <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                            <span>✓ {signatureFile.name} selected</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSignatureFile(null);
+                                if (fileInputRef.current) fileInputRef.current.value = '';
+                              }}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+                    
+                    <TabsContent value="draw" className="space-y-3">
+                      <div className="border border-gray-300 rounded-lg p-2 bg-white">
+                        <canvas
+                          ref={canvasRef}
+                          width={400}
+                          height={150}
+                          className="border border-gray-200 rounded cursor-crosshair touch-none"
+                          style={{ width: '100%', height: '150px', maxWidth: '400px' }}
+                          onMouseDown={startDrawing}
+                          onMouseMove={draw}
+                          onMouseUp={stopDrawing}
+                          onMouseLeave={stopDrawing}
+                          onTouchStart={startDrawing}
+                          onTouchMove={draw}
+                          onTouchEnd={stopDrawing}
+                        />
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-xs text-gray-500">Draw your signature above</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={clearCanvas}
+                          >
+                            <RotateCcw className="w-3 h-3 mr-1" />
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </div>
+                
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                     Cancel
@@ -343,6 +612,18 @@ export default function Physicians() {
                         <span className="text-gray-800">{physician.specialty}</span>
                       </div>
                     )}
+                    {physician.signatureUrl && (
+                      <div className="mt-3">
+                        <span className="text-xs font-medium text-gray-600">Signature:</span>
+                        <div className="mt-1 p-2 bg-gray-50 rounded border">
+                          <img 
+                            src={physician.signatureUrl} 
+                            alt="Physician signature" 
+                            className="max-h-12 max-w-full object-contain"
+                          />
+                        </div>
+                      </div>
+                    )}
                     <div className="text-xs text-gray-500">
                       ID: {physician.id}
                     </div>
@@ -397,6 +678,96 @@ export default function Physicians() {
                     )}
                   />
                 </div>
+                
+                {/* Signature Section for Edit */}
+                <div className="space-y-3">
+                  <Label>Signature</Label>
+                  {editingPhysician?.signatureUrl && (
+                    <div className="mb-3">
+                      <span className="text-xs font-medium text-gray-600">Current Signature:</span>
+                      <div className="mt-1 p-2 bg-gray-50 rounded border">
+                        <img 
+                          src={editingPhysician.signatureUrl} 
+                          alt="Current signature" 
+                          className="max-h-16 max-w-full object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  <Tabs value={signatureMode} onValueChange={(value) => setSignatureMode(value as "upload" | "draw")}>
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="upload">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload New
+                      </TabsTrigger>
+                      <TabsTrigger value="draw">
+                        <Pen className="w-4 h-4 mr-2" />
+                        Draw New
+                      </TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="upload" className="space-y-3">
+                      <div>
+                        <Input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleSignatureFileChange}
+                          className="cursor-pointer"
+                        />
+                        {signatureFile && (
+                          <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                            <span>✓ {signatureFile.name} selected</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSignatureFile(null);
+                                if (fileInputRef.current) fileInputRef.current.value = '';
+                              }}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+                    
+                    <TabsContent value="draw" className="space-y-3">
+                      <div className="border border-gray-300 rounded-lg p-2 bg-white">
+                        <canvas
+                          ref={canvasRef}
+                          width={400}
+                          height={150}
+                          className="border border-gray-200 rounded cursor-crosshair touch-none"
+                          style={{ width: '100%', height: '150px', maxWidth: '400px' }}
+                          onMouseDown={startDrawing}
+                          onMouseMove={draw}
+                          onMouseUp={stopDrawing}
+                          onMouseLeave={stopDrawing}
+                          onTouchStart={startDrawing}
+                          onTouchMove={draw}
+                          onTouchEnd={stopDrawing}
+                        />
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-xs text-gray-500">Draw new signature above</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={clearCanvas}
+                          >
+                            <RotateCcw className="w-3 h-3 mr-1" />
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </div>
+                
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setEditingPhysician(null)}>
                     Cancel
