@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,10 @@ export default function ReportingRoom() {
   const [editingReport, setEditingReport] = useState<EditableReport | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const printRef = useRef<HTMLDivElement>(null);
+  
+  const REPORTS_PER_PAGE = 12;
 
   // Fetch recent reports
   const { data: reports = [], isLoading: reportsLoading } = useQuery({
@@ -249,6 +252,22 @@ export default function ReportingRoom() {
     report.studyType.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredReports.length / REPORTS_PER_PAGE);
+  const startIndex = (currentPage - 1) * REPORTS_PER_PAGE;
+  const endIndex = startIndex + REPORTS_PER_PAGE;
+  const currentReports = filteredReports.slice(startIndex, endIndex);
+
+  // Reset to first page when search changes
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
   if (reportsLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -267,14 +286,21 @@ export default function ReportingRoom() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Reporting Room</h1>
-          <p className="text-gray-600 mt-1">View, edit, and export recent medical reports</p>
+          <p className="text-gray-600 mt-1">
+            View, edit, and export recent medical reports
+            {filteredReports.length > 0 && (
+              <span className="ml-2 text-sm">
+                ({filteredReports.length} report{filteredReports.length !== 1 ? 's' : ''})
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex items-center space-x-4">
           <div className="relative">
             <Input
               placeholder="Search reports..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="w-64"
             />
           </div>
@@ -282,8 +308,8 @@ export default function ReportingRoom() {
       </div>
 
       {/* Reports Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredReports.map((report: Report) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {currentReports.map((report: Report) => (
           <Card key={report.id} className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -339,7 +365,7 @@ export default function ReportingRoom() {
           </Card>
         ))}
 
-        {filteredReports.length === 0 && (
+        {currentReports.length === 0 && (
           <div className="col-span-full text-center py-12">
             <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Reports Found</h3>
@@ -349,6 +375,64 @@ export default function ReportingRoom() {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
+          <div className="text-sm text-gray-600">
+            Showing {startIndex + 1}-{Math.min(endIndex, filteredReports.length)} of {filteredReports.length} reports
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Previous
+            </Button>
+            
+            <div className="flex items-center space-x-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    className={`w-10 h-10 ${currentPage === pageNum ? 'medical-btn-primary' : ''}`}
+                    onClick={() => goToPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Report Editor Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
