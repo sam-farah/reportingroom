@@ -99,18 +99,32 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
       // Stop existing stream if any
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
+        setStream(null);
       }
       
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
+      // Try exact facingMode first, then fallback to any available camera
+      let constraints = {
         video: {
-          facingMode: facingMode, // Use specified camera
-          width: { ideal: 1080 }, // Portrait orientation - width smaller than height
-          height: { ideal: 1920 }, // Portrait orientation - height larger than width
-          aspectRatio: { ideal: 9/16 } // 9:16 aspect ratio for portrait
+          facingMode: { exact: facingMode },
+          width: { ideal: 1080 },
+          height: { ideal: 1920 },
+          aspectRatio: { ideal: 9/16 }
         }
-      });
+      };
+      
+      let mediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (exactError) {
+        console.log('Exact facingMode failed, trying ideal:', exactError);
+        // Fallback to ideal instead of exact
+        constraints.video.facingMode = facingMode;
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      }
       
       console.log('Camera stream obtained:', mediaStream);
+      
+      // Update state
       setStream(mediaStream);
       setCurrentFacingMode(facingMode);
       setShowCamera(true);
@@ -119,7 +133,7 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
       setTimeout(() => {
         if (videoRef.current && mediaStream) {
           videoRef.current.srcObject = mediaStream;
-          console.log('Video source set');
+          console.log('Video source set for facing mode:', facingMode);
         }
       }, 100);
     } catch (error) {
@@ -132,9 +146,10 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
     }
   };
 
-  const switchCamera = () => {
+  const switchCamera = async () => {
     const newFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-    startCamera(newFacingMode);
+    console.log('Switching camera from', currentFacingMode, 'to', newFacingMode);
+    await startCamera(newFacingMode);
   };
 
   const stopCamera = () => {
@@ -264,7 +279,7 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
           <div className="text-center">
             <div className="text-sm text-gray-500 mb-2">Or</div>
             <Button
-              onClick={startCamera}
+              onClick={() => startCamera()}
               variant="outline"
               className="flex items-center gap-2"
             >
