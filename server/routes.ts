@@ -382,8 +382,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get physician info if available
       let physician = null;
+      let signatureDataUrl = null;
       if (report.physicianId) {
         physician = await storage.getPhysician(report.physicianId);
+        
+        // Convert signature to base64 data URL for HTML embedding
+        if (physician && physician.signatureUrl) {
+          try {
+            const fs = await import('fs');
+            const path = await import('path');
+            
+            const signaturePath = path.join(process.cwd(), physician.signatureUrl.startsWith('/') ? physician.signatureUrl.slice(1) : physician.signatureUrl);
+            
+            if (fs.existsSync(signaturePath)) {
+              const signatureBuffer = fs.readFileSync(signaturePath);
+              // Default to PNG format, but could be improved to detect actual format
+              signatureDataUrl = `data:image/png;base64,${signatureBuffer.toString('base64')}`;
+            }
+          } catch (error) {
+            console.error('Error loading signature for PDF:', error);
+          }
+        }
       }
 
       // Generate PDF content using HTML template (will return HTML for browser PDF conversion)
@@ -524,9 +543,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     </div>
 
     <div class="signature-section">
-        ${physician && physician.signatureUrl ? 
+        ${signatureDataUrl ? 
           `<div style="margin-bottom: 10px;">
-             <img src="${physician.signatureUrl}" alt="Physician Signature" style="max-width: 200px; max-height: 80px; border: 1px solid #ddd; padding: 5px;">
+             <img src="${signatureDataUrl}" alt="Physician Signature" style="max-width: 200px; max-height: 80px; border: 1px solid #ddd; padding: 5px; background: white;">
            </div>` : 
           '<div class="signature-line"></div>'
         }
