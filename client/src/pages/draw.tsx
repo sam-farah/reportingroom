@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Palette, Save, RotateCcw, Download, Eraser, PenTool, Type, Plus } from "lucide-react";
+import { Palette, Save, RotateCcw, Download, Eraser, PenTool, Type, Plus, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -239,11 +239,10 @@ export default function Draw() {
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Digital Worksheet Drawing</h1>
-          <Button onClick={() => setShowWorksheetDialog(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Upload New Worksheet Template
-          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Digital Worksheet Drawing</h1>
+            <p className="text-gray-600 mt-1">Select a worksheet template to start drawing</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -271,9 +270,11 @@ export default function Draw() {
 
         {(!worksheetTemplates || worksheetTemplates.length === 0) && (
           <div className="text-center py-12">
-            <p className="text-gray-500 mb-4">No worksheet templates available</p>
-            <Button onClick={() => setShowWorksheetDialog(true)}>
-              Upload Your First Worksheet Template
+            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Worksheet Templates Available</h3>
+            <p className="text-gray-500 mb-4">Upload worksheet templates in the Templates section to start drawing</p>
+            <Button onClick={() => window.location.href = '/templates'} variant="outline">
+              Go to Templates
             </Button>
           </div>
         )}

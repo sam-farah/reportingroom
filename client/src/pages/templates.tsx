@@ -215,12 +215,19 @@ export default function Templates() {
   // Worksheet template mutations
   const createWorksheetMutation = useMutation({
     mutationFn: async (formData: FormData) => {
+      console.log("Sending request to /api/worksheet-templates");
       const response = await fetch("/api/worksheet-templates", {
         method: "POST",
         body: formData,
       });
-      if (!response.ok) throw new Error("Failed to create worksheet template");
-      return response.json();
+      console.log("Response status:", response.status);
+      const responseText = await response.text();
+      console.log("Response text:", responseText);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create worksheet template: ${responseText}`);
+      }
+      return JSON.parse(responseText);
     },
     onSuccess: () => {
       toast({
@@ -369,12 +376,20 @@ export default function Templates() {
       return;
     }
 
+    console.log("Creating worksheet with data:", {
+      name: worksheetForm.name,
+      description: worksheetForm.description,
+      category: worksheetForm.category,
+      file: worksheetForm.file
+    });
+
     const formData = new FormData();
     formData.append('worksheetFile', worksheetForm.file);
     formData.append('name', worksheetForm.name.trim());
     formData.append('description', worksheetForm.description.trim());
     formData.append('category', worksheetForm.category);
 
+    console.log("FormData prepared, submitting...");
     createWorksheetMutation.mutate(formData);
   };
 
