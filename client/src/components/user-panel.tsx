@@ -1,18 +1,17 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, FileText, Download, Printer, Image, Palette } from "lucide-react";
+import { Upload, FileText, Download, Printer, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import ReportPreview from "./report-preview";
-import DrawingCanvas from "./drawing-canvas";
 import type { Worksheet, Physician, Report } from "@shared/schema";
 
 export default function UserPanel() {
@@ -270,7 +269,7 @@ export default function UserPanel() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Report Generation</h1>
-        <p className="text-gray-600">Create a vascular worksheet or upload an existing one to generate professional reports</p>
+        <p className="text-gray-600">Upload an ultrasound worksheet to generate professional reports</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -279,36 +278,19 @@ export default function UserPanel() {
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Create or Upload Worksheet
+                Upload Worksheet
               </h2>
               
-              <Tabs defaultValue="upload" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="upload" className="flex items-center gap-2">
-                    <Upload className="w-4 h-4" />
-                    Upload
-                  </TabsTrigger>
-                  <TabsTrigger value="draw" className="flex items-center gap-2">
-                    <Palette className="w-4 h-4" />
-                    Draw
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="upload" className="mt-4">
-                  <FileUpload
-                    onFileUploaded={handleWorksheetUploaded}
-                    accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
-                    maxSize={10 * 1024 * 1024}
-                  />
-                  <p className="text-xs text-gray-500 mt-2">
-                    Supports image files (JPEG, PNG, GIF, WebP) and PDF files. PDFs will be automatically converted to images for processing.
-                  </p>
-                </TabsContent>
-                
-                <TabsContent value="draw" className="mt-4">
-                  <DrawingCanvas onWorksheetCreated={handleWorksheetCreated} />
-                </TabsContent>
-              </Tabs>
+              <div className="w-full">
+                <FileUpload
+                  onFileUploaded={handleWorksheetUploaded}
+                  accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
+                  maxSize={10 * 1024 * 1024}
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Supports image files (JPEG, PNG, GIF, WebP) and PDF files. PDFs will be automatically converted to images for processing.
+                </p>
+              </div>
 
               {/* OCR Results */}
               {selectedWorksheet && (
