@@ -83,28 +83,33 @@ export default function UserPanel() {
           // Try to parse various date formats
           let parsedDate = null;
           
-          // Format: 7.7.23 or 7/7/23 or 07.07.23 etc.
-          if (examDateStr.match(/^\d{1,2}[\.\/]\d{1,2}[\.\/]\d{2,4}$/)) {
-            const parts = examDateStr.split(/[\.\/]/);
+          // Format: 7.7.23, 7-7-25, 7/7/23 or 07.07.23 etc.
+          if (examDateStr.match(/^\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}$/)) {
+            const parts = examDateStr.split(/[\.\/\-]/);
             let day = parseInt(parts[0]);
             let month = parseInt(parts[1]);
             let year = parseInt(parts[2]);
             
-            // Handle 2-digit years
+            // Handle 2-digit years (assume years 26-99 are 1900s, 00-25 are 2000s)
             if (year < 100) {
-              year = year > 50 ? 1900 + year : 2000 + year;
+              year = year > 25 ? 1900 + year : 2000 + year;
             }
             
             parsedDate = new Date(year, month - 1, day);
+            console.log('Attempted to parse date:', { day, month, year, parsedDate });
           }
           
           if (parsedDate && !isNaN(parsedDate.getTime())) {
             examDateFormatted = parsedDate.toISOString().split('T')[0];
-            console.log('Parsed exam date:', examDateFormatted);
+            console.log('Successfully parsed exam date to:', examDateFormatted);
+          } else {
+            console.log('Failed to parse exam date, using original value');
+            // If parsing fails, try to use the original date as-is for display
+            examDateFormatted = "";
           }
         }
         
-        setExamDate(examDateFormatted || new Date().toISOString().split('T')[0]);
+        setExamDate(examDateFormatted || "");
         
         toast({
           title: "OCR Complete",
@@ -211,7 +216,7 @@ export default function UserPanel() {
     // Reset form state
     setPatientName("");
     setPatientDob("");
-    setExamDate(new Date().toISOString().split('T')[0]);
+    setExamDate("");
     setGeneratedReport(null);
     
     // Brief delay to show upload success, then start OCR processing
