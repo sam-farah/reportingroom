@@ -546,6 +546,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/reports/:id/docx", isAuthenticated, async (req, res) => {
     try {
       const reportId = parseInt(req.params.id);
+      const templateId = req.query.templateId ? parseInt(req.query.templateId as string) : 1;
+      
       if (isNaN(reportId)) {
         return res.status(400).json({ error: "Invalid report ID" });
       }
@@ -555,6 +557,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Report not found" });
       }
 
+      // Get template for styling
+      const template = await storage.getReportTemplate(templateId) || await storage.getReportTemplate(1);
+
       // Get physician info if available
       let physician = null;
       if (report.physicianId) {
@@ -562,122 +567,286 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create DOCX document
-      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import('docx');
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, WidthType } = await import('docx');
 
       const doc = new Document({
         sections: [{
-          properties: {},
+          properties: {
+            page: {
+              margin: {
+                top: 1440, // 1 inch
+                right: 1440,
+                bottom: 1440,
+                left: 1440,
+              },
+            },
+          },
           children: [
-            // Title
-            new Paragraph({
-              text: "Ultrasound Report",
-              heading: HeadingLevel.TITLE,
-              alignment: AlignmentType.CENTER,
-            }),
+            // Header section
+            ...(template?.showHeader !== false ? [
+              new Paragraph({
+                children: [
+                  new TextRun({ 
+                    text: template?.clinicName || "Reporting Room Medical",
+                    bold: true,
+                    size: 32,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 200 },
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ 
+                    text: "Medical Examination Report",
+                    size: 24,
+                    color: "666666",
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 400 },
+              }),
+              ...(template?.clinicAddress ? [
+                new Paragraph({
+                  children: [new TextRun({ text: template.clinicAddress, size: 20, color: "666666" })],
+                  alignment: AlignmentType.CENTER,
+                }),
+              ] : []),
+              ...(template?.clinicPhone ? [
+                new Paragraph({
+                  children: [new TextRun({ text: template.clinicPhone, size: 20, color: "666666" })],
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: 400 },
+                }),
+              ] : []),
+            ] : []),
             
-            // Empty line
-            new Paragraph({ text: "" }),
-            
-            // Patient Information
+            // Patient Information Section
             new Paragraph({
-              text: "Patient Information",
-              heading: HeadingLevel.HEADING_1,
+              children: [
+                new TextRun({ 
+                  text: "Patient Information", 
+                  bold: true,
+                  size: 28,
+                  color: template?.primaryColor?.replace('#', '') || '0066cc',
+                }),
+              ],
+              spacing: { before: 400, after: 200 },
+              border: {
+                bottom: {
+                  style: BorderStyle.SINGLE,
+                  size: 6,
+                  color: template?.primaryColor?.replace('#', '') || '0066cc',
+                },
+              },
             }),
             new Paragraph({
               children: [
                 new TextRun({ text: "Patient Name: ", bold: true }),
                 new TextRun({ text: report.patientName }),
               ],
+              spacing: { after: 120 },
             }),
             new Paragraph({
               children: [
                 new TextRun({ text: "Date of Birth: ", bold: true }),
                 new TextRun({ text: report.patientDob }),
               ],
+              spacing: { after: 120 },
             }),
             new Paragraph({
               children: [
                 new TextRun({ text: "Exam Date: ", bold: true }),
                 new TextRun({ text: report.examDate }),
               ],
+              spacing: { after: 120 },
             }),
             new Paragraph({
               children: [
-                new TextRun({ text: "Report Date: ", bold: true }),
-                new TextRun({ text: new Date(report.createdAt).toLocaleDateString() }),
+                new TextRun({ text: "Report ID: ", bold: true }),
+                new TextRun({ text: report.id.toString() }),
               ],
+              spacing: { after: 400 },
             }),
             
-            // Empty line
-            new Paragraph({ text: "" }),
-            
-            // Study Type (if available)
-            ...(report.studyType ? [
+            // Study Type section
+            ...(template?.showStudyType !== false && report.studyType ? [
               new Paragraph({
-                text: "Study Type",
-                heading: HeadingLevel.HEADING_1,
+                children: [
+                  new TextRun({ 
+                    text: "Study Type", 
+                    bold: true,
+                    size: 24,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  }),
+                ],
+                spacing: { before: 200, after: 120 },
+                border: {
+                  bottom: {
+                    style: BorderStyle.SINGLE,
+                    size: 4,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  },
+                },
               }),
               new Paragraph({
                 text: report.studyType,
+                spacing: { after: 400 },
               }),
-              new Paragraph({ text: "" }),
             ] : []),
             
-            // Clinical History/Indication
-            new Paragraph({
-              text: "Clinical Indication",
-              heading: HeadingLevel.HEADING_1,
-            }),
-            new Paragraph({
-              text: report.indication || report.clinicalHistory || 'Not provided',
-            }),
-            
-            // Empty line
-            new Paragraph({ text: "" }),
-            
-            // Findings
-            new Paragraph({
-              text: "Findings",
-              heading: HeadingLevel.HEADING_1,
-            }),
-            new Paragraph({
-              text: report.findings || 'No findings recorded',
-            }),
-            
-            // Empty line
-            new Paragraph({ text: "" }),
-            
-            // Impression
-            new Paragraph({
-              text: "Impression",
-              heading: HeadingLevel.HEADING_1,
-            }),
-            new Paragraph({
-              text: report.impression || 'No impression recorded',
-            }),
-            
-            // Physician signature if available
-            ...(physician ? [
-              new Paragraph({ text: "" }),
-              new Paragraph({ text: "" }),
+            // Clinical Indication section
+            ...(template?.showIndication !== false ? [
               new Paragraph({
                 children: [
-                  new TextRun({ text: "Reported by: ", bold: true }),
+                  new TextRun({ 
+                    text: "Clinical Indication", 
+                    bold: true,
+                    size: 24,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  }),
                 ],
+                spacing: { before: 200, after: 120 },
+                border: {
+                  bottom: {
+                    style: BorderStyle.SINGLE,
+                    size: 4,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  },
+                },
               }),
               new Paragraph({
-                text: physician.name,
+                text: report.indication || 'Not specified',
+                spacing: { after: 400 },
+              }),
+            ] : []),
+            
+            // Findings section
+            ...(template?.showFindings !== false ? [
+              new Paragraph({
+                children: [
+                  new TextRun({ 
+                    text: "Findings", 
+                    bold: true,
+                    size: 24,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  }),
+                ],
+                spacing: { before: 200, after: 120 },
+                border: {
+                  bottom: {
+                    style: BorderStyle.SINGLE,
+                    size: 4,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  },
+                },
+              }),
+              ...report.findings.split('\n').filter(line => line.trim()).map(line => 
+                new Paragraph({
+                  text: line.trim(),
+                  spacing: { after: 120 },
+                })
+              ),
+              new Paragraph({ text: "", spacing: { after: 200 } }),
+            ] : []),
+            
+            // Impression section
+            ...(template?.showImpression !== false ? [
+              new Paragraph({
+                children: [
+                  new TextRun({ 
+                    text: "Impression", 
+                    bold: true,
+                    size: 24,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  }),
+                ],
+                spacing: { before: 200, after: 120 },
+                border: {
+                  bottom: {
+                    style: BorderStyle.SINGLE,
+                    size: 4,
+                    color: template?.primaryColor?.replace('#', '') || '0066cc',
+                  },
+                },
+              }),
+              ...report.impression.split('\n').filter(line => line.trim()).map(line => 
+                new Paragraph({
+                  text: line.trim(),
+                  spacing: { after: 120 },
+                })
+              ),
+              new Paragraph({ text: "", spacing: { after: 400 } }),
+            ] : []),
+            
+            // Signature section
+            ...(template?.showSignature !== false ? [
+              new Paragraph({ text: "", spacing: { before: 400 } }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "_".repeat(50) }),
+                ],
+                alignment: template?.signaturePosition === 'center' ? AlignmentType.CENTER : 
+                          template?.signaturePosition === 'left' ? AlignmentType.LEFT : AlignmentType.RIGHT,
               }),
               new Paragraph({
-                text: physician.title,
+                children: [
+                  new TextRun({ text: "Physician Signature & Date", size: 20 }),
+                ],
+                alignment: template?.signaturePosition === 'center' ? AlignmentType.CENTER : 
+                          template?.signaturePosition === 'left' ? AlignmentType.LEFT : AlignmentType.RIGHT,
+                spacing: { after: 200 },
               }),
-              new Paragraph({ text: "" }),
+              ...(physician ? [
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: `${physician.name}, ${physician.title || "MD"}`, bold: true }),
+                  ],
+                  alignment: template?.signaturePosition === 'center' ? AlignmentType.CENTER : 
+                            template?.signaturePosition === 'left' ? AlignmentType.LEFT : AlignmentType.RIGHT,
+                }),
+              ] : []),
+            ] : []),
+            
+            // Footer section
+            ...(template?.showFooter !== false ? [
+              new Paragraph({ text: "", spacing: { before: 600 } }),
               new Paragraph({
-                text: "_____________________",
+                children: [
+                  new TextRun({ text: "─".repeat(50), color: "cccccc" }),
+                ],
+                alignment: AlignmentType.CENTER,
               }),
+              ...(template?.footerText ? [
+                new Paragraph({
+                  children: [new TextRun({ text: template.footerText, size: 18, color: "666666" })],
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: 100 },
+                }),
+              ] : []),
+              ...(template?.showGenerationDate !== false ? [
+                new Paragraph({
+                  children: [
+                    new TextRun({ 
+                      text: `Report Generated: ${new Date().toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}`, 
+                      size: 18, 
+                      color: "666666" 
+                    }),
+                  ],
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: 100 },
+                }),
+              ] : []),
               new Paragraph({
-                text: "Signature",
-                alignment: AlignmentType.LEFT,
+                children: [
+                  new TextRun({ text: "Reporting Room Medical System", size: 18, color: "666666" }),
+                ],
+                alignment: AlignmentType.CENTER,
               }),
             ] : []),
           ],

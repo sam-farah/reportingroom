@@ -105,8 +105,9 @@ export default function ReportingRoom() {
               font-family: ${template?.fontFamily || 'Arial'}, sans-serif; 
               font-size: ${template?.fontSize || '12px'};
               line-height: 1.6;
-              margin: 20px;
+              margin: 40px;
               color: #333;
+              max-width: 800px;
             }
             .header { 
               text-align: center; 
@@ -114,38 +115,89 @@ export default function ReportingRoom() {
               padding-bottom: 20px; 
               margin-bottom: 30px; 
             }
-            .clinic-info { margin-bottom: 10px; }
+            .header h1 {
+              margin: 0 0 10px 0;
+              color: ${template?.primaryColor || '#0066cc'};
+              font-size: 24px;
+              font-weight: bold;
+            }
+            .header .subtitle {
+              color: #666;
+              font-size: 16px;
+              margin: 5px 0;
+            }
+            .clinic-info { 
+              margin: 5px 0;
+              font-size: 14px;
+              color: #666;
+            }
             .patient-info { 
               display: grid; 
               grid-template-columns: 1fr 1fr; 
               gap: 20px; 
               margin-bottom: 30px;
-              padding: 15px;
-              border: 1px solid #ddd;
-              border-radius: 5px;
+              padding: 20px;
+              background-color: #f8f9fa;
+              border-radius: 8px;
             }
-            .section { margin-bottom: 25px; }
+            .patient-info h3 {
+              color: ${template?.primaryColor || '#0066cc'};
+              margin: 0 0 15px 0;
+              font-size: 16px;
+              grid-column: span 2;
+              border-bottom: 1px solid #dee2e6;
+              padding-bottom: 8px;
+            }
+            .info-item {
+              margin-bottom: 10px;
+              font-size: 14px;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #495057;
+            }
+            .section { 
+              margin-bottom: 30px;
+              page-break-inside: avoid;
+            }
             .section-title { 
+              font-size: 18px;
               font-weight: bold; 
               color: ${template?.primaryColor || '#0066cc'}; 
-              border-bottom: 1px solid #ddd; 
-              padding-bottom: 5px; 
-              margin-bottom: 10px; 
+              border-bottom: 2px solid ${template?.primaryColor || '#0066cc'}; 
+              padding-bottom: 8px; 
+              margin-bottom: 15px; 
+            }
+            .section-content {
+              font-size: 14px;
+              line-height: 1.7;
+              text-align: justify;
             }
             .footer { 
-              margin-top: 40px; 
+              margin-top: 50px; 
               padding-top: 20px; 
-              border-top: 1px solid #ddd; 
+              border-top: 1px solid #dee2e6; 
               text-align: center; 
-              font-size: 10px; 
-              color: #666; 
+              font-size: 11px; 
+              color: #6c757d; 
             }
             .signature-area {
-              margin-top: 40px;
+              margin-top: 50px;
               text-align: ${template?.signaturePosition || 'right'};
             }
+            .signature-line {
+              border-top: 2px solid #333;
+              width: 250px;
+              margin: 30px auto 10px auto;
+              display: inline-block;
+            }
+            .signature-text {
+              font-size: 12px;
+              color: #495057;
+              margin-top: 5px;
+            }
             @media print {
-              body { margin: 0; }
+              body { margin: 20px; }
               .no-print { display: none; }
             }
           </style>
@@ -153,58 +205,69 @@ export default function ReportingRoom() {
         <body>
           ${template?.showHeader !== false ? `
             <div class="header">
-              <h1>${template?.clinicName || 'Medical Center'}</h1>
+              <h1>${template?.clinicName || 'Reporting Room Medical'}</h1>
+              <div class="subtitle">Medical Examination Report</div>
               ${template?.clinicAddress ? `<div class="clinic-info">${template.clinicAddress}</div>` : ''}
               ${template?.clinicPhone ? `<div class="clinic-info">${template.clinicPhone}</div>` : ''}
             </div>
           ` : ''}
           
           <div class="patient-info">
-            <div><strong>Patient Name:</strong> ${report.patientName}</div>
-            <div><strong>Date of Birth:</strong> ${report.patientDob}</div>
-            <div><strong>Exam Date:</strong> ${report.examDate}</div>
-            <div><strong>Report ID:</strong> ${report.id}</div>
+            <h3>Patient Information</h3>
+            <div class="info-item">
+              <span class="info-label">Patient Name:</span> ${report.patientName}
+            </div>
+            <div class="info-item">
+              <span class="info-label">Date of Birth:</span> ${report.patientDob}
+            </div>
+            <div class="info-item">
+              <span class="info-label">Exam Date:</span> ${report.examDate}
+            </div>
+            <div class="info-item">
+              <span class="info-label">Report ID:</span> ${report.id}
+            </div>
           </div>
 
           ${template?.showStudyType !== false ? `
             <div class="section">
               <div class="section-title">Study Type</div>
-              <div>${report.studyType}</div>
+              <div class="section-content">${report.studyType}</div>
             </div>
           ` : ''}
 
           ${template?.showIndication !== false ? `
             <div class="section">
-              <div class="section-title">Indication</div>
-              <div>${report.indication}</div>
+              <div class="section-title">Clinical Indication</div>
+              <div class="section-content">${report.indication}</div>
             </div>
           ` : ''}
 
           ${template?.showFindings !== false ? `
             <div class="section">
               <div class="section-title">Findings</div>
-              <div>${report.findings.replace(/\n/g, '<br>')}</div>
+              <div class="section-content">${report.findings.replace(/\n/g, '<br><br>')}</div>
             </div>
           ` : ''}
 
           ${template?.showImpression !== false ? `
             <div class="section">
               <div class="section-title">Impression</div>
-              <div>${report.impression.replace(/\n/g, '<br>')}</div>
+              <div class="section-content">${report.impression.replace(/\n/g, '<br><br>')}</div>
             </div>
           ` : ''}
 
           ${template?.showSignature !== false ? `
             <div class="signature-area">
-              <div style="border-top: 1px solid #333; width: 200px; display: inline-block; margin-top: 40px;"></div>
-              <div style="margin-top: 5px;">Physician Signature</div>
+              <div class="signature-line"></div>
+              <div class="signature-text">Physician Signature & Date</div>
             </div>
           ` : ''}
 
           ${template?.showFooter !== false ? `
             <div class="footer">
-              ${template?.footerText || ''}
-              ${template?.showGenerationDate !== false ? `<div>Generated: ${format(new Date(), 'yyyy-MM-dd')}</div>` : ''}
+              ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
+              ${template?.showGenerationDate !== false ? `<div>Report Generated: ${format(new Date(), 'MMMM dd, yyyy')}</div>` : ''}
+              <div>Reporting Room Medical System</div>
             </div>
           ` : ''}
         </body>
@@ -220,7 +283,8 @@ export default function ReportingRoom() {
 
   const handleExportDOCX = async (report: Report) => {
     try {
-      const response = await fetch(`/api/reports/${report.id}/docx`);
+      const templateId = editingReport?.templateId || 1;
+      const response = await fetch(`/api/reports/${report.id}/docx?templateId=${templateId}`);
       if (!response.ok) throw new Error('Failed to generate DOCX');
       
       const blob = await response.blob();
