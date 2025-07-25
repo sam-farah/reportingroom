@@ -279,6 +279,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/reports/:id", isAuthenticated, async (req, res) => {
+    try {
+      const reportId = parseInt(req.params.id);
+      if (isNaN(reportId)) {
+        return res.status(400).json({ error: "Invalid report ID" });
+      }
+
+      // Check if report exists before deletion
+      const existingReport = await storage.getReport(reportId);
+      if (!existingReport) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+
+      await storage.deleteReport(reportId);
+      res.json({ message: "Report deleted successfully" });
+    } catch (error) {
+      console.error("Report deletion error:", error);
+      res.status(500).json({ error: "Failed to delete report" });
+    }
+  });
+
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       console.log("Report generation request:", req.body);

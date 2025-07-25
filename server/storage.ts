@@ -45,6 +45,7 @@ export interface IStorage {
   getRecentReports(limit: number): Promise<Report[]>;
   createReport(report: InsertReport): Promise<Report>;
   updateReport(id: number, report: Partial<InsertReport>): Promise<Report | undefined>;
+  deleteReport(id: number): Promise<void>;
   
   getAllTrainingPairs(): Promise<TrainingPair[]>;
   getTrainingPair(id: number): Promise<TrainingPair | undefined>;
@@ -175,6 +176,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(reports.id, id))
       .returning();
     return report;
+  }
+
+  async deleteReport(id: number): Promise<void> {
+    await db.delete(reports).where(eq(reports.id, id));
+  }
+
+  async deleteReport(id: number): Promise<void> {
+    await db.delete(reports).where(eq(reports.id, id));
   }
 
   async getAllTrainingPairs(): Promise<TrainingPair[]> {

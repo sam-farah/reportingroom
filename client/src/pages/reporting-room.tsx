@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,39 @@ export default function ReportingRoom() {
       toast({
         title: "Update Failed",
         description: error.message || "Failed to update report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete report mutation
+  const deleteReportMutation = useMutation({
+    mutationFn: async (reportId: number) => {
+      const response = await apiRequest("DELETE", `/api/reports/${reportId}`);
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Report Deleted",
+        description: "Report has been deleted successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Delete Failed",
+        description: error.message || "Failed to delete report",
         variant: "destructive",
       });
     },
@@ -311,6 +344,12 @@ export default function ReportingRoom() {
     setEditingReport(prev => prev ? { ...prev, [field]: value } : null);
   };
 
+  const handleDeleteReport = (report: Report) => {
+    if (window.confirm(`Are you sure you want to delete the report for ${report.patientName}? This action cannot be undone.`)) {
+      deleteReportMutation.mutate(report.id);
+    }
+  };
+
   const filteredReports = reports.filter((report: Report) =>
     report.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     report.studyType.toLowerCase().includes(searchTerm.toLowerCase())
@@ -349,7 +388,7 @@ export default function ReportingRoom() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reporting Room</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
           <p className="text-gray-600 mt-1">
             View, edit, and export recent medical reports
             {filteredReports.length > 0 && (
@@ -400,29 +439,41 @@ export default function ReportingRoom() {
                 </div>
               </div>
 
-              <div className="flex space-x-2">
+              <div className="flex flex-col space-y-2">
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEditReport(report)}
+                    className="flex-1"
+                  >
+                    <Edit3 className="w-4 h-4 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportPDF(report)}
+                  >
+                    PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportDOCX(report)}
+                  >
+                    DOCX
+                  </Button>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleEditReport(report)}
-                  className="flex-1"
+                  onClick={() => handleDeleteReport(report)}
+                  className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                  disabled={deleteReportMutation.isPending}
                 >
-                  <Edit3 className="w-4 h-4 mr-1" />
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleExportPDF(report)}
-                >
-                  PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleExportDOCX(report)}
-                >
-                  DOCX
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  {deleteReportMutation.isPending ? "Deleting..." : "Delete"}
                 </Button>
               </div>
             </CardContent>
