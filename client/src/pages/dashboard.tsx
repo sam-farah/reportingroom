@@ -37,7 +37,7 @@ export default function Dashboard() {
                   onClick={() => setActivePanel("user")}
                 >
                   <User className="w-4 h-4 mr-2" />
-                  User Panel
+                  Upload
                 </Button>
                 <Button
                   variant={activePanel === "templates" ? "default" : "ghost"}
