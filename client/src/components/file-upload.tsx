@@ -97,8 +97,9 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment', // Use back camera on mobile devices
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: 1080 }, // Portrait orientation - width smaller than height
+          height: { ideal: 1920 }, // Portrait orientation - height larger than width
+          aspectRatio: { ideal: 9/16 } // 9:16 aspect ratio for portrait
         }
       });
       
@@ -219,9 +220,7 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
         </div>
       )}
 
-      <div className="text-sm text-gray-500 mb-2">
-        Debug: showCamera = {showCamera ? 'true' : 'false'}, hasStream = {stream ? 'true' : 'false'}
-      </div>
+
       
       {!showCamera ? (
         <>
@@ -264,17 +263,18 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
       ) : (
         <div className="space-y-4">
           <div className="text-center text-gray-600 mb-4">
-            <p className="text-lg font-medium">Camera Active</p>
-            <p className="text-sm">Position your worksheet in the camera view</p>
+            <p className="text-lg font-medium">Camera Active - Portrait Mode</p>
+            <p className="text-sm">Hold your device vertically and position worksheet in frame</p>
           </div>
           
-          <div className="relative bg-black rounded-lg overflow-hidden">
+          <div className="relative bg-black rounded-lg overflow-hidden max-w-sm mx-auto">
             <video
               ref={videoRef}
               autoPlay
               playsInline
               muted
-              className="w-full h-auto max-h-96 object-contain"
+              className="w-full h-auto max-h-[600px] object-contain"
+              style={{ aspectRatio: '9/16' }}
               onLoadedMetadata={() => console.log('Video metadata loaded')}
               onError={(e) => console.error('Video error:', e)}
             />
