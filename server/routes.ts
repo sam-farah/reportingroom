@@ -383,8 +383,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get physician info if available
       let physician = null;
       let signatureDataUrl = null;
+      
+      console.log('PDF Generation - Report:', { id: report.id, physicianId: report.physicianId });
+      
       if (report.physicianId) {
         physician = await storage.getPhysician(report.physicianId);
+        console.log('PDF Generation - Physician found:', physician ? { id: physician.id, name: physician.name, hasSignature: !!physician.signatureUrl } : 'Not found');
         
         // Convert signature to base64 data URL for HTML embedding
         if (physician && physician.signatureUrl) {
@@ -394,7 +398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             const signaturePath = path.join(process.cwd(), physician.signatureUrl.startsWith('/') ? physician.signatureUrl.slice(1) : physician.signatureUrl);
             
-            console.log('Loading signature for PDF:', {
+            console.log('PDF Generation - Loading signature:', {
               physicianId: physician.id,
               signatureUrl: physician.signatureUrl,
               signaturePath,
@@ -406,30 +410,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               // Detect image format from buffer header
               let mimeType = 'image/png'; // default
-              if (signatureBuffer[0] === 0xFF && signatureBuffer[1] === 0xD8) {
-                mimeType = 'image/jpeg';
-              } else if (signatureBuffer[0] === 0x89 && signatureBuffer[1] === 0x50) {
-                mimeType = 'image/png';
-              } else if (signatureBuffer[0] === 0x47 && signatureBuffer[1] === 0x49) {
-                mimeType = 'image/gif';
-              } else if (signatureBuffer.slice(0, 4).toString() === 'RIFF') {
-                mimeType = 'image/webp';
+              if (signatureBuffer.length > 1) {
+                if (signatureBuffer[0] === 0xFF && signatureBuffer[1] === 0xD8) {
+                  mimeType = 'image/jpeg';
+                } else if (signatureBuffer[0] === 0x89 && signatureBuffer[1] === 0x50) {
+                  mimeType = 'image/png';
+                } else if (signatureBuffer[0] === 0x47 && signatureBuffer[1] === 0x49) {
+                  mimeType = 'image/gif';
+                } else if (signatureBuffer.slice(0, 4).toString() === 'RIFF') {
+                  mimeType = 'image/webp';
+                }
               }
               
               signatureDataUrl = `data:${mimeType};base64,${signatureBuffer.toString('base64')}`;
-              console.log('Signature loaded successfully:', {
+              console.log('PDF Generation - Signature loaded successfully:', {
                 mimeType,
                 bufferSize: signatureBuffer.length,
                 dataUrlLength: signatureDataUrl.length,
-                firstBytes: Array.from(signatureBuffer.slice(0, 8)).map(b => b.toString(16)).join(' ')
+                firstBytesHex: Array.from(signatureBuffer.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join(' ')
               });
             } else {
-              console.log('Signature file not found at path:', signaturePath);
+              console.log('PDF Generation - Signature file not found at path:', signaturePath);
             }
           } catch (error) {
-            console.error('Error loading signature for PDF:', error);
+            console.error('PDF Generation - Error loading signature:', error);
           }
+        } else {
+          console.log('PDF Generation - No signature URL for physician');
         }
+      } else {
+        console.log('PDF Generation - No physician assigned to report');
       }
 
       // Generate PDF content using HTML template (will return HTML for browser PDF conversion)
