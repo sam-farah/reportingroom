@@ -224,7 +224,7 @@ export default function UserPanel() {
     }
   };
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = () => {
     if (!generatedReport) {
       toast({
         title: "No Report Available",
@@ -234,54 +234,14 @@ export default function UserPanel() {
       return;
     }
 
-    try {
-      const response = await fetch(`/api/reports/${generatedReport.id}/pdf`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/pdf',
-        },
-      });
+    // Open the printable report page in a new tab
+    const url = `/api/reports/${generatedReport.id}/pdf`;
+    window.open(url, '_blank');
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.details || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${generatedReport.patientName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${generatedReport.examDate}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-
-      toast({
-        title: "Download Started",
-        description: "PDF report is being downloaded",
-      });
-    } catch (error) {
-      console.error('PDF download error:', error);
-      
-      if (isUnauthorizedError(error as Error)) {
-        toast({
-          title: "Session Expired",
-          description: "Please log in again to continue",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-      
-      toast({
-        title: "Download Failed",
-        description: error instanceof Error ? error.message : "Failed to download PDF",
-        variant: "destructive",
-      });
-    }
+    toast({
+      title: "Print Page Opened",
+      description: "Use the print button or Ctrl+P to save as PDF",
+    });
   };
 
   const handleGenerateReport = () => {
