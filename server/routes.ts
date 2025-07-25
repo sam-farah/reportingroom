@@ -380,6 +380,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Report not found" });
       }
 
+      // Get physician info if available
+      let physician = null;
+      if (report.physicianId) {
+        physician = await storage.getPhysician(report.physicianId);
+      }
+
       // Generate PDF content using HTML template (will return HTML for browser PDF conversion)
       const htmlContent = `
 <!DOCTYPE html>
@@ -838,6 +844,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                         width: 200,
                         height: 80,
                       },
+                      type: "png",
                     }),
                   ],
                   alignment: template?.signaturePosition === 'center' ? AlignmentType.CENTER : 
