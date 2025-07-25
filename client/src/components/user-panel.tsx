@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, FileText, Download, Printer, Image, CheckCircle, Loader2 } from "lucide-react";
+import { Upload, FileText, Download, Printer, Image, CheckCircle, Loader2, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -289,6 +289,48 @@ export default function UserPanel() {
     });
   };
 
+  const handleDownloadDocx = async () => {
+    if (!generatedReport) {
+      toast({
+        title: "No Report Available",
+        description: "Please generate a report first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/reports/${generatedReport.id}/docx`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate DOCX');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `${generatedReport.patientName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${generatedReport.examDate}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "DOCX Downloaded",
+        description: "Report downloaded successfully",
+      });
+    } catch (error) {
+      console.error('DOCX download error:', error);
+      toast({
+        title: "Download Failed",
+        description: "Failed to download DOCX file",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleGenerateReport = () => {
     if (!selectedWorksheet) {
       toast({
@@ -509,7 +551,14 @@ export default function UserPanel() {
                       className="bg-[var(--medical-success)] hover:bg-[var(--medical-success)]/80 text-white"
                     >
                       <Download className="w-4 h-4 mr-2" />
-                      Download PDF
+                      PDF
+                    </Button>
+                    <Button 
+                      onClick={handleDownloadDocx}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <FileDown className="w-4 h-4 mr-2" />
+                      DOCX
                     </Button>
                     <Button variant="secondary">
                       <Printer className="w-4 h-4 mr-2" />

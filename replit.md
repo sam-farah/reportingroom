@@ -9,6 +9,9 @@ JustScan is a full-stack web application designed to automate the generation of 
 **July 25, 2025:**
 - **PDF Processing Pipeline Completed** - Fixed critical PDF detection and conversion issues
 - **PDF Download Functionality** - Implemented browser-based PDF generation using printable HTML pages
+- **DOCX Download Capability** - Added Microsoft Word document export with professional formatting
+- **Physician Delete Feature** - Added secure deletion with confirmation dialogs and red trash icons
+- **Dual Format Downloads** - Users can now export reports in both PDF and DOCX formats
 - **Robust File Handling** - Resolved filename detection issues for PDF vs image processing
 - **ImageMagick Integration** - Successfully integrated PDF-to-PNG conversion with Ghostscript
 - **Error Recovery** - Comprehensive error handling and diagnostic logging for file processing

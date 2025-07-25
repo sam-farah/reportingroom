@@ -531,6 +531,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // DOCX generation endpoint
+  app.get("/api/reports/:id/docx", isAuthenticated, async (req, res) => {
+    try {
+      const reportId = parseInt(req.params.id);
+      if (isNaN(reportId)) {
+        return res.status(400).json({ error: "Invalid report ID" });
+      }
+
+      const report = await storage.getReport(reportId);
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+
+      // Get physician info if available
+      let physician = null;
+      if (report.physicianId) {
+        physician = await storage.getPhysician(report.physicianId);
+      }
+
+      // Create DOCX document
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import('docx');
+
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: [
+            // Title
+            new Paragraph({
+              text: "Ultrasound Report",
+              heading: HeadingLevel.TITLE,
+              alignment: AlignmentType.CENTER,
+            }),
+            
+            // Empty line
+            new Paragraph({ text: "" }),
+            
+            // Patient Information
+            new Paragraph({
+              text: "Patient Information",
+              heading: HeadingLevel.HEADING_1,
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Patient Name: ", bold: true }),
+                new TextRun({ text: report.patientName }),
+              ],
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Date of Birth: ", bold: true }),
+                new TextRun({ text: report.patientDob }),
+              ],
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Exam Date: ", bold: true }),
+                new TextRun({ text: report.examDate }),
+              ],
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Report Date: ", bold: true }),
+                new TextRun({ text: new Date(report.createdAt).toLocaleDateString() }),
+              ],
+            }),
+            
+            // Empty line
+            new Paragraph({ text: "" }),
+            
+            // Study Type (if available)
+            ...(report.studyType ? [
+              new Paragraph({
+                text: "Study Type",
+                heading: HeadingLevel.HEADING_1,
+              }),
+              new Paragraph({
+                text: report.studyType,
+              }),
+              new Paragraph({ text: "" }),
+            ] : []),
+            
+            // Clinical History/Indication
+            new Paragraph({
+              text: "Clinical Indication",
+              heading: HeadingLevel.HEADING_1,
+            }),
+            new Paragraph({
+              text: report.indication || report.clinicalHistory || 'Not provided',
+            }),
+            
+            // Empty line
+            new Paragraph({ text: "" }),
+            
+            // Findings
+            new Paragraph({
+              text: "Findings",
+              heading: HeadingLevel.HEADING_1,
+            }),
+            new Paragraph({
+              text: report.findings || 'No findings recorded',
+            }),
+            
+            // Empty line
+            new Paragraph({ text: "" }),
+            
+            // Impression
+            new Paragraph({
+              text: "Impression",
+              heading: HeadingLevel.HEADING_1,
+            }),
+            new Paragraph({
+              text: report.impression || 'No impression recorded',
+            }),
+            
+            // Physician signature if available
+            ...(physician ? [
+              new Paragraph({ text: "" }),
+              new Paragraph({ text: "" }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Reported by: ", bold: true }),
+                ],
+              }),
+              new Paragraph({
+                text: physician.name,
+              }),
+              new Paragraph({
+                text: physician.title,
+              }),
+              new Paragraph({ text: "" }),
+              new Paragraph({
+                text: "_____________________",
+              }),
+              new Paragraph({
+                text: "Signature",
+                alignment: AlignmentType.LEFT,
+              }),
+            ] : []),
+          ],
+        }],
+      });
+
+      // Generate buffer
+      const buffer = await Packer.toBuffer(doc);
+
+      // Set headers for download
+      const filename = `${report.patientName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${report.examDate}.docx`;
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      
+      res.send(buffer);
+    } catch (error) {
+      console.error("DOCX generation error:", error);
+      res.status(500).json({ error: "Failed to generate DOCX" });
+    }
+  });
+
   // Training API
   app.get("/api/training", isAuthenticated, async (req, res) => {
     try {
