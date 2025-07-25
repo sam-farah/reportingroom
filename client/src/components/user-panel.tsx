@@ -224,6 +224,66 @@ export default function UserPanel() {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    if (!generatedReport) {
+      toast({
+        title: "No Report Available",
+        description: "Please generate a report first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/reports/${generatedReport.id}/pdf`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/pdf',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.details || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${generatedReport.patientName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${generatedReport.examDate}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Download Started",
+        description: "PDF report is being downloaded",
+      });
+    } catch (error) {
+      console.error('PDF download error:', error);
+      
+      if (isUnauthorizedError(error as Error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      
+      toast({
+        title: "Download Failed",
+        description: error instanceof Error ? error.message : "Failed to download PDF",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleGenerateReport = () => {
     if (!selectedWorksheet) {
       toast({
@@ -396,7 +456,10 @@ export default function UserPanel() {
                 </h2>
                 {generatedReport && (
                   <div className="flex space-x-2">
-                    <Button className="bg-[var(--medical-success)] hover:bg-[var(--medical-success)]/80 text-white">
+                    <Button 
+                      onClick={handleDownloadPdf}
+                      className="bg-[var(--medical-success)] hover:bg-[var(--medical-success)]/80 text-white"
+                    >
                       <Download className="w-4 h-4 mr-2" />
                       Download PDF
                     </Button>
