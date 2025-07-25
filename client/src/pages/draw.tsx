@@ -48,6 +48,8 @@ export default function Draw() {
     examDate: new Date().toISOString().split('T')[0],
     studyType: ''
   });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [lastPointer, setLastPointer] = useState<{x: number, y: number} | null>(null);
 
   // Fetch worksheet templates
   const { data: worksheetTemplates } = useQuery({
@@ -115,7 +117,7 @@ export default function Draw() {
     }
   }, [selectedTemplate]);
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current || currentTool.type === 'text') return;
     
     setIsDrawing(true);
@@ -123,6 +125,8 @@ export default function Draw() {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    
+    setLastPointer({x, y});
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -143,7 +147,7 @@ export default function Draw() {
     ctx.lineJoin = 'round';
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !canvasRef.current) return;
     
     const canvas = canvasRef.current;
@@ -154,12 +158,31 @@ export default function Draw() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    ctx.lineTo(x, y);
+    // Smooth line drawing for stylus
+    if (lastPointer) {
+      const midX = (lastPointer.x + x) / 2;
+      const midY = (lastPointer.y + y) / 2;
+      ctx.quadraticCurveTo(lastPointer.x, lastPointer.y, midX, midY);
+    } else {
+      ctx.lineTo(x, y);
+    }
+    
     ctx.stroke();
+    setLastPointer({x, y});
   };
 
   const stopDrawing = () => {
     setIsDrawing(false);
+    setLastPointer(null);
+  };
+
+  const toggleFullscreen = () => {
+    if (!isFullscreen) {
+      document.documentElement.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+    setIsFullscreen(!isFullscreen);
   };
 
   const addTextAnnotation = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -246,7 +269,7 @@ export default function Draw() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {worksheetTemplates?.map((template: WorksheetTemplate) => (
+          {worksheetTemplates && Array.isArray(worksheetTemplates) && worksheetTemplates.map((template: WorksheetTemplate) => (
             <Card 
               key={template.id} 
               className="cursor-pointer hover:shadow-lg transition-shadow"
@@ -268,7 +291,7 @@ export default function Draw() {
           ))}
         </div>
 
-        {(!worksheetTemplates || worksheetTemplates.length === 0) && (
+        {(!worksheetTemplates || !Array.isArray(worksheetTemplates) || worksheetTemplates.length === 0) && (
           <div className="text-center py-12">
             <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Worksheet Templates Available</h3>
@@ -283,33 +306,53 @@ export default function Draw() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'container mx-auto p-6'}`}>
+      <div className={`flex items-center justify-between ${isFullscreen ? 'p-4 bg-gray-50 border-b' : 'mb-6'}`}>
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Drawing: {selectedTemplate.name}</h1>
-          <Button 
-            variant="ghost" 
-            onClick={() => setSelectedTemplate(null)}
-            className="text-blue-600 hover:text-blue-800 px-0"
-          >
-            ← Back to Templates
-          </Button>
+          <h1 className={`${isFullscreen ? 'text-xl' : 'text-3xl'} font-bold text-gray-900`}>
+            Drawing: {selectedTemplate.name}
+          </h1>
+          {!isFullscreen && (
+            <Button 
+              variant="ghost" 
+              onClick={() => setSelectedTemplate(null)}
+              className="text-blue-600 hover:text-blue-800 px-0"
+            >
+              ← Back to Templates
+            </Button>
+          )}
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowSaveDialog(true)} disabled={saveMutation.isPending}>
-            <Save className="w-4 h-4 mr-2" />
-            Save Worksheet
+          <Button 
+            onClick={toggleFullscreen} 
+            variant="outline"
+            size={isFullscreen ? "sm" : "default"}
+          >
+            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           </Button>
-          <Button onClick={exportWorksheet} variant="outline">
+          <Button 
+            onClick={() => setShowSaveDialog(true)} 
+            disabled={saveMutation.isPending}
+            size={isFullscreen ? "sm" : "default"}
+          >
+            <Save className="w-4 h-4 mr-2" />
+            Save
+          </Button>
+          <Button 
+            onClick={exportWorksheet} 
+            variant="outline"
+            size={isFullscreen ? "sm" : "default"}
+          >
             <Download className="w-4 h-4 mr-2" />
-            Export PNG
+            Export
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className={`${isFullscreen ? 'flex h-full' : 'grid grid-cols-1 lg:grid-cols-4 gap-6'}`}>
         {/* Drawing Tools */}
-        <Card className="lg:col-span-1">
+        <div className={`${isFullscreen ? 'w-64 border-r bg-gray-50 p-4 overflow-y-auto' : ''}`}>
+          <Card className={`${isFullscreen ? 'border-0 shadow-none bg-transparent' : 'lg:col-span-1'}`}>
           <CardHeader>
             <CardTitle className="text-lg">Drawing Tools</CardTitle>
           </CardHeader>
@@ -374,24 +417,36 @@ export default function Draw() {
               Clear Drawing
             </Button>
           </CardContent>
-        </Card>
+          </Card>
+        </div>
 
         {/* Canvas Area */}
-        <Card className="lg:col-span-3">
-          <CardContent className="p-4">
-            <div className="border rounded-lg overflow-auto max-h-[600px]">
+        <div className={`${isFullscreen ? 'flex-1 flex items-center justify-center bg-white p-4' : ''}`}>
+          <Card className={`${isFullscreen ? 'border-0 shadow-none w-full h-full' : 'lg:col-span-3'}`}>
+          <CardContent className={`${isFullscreen ? 'p-0 h-full flex items-center justify-center' : 'p-4'}`}>
+            <div className={`border rounded-lg overflow-auto ${isFullscreen ? 'w-full h-full' : 'max-h-[600px]'}`}>
               <canvas
                 ref={canvasRef}
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+                onPointerDown={startDrawing}
+                onPointerMove={draw}
+                onPointerUp={stopDrawing}
+                onPointerLeave={stopDrawing}
                 onClick={addTextAnnotation}
                 className="cursor-crosshair"
-                style={{ display: 'block', maxWidth: '100%' }}
+                style={{ 
+                  display: 'block', 
+                  maxWidth: '100%',
+                  touchAction: 'none' // Enable stylus/touch drawing
+                }}
               />
             </div>
           </CardContent>
-        </Card>
+          </Card>
+        </div>
       </div>
 
       {/* Save Dialog */}
