@@ -18,7 +18,7 @@ export default function UserPanel() {
   const { toast } = useToast();
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
   const [selectedPhysician, setSelectedPhysician] = useState<string>("");
-  const [logoFile, setLogoFile] = useState<File | null>(null);
+
   const [generatedReport, setGeneratedReport] = useState<Report | null>(null);
   const [patientName, setPatientName] = useState("");
   const [patientDob, setPatientDob] = useState("");
@@ -147,19 +147,8 @@ export default function UserPanel() {
         throw new Error("Missing required data");
       }
 
-      let logoUrl = null;
-      if (logoFile) {
-        const formData = new FormData();
-        formData.append('logo', logoFile);
-        const logoResponse = await fetch('/api/upload-logo', {
-          method: 'POST',
-          body: formData,
-        });
-        if (logoResponse.ok) {
-          const logoData = await logoResponse.json();
-          logoUrl = logoData.url;
-        }
-      }
+      // Logo will be handled by clinic settings
+      const logoUrl = null;
 
       const response = await fetch('/api/reports/generate', {
         method: 'POST',
@@ -263,16 +252,7 @@ export default function UserPanel() {
     }
   };
 
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setLogoFile(file);
-      toast({
-        title: "Logo Selected",
-        description: file.name,
-      });
-    }
-  };
+
 
   const handleDownloadPdf = () => {
     if (!generatedReport) {
@@ -484,31 +464,6 @@ export default function UserPanel() {
               {/* Report Settings */}
               <div className="mt-6">
                 <h3 className="text-md font-medium text-gray-900 mb-3">Report Settings</h3>
-                
-                {/* Logo Upload */}
-                <div className="mb-4">
-                  <Label>Logo</Label>
-                  <div className="flex items-center space-x-3 mt-2">
-                    <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                      <Image className="text-gray-400 w-6 h-6" />
-                    </div>
-                    <div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        className="hidden"
-                        id="logo-upload"
-                      />
-                      <Label htmlFor="logo-upload" className="medical-text-primary hover:underline cursor-pointer">
-                        Upload Logo
-                      </Label>
-                      {logoFile && (
-                        <p className="text-xs text-gray-600 mt-1">{logoFile.name}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
 
                 {/* Physician Selection */}
                 <div className="mb-4">
@@ -576,7 +531,6 @@ export default function UserPanel() {
               <ReportPreview
                 report={generatedReport}
                 physician={physicians.find(p => p.id.toString() === selectedPhysician)}
-                logoFile={logoFile}
                 onReportUpdate={setGeneratedReport}
               />
             </CardContent>

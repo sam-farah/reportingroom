@@ -12,9 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw } from "lucide-react";
+import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2 } from "lucide-react";
 
-export default function Physicians() {
+export default function Clinic() {
   const { isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -30,6 +30,8 @@ export default function Physicians() {
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -276,6 +278,55 @@ export default function Physicians() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setLogoFile(file);
+      toast({
+        title: "Logo Selected",
+        description: file.name,
+      });
+    }
+  };
+
+  const uploadLogoMutation = useMutation({
+    mutationFn: async () => {
+      if (!logoFile) throw new Error("No logo file selected");
+      
+      const formData = new FormData();
+      formData.append('logo', logoFile);
+      
+      const response = await fetch('/api/upload-logo', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to upload logo: ${response.status}`);
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Logo Uploaded",
+        description: "Clinic logo has been successfully uploaded",
+      });
+      setLogoFile(null);
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Upload Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const getCanvasBlob = (): Promise<Blob | null> => {
     return new Promise((resolve) => {
       const canvas = canvasRef.current;
@@ -420,18 +471,44 @@ export default function Physicians() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
-            <Users className="h-8 w-8 text-blue-600" />
+            <Building2 className="h-8 w-8 text-blue-600" />
             <div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Physician Management
+                Clinic Management
               </h1>
               <p className="text-gray-600 dark:text-gray-300">
-                Manage physician profiles and information
+                Manage physicians, settings, and clinic information
               </p>
             </div>
           </div>
-          
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        </div>
+
+        {/* Tabs */}
+        <Tabs defaultValue="physicians" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 max-w-md">
+            <TabsTrigger value="physicians" className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Physicians
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-2">
+              <Building2 className="w-4 h-4" />
+              Clinic Settings
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Physicians Tab */}
+          <TabsContent value="physicians" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Physicians
+                </h2>
+                <p className="text-gray-600 dark:text-gray-300">
+                  Manage physician profiles and signatures
+                </p>
+              </div>
+              
+              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-blue-600 hover:bg-blue-700">
                 <UserPlus className="w-4 h-4 mr-2" />
@@ -670,13 +747,99 @@ export default function Physicians() {
           </div>
         )}
 
-        {/* Edit Physician Dialog */}
-        <Dialog open={!!editingPhysician} onOpenChange={() => setEditingPhysician(null)}>
+          </TabsContent>
+
+          {/* Clinic Settings Tab */}
+          <TabsContent value="settings" className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                Clinic Settings
+              </h2>
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                Manage clinic logo and general settings
+              </p>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Image className="w-5 h-5" />
+                  Clinic Logo
+                </CardTitle>
+                <CardDescription>
+                  Upload your clinic logo to include in reports
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center space-x-4">
+                  <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                    {logoFile ? (
+                      <img 
+                        src={URL.createObjectURL(logoFile)} 
+                        alt="Logo preview" 
+                        className="w-full h-full object-contain rounded-lg"
+                      />
+                    ) : (
+                      <Image className="text-gray-400 w-8 h-8" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                      id="clinic-logo-upload"
+                    />
+                    <Label htmlFor="clinic-logo-upload" className="cursor-pointer">
+                      <Button variant="outline" className="w-full" asChild>
+                        <span>
+                          <Upload className="w-4 h-4 mr-2" />
+                          {logoFile ? "Change Logo" : "Upload Logo"}
+                        </span>
+                      </Button>
+                    </Label>
+                    {logoFile && (
+                      <p className="text-sm text-gray-600 mt-2">{logoFile.name}</p>
+                    )}
+                  </div>
+                </div>
+                
+                {logoFile && (
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={() => uploadLogoMutation.mutate()}
+                      disabled={uploadLogoMutation.isPending}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {uploadLogoMutation.isPending ? "Uploading..." : "Save Logo"}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setLogoFile(null);
+                        if (logoInputRef.current) {
+                          logoInputRef.current.value = '';
+                        }
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Add Physician Dialog */}
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Edit Physician</DialogTitle>
+              <DialogTitle>Add New Physician</DialogTitle>
               <DialogDescription>
-                Update the physician's information below.
+                Enter the physician's information below.
               </DialogDescription>
             </DialogHeader>
             {editingPhysician && (
@@ -791,6 +954,140 @@ export default function Physicians() {
                           <span className="text-xs text-gray-500">Draw new signature above</span>
                           <Button
                             type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={clearCanvas}
+                          >
+                            <RotateCcw className="w-3 h-3 mr-1" />
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </div>
+                
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => setEditingPhysician(null)}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleUpdatePhysician}
+                    disabled={updatePhysicianMutation.isPending}
+                  >
+                    {updatePhysicianMutation.isPending ? "Updating..." : "Update Physician"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Physician Dialog */}
+        <Dialog open={!!editingPhysician} onOpenChange={() => setEditingPhysician(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Physician</DialogTitle>
+              <DialogDescription>
+                Update the physician's information below.
+              </DialogDescription>
+            </DialogHeader>
+            {editingPhysician && (
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-name">Name *</Label>
+                  <Input
+                    id="edit-name"
+                    placeholder="Dr. John Smith"
+                    value={editingPhysician.name}
+                    onChange={(e) => setEditingPhysician(prev => 
+                      prev ? {...prev, name: e.target.value} : null
+                    )}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-title">Title</Label>
+                  <Input
+                    id="edit-title"
+                    placeholder="MD, MBBS, etc."
+                    value={editingPhysician.title || ""}
+                    onChange={(e) => setEditingPhysician(prev => 
+                      prev ? {...prev, title: e.target.value} : null
+                    )}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-specialty">Specialty</Label>
+                  <Input
+                    id="edit-specialty"
+                    placeholder="Radiology, Cardiology, etc."
+                    value={editingPhysician.specialty || ""}
+                    onChange={(e) => setEditingPhysician(prev => 
+                      prev ? {...prev, specialty: e.target.value} : null
+                    )}
+                  />
+                </div>
+                
+                {/* Signature Section for Edit */}
+                <div className="space-y-3">
+                  <Label>Signature</Label>
+                  {editingPhysician?.signatureUrl && (
+                    <div className="mb-3">
+                      <span className="text-xs font-medium text-gray-600">Current Signature:</span>
+                      <div className="mt-1 p-2 bg-gray-50 rounded border">
+                        <img 
+                          src={editingPhysician.signatureUrl} 
+                          alt="Current signature" 
+                          className="max-h-16 max-w-full object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  <Tabs value={signatureMode} onValueChange={(value) => setSignatureMode(value as "upload" | "draw")}>
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="upload">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload New
+                      </TabsTrigger>
+                      <TabsTrigger value="draw">
+                        <Pen className="w-4 h-4 mr-2" />
+                        Draw New
+                      </TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="upload" className="space-y-3">
+                      <div>
+                        <Input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setSignatureFile(e.target.files?.[0] || null)}
+                          className="cursor-pointer"
+                        />
+                        {signatureFile && (
+                          <p className="text-sm text-gray-600 mt-2">Selected: {signatureFile.name}</p>
+                        )}
+                      </div>
+                    </TabsContent>
+                    
+                    <TabsContent value="draw" className="space-y-3">
+                      <div className="space-y-3">
+                        <canvas
+                          ref={canvasRef}
+                          width={400}
+                          height={150}
+                          className="border border-gray-300 rounded cursor-crosshair bg-white"
+                          onMouseDown={startDrawing}
+                          onMouseMove={draw}
+                          onMouseUp={stopDrawing}
+                          onMouseLeave={stopDrawing}
+                          onTouchStart={startDrawing}
+                          onTouchMove={draw}
+                          onTouchEnd={stopDrawing}
+                        />
+                        <div className="flex justify-end">
+                          <Button
                             variant="outline"
                             size="sm"
                             onClick={clearCanvas}

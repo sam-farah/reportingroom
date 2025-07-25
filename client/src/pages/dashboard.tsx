@@ -61,7 +61,7 @@ export default function Dashboard() {
                   onClick={() => setActivePanel("physicians")}
                 >
                   <Users className="w-4 h-4 mr-2" />
-                  Physicians
+                  Clinic
                 </Button>
                 <Button
                   variant={activePanel === "admin" ? "default" : "ghost"}
