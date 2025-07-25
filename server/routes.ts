@@ -5,7 +5,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { insertPhysicianSchema, insertTrainingPairSchema, insertWorksheetSchema, insertReportSchema, insertReportTemplateSchema, updateReportTemplateSchema } from "@shared/schema";
+import { insertPhysicianSchema, insertTrainingPairSchema, insertWorksheetSchema, insertReportSchema, insertReportTemplateSchema, updateReportTemplateSchema, insertSonographerSchema } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 
@@ -125,6 +125,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: "Failed to delete physician",
         details: error instanceof Error ? error.message : "Unknown error"
       });
+    }
+  });
+
+  // Sonographers API
+  app.get("/api/sonographers", isAuthenticated, async (req, res) => {
+    try {
+      const sonographers = await storage.getAllSonographers();
+      res.json(sonographers);
+    } catch (error) {
+      console.error("Error fetching sonographers:", error);
+      res.status(500).json({ error: "Failed to fetch sonographers" });
+    }
+  });
+
+  app.post("/api/sonographers", isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertSonographerSchema.parse(req.body);
+      const sonographer = await storage.createSonographer(validatedData);
+      res.status(201).json(sonographer);
+    } catch (error) {
+      console.error("Error creating sonographer:", error);
+      if (error instanceof Error && error.message.includes('validation')) {
+        res.status(400).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: "Failed to create sonographer" });
+      }
+    }
+  });
+
+  app.put("/api/sonographers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertSonographerSchema.partial().parse(req.body);
+      const sonographer = await storage.updateSonographer(id, validatedData);
+      
+      if (!sonographer) {
+        return res.status(404).json({ error: "Sonographer not found" });
+      }
+      
+      res.json(sonographer);
+    } catch (error) {
+      console.error("Error updating sonographer:", error);
+      if (error instanceof Error && error.message.includes('validation')) {
+        res.status(400).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: "Failed to update sonographer" });
+      }
+    }
+  });
+
+  app.delete("/api/sonographers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteSonographer(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting sonographer:", error);
+      res.status(500).json({ error: "Failed to delete sonographer" });
     }
   });
 

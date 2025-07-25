@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest } from "@/lib/queryClient";
-import type { Physician, InsertPhysician } from "@shared/schema";
+import type { Physician, InsertPhysician, Sonographer, InsertSonographerData } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2 } from "lucide-react";
+import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope } from "lucide-react";
 
 export default function Clinic() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -32,6 +32,14 @@ export default function Clinic() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [isAddSonographerDialogOpen, setIsAddSonographerDialogOpen] = useState(false);
+  const [editingSonographer, setEditingSonographer] = useState<Sonographer | null>(null);
+  const [newSonographer, setNewSonographer] = useState<InsertSonographerData>({
+    name: "",
+    initials: "",
+    title: "",
+    department: "",
+  });
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -65,6 +73,13 @@ export default function Clinic() {
   // Fetch physicians
   const { data: physicians = [], isLoading: physiciansLoading, error: physiciansError } = useQuery({
     queryKey: ["/api/physicians"],
+    enabled: isAuthenticated,
+    retry: false,
+  });
+
+  // Fetch sonographers
+  const { data: sonographers = [], isLoading: sonographersLoading, error: sonographersError } = useQuery({
+    queryKey: ["/api/sonographers"],
     enabled: isAuthenticated,
     retry: false,
   });
@@ -227,6 +242,106 @@ export default function Clinic() {
       toast({
         title: "Error",
         description: error.message || "Failed to delete physician",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Add sonographer mutation
+  const addSonographerMutation = useMutation({
+    mutationFn: async (sonographer: InsertSonographerData) => {
+      return await apiRequest("POST", "/api/sonographers", sonographer);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
+      setIsAddSonographerDialogOpen(false);
+      setNewSonographer({ name: "", initials: "", title: "", department: "" });
+      toast({
+        title: "Success",
+        description: "Sonographer added successfully",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add sonographer",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update sonographer mutation
+  const updateSonographerMutation = useMutation({
+    mutationFn: async (sonographer: Sonographer) => {
+      const { id, createdAt, updatedAt, ...updateData } = sonographer;
+      return await apiRequest("PUT", `/api/sonographers/${id}`, updateData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
+      setEditingSonographer(null);
+      toast({
+        title: "Success",
+        description: "Sonographer updated successfully",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update sonographer",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete sonographer mutation
+  const deleteSonographerMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest("DELETE", `/api/sonographers/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
+      toast({
+        title: "Success",
+        description: "Sonographer deleted successfully",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete sonographer",
         variant: "destructive",
       });
     },
@@ -485,14 +600,18 @@ export default function Clinic() {
 
         {/* Tabs */}
         <Tabs defaultValue="physicians" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsList className="grid w-full grid-cols-3 max-w-lg">
             <TabsTrigger value="physicians" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               Physicians
             </TabsTrigger>
+            <TabsTrigger value="sonographers" className="flex items-center gap-2">
+              <Stethoscope className="w-4 h-4" />
+              Sonographers
+            </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <Building2 className="w-4 h-4" />
-              Clinic Settings
+              Settings
             </TabsTrigger>
           </TabsList>
 
@@ -747,6 +866,237 @@ export default function Clinic() {
           </div>
         )}
 
+          </TabsContent>
+
+          {/* Sonographers Tab */}
+          <TabsContent value="sonographers" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Sonographers</h2>
+                <p className="text-gray-600 dark:text-gray-400">Manage vascular sonographers and their initials for report tracking</p>
+              </div>
+              
+              <Dialog open={isAddSonographerDialogOpen} onOpenChange={setIsAddSonographerDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-blue-600 hover:bg-blue-700">
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Add Sonographer
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add New Sonographer</DialogTitle>
+                    <DialogDescription>
+                      Add a new sonographer to track reports by initials
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="sonographer-name">Full Name</Label>
+                      <Input
+                        id="sonographer-name"
+                        placeholder="Enter full name"
+                        value={newSonographer.name}
+                        onChange={(e) => setNewSonographer({ ...newSonographer, name: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="sonographer-initials">Initials</Label>
+                      <Input
+                        id="sonographer-initials"
+                        placeholder="e.g., JD"
+                        value={newSonographer.initials}
+                        onChange={(e) => setNewSonographer({ ...newSonographer, initials: e.target.value.toUpperCase() })}
+                        maxLength={10}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="sonographer-title">Title (Optional)</Label>
+                      <Input
+                        id="sonographer-title"
+                        placeholder="e.g., Registered Vascular Technologist"
+                        value={newSonographer.title}
+                        onChange={(e) => setNewSonographer({ ...newSonographer, title: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="sonographer-department">Department (Optional)</Label>
+                      <Input
+                        id="sonographer-department"
+                        placeholder="e.g., Vascular Lab"
+                        value={newSonographer.department}
+                        onChange={(e) => setNewSonographer({ ...newSonographer, department: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-4">
+                      <Button variant="outline" onClick={() => setIsAddSonographerDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button 
+                        onClick={() => addSonographerMutation.mutate(newSonographer)}
+                        disabled={addSonographerMutation.isPending || !newSonographer.name || !newSonographer.initials}
+                      >
+                        {addSonographerMutation.isPending ? "Adding..." : "Add Sonographer"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {/* Sonographers Grid */}
+            {sonographers.length === 0 ? (
+              <Card className="text-center py-12">
+                <CardHeader>
+                  <Stethoscope className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <CardTitle className="text-gray-600">No Sonographers Added</CardTitle>
+                  <CardDescription>
+                    Add sonographers to track who performs each ultrasound exam.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button 
+                    onClick={() => setIsAddSonographerDialogOpen(true)}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Add First Sonographer
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {sonographers.map((sonographer: Sonographer) => (
+                  <Card key={sonographer.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle className="text-lg">{sonographer.name}</CardTitle>
+                          <CardDescription className="font-medium text-blue-600">
+                            Initials: {sonographer.initials}
+                          </CardDescription>
+                          {sonographer.title && (
+                            <CardDescription className="text-gray-600">
+                              {sonographer.title}
+                            </CardDescription>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditingSonographer(sonographer)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Sonographer</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete {sonographer.name}? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deleteSonographerMutation.mutate(sonographer.id)}
+                                  className="bg-red-600 hover:bg-red-700"
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {sonographer.department && (
+                          <div className="text-sm">
+                            <span className="font-medium text-gray-600">Department: </span>
+                            <span className="text-gray-800">{sonographer.department}</span>
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-500">
+                          Added: {new Date(sonographer.createdAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Edit Sonographer Dialog */}
+            <Dialog open={!!editingSonographer} onOpenChange={(open) => !open && setEditingSonographer(null)}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Edit Sonographer</DialogTitle>
+                  <DialogDescription>
+                    Update sonographer information
+                  </DialogDescription>
+                </DialogHeader>
+                {editingSonographer && (
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="edit-name">Full Name</Label>
+                      <Input
+                        id="edit-name"
+                        placeholder="Enter full name"
+                        value={editingSonographer.name}
+                        onChange={(e) => setEditingSonographer({ ...editingSonographer, name: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-initials">Initials</Label>
+                      <Input
+                        id="edit-initials"
+                        placeholder="e.g., JD"
+                        value={editingSonographer.initials}
+                        onChange={(e) => setEditingSonographer({ ...editingSonographer, initials: e.target.value.toUpperCase() })}
+                        maxLength={10}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-title">Title (Optional)</Label>
+                      <Input
+                        id="edit-title"
+                        placeholder="e.g., Registered Vascular Technologist"
+                        value={editingSonographer.title || ""}
+                        onChange={(e) => setEditingSonographer({ ...editingSonographer, title: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-department">Department (Optional)</Label>
+                      <Input
+                        id="edit-department"
+                        placeholder="e.g., Vascular Lab"
+                        value={editingSonographer.department || ""}
+                        onChange={(e) => setEditingSonographer({ ...editingSonographer, department: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-4">
+                      <Button variant="outline" onClick={() => setEditingSonographer(null)}>
+                        Cancel
+                      </Button>
+                      <Button 
+                        onClick={() => updateSonographerMutation.mutate(editingSonographer)}
+                        disabled={updateSonographerMutation.isPending || !editingSonographer.name || !editingSonographer.initials}
+                      >
+                        {updateSonographerMutation.isPending ? "Updating..." : "Update Sonographer"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* Clinic Settings Tab */}

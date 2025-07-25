@@ -67,6 +67,7 @@ export const reports = pgTable("reports", {
   findings: text("findings").notNull(),
   impression: text("impression").notNull(),
   physicianId: integer("physician_id").references(() => physicians.id),
+  sonographerId: integer("sonographer_id").references(() => sonographers.id),
   logoUrl: text("logo_url"),
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
 });
@@ -127,8 +128,28 @@ export const reportTemplates = pgTable("report_templates", {
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
+// Sonographers table
+export const sonographers = pgTable("sonographers", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  initials: varchar("initials", { length: 10 }).notNull(),
+  title: varchar("title", { length: 100 }),
+  department: varchar("department", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Sonographer = typeof sonographers.$inferSelect;
+export type InsertSonographer = typeof sonographers.$inferInsert;
+
 export const insertPhysicianSchema = createInsertSchema(physicians).omit({
   id: true,
+});
+
+export const insertSonographerSchema = createInsertSchema(sonographers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertWorksheetSchema = createInsertSchema(worksheets).omit({
@@ -164,3 +185,4 @@ export type TrainingPair = typeof trainingPairs.$inferSelect;
 export type InsertTrainingPair = z.infer<typeof insertTrainingPairSchema>;
 export type ReportTemplate = typeof reportTemplates.$inferSelect;
 export type InsertReportTemplate = z.infer<typeof insertReportTemplateSchema>;
+export type InsertSonographerData = z.infer<typeof insertSonographerSchema>;

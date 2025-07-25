@@ -5,6 +5,7 @@ import {
   reports,
   trainingPairs,
   reportTemplates,
+  sonographers,
   type User,
   type UpsertUser,
   type Physician,
@@ -16,7 +17,9 @@ import {
   type TrainingPair,
   type InsertTrainingPair,
   type ReportTemplate,
-  type InsertReportTemplate
+  type InsertReportTemplate,
+  type Sonographer,
+  type InsertSonographerData
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -58,6 +61,13 @@ export interface IStorage {
   updateReportTemplate(id: number, template: Partial<InsertReportTemplate>): Promise<ReportTemplate | undefined>;
   deleteReportTemplate(id: number): Promise<void>;
   getDefaultTemplate(): Promise<ReportTemplate | undefined>;
+  
+  getAllSonographers(): Promise<Sonographer[]>;
+  getSonographer(id: number): Promise<Sonographer | undefined>;
+  getSonographerByInitials(initials: string): Promise<Sonographer | undefined>;
+  createSonographer(sonographer: InsertSonographerData): Promise<Sonographer>;
+  updateSonographer(id: number, sonographer: Partial<InsertSonographerData>): Promise<Sonographer | undefined>;
+  deleteSonographer(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -182,10 +192,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(reports).where(eq(reports.id, id));
   }
 
-  async deleteReport(id: number): Promise<void> {
-    await db.delete(reports).where(eq(reports.id, id));
-  }
-
   async getAllTrainingPairs(): Promise<TrainingPair[]> {
     return await db.select().from(trainingPairs);
   }
@@ -244,6 +250,58 @@ export class DatabaseStorage implements IStorage {
   async getDefaultTemplate(): Promise<ReportTemplate | undefined> {
     const [template] = await db.select().from(reportTemplates).where(eq(reportTemplates.isDefault, true));
     return template;
+  }
+
+  // Sonographer operations
+  async getAllSonographers(): Promise<Sonographer[]> {
+    return await db.select().from(sonographers).orderBy(sonographers.name);
+  }
+
+  async getSonographer(id: number): Promise<Sonographer | undefined> {
+    const [sonographer] = await db
+      .select()
+      .from(sonographers)
+      .where(eq(sonographers.id, id));
+    return sonographer;
+  }
+
+  async getSonographerByInitials(initials: string): Promise<Sonographer | undefined> {
+    const [sonographer] = await db
+      .select()
+      .from(sonographers)
+      .where(eq(sonographers.initials, initials.toUpperCase()));
+    return sonographer;
+  }
+
+  async createSonographer(sonographerData: InsertSonographerData): Promise<Sonographer> {
+    const [sonographer] = await db
+      .insert(sonographers)
+      .values({
+        ...sonographerData,
+        initials: sonographerData.initials.toUpperCase(),
+      })
+      .returning();
+    return sonographer;
+  }
+
+  async updateSonographer(id: number, sonographerData: Partial<InsertSonographerData>): Promise<Sonographer | undefined> {
+    const updateData = sonographerData.initials 
+      ? { ...sonographerData, initials: sonographerData.initials.toUpperCase() }
+      : sonographerData;
+      
+    const [sonographer] = await db
+      .update(sonographers)
+      .set({
+        ...updateData,
+        updatedAt: new Date(),
+      })
+      .where(eq(sonographers.id, id))
+      .returning();
+    return sonographer;
+  }
+
+  async deleteSonographer(id: number): Promise<void> {
+    await db.delete(sonographers).where(eq(sonographers.id, id));
   }
 }
 
