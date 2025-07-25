@@ -394,10 +394,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             const signaturePath = path.join(process.cwd(), physician.signatureUrl.startsWith('/') ? physician.signatureUrl.slice(1) : physician.signatureUrl);
             
+            console.log('Loading signature for PDF:', {
+              physicianId: physician.id,
+              signatureUrl: physician.signatureUrl,
+              signaturePath,
+              exists: fs.existsSync(signaturePath)
+            });
+            
             if (fs.existsSync(signaturePath)) {
               const signatureBuffer = fs.readFileSync(signaturePath);
-              // Default to PNG format, but could be improved to detect actual format
-              signatureDataUrl = `data:image/png;base64,${signatureBuffer.toString('base64')}`;
+              
+              // Detect image format from buffer header
+              let mimeType = 'image/png'; // default
+              if (signatureBuffer[0] === 0xFF && signatureBuffer[1] === 0xD8) {
+                mimeType = 'image/jpeg';
+              } else if (signatureBuffer[0] === 0x89 && signatureBuffer[1] === 0x50) {
+                mimeType = 'image/png';
+              } else if (signatureBuffer[0] === 0x47 && signatureBuffer[1] === 0x49) {
+                mimeType = 'image/gif';
+              } else if (signatureBuffer.slice(0, 4).toString() === 'RIFF') {
+                mimeType = 'image/webp';
+              }
+              
+              signatureDataUrl = `data:${mimeType};base64,${signatureBuffer.toString('base64')}`;
+              console.log('Signature loaded successfully:', {
+                mimeType,
+                bufferSize: signatureBuffer.length,
+                dataUrlLength: signatureDataUrl.length,
+                firstBytes: Array.from(signatureBuffer.slice(0, 8)).map(b => b.toString(16)).join(' ')
+              });
+            } else {
+              console.log('Signature file not found at path:', signaturePath);
             }
           } catch (error) {
             console.error('Error loading signature for PDF:', error);
