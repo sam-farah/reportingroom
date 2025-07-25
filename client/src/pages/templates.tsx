@@ -149,6 +149,7 @@ export default function Templates() {
       setFormData(defaultFormData);
     },
     onError: (error: Error) => {
+      console.error("Template update mutation error:", error);
       if (isUnauthorizedError(error)) {
         toast({
           title: "Session Expired",
@@ -255,16 +256,44 @@ export default function Templates() {
       return;
     }
 
+    // Clean the form data and convert to the right types
     const templateData: InsertReportTemplate = {
-      ...formData,
+      name: formData.name.trim(),
+      description: formData.description.trim() || undefined,
+      templateType: formData.templateType,
+      showHeader: formData.showHeader,
+      clinicName: formData.clinicName.trim() || undefined,
+      clinicAddress: formData.clinicAddress.trim() || undefined,
+      clinicPhone: formData.clinicPhone.trim() || undefined,
+      showLogo: formData.showLogo,
+      patientInfoLayout: formData.patientInfoLayout,
+      showPatientId: formData.showPatientId,
+      showStudyType: formData.showStudyType,
+      showIndication: formData.showIndication,
+      showFindings: formData.showFindings,
+      showImpression: formData.showImpression,
+      showFooter: formData.showFooter,
+      footerText: formData.footerText.trim() || undefined,
+      showReportId: formData.showReportId,
+      showGenerationDate: formData.showGenerationDate,
+      showSignature: formData.showSignature,
+      signaturePosition: formData.signaturePosition,
+      primaryColor: formData.primaryColor,
+      fontFamily: formData.fontFamily,
+      fontSize: formData.fontSize,
+      isDefault: formData.isDefault,
     };
 
+    console.log("Saving template data:", templateData);
+
     if (editingTemplate) {
+      console.log("Updating template with ID:", editingTemplate.id);
       updateTemplateMutation.mutate({
         id: editingTemplate.id,
         templateData,
       });
     } else {
+      console.log("Creating new template");
       createTemplateMutation.mutate(templateData);
     }
   };

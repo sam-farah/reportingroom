@@ -87,38 +87,38 @@ export const reportTemplates = pgTable("report_templates", {
   templateType: text("template_type").notNull(), // 'pdf' or 'docx' or 'both'
   
   // Header configuration
-  showHeader: boolean("show_header").default(true),
+  showHeader: boolean("show_header").notNull().default(true),
   clinicName: text("clinic_name"),
   clinicAddress: text("clinic_address"),
   clinicPhone: text("clinic_phone"),
-  showLogo: boolean("show_logo").default(true),
+  showLogo: boolean("show_logo").notNull().default(true),
   
   // Patient info configuration
-  patientInfoLayout: text("patient_info_layout").default('grid'), // 'grid', 'list', 'compact'
-  showPatientId: boolean("show_patient_id").default(false),
+  patientInfoLayout: text("patient_info_layout").notNull().default('grid'), // 'grid', 'list', 'compact'
+  showPatientId: boolean("show_patient_id").notNull().default(false),
   
   // Content sections
-  showStudyType: boolean("show_study_type").default(true),
-  showIndication: boolean("show_indication").default(true),
-  showFindings: boolean("show_findings").default(true),
-  showImpression: boolean("show_impression").default(true),
+  showStudyType: boolean("show_study_type").notNull().default(true),
+  showIndication: boolean("show_indication").notNull().default(true),
+  showFindings: boolean("show_findings").notNull().default(true),
+  showImpression: boolean("show_impression").notNull().default(true),
   
   // Footer configuration
-  showFooter: boolean("show_footer").default(true),
+  showFooter: boolean("show_footer").notNull().default(true),
   footerText: text("footer_text"),
-  showReportId: boolean("show_report_id").default(true),
-  showGenerationDate: boolean("show_generation_date").default(true),
+  showReportId: boolean("show_report_id").notNull().default(true),
+  showGenerationDate: boolean("show_generation_date").notNull().default(true),
   
   // Physician signature
-  showSignature: boolean("show_signature").default(true),
-  signaturePosition: text("signature_position").default('right'), // 'left', 'right', 'center'
+  showSignature: boolean("show_signature").notNull().default(true),
+  signaturePosition: text("signature_position").notNull().default('right'), // 'left', 'right', 'center'
   
   // Styling options
-  primaryColor: text("primary_color").default('#0066cc'),
-  fontFamily: text("font_family").default('Arial'),
-  fontSize: text("font_size").default('12px'),
+  primaryColor: text("primary_color").notNull().default('#0066cc'),
+  fontFamily: text("font_family").notNull().default('Arial'),
+  fontSize: text("font_size").notNull().default('12px'),
   
-  isDefault: boolean("is_default").default(false),
+  isDefault: boolean("is_default").notNull().default(false),
   userId: text("user_id"), // Optional: for user-specific templates
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -151,6 +151,8 @@ export const insertReportTemplateSchema = createInsertSchema(reportTemplates).om
   createdAt: true,
   updatedAt: true,
 });
+
+export const updateReportTemplateSchema = insertReportTemplateSchema.partial();
 
 export type Physician = typeof physicians.$inferSelect;
 export type InsertPhysician = z.infer<typeof insertPhysicianSchema>;

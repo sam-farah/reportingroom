@@ -5,7 +5,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { insertPhysicianSchema, insertTrainingPairSchema, insertWorksheetSchema, insertReportSchema, insertReportTemplateSchema } from "@shared/schema";
+import { insertPhysicianSchema, insertTrainingPairSchema, insertWorksheetSchema, insertReportSchema, insertReportTemplateSchema, updateReportTemplateSchema } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 
@@ -786,8 +786,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid template ID" });
       }
 
-      const validatedData = insertReportTemplateSchema.partial().parse(req.body);
+      console.log("Update template request:", { templateId, body: req.body });
+      
+      const validatedData = updateReportTemplateSchema.parse(req.body);
+      console.log("Validated data:", validatedData);
+      
       const template = await storage.updateReportTemplate(templateId, validatedData);
+      console.log("Updated template result:", template);
       
       if (!template) {
         return res.status(404).json({ error: "Template not found" });
@@ -796,7 +801,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(template);
     } catch (error) {
       console.error("Update template error:", error);
-      res.status(400).json({ error: "Invalid template data" });
+      if (error instanceof Error) {
+        console.error("Error details:", error.message, error.stack);
+      }
+      res.status(400).json({ 
+        error: "Invalid template data",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   });
 
