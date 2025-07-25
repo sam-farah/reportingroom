@@ -15,7 +15,7 @@ export async function convertPdfToImage(pdfPath: string): Promise<string> {
     }
 
     // Create output path for the converted image
-    const outputPath = pdfPath.replace(/\.pdf$/i, '_converted.png');
+    const outputPath = pdfPath + '_converted.png';
     
     // Use ImageMagick to convert first page of PDF to PNG
     // -density 300: High quality for OCR
