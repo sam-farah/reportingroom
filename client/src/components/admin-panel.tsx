@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit } from "lucide-react";
+import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -241,6 +241,43 @@ export default function AdminPanel() {
     },
   });
 
+  const deletePhysicianMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/physicians/${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Physician Deleted",
+        description: "Physician removed successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => { window.location.href = "/api/login"; }, 500);
+        return;
+      }
+      toast({
+        title: "Failed to Delete Physician",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleEditPhysician = (physician: Physician) => {
     setEditingPhysician(physician);
     setPhysicianForm({
@@ -272,6 +309,12 @@ export default function AdminPanel() {
     setEditingPhysician(null);
     setIsAddingPhysician(false);
     setPhysicianForm({ name: "", title: "", specialty: "", signatureUrl: "" });
+  };
+
+  const handleDeletePhysician = (id: number, name: string) => {
+    if (window.confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`)) {
+      deletePhysicianMutation.mutate(id);
+    }
   };
 
   const handleAddTrainingPair = () => {
@@ -485,14 +528,25 @@ export default function AdminPanel() {
                         <p className="text-xs text-gray-600">{physician.specialty} • {physician.title}</p>
                       </div>
                     </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="medical-text-primary hover:bg-blue-50"
-                      onClick={() => handleEditPhysician(physician)}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
+                    <div className="flex space-x-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="medical-text-primary hover:bg-blue-50"
+                        onClick={() => handleEditPhysician(physician)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-red-600 hover:bg-red-50"
+                        onClick={() => handleDeletePhysician(physician.id, physician.name)}
+                        disabled={deletePhysicianMutation.isPending}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

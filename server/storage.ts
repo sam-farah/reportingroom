@@ -29,6 +29,7 @@ export interface IStorage {
   getPhysician(id: number): Promise<Physician | undefined>;
   createPhysician(physician: InsertPhysician): Promise<Physician>;
   updatePhysician(id: number, physician: Partial<InsertPhysician>): Promise<Physician | undefined>;
+  deletePhysician(id: number): Promise<void>;
   
   getAllWorksheets(): Promise<Worksheet[]>;
   getWorksheet(id: number): Promise<Worksheet | undefined>;
@@ -39,6 +40,7 @@ export interface IStorage {
   getReport(id: number): Promise<Report | undefined>;
   getReportsByWorksheet(worksheetId: number): Promise<Report[]>;
   createReport(report: InsertReport): Promise<Report>;
+  updateReport(id: number, report: Partial<InsertReport>): Promise<Report | undefined>;
   
   getAllTrainingPairs(): Promise<TrainingPair[]>;
   getTrainingPair(id: number): Promise<TrainingPair | undefined>;
@@ -94,6 +96,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(physicians.id, id))
       .returning();
     return physician;
+  }
+
+  async deletePhysician(id: number): Promise<void> {
+    await db.delete(physicians).where(eq(physicians.id, id));
   }
 
   async getAllWorksheets(): Promise<Worksheet[]> {

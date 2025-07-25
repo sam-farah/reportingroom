@@ -95,6 +95,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/physicians/:id", isAuthenticated, async (req, res) => {
+    try {
+      const physicianId = parseInt(req.params.id);
+      if (isNaN(physicianId)) {
+        return res.status(400).json({ error: "Invalid physician ID" });
+      }
+
+      await storage.deletePhysician(physicianId);
+      res.json({ message: "Physician deleted successfully" });
+    } catch (error) {
+      console.error("Delete physician error:", error);
+      res.status(500).json({ 
+        error: "Failed to delete physician",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Worksheets API
   app.get("/api/worksheets", isAuthenticated, async (req, res) => {
     try {
