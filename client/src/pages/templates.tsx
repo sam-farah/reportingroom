@@ -96,10 +96,8 @@ export default function Templates() {
   // Create template mutation
   const createTemplateMutation = useMutation({
     mutationFn: async (templateData: InsertReportTemplate) => {
-      return await apiRequest("/api/templates", {
-        method: "POST",
-        body: JSON.stringify(templateData),
-      });
+      const response = await apiRequest("POST", "/api/templates", templateData);
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -133,10 +131,8 @@ export default function Templates() {
   // Update template mutation
   const updateTemplateMutation = useMutation({
     mutationFn: async ({ id, templateData }: { id: number; templateData: Partial<InsertReportTemplate> }) => {
-      return await apiRequest(`/api/templates/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(templateData),
-      });
+      const response = await apiRequest("PATCH", `/api/templates/${id}`, templateData);
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -172,9 +168,8 @@ export default function Templates() {
   // Delete template mutation
   const deleteTemplateMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await apiRequest(`/api/templates/${id}`, {
-        method: "DELETE",
-      });
+      const response = await apiRequest("DELETE", `/api/templates/${id}`);
+      return await response.json();
     },
     onSuccess: () => {
       toast({
