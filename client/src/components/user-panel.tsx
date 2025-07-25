@@ -435,6 +435,7 @@ export default function UserPanel() {
                 report={generatedReport}
                 physician={physicians.find(p => p.id.toString() === selectedPhysician)}
                 logoFile={logoFile}
+                onReportUpdate={setGeneratedReport}
               />
             </CardContent>
           </Card>

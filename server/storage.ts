@@ -143,6 +143,15 @@ export class DatabaseStorage implements IStorage {
     return report;
   }
 
+  async updateReport(id: number, updates: Partial<InsertReport>): Promise<Report | undefined> {
+    const [report] = await db
+      .update(reports)
+      .set(updates)
+      .where(eq(reports.id, id))
+      .returning();
+    return report;
+  }
+
   async getAllTrainingPairs(): Promise<TrainingPair[]> {
     return await db.select().from(trainingPairs);
   }

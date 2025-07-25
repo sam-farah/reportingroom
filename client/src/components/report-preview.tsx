@@ -1,13 +1,72 @@
-import { Image } from "lucide-react";
+import { useState } from "react";
+import { Image, Edit3, Save, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, Physician } from "@shared/schema";
 
 interface ReportPreviewProps {
   report: Report | null;
   physician?: Physician;
   logoFile?: File | null;
+  onReportUpdate?: (updatedReport: Report) => void;
 }
 
-export default function ReportPreview({ report, physician, logoFile }: ReportPreviewProps) {
+export default function ReportPreview({ report, physician, logoFile, onReportUpdate }: ReportPreviewProps) {
+  const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedReport, setEditedReport] = useState<Report | null>(null);
+
+  const updateReportMutation = useMutation({
+    mutationFn: async (updatedData: Partial<Report>) => {
+      if (!report) throw new Error("No report to update");
+      
+      const response = await fetch(`/api/reports/${report.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(updatedData),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return response.json();
+    },
+    onSuccess: (updatedReport: Report) => {
+      setIsEditing(false);
+      setEditedReport(null);
+      onReportUpdate?.(updatedReport);
+      toast({
+        title: "Report Updated",
+        description: "Your changes have been saved successfully",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update report",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (!report) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-8 min-h-96 flex items-center justify-center">
@@ -20,6 +79,39 @@ export default function ReportPreview({ report, physician, logoFile }: ReportPre
       </div>
     );
   }
+
+  const currentReport = editedReport || report;
+
+  const handleEdit = () => {
+    setEditedReport({ ...report });
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    setEditedReport(null);
+    setIsEditing(false);
+  };
+
+  const handleSave = () => {
+    if (!editedReport) return;
+    
+    const changes = {
+      patientName: editedReport.patientName,
+      patientDob: editedReport.patientDob,
+      examDate: editedReport.examDate,
+      studyType: editedReport.studyType,
+      indication: editedReport.indication,
+      findings: editedReport.findings,
+      impression: editedReport.impression,
+    };
+    
+    updateReportMutation.mutate(changes);
+  };
+
+  const updateField = (field: keyof Report, value: string) => {
+    if (!editedReport) return;
+    setEditedReport({ ...editedReport, [field]: value });
+  };
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-8 min-h-96">
@@ -42,10 +134,44 @@ export default function ReportPreview({ report, physician, logoFile }: ReportPre
             <p className="text-sm text-gray-600">Ultrasound Report</p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-gray-600">
-            Report Date: {new Date().toLocaleDateString()}
-          </p>
+        <div className="flex items-center space-x-2">
+          <div className="text-right mr-4">
+            <p className="text-sm text-gray-600">
+              Report Date: {new Date().toLocaleDateString()}
+            </p>
+          </div>
+          {isEditing ? (
+            <div className="flex space-x-2">
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={updateReportMutation.isPending}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Save className="w-4 h-4 mr-1" />
+                {updateReportMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCancel}
+                disabled={updateReportMutation.isPending}
+              >
+                <X className="w-4 h-4 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleEdit}
+              className="text-blue-600 border-blue-600 hover:bg-blue-50"
+            >
+              <Edit3 className="w-4 h-4 mr-1" />
+              Edit
+            </Button>
+          )}
         </div>
       </div>
 
@@ -53,17 +179,75 @@ export default function ReportPreview({ report, physician, logoFile }: ReportPre
       <div className="grid grid-cols-2 gap-6 mb-6">
         <div>
           <h4 className="font-semibold text-gray-900 mb-2">Patient Information</h4>
-          <div className="text-sm space-y-1">
-            <p><span className="font-medium">Name:</span> {report.patientName}</p>
-            <p><span className="font-medium">DOB:</span> {report.patientDob}</p>
-            <p><span className="font-medium">Exam Date:</span> {report.examDate}</p>
+          <div className="text-sm space-y-2">
+            <div className="flex items-center">
+              <span className="font-medium w-20">Name:</span>
+              {isEditing ? (
+                <Input
+                  value={currentReport.patientName}
+                  onChange={(e) => updateField('patientName', e.target.value)}
+                  className="ml-2 h-8 text-sm"
+                />
+              ) : (
+                <span className="ml-2">{currentReport.patientName}</span>
+              )}
+            </div>
+            <div className="flex items-center">
+              <span className="font-medium w-20">DOB:</span>
+              {isEditing ? (
+                <Input
+                  type="date"
+                  value={currentReport.patientDob || ''}
+                  onChange={(e) => updateField('patientDob', e.target.value)}
+                  className="ml-2 h-8 text-sm"
+                />
+              ) : (
+                <span className="ml-2">{currentReport.patientDob}</span>
+              )}
+            </div>
+            <div className="flex items-center">
+              <span className="font-medium w-20">Exam Date:</span>
+              {isEditing ? (
+                <Input
+                  type="date"
+                  value={currentReport.examDate}
+                  onChange={(e) => updateField('examDate', e.target.value)}
+                  className="ml-2 h-8 text-sm"
+                />
+              ) : (
+                <span className="ml-2">{currentReport.examDate}</span>
+              )}
+            </div>
           </div>
         </div>
         <div>
           <h4 className="font-semibold text-gray-900 mb-2">Study Information</h4>
-          <div className="text-sm space-y-1">
-            <p><span className="font-medium">Study Type:</span> {report.studyType}</p>
-            <p><span className="font-medium">Indication:</span> {report.indication}</p>
+          <div className="text-sm space-y-2">
+            <div className="flex items-center">
+              <span className="font-medium w-24">Study Type:</span>
+              {isEditing ? (
+                <Input
+                  value={currentReport.studyType}
+                  onChange={(e) => updateField('studyType', e.target.value)}
+                  className="ml-2 h-8 text-sm"
+                />
+              ) : (
+                <span className="ml-2">{currentReport.studyType}</span>
+              )}
+            </div>
+            <div className="flex items-start">
+              <span className="font-medium w-24 pt-1">Indication:</span>
+              {isEditing ? (
+                <Textarea
+                  value={currentReport.indication}
+                  onChange={(e) => updateField('indication', e.target.value)}
+                  className="ml-2 text-sm resize-none"
+                  rows={2}
+                />
+              ) : (
+                <span className="ml-2">{currentReport.indication}</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -71,17 +255,35 @@ export default function ReportPreview({ report, physician, logoFile }: ReportPre
       {/* Findings */}
       <div className="mb-6">
         <h4 className="font-semibold text-gray-900 mb-3">Findings</h4>
-        <div className="text-sm text-gray-700 whitespace-pre-wrap">
-          {report.findings}
-        </div>
+        {isEditing ? (
+          <Textarea
+            value={currentReport.findings}
+            onChange={(e) => updateField('findings', e.target.value)}
+            className="text-sm min-h-32"
+            placeholder="Enter detailed findings..."
+          />
+        ) : (
+          <div className="text-sm text-gray-700 whitespace-pre-wrap">
+            {currentReport.findings}
+          </div>
+        )}
       </div>
 
       {/* Impression */}
       <div className="mb-8">
         <h4 className="font-semibold text-gray-900 mb-3">Impression</h4>
-        <div className="text-sm text-gray-700 whitespace-pre-wrap">
-          {report.impression}
-        </div>
+        {isEditing ? (
+          <Textarea
+            value={currentReport.impression}
+            onChange={(e) => updateField('impression', e.target.value)}
+            className="text-sm min-h-24"
+            placeholder="Enter clinical impression..."
+          />
+        ) : (
+          <div className="text-sm text-gray-700 whitespace-pre-wrap">
+            {currentReport.impression}
+          </div>
+        )}
       </div>
 
       {/* Signature */}
