@@ -160,7 +160,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let isFromPdf = false;
       
       // Handle PDF files by converting to image first
-      if (isPdfFile(worksheet.filename)) {
+      console.log("Checking if file is PDF. Original name:", worksheet.originalName, "isPDF:", isPdfFile(worksheet.originalName));
+      if (isPdfFile(worksheet.originalName)) {
         console.log("Converting PDF to image for OCR processing...");
         base64Image = await convertPdfToImage(filePath);
         console.log("PDF converted successfully, base64 length:", base64Image.length);
@@ -247,7 +248,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let isFromPdf = false;
       
       // Handle PDF files by converting to image first
-      if (isPdfFile(worksheet.filename)) {
+      console.log("Checking if file is PDF. Original name:", worksheet.originalName, "isPDF:", isPdfFile(worksheet.originalName));
+      if (isPdfFile(worksheet.originalName)) {
         console.log("Converting PDF to image for report generation...");
         base64Image = await convertPdfToImage(filePath);
         console.log("PDF converted successfully, base64 length:", base64Image.length);
