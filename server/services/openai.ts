@@ -26,7 +26,7 @@ export interface ReportData {
   impression: string;
 }
 
-export async function extractPatientDataFromWorksheet(base64Image: string): Promise<OCRResult> {
+export async function extractPatientDataFromWorksheet(base64Image: string, isFromPdf: boolean = false): Promise<OCRResult> {
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -53,7 +53,7 @@ export async function extractPatientDataFromWorksheet(base64Image: string): Prom
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
+                url: `data:image/${isFromPdf ? 'png' : 'jpeg'};base64,${base64Image}`
               }
             }
           ],
@@ -80,7 +80,8 @@ export async function extractPatientDataFromWorksheet(base64Image: string): Prom
 export async function generateReportFromWorksheet(
   base64Image: string, 
   extractedData: OCRResult,
-  trainingData: any[] = []
+  trainingData: any[] = [],
+  isFromPdf: boolean = false
 ): Promise<ReportData> {
   try {
     const trainingContext = trainingData.length > 0 
@@ -122,7 +123,7 @@ export async function generateReportFromWorksheet(
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
+                url: `data:image/${isFromPdf ? 'png' : 'jpeg'};base64,${base64Image}`
               }
             }
           ],

@@ -157,12 +157,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       let base64Image: string;
+      let isFromPdf = false;
       
       // Handle PDF files by converting to image first
       if (isPdfFile(worksheet.filename)) {
         console.log("Converting PDF to image for OCR processing...");
         base64Image = await convertPdfToImage(filePath);
         console.log("PDF converted successfully, base64 length:", base64Image.length);
+        isFromPdf = true;
       } else {
         // Handle regular image files
         const fileBuffer = fs.readFileSync(filePath);
@@ -172,7 +174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Extract patient data using OCR
       console.log("Starting OCR processing...");
-      const ocrResult = await extractPatientDataFromWorksheet(base64Image);
+      const ocrResult = await extractPatientDataFromWorksheet(base64Image, isFromPdf);
       console.log("OCR result:", ocrResult);
       
       // Update worksheet with OCR results
@@ -242,12 +244,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       let base64Image: string;
+      let isFromPdf = false;
       
       // Handle PDF files by converting to image first
       if (isPdfFile(worksheet.filename)) {
         console.log("Converting PDF to image for report generation...");
         base64Image = await convertPdfToImage(filePath);
         console.log("PDF converted successfully, base64 length:", base64Image.length);
+        isFromPdf = true;
       } else {
         // Handle regular image files
         const fileBuffer = fs.readFileSync(filePath);
@@ -268,7 +272,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       console.log("Generating report with OCR data:", ocrData);
-      const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData);
+      const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, isFromPdf);
       console.log("Report generated successfully:", reportData);
       
       // Create report in storage
