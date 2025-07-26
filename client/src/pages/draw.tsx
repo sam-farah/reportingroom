@@ -195,15 +195,19 @@ export default function Draw() {
   // Auto-enter fullscreen when template is selected
   useEffect(() => {
     if (selectedTemplate && currentWorksheet && !isFullscreen) {
+      // Set fullscreen state immediately to show fullscreen UI
+      setIsFullscreen(true);
+      
       const enterFullscreen = async () => {
         try {
           await document.documentElement.requestFullscreen();
-          setIsFullscreen(true);
         } catch (error) {
-          console.warn("Could not enter fullscreen:", error);
-          // Continue without fullscreen if it fails
+          console.warn("Could not enter fullscreen automatically. Browser requires user interaction.", error);
+          // Continue with fullscreen UI even if browser fullscreen fails
         }
       };
+      
+      // Try to enter browser fullscreen, but don't depend on it
       enterFullscreen();
     }
   }, [selectedTemplate, currentWorksheet]);
@@ -211,34 +215,56 @@ export default function Draw() {
   // Initialize canvas when template is selected and worksheet is created
   useEffect(() => {
     if (selectedTemplate && currentWorksheet && canvasRef.current) {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      const loadTemplate = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
-      const img = new Image();
-      img.onload = () => {
-        // Calculate dimensions to fit the available space
-        const containerWidth = isFullscreen ? window.innerWidth - 280 : canvas.parentElement?.clientWidth || 800;
-        const containerHeight = isFullscreen ? window.innerHeight - 120 : 600;
-        
-        const scale = Math.min(
-          containerWidth / img.width,
-          containerHeight / img.height
-        );
-        
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        // Store template image for eraser functionality
-        setTemplateImage(img);
-        
-        // Save initial state to history
-        const initialState = canvas.toDataURL();
-        setDrawingHistory([initialState]);
+        const img = new Image();
+        img.onload = () => {
+          // Calculate dimensions to fit the available space
+          const containerWidth = isFullscreen ? window.innerWidth - 280 : canvas.parentElement?.clientWidth || 800;
+          const containerHeight = isFullscreen ? window.innerHeight - 120 : 600;
+          
+          const scale = Math.min(
+            containerWidth / img.width,
+            containerHeight / img.height
+          );
+          
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          
+          // Clear and draw template
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          // Store template image for eraser functionality
+          setTemplateImage(img);
+          
+          // Save initial state to history
+          const initialState = canvas.toDataURL();
+          setDrawingHistory([initialState]);
+          
+          console.log(`Template loaded: ${canvas.width}x${canvas.height}, Fullscreen: ${isFullscreen}`);
+        };
+        img.src = selectedTemplate.imageUrl;
       };
-      img.src = selectedTemplate.imageUrl;
+
+      // Load template immediately
+      loadTemplate();
+      
+      // Also reload when window resizes (for fullscreen transitions)
+      const handleResize = () => {
+        setTimeout(loadTemplate, 100);
+      };
+      
+      window.addEventListener('resize', handleResize);
+      
+      return () => {
+        window.removeEventListener('resize', handleResize);
+      };
     }
   }, [selectedTemplate, currentWorksheet, isFullscreen]);
 
