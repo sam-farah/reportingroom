@@ -58,7 +58,8 @@ export default function Draw() {
 
   const createWorksheetMutation = useMutation({
     mutationFn: async (data: any): Promise<DigitalWorksheet> => {
-      return await apiRequest("/api/digital-worksheets", "POST", data);
+      const response = await apiRequest("/api/digital-worksheets", "POST", data);
+      return await response.json();
     },
     onSuccess: (worksheet: DigitalWorksheet) => {
       setCurrentWorksheet(worksheet);
@@ -90,7 +91,8 @@ export default function Draw() {
 
   const updateWorksheetMutation = useMutation({
     mutationFn: async (data: any) => {
-      return await apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}`, "PUT", data);
+      const response = await apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}`, "PUT", data);
+      return await response.json();
     },
     onSuccess: () => {
       // Auto-save successful (silent)
@@ -102,7 +104,8 @@ export default function Draw() {
 
   const createDraftReportMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}/create-draft-report`, "POST", {});
+      const response = await apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}/create-draft-report`, "POST", {});
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -334,7 +337,7 @@ export default function Draw() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {worksheetTemplates && Array.isArray(worksheetTemplates) && worksheetTemplates.map((template: WorksheetTemplate) => (
+          {(worksheetTemplates as WorksheetTemplate[] || []).map((template: WorksheetTemplate) => (
             <Card 
               key={template.id} 
               className="cursor-pointer hover:shadow-lg transition-shadow"
@@ -422,7 +425,7 @@ export default function Draw() {
                     <SelectValue placeholder="Select sonographer" />
                   </SelectTrigger>
                   <SelectContent>
-                    {sonographers && sonographers.map((sonographer: Sonographer) => (
+                    {(sonographers as Sonographer[] || []).map((sonographer: Sonographer) => (
                       <SelectItem key={sonographer.id} value={sonographer.id.toString()}>
                         {sonographer.name} ({sonographer.initials})
                       </SelectItem>

@@ -6,6 +6,14 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 
 ## Recent Changes
 
+**July 26, 2025:**
+- **Critical Digital Drawing Workflow Fixes** - Resolved duplicate API route definitions causing "not a valid HTTP method" errors
+- **Backend Storage Interface Implementation** - Added missing digital worksheet CRUD operations to storage layer
+- **API Parameter Ordering Correction** - Fixed apiRequest function parameter order for proper frontend-backend communication
+- **TypeScript Error Resolution** - Corrected return types and type casting for React components and API responses
+- **Authentication Flow Debugging** - Ensured proper session handling and credentials passing for protected routes
+- **Drawing Session Workflow Testing** - Validated complete template selection, patient entry, and draft report creation flow
+
 **July 25, 2025:**
 - **Application Rebranding** - Renamed from "JustScan" to "Reporting Room" across all interfaces and documentation
 - **Comprehensive Reporting Room Feature** - Built complete report management system with pagination (12 reports per page)
