@@ -803,6 +803,11 @@ export default function ReportingRoom() {
                       src={`/api/digital-worksheets/${editingReport.digitalWorksheetId}/image`}
                       alt="Digital Worksheet"
                       className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
+                      onError={(e) => {
+                        console.error('Failed to load digital worksheet image:', editingReport.digitalWorksheetId);
+                        e.currentTarget.style.display = 'none';
+                      }}
+                      onLoad={() => console.log('Successfully loaded digital worksheet:', editingReport.digitalWorksheetId)}
                     />
                   </div>
                 ) : editingReport.worksheetId ? (
@@ -811,6 +816,11 @@ export default function ReportingRoom() {
                       src={`/api/worksheets/${editingReport.worksheetId}/image`}
                       alt="Uploaded Worksheet"
                       className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
+                      onError={(e) => {
+                        console.error('Failed to load worksheet image:', editingReport.worksheetId);
+                        e.currentTarget.style.display = 'none';
+                      }}
+                      onLoad={() => console.log('Successfully loaded worksheet:', editingReport.worksheetId)}
                     />
                   </div>
                 ) : (
@@ -819,6 +829,12 @@ export default function ReportingRoom() {
                     <p>No worksheet image available</p>
                   </div>
                 )}
+                
+                {/* Debug info */}
+                <div className="absolute bottom-4 right-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded">
+                  <div>Digital ID: {editingReport.digitalWorksheetId || 'None'}</div>
+                  <div>Worksheet ID: {editingReport.worksheetId || 'None'}</div>
+                </div>
               </div>
             </div>
             
