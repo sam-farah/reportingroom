@@ -47,7 +47,7 @@ export default function Landing() {
               </div>
               
               <h1 className="text-5xl font-bold text-gray-900 sm:text-7xl leading-tight">
-                AI-Powered Medical
+                AI-Powered Vascular Ultrasound
                 <span className="block bg-gradient-to-r from-[var(--medical-primary)] to-[var(--medical-accent)] bg-clip-text text-transparent">
                   Report Generation
                 </span>
