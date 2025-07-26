@@ -1232,6 +1232,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update clinic info
+  app.put("/api/clinic/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser((req as any).user.claims.sub);
+      if (!user?.clinicId) {
+        return res.status(400).json({ error: "No clinic associated" });
+      }
+
+      const clinicId = parseInt(req.params.id);
+      if (isNaN(clinicId) || clinicId !== user.clinicId) {
+        return res.status(403).json({ error: "Unauthorized to update this clinic" });
+      }
+
+      const { name, address, phone, fax, email } = req.body;
+      
+      if (!name || !email) {
+        return res.status(400).json({ error: "Clinic name and email are required" });
+      }
+
+      const updatedClinic = await storage.updateClinic(clinicId, {
+        name,
+        address,
+        phone,
+        fax,
+        email,
+      });
+
+      if (!updatedClinic) {
+        return res.status(404).json({ error: "Clinic not found" });
+      }
+
+      res.json(updatedClinic);
+    } catch (error) {
+      console.error("Update clinic error:", error);
+      res.status(500).json({ error: "Failed to update clinic information" });
+    }
+  });
+
   // Report Templates API
   app.get("/api/templates", isAuthenticated, async (req, res) => {
     try {

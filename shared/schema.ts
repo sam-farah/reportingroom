@@ -35,6 +35,7 @@ export const clinics = pgTable("clinics", {
   state: varchar("state", { length: 50 }),
   zipCode: varchar("zip_code", { length: 20 }),
   phone: varchar("phone", { length: 50 }),
+  fax: varchar("fax", { length: 50 }),
   website: varchar("website", { length: 255 }),
   logoUrl: varchar("logo_url", { length: 500 }),
   subscription: varchar("subscription", { length: 50 }).notNull().default('basic'), // 'basic', 'premium', 'enterprise'

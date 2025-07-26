@@ -10,6 +10,7 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 - **Navigation Restructure** - Changed "Physicians" tab to "Clinic" and integrated staff management as separate tab within clinic section
 - **Staff Management Integration** - Added dedicated staff tab between sonographers and settings with invitation and management functionality
 - **Staff Invitation System Fix** - Corrected invitation creation API to properly handle email and role validation with database integration
+- **Clinic Information Management** - Added comprehensive clinic settings form with name, address, phone, fax, and email fields integrated with database updates
 - **Logo Positioning Update** - Moved full Reporting Room logo to bottom-right corner of dashboard for cleaner navigation appearance
 - **Updated Reporting Room Branding** - Integrated new professional logo designs with icon-only and text versions across landing and dashboard
 - **Report Amendment System** - Implemented comprehensive amendment functionality with audit trail tracking and automatic finalization reset

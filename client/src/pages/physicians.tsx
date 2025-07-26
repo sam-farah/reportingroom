@@ -74,6 +74,60 @@ export default function Clinic() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "sonographer">("sonographer");
 
+  // Clinic settings state
+  const [clinicForm, setClinicForm] = useState({
+    name: "",
+    address: "",
+    phone: "",
+    fax: "",
+    email: "",
+  });
+
+  // Initialize clinic form when clinic data is loaded
+  useEffect(() => {
+    if (clinic) {
+      setClinicForm({
+        name: clinic.name || "",
+        address: clinic.address || "",
+        phone: clinic.phone || "",
+        fax: clinic.fax || "",
+        email: clinic.email || "",
+      });
+    }
+  }, [clinic]);
+
+  // Clinic settings update mutation
+  const updateClinicMutation = useMutation({
+    mutationFn: async (clinicData: typeof clinicForm) => {
+      return await apiRequest(`/api/clinic/${clinic?.id}`, "PUT", clinicData);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Clinic information updated successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update clinic information",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Staff management mutations
   const inviteStaffMutation = useMutation({
     mutationFn: async ({ email, role }: { email: string; role: string }) => {
@@ -1305,10 +1359,88 @@ export default function Clinic() {
                 Clinic Settings
               </h2>
               <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Manage clinic logo and general settings
+                Manage clinic information and logo settings
               </p>
             </div>
 
+            {/* Clinic Information Form */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  Clinic Information
+                </CardTitle>
+                <CardDescription>
+                  Update your clinic details that appear on reports
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <Label htmlFor="clinic-name">Clinic Name *</Label>
+                    <Input
+                      id="clinic-name"
+                      placeholder="Enter clinic name"
+                      value={clinicForm.name}
+                      onChange={(e) => setClinicForm(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2">
+                    <Label htmlFor="clinic-address">Clinic Address</Label>
+                    <Input
+                      id="clinic-address"
+                      placeholder="Enter full clinic address"
+                      value={clinicForm.address}
+                      onChange={(e) => setClinicForm(prev => ({ ...prev, address: e.target.value }))}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="clinic-phone">Phone Number</Label>
+                    <Input
+                      id="clinic-phone"
+                      placeholder="(555) 123-4567"
+                      value={clinicForm.phone}
+                      onChange={(e) => setClinicForm(prev => ({ ...prev, phone: e.target.value }))}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="clinic-fax">Fax Number</Label>
+                    <Input
+                      id="clinic-fax"
+                      placeholder="(555) 123-4568"
+                      value={clinicForm.fax}
+                      onChange={(e) => setClinicForm(prev => ({ ...prev, fax: e.target.value }))}
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2">
+                    <Label htmlFor="clinic-email">Clinic Email *</Label>
+                    <Input
+                      id="clinic-email"
+                      type="email"
+                      placeholder="info@clinic.com"
+                      value={clinicForm.email}
+                      onChange={(e) => setClinicForm(prev => ({ ...prev, email: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end pt-4">
+                  <Button 
+                    onClick={() => updateClinicMutation.mutate(clinicForm)}
+                    disabled={updateClinicMutation.isPending || !clinicForm.name || !clinicForm.email}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {updateClinicMutation.isPending ? "Saving..." : "Save Clinic Information"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Clinic Logo Section */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
