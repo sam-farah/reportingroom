@@ -1711,6 +1711,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Worksheet image endpoint for uploaded files
+  app.get("/api/worksheets/:id/image", isAuthenticated, async (req, res) => {
+    try {
+      const worksheetId = parseInt(req.params.id);
+      
+      if (isNaN(worksheetId)) {
+        return res.status(400).json({ error: "Invalid worksheet ID" });
+      }
+      
+      const worksheet = await storage.getWorksheet(worksheetId);
+      
+      if (!worksheet) {
+        return res.status(404).json({ error: "Worksheet not found" });
+      }
+
+      const filePath = path.join(uploadDir, worksheet.filename);
+      
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      // Set appropriate headers for image serving
+      const ext = path.extname(worksheet.filename).toLowerCase();
+      let contentType = 'application/octet-stream';
+      
+      if (ext === '.jpg' || ext === '.jpeg') {
+        contentType = 'image/jpeg';
+      } else if (ext === '.png') {
+        contentType = 'image/png';
+      } else if (ext === '.gif') {
+        contentType = 'image/gif';
+      } else if (ext === '.webp') {
+        contentType = 'image/webp';
+      } else if (ext === '.pdf') {
+        contentType = 'application/pdf';
+      }
+      
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Error serving worksheet image:", error);
+      res.status(500).json({ error: "Failed to serve image" });
+    }
+  });
+
   // Serve uploaded files
   app.use('/uploads', (req, res, next) => {
     const filePath = path.join(uploadDir, req.path);
