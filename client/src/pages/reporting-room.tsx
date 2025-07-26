@@ -756,17 +756,13 @@ export default function ReportingRoom() {
       }}>
         <DialogContent 
           className={isFullscreenMode ? 
-            "fixed inset-0 z-50 bg-white m-0 p-0 max-w-none max-h-none w-screen h-screen" : 
+            "fixed inset-0 z-50 bg-white m-0 p-0 max-w-none max-h-none w-screen h-screen border-0" : 
             "max-w-4xl max-h-[90vh] overflow-y-auto"}
           aria-describedby="dialog-description">
-          {/* Hidden title for accessibility */}
-          <div className="sr-only">
-            <DialogTitle>Edit Report - {editingReport?.patientName}</DialogTitle>
-            <DialogDescription id="dialog-description">
-              Review and modify report details in {isFullscreenMode ? 'fullscreen' : 'dialog'} mode.
-            </DialogDescription>
-          </div>
-          {console.log('Rendering mode:', { isFullscreenMode, hasEditingReport: !!editingReport })}
+          <DialogTitle className="sr-only">Edit Report - {editingReport?.patientName}</DialogTitle>
+          <DialogDescription id="dialog-description" className="sr-only">
+            Review and modify report details in {isFullscreenMode ? 'fullscreen' : 'dialog'} mode.
+          </DialogDescription>
           {isFullscreenMode && editingReport && (
             <div className="flex h-full">
               {/* Left Panel - Worksheet */}
