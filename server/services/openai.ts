@@ -83,6 +83,67 @@ export async function extractPatientDataFromWorksheet(base64Image: string, isFro
   }
 }
 
+export async function analyzeVascularDrawing(
+  base64Image: string,
+  templateName: string = 'Custom',
+  studyType: string = 'Vascular Study'
+): Promise<{ findings: string; impression: string }> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert vascular sonographer reviewing digital drawings on ultrasound templates. 
+
+          Analyze the drawing annotations, markings, and measurements made on this ${templateName} template.
+          
+          Focus on:
+          - Vessel anatomy and patency indicated by drawings
+          - Flow patterns shown by arrows or directional markings
+          - Measurements and annotations made by the sonographer
+          - Areas of interest highlighted or circled
+          - Compression test results if indicated
+          - Any abnormal findings marked or noted
+          
+          Generate professional medical findings and impression based on what is actually drawn.
+          
+          Return JSON format: { "findings": "detailed technical findings", "impression": "clinical summary and recommendations" }
+          
+          Make findings specific to what you can see drawn, not generic template text.`
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Analyze this ${templateName} drawing for ${studyType}. Describe what the sonographer has marked, measured, or highlighted:`
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${base64Image}`
+              }
+            }
+          ]
+        }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1500
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    
+    return {
+      findings: result.findings || "Digital drawing analysis could not be completed. Manual review recommended.",
+      impression: result.impression || "Drawing requires physician interpretation. Clinical correlation recommended."
+    };
+  } catch (error) {
+    console.error("Drawing analysis failed:", error);
+    throw new Error("Failed to analyze vascular drawing");
+  }
+}
+
 export async function generateReportFromWorksheet(
   base64Image: string, 
   extractedData: OCRResult,

@@ -16,7 +16,7 @@ import {
   insertClinicSchema,
   insertUserInvitationSchema
 } from "@shared/schema";
-import { extractPatientDataFromWorksheet, generateReportFromWorksheet } from "./services/openai";
+import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 
 // Configure multer for file uploads
@@ -1614,6 +1614,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.warn("Failed to fetch template name:", templateError);
         }
       }
+
+      // Analyze the drawing using AI if canvas data is available
+      let aiGeneratedFindings = '';
+      let aiGeneratedImpression = '';
+      
+      if (worksheet.drawingData) {
+        try {
+          console.log("Analyzing drawing with AI...");
+          const base64Image = worksheet.drawingData.replace(/^data:image\/[a-z]+;base64,/, '');
+          
+          const analysisResult = await analyzeVascularDrawing(base64Image, templateName, worksheet.studyType);
+          aiGeneratedFindings = analysisResult.findings;
+          aiGeneratedImpression = analysisResult.impression;
+          console.log("AI analysis completed successfully");
+        } catch (aiError) {
+          console.warn("AI analysis failed, using template content:", aiError);
+          // Fall back to template-based content if AI fails
+        }
+      }
       
       const draftReport = await storage.createDraftReport({
         digitalWorksheetId: worksheet.id,
@@ -1622,8 +1641,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         examDate: worksheet.examDate,
         studyType: worksheet.studyType || templateName.replace('Template', '').trim() || 'Vascular Study',
         indication: `${templateName} ultrasound examination requested. Patient presented for vascular assessment.`,
-        findings: `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`,
-        impression: `${templateName} study completed. Awaiting physician interpretation.\n\nRECOMMENDATIONS:\n- Physician review and interpretation required\n- Clinical correlation recommended\n- Follow-up as clinically indicated`,
+        findings: aiGeneratedFindings || `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`,
+        impression: aiGeneratedImpression || `${templateName} study completed. Awaiting physician interpretation.\n\nRECOMMENDATIONS:\n- Physician review and interpretation required\n- Clinical correlation recommended\n- Follow-up as clinically indicated`,
         sonographerId: worksheet.sonographerId,
       });
 
