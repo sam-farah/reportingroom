@@ -631,16 +631,6 @@ export default function ReportingRoom() {
                     <Edit3 className="w-4 h-4 mr-1" />
                     Edit
                   </Button>
-                  {report.isFinalized && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAmendReport(report)}
-                      className="text-orange-600 border-orange-200 hover:bg-orange-50"
-                    >
-                      Amend
-                    </Button>
-                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -678,6 +668,16 @@ export default function ReportingRoom() {
                         {finalizeReportMutation.isPending ? "Finalizing..." : "Finalize"}
                       </span>
                     </div>
+                  )}
+                  {report.isFinalized && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAmendReport(report)}
+                      className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                    >
+                      Amend
+                    </Button>
                   )}
                   <Button
                     variant="outline"
