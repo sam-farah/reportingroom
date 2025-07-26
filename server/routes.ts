@@ -1596,12 +1596,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Insufficient permissions" });
       }
 
+      // Parse and validate client data
+      const { email, role } = req.body;
+      
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ message: "Valid email is required" });
+      }
+      
+      if (!role || !['admin', 'sonographer'].includes(role)) {
+        return res.status(400).json({ message: "Valid role (admin or sonographer) is required" });
+      }
+      
       const invitationData = {
-        ...insertUserInvitationSchema.parse(req.body),
+        email,
+        role,
         clinicId: user.clinicId,
         invitedBy: user.id,
         token: generateInvitationToken(),
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        isActive: true,
       };
 
       const invitation = await storage.createUserInvitation(invitationData);
