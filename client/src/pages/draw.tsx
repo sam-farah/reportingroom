@@ -117,16 +117,29 @@ export default function Draw() {
 
   const createDraftReportMutation = useMutation({
     mutationFn: async () => {
-      // Save current canvas state before creating report
+      // Save current canvas state before creating report (simplified)
       if (canvasRef.current && currentWorksheet) {
-        const canvasData = canvasRef.current.toDataURL('image/jpeg', 0.8); // High quality for final save
-        await updateWorksheetMutation.mutateAsync({
-          drawingData: canvasData,
-          drawingHistory: JSON.stringify(drawingHistory.slice(-10)),
-        });
+        try {
+          const canvasData = canvasRef.current.toDataURL('image/jpeg', 0.8);
+          // Direct API call instead of using mutation to avoid hanging
+          await apiRequest(`/api/digital-worksheets/${currentWorksheet.id}`, "PUT", {
+            drawingData: canvasData,
+            drawingHistory: JSON.stringify(drawingHistory.slice(-5)),
+          });
+        } catch (saveError) {
+          console.warn("Failed to save canvas before creating draft:", saveError);
+          // Continue with draft creation even if save fails
+        }
       }
       
-      const response = await apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}/create-draft-report`, "POST", {});
+      // Create draft report with timeout
+      const response = await Promise.race([
+        apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}/create-draft-report`, "POST", {}),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000)
+        )
+      ]) as Response;
+      
       return await response.json();
     },
     onSuccess: () => {

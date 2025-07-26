@@ -1576,17 +1576,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/digital-worksheets/:id/create-draft-report", isAuthenticated, async (req: any, res) => {
     try {
+      console.log("Creating draft report for worksheet ID:", req.params.id);
       const { id } = req.params;
-      const worksheet = await storage.getDigitalWorksheet(parseInt(id));
+      const worksheetId = parseInt(id);
+      
+      if (isNaN(worksheetId)) {
+        return res.status(400).json({ message: "Invalid worksheet ID" });
+      }
+      
+      const worksheet = await storage.getDigitalWorksheet(worksheetId);
       
       if (!worksheet) {
+        console.error("Worksheet not found for ID:", worksheetId);
         return res.status(404).json({ message: "Worksheet not found" });
       }
 
-      // Get sonographer details for better report context
-      const sonographer = worksheet.sonographerId ? 
-        await storage.getSonographer(worksheet.sonographerId) : null;
+      console.log("Found worksheet:", worksheet.patientName, worksheet.studyType);
 
+      // Get sonographer details for better report context
+      let sonographer = null;
+      try {
+        sonographer = worksheet.sonographerId ? 
+          await storage.getSonographer(worksheet.sonographerId) : null;
+      } catch (sonographerError) {
+        console.warn("Failed to fetch sonographer details:", sonographerError);
+      }
+
+      console.log("Creating draft report with data...");
       const draftReport = await storage.createDraftReport({
         digitalWorksheetId: worksheet.id,
         patientName: worksheet.patientName,
@@ -1599,16 +1615,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sonographerId: worksheet.sonographerId,
       });
 
+      console.log("Draft report created successfully:", draftReport.id);
+
       // Mark worksheet as completed
-      await storage.updateDigitalWorksheet(parseInt(id), { 
-        isDraft: false,
-        completedAt: new Date(),
-      });
+      try {
+        await storage.updateDigitalWorksheet(worksheetId, { 
+          isDraft: false,
+          completedAt: new Date(),
+        });
+        console.log("Worksheet marked as completed");
+      } catch (updateError) {
+        console.warn("Failed to update worksheet completion status:", updateError);
+        // Don't fail the entire operation if this fails
+      }
 
       res.json(draftReport);
     } catch (error) {
       console.error("Error creating draft report:", error);
-      res.status(500).json({ message: "Failed to create draft report" });
+      console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
+      res.status(500).json({ message: "Failed to create draft report", error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
