@@ -527,8 +527,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get user's clinic information
       const user = await storage.getUser((req as any).user.claims.sub);
       let clinic = null;
+      let clinicLogoDataUrl = null;
       if (user?.clinicId) {
         clinic = await storage.getClinic(user.clinicId);
+        
+        // Load clinic logo if available
+        if (clinic?.logoUrl) {
+          try {
+            const fs = await import('fs');
+            const path = await import('path');
+            
+            const logoPath = path.join(process.cwd(), clinic.logoUrl.startsWith('/') ? clinic.logoUrl.slice(1) : clinic.logoUrl);
+            
+            if (fs.existsSync(logoPath)) {
+              const logoBuffer = fs.readFileSync(logoPath);
+              const logoExtension = path.extname(clinic.logoUrl).toLowerCase();
+              let mimeType = 'image/png';
+              
+              if (logoExtension === '.jpg' || logoExtension === '.jpeg') {
+                mimeType = 'image/jpeg';
+              } else if (logoExtension === '.gif') {
+                mimeType = 'image/gif';
+              } else if (logoExtension === '.svg') {
+                mimeType = 'image/svg+xml';
+              }
+              
+              clinicLogoDataUrl = `data:${mimeType};base64,${logoBuffer.toString('base64')}`;
+            }
+          } catch (error) {
+            console.error('Error loading clinic logo:', error);
+          }
+        }
       }
 
       // Get physician info if available
@@ -608,10 +637,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             color: #333;
         }
         .header { 
-            text-align: center; 
+            position: relative;
             margin-bottom: 30px; 
             border-bottom: 2px solid #0066cc;
             padding-bottom: 20px;
+            min-height: 80px;
+        }
+        .clinic-logo {
+            position: absolute;
+            top: 0;
+            left: 0;
+            max-width: 120px;
+            max-height: 80px;
+        }
+        .header-content {
+            text-align: center;
+            margin-left: 140px;
         }
         .clinic-name { 
             font-size: 24px; 
@@ -692,15 +733,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 </head>
 <body>
     <div class="header">
-        <div class="clinic-name">${clinic?.name || 'Medical Clinic'}</div>
-        <div class="report-title">Medical Examination Report</div>
-        ${clinic?.address ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">${clinic.address}</div>` : ''}
-        ${clinic?.phone || clinic?.fax || clinic?.email ? 
-          `<div style="font-size: 11px; color: #666; margin-top: 3px;">
-             ${clinic?.phone ? `Phone: ${clinic.phone}` : ''}${clinic?.phone && clinic?.fax ? ' | ' : ''}
-             ${clinic?.fax ? `Fax: ${clinic.fax}` : ''}${(clinic?.phone || clinic?.fax) && clinic?.email ? ' | ' : ''}
-             ${clinic?.email ? `Email: ${clinic.email}` : ''}
-           </div>` : ''}
+        ${clinicLogoDataUrl ? `<img src="${clinicLogoDataUrl}" alt="Clinic Logo" class="clinic-logo">` : ''}
+        <div class="header-content">
+            <div class="clinic-name">${clinic?.name || 'Medical Clinic'}</div>
+            <div class="report-title">Medical Examination Report</div>
+            ${clinic?.address ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">${clinic.address}</div>` : ''}
+            ${clinic?.phone || clinic?.fax || clinic?.email ? 
+              `<div style="font-size: 11px; color: #666; margin-top: 3px;">
+                 ${clinic?.phone ? `Phone: ${clinic.phone}` : ''}${clinic?.phone && clinic?.fax ? ' | ' : ''}
+                 ${clinic?.fax ? `Fax: ${clinic.fax}` : ''}${(clinic?.phone || clinic?.fax) && clinic?.email ? ' | ' : ''}
+                 ${clinic?.email ? `Email: ${clinic.email}` : ''}
+               </div>` : ''}
+        </div>
     </div>
 
     <div class="patient-info">
@@ -824,6 +868,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create DOCX document
       const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, WidthType, ImageRun } = await import('docx');
       
+      // Load clinic logo if available
+      let clinicLogoData = null;
+      if (clinic?.logoUrl) {
+        try {
+          const fs = await import('fs');
+          const path = await import('path');
+          
+          const logoPath = path.join(process.cwd(), clinic.logoUrl.startsWith('/') ? clinic.logoUrl.slice(1) : clinic.logoUrl);
+          
+          if (fs.existsSync(logoPath)) {
+            clinicLogoData = fs.readFileSync(logoPath);
+          }
+        } catch (error) {
+          console.error('Error loading clinic logo for DOCX:', error);
+        }
+      }
+      
       // Load signature image if available
       let signatureImageData = null;
       if (physician && physician.signatureUrl) {
@@ -855,10 +916,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             },
           },
           children: [
-            // Header section
+            // Header section with logo
             ...(template?.showHeader !== false ? [
+              // Logo and clinic name in same paragraph
               new Paragraph({
                 children: [
+                  ...(clinicLogoData ? [
+                    new ImageRun({
+                      data: clinicLogoData,
+                      transformation: {
+                        width: 100,
+                        height: 60,
+                      },
+                    }),
+                    new TextRun({ text: "  " }), // Space between logo and text
+                  ] : []),
                   new TextRun({ 
                     text: clinic?.name || "Medical Clinic",
                     bold: true,
@@ -866,7 +938,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     color: template?.primaryColor?.replace('#', '') || '0066cc',
                   }),
                 ],
-                alignment: AlignmentType.CENTER,
+                alignment: clinicLogoData ? AlignmentType.LEFT : AlignmentType.CENTER,
                 spacing: { after: 200 },
               }),
               new Paragraph({
