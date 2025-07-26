@@ -1624,10 +1624,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log("Analyzing drawing with AI...");
           const base64Image = worksheet.drawingData.replace(/^data:image\/[a-z]+;base64,/, '');
           
-          const analysisResult = await analyzeVascularDrawing(base64Image, templateName, worksheet.studyType);
+          // Get legend entries to help interpret the drawing
+          const legendEntries = await storage.getAllLegendEntries();
+          console.log("Retrieved legend entries for analysis:", legendEntries.length);
+          
+          const analysisResult = await analyzeVascularDrawing(base64Image, templateName, worksheet.studyType, legendEntries);
           aiGeneratedFindings = analysisResult.findings;
           aiGeneratedImpression = analysisResult.impression;
-          console.log("AI analysis completed successfully");
+          console.log("AI analysis completed successfully with legend context");
         } catch (aiError) {
           console.warn("AI analysis failed, using template content:", aiError);
           // Fall back to template-based content if AI fails

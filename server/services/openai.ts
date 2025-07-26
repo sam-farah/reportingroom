@@ -86,7 +86,8 @@ export async function extractPatientDataFromWorksheet(base64Image: string, isFro
 export async function analyzeVascularDrawing(
   base64Image: string,
   templateName: string = 'Custom',
-  studyType: string = 'Vascular Study'
+  studyType: string = 'Vascular Study',
+  legendEntries: any[] = []
 ): Promise<{ findings: string; impression: string }> {
   try {
     const response = await openai.chat.completions.create({
@@ -98,19 +99,25 @@ export async function analyzeVascularDrawing(
 
           Analyze the drawing annotations, markings, and measurements made on this ${templateName} template.
           
+          ${legendEntries.length > 0 ? `LEGEND REFERENCE for interpreting symbols:
+${legendEntries.map(entry => `- ${entry.category}: ${entry.description} (${entry.imageType === 'drawing' ? 'drawn pattern' : 'image reference'})`).join('\n')}
+
+Use this legend to interpret any symbols, patterns, or markings you see in the drawing.` : ''}
+          
           Focus on:
           - Vessel anatomy and patency indicated by drawings
-          - Flow patterns shown by arrows or directional markings
+          - Flow patterns shown by arrows or directional markings  
           - Measurements and annotations made by the sonographer
           - Areas of interest highlighted or circled
           - Compression test results if indicated
           - Any abnormal findings marked or noted
+          - Symbol interpretation using the provided legend reference
           
           Generate professional medical findings and impression based on what is actually drawn.
           
           Return JSON format: { "findings": "detailed technical findings", "impression": "clinical summary and recommendations" }
           
-          Make findings specific to what you can see drawn, not generic template text.`
+          Make findings specific to what you can see drawn, referencing legend symbols when applicable.`
         },
         {
           role: "user",
