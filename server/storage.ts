@@ -408,9 +408,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createDraftReport(reportData: any): Promise<Report> {
+    const reportToInsert = {
+      patientName: reportData.patientName,
+      patientDob: reportData.patientDob,
+      examDate: reportData.examDate,
+      studyType: reportData.studyType || 'Digital Drawing Study',
+      indication: reportData.indication || 'Digital drawing session completed',
+      findings: reportData.findings || 'Digital worksheet completed with drawings and annotations',
+      impression: reportData.impression || 'Study completed - awaiting physician review',
+      physicianId: 1, // Default to first physician
+      sonographerId: reportData.sonographerId ? parseInt(reportData.sonographerId) : null,
+      digitalWorksheetId: reportData.digitalWorksheetId,
+      isDraft: true,
+      generatedAt: new Date(),
+    };
+
     const [created] = await db
       .insert(reports)
-      .values({ ...reportData, isDraft: true })
+      .values(reportToInsert)
       .returning();
     return created;
   }

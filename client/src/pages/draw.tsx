@@ -104,6 +104,15 @@ export default function Draw() {
 
   const createDraftReportMutation = useMutation({
     mutationFn: async () => {
+      // Save current canvas state before creating report
+      if (canvasRef.current && currentWorksheet) {
+        const canvasData = canvasRef.current.toDataURL();
+        await updateWorksheetMutation.mutateAsync({
+          drawingData: canvasData,
+          drawingHistory: JSON.stringify(drawingHistory),
+        });
+      }
+      
       const response = await apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}/create-draft-report`, "POST", {});
       return await response.json();
     },

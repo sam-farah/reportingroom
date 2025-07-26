@@ -1349,17 +1349,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Worksheet not found" });
       }
 
+      // Get sonographer details for better report context
+      const sonographer = worksheet.sonographerId ? 
+        await storage.getSonographer(worksheet.sonographerId) : null;
+
       const draftReport = await storage.createDraftReport({
         digitalWorksheetId: worksheet.id,
         patientName: worksheet.patientName,
         patientDob: worksheet.patientDob,
         examDate: worksheet.examDate,
-        studyType: worksheet.studyType || '',
-        indication: '',
-        findings: '',
-        impression: '',
+        studyType: worksheet.studyType || 'Digital Drawing Study',
+        indication: `Digital drawing session completed by ${sonographer?.name || 'sonographer'} on ${new Date(worksheet.examDate).toLocaleDateString()}`,
+        findings: `Digital worksheet completed with drawings and annotations. Template: ${worksheet.templateId ? 'Template #' + worksheet.templateId : 'Custom'}. Study contains graphical annotations and measurements created using digital drawing interface. Canvas data available for review.`,
+        impression: `Digital drawing study completed. Awaiting physician interpretation and final report. Study type: ${worksheet.studyType || 'General study'}. Patient: ${worksheet.patientName}.`,
         sonographerId: worksheet.sonographerId,
-        isDraft: true,
       });
 
       // Mark worksheet as completed
