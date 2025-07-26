@@ -1574,6 +1574,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Digital worksheet image endpoint
+  app.get("/api/digital-worksheets/:id/image", isAuthenticated, async (req, res) => {
+    try {
+      const worksheetId = parseInt(req.params.id);
+      
+      if (isNaN(worksheetId)) {
+        return res.status(400).json({ error: "Invalid worksheet ID" });
+      }
+      
+      const worksheet = await storage.getDigitalWorksheet(worksheetId);
+      
+      if (!worksheet) {
+        return res.status(404).json({ error: "Digital worksheet not found" });
+      }
+      
+      if (!worksheet.drawingData) {
+        return res.status(404).json({ error: "No drawing data available" });
+      }
+      
+      // Extract base64 image data and convert to buffer
+      const base64Data = worksheet.drawingData.replace(/^data:image\/[a-z]+;base64,/, '');
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      
+      // Determine content type from the original data URL
+      const contentType = worksheet.drawingData.match(/^data:image\/([a-z]+);base64,/)?.[1];
+      const mimeType = contentType ? `image/${contentType}` : 'image/png';
+      
+      // Set appropriate headers
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Length', imageBuffer.length);
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      
+      res.send(imageBuffer);
+    } catch (error) {
+      console.error("Error serving digital worksheet image:", error);
+      res.status(500).json({ error: "Failed to serve image" });
+    }
+  });
+
   app.post("/api/digital-worksheets/:id/create-draft-report", isAuthenticated, async (req: any, res) => {
     try {
       console.log("Creating draft report for worksheet ID:", req.params.id);
