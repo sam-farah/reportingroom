@@ -192,6 +192,22 @@ export default function Draw() {
     },
   });
 
+  // Auto-enter fullscreen when template is selected
+  useEffect(() => {
+    if (selectedTemplate && currentWorksheet && !isFullscreen) {
+      const enterFullscreen = async () => {
+        try {
+          await document.documentElement.requestFullscreen();
+          setIsFullscreen(true);
+        } catch (error) {
+          console.warn("Could not enter fullscreen:", error);
+          // Continue without fullscreen if it fails
+        }
+      };
+      enterFullscreen();
+    }
+  }, [selectedTemplate, currentWorksheet]);
+
   // Initialize canvas when template is selected and worksheet is created
   useEffect(() => {
     if (selectedTemplate && currentWorksheet && canvasRef.current) {
