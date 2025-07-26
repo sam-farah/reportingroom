@@ -1069,13 +1069,13 @@ export default function Clinic() {
           </TabsContent>
         </Tabs>
 
-        {/* Add Physician Dialog */}
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        {/* Edit Physician Dialog */}
+        <Dialog open={!!editingPhysician} onOpenChange={(open) => !open && setEditingPhysician(null)}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Add New Physician</DialogTitle>
+              <DialogTitle>Edit Physician</DialogTitle>
               <DialogDescription>
-                Enter the physician's information below.
+                Update the physician's information below.
               </DialogDescription>
             </DialogHeader>
             {editingPhysician && (
