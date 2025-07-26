@@ -28,6 +28,7 @@ export default function Draw() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [showPatientDialog, setShowPatientDialog] = useState(false);
   const [showCreateDraftDialog, setShowCreateDraftDialog] = useState(false);
+  const [templateImage, setTemplateImage] = useState<HTMLImageElement | null>(null);
   const [currentTool, setCurrentTool] = useState<DrawingTool>({
     type: 'pen',
     color: '#000000',
@@ -180,6 +181,9 @@ export default function Draw() {
         
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
+        // Store template image for eraser functionality
+        setTemplateImage(img);
+        
         // Save initial state to history
         const initialState = canvas.toDataURL();
         setDrawingHistory([initialState]);
@@ -258,6 +262,28 @@ export default function Draw() {
     setIsDrawing(false);
     setLastPointer(null);
     
+    // If eraser was used, we need to rebuild the canvas with template + remaining content
+    if (currentTool.type === 'eraser' && canvasRef.current && templateImage) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Get current canvas content
+        const currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Clear and redraw template
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(templateImage, 0, 0, canvas.width, canvas.height);
+        
+        // Apply the drawn content back on top, respecting transparency
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.putImageData(currentImageData, 0, 0);
+        
+        // Then draw template again where there are transparent areas
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.drawImage(templateImage, 0, 0, canvas.width, canvas.height);
+      }
+    }
+    
     // Reset canvas context to avoid tool interference  
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
@@ -289,7 +315,7 @@ export default function Draw() {
   };
 
   const undoLastAction = () => {
-    if (drawingHistory.length <= 1 || !canvasRef.current) return;
+    if (drawingHistory.length <= 1 || !canvasRef.current || !templateImage) return;
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -299,32 +325,34 @@ export default function Draw() {
     const newHistory = drawingHistory.slice(0, -1);
     setDrawingHistory(newHistory);
     
-    const img = new Image();
-    img.onload = () => {
+    // If we're undoing to the first state (template only), redraw template
+    if (newHistory.length === 1) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-    };
-    img.src = newHistory[newHistory.length - 1];
+      ctx.drawImage(templateImage, 0, 0, canvas.width, canvas.height);
+    } else {
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+      };
+      img.src = newHistory[newHistory.length - 1];
+    }
   };
 
   const clearCanvas = () => {
-    if (!canvasRef.current || !selectedTemplate) return;
+    if (!canvasRef.current || !selectedTemplate || !templateImage) return;
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Reload the original template
-    const img = new Image();
-    img.onload = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Reset history to just the original template
-      const resetState = canvas.toDataURL();
-      setDrawingHistory([resetState]);
-    };
-    img.src = selectedTemplate.imageUrl;
+    // Clear everything and redraw the template
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(templateImage, 0, 0, canvas.width, canvas.height);
+    
+    // Reset history to just the original template
+    const resetState = canvas.toDataURL();
+    setDrawingHistory([resetState]);
   };
 
   const createPatientWorksheet = () => {
