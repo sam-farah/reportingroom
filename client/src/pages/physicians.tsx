@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest } from "@/lib/queryClient";
-import type { Physician, InsertPhysician, Sonographer, InsertSonographerData, Clinic } from "@shared/schema";
+import type { Physician, InsertPhysician, Sonographer, InsertSonographerData, Clinic, User, UserInvitation } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle } from "lucide-react";
+import { format } from "date-fns";
 
 export default function Clinic() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -22,6 +23,18 @@ export default function Clinic() {
   // Fetch clinic data
   const { data: clinic } = useQuery<Clinic>({
     queryKey: ["/api/clinic"],
+    enabled: isAuthenticated,
+  });
+
+  // Fetch staff members
+  const { data: staffMembers = [], isLoading: staffLoading } = useQuery<User[]>({
+    queryKey: ["/api/staff"],
+    enabled: isAuthenticated,
+  });
+
+  // Fetch pending invitations  
+  const { data: pendingInvitations = [], isLoading: invitationsLoading } = useQuery<UserInvitation[]>({
+    queryKey: ["/api/invitations"],
     enabled: isAuthenticated,
   });
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -54,6 +67,111 @@ export default function Clinic() {
     initials: "",
     title: "",
     department: "",
+  });
+
+  // Staff management state
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "sonographer">("sonographer");
+
+  // Staff management mutations
+  const inviteStaffMutation = useMutation({
+    mutationFn: async ({ email, role }: { email: string; role: string }) => {
+      const response = await apiRequest("/api/invitations", "POST", { email, role });
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Invitation Sent",
+        description: "Staff invitation has been sent successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
+      setIsInviteDialogOpen(false);
+      setInviteEmail("");
+      setInviteRole("sonographer");
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Invitation Failed",
+        description: "Failed to send staff invitation",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelInvitationMutation = useMutation({
+    mutationFn: async (invitationId: number) => {
+      const response = await apiRequest(`/api/invitations/${invitationId}`, "DELETE");
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Invitation Cancelled",
+        description: "Staff invitation has been cancelled",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to cancel invitation",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deactivateStaffMutation = useMutation({
+    mutationFn: async (staffId: string) => {
+      const response = await apiRequest(`/api/staff/${staffId}/deactivate`, "PATCH");
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Staff Deactivated",
+        description: "Staff member has been deactivated",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to deactivate staff member",
+        variant: "destructive",
+      });
+    },
   });
 
   // Redirect to home if not authenticated
@@ -1021,7 +1139,7 @@ export default function Clinic() {
                 </p>
               </div>
               
-              <Dialog>
+              <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
                 <DialogTrigger asChild>
                   <Button className="bg-blue-600 hover:bg-blue-700">
                     <Plus className="w-4 h-4 mr-2" />
@@ -1042,6 +1160,8 @@ export default function Clinic() {
                         id="staff-email"
                         placeholder="staff@example.com"
                         type="email"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
                       />
                     </div>
                     <div>
@@ -1049,15 +1169,23 @@ export default function Clinic() {
                       <select 
                         id="staff-role"
                         className="w-full p-2 border border-gray-300 rounded-md"
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value as "admin" | "sonographer")}
                       >
                         <option value="sonographer">Sonographer</option>
                         <option value="admin">Admin</option>
                       </select>
                     </div>
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline">Cancel</Button>
-                      <Button className="bg-blue-600 hover:bg-blue-700">
-                        Send Invitation
+                      <Button variant="outline" onClick={() => setIsInviteDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button 
+                        className="bg-blue-600 hover:bg-blue-700"
+                        onClick={() => inviteStaffMutation.mutate({ email: inviteEmail, role: inviteRole })}
+                        disabled={inviteStaffMutation.isPending || !inviteEmail}
+                      >
+                        {inviteStaffMutation.isPending ? "Sending..." : "Send Invitation"}
                       </Button>
                     </div>
                   </div>
@@ -1077,23 +1205,41 @@ export default function Clinic() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                    <div className="flex items-center gap-3">
-                      <Clock className="w-4 h-4 text-yellow-600" />
-                      <div>
-                        <p className="font-medium">staff@example.com</p>
-                        <p className="text-sm text-gray-600">Role: Sonographer • Sent 2 days ago</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      <XCircle className="w-4 h-4" />
-                    </Button>
+                {invitationsLoading ? (
+                  <div className="space-y-3">
+                    <div className="animate-pulse bg-gray-200 h-16 rounded-lg"></div>
+                    <div className="animate-pulse bg-gray-200 h-16 rounded-lg"></div>
                   </div>
+                ) : pendingInvitations.length > 0 ? (
+                  <div className="space-y-3">
+                    {pendingInvitations.map((invitation) => (
+                      <div key={invitation.id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <div className="flex items-center gap-3">
+                          <Clock className="w-4 h-4 text-yellow-600" />
+                          <div>
+                            <p className="font-medium">{invitation.email}</p>
+                            <p className="text-sm text-gray-600">
+                              Role: {invitation.role.charAt(0).toUpperCase() + invitation.role.slice(1)} • 
+                              Sent {format(new Date(invitation.createdAt), 'MMM d, yyyy')}
+                            </p>
+                          </div>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => cancelInvitationMutation.mutate(invitation.id)}
+                          disabled={cancelInvitationMutation.isPending}
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                   <p className="text-sm text-gray-500 text-center py-4">
                     No pending invitations
                   </p>
-                </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1109,32 +1255,45 @@ export default function Clinic() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                      <div>
-                        <p className="font-medium">Dr. John Smith</p>
-                        <p className="text-sm text-gray-600">john@clinic.com • Admin • Joined 30 days ago</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                {staffLoading ? (
+                  <div className="space-y-3">
+                    <div className="animate-pulse bg-gray-200 h-16 rounded-lg"></div>
+                    <div className="animate-pulse bg-gray-200 h-16 rounded-lg"></div>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                      <div>
-                        <p className="font-medium">Sarah Johnson</p>
-                        <p className="text-sm text-gray-600">sarah@clinic.com • Sonographer • Joined 15 days ago</p>
+                ) : staffMembers.length > 0 ? (
+                  <div className="space-y-3">
+                    {staffMembers.map((staff) => (
+                      <div key={staff.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-3">
+                          <CheckCircle className="w-4 h-4 text-green-600" />
+                          <div>
+                            <p className="font-medium">
+                              {staff.firstName && staff.lastName 
+                                ? `${staff.firstName} ${staff.lastName}` 
+                                : staff.email}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {staff.email} • {staff.role.charAt(0).toUpperCase() + staff.role.slice(1)} • 
+                              {staff.joinedAt ? `Joined ${format(new Date(staff.joinedAt), 'MMM d, yyyy')}` : 'Recently joined'}
+                            </p>
+                          </div>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => deactivateStaffMutation.mutate(staff.id)}
+                          disabled={deactivateStaffMutation.isPending}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    ))}
                   </div>
-                </div>
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    No active staff members
+                  </p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
