@@ -37,6 +37,18 @@ export default function Draw() {
     opacity: 1.0
   });
   
+  // Pen colors
+  const penColors = [
+    '#000000', // Black
+    '#dc2626', // Red
+    '#2563eb', // Blue
+    '#16a34a', // Green
+    '#ca8a04', // Yellow/Gold
+    '#9333ea', // Purple
+    '#ea580c', // Orange
+    '#be123c', // Dark Red
+  ];
+
   // Highlighter colors
   const highlighterColors = [
     '#ffeb3b', // Yellow
@@ -686,16 +698,43 @@ export default function Draw() {
                 </div>
               )}
 
-              {/* Color Selection for Pen and Text */}
-              {(currentTool.type === 'pen' || currentTool.type === 'text') && (
+              {/* Pen Colors */}
+              {currentTool.type === 'pen' && (
                 <div className="space-y-2">
-                  <Label>Color</Label>
-                  <input
-                    type="color"
-                    value={currentTool.color}
-                    onChange={(e) => setCurrentTool(prev => ({ ...prev, color: e.target.value }))}
-                    className="w-full h-10 rounded border"
-                  />
+                  <Label>Pen Colors</Label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {penColors.map((color, index) => (
+                      <button
+                        key={index}
+                        className={`w-8 h-8 rounded border-2 transition-all ${
+                          currentTool.color === color ? 'border-gray-900 scale-110' : 'border-gray-300'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        onClick={() => setCurrentTool(prev => ({ ...prev, color }))}
+                        title={`Pen color ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Color Selection for Text */}
+              {currentTool.type === 'text' && (
+                <div className="space-y-2">
+                  <Label>Text Color</Label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {penColors.map((color, index) => (
+                      <button
+                        key={index}
+                        className={`w-8 h-8 rounded border-2 transition-all ${
+                          currentTool.color === color ? 'border-gray-900 scale-110' : 'border-gray-300'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        onClick={() => setCurrentTool(prev => ({ ...prev, color }))}
+                        title={`Text color ${index + 1}`}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
 
