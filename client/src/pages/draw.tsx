@@ -258,6 +258,15 @@ export default function Draw() {
     setIsDrawing(false);
     setLastPointer(null);
     
+    // Reset canvas context to avoid tool interference  
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1.0;
+      }
+    }
+    
     // Auto-save after drawing
     if (currentWorksheet && canvasRef.current) {
       const canvas = canvasRef.current;
@@ -588,7 +597,12 @@ export default function Draw() {
                   <Button
                     size="sm"
                     variant={currentTool.type === 'eraser' ? 'default' : 'outline'}
-                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'eraser', opacity: 1.0 }))}
+                    onClick={() => setCurrentTool(prev => ({ 
+                      ...prev, 
+                      type: 'eraser', 
+                      opacity: 1.0,
+                      size: 10
+                    }))}
                   >
                     <Eraser className="w-4 h-4" />
                   </Button>
@@ -653,23 +667,33 @@ export default function Draw() {
               {/* Size Selection */}
               {currentTool.type !== 'whiteout' && (
                 <div className="space-y-2">
-                  <Label>Size: {currentTool.size}px</Label>
+                  <Label>
+                    Size: {currentTool.size}px
+                    {currentTool.type === 'eraser' && ' (removes drawn content)'}
+                  </Label>
                   <Slider
                     value={[currentTool.size]}
                     onValueChange={(value) => setCurrentTool(prev => ({ ...prev, size: value[0] }))}
-                    max={currentTool.type === 'highlighter' ? 15 : 20}
-                    min={currentTool.type === 'highlighter' ? 5 : 1}
+                    max={currentTool.type === 'highlighter' ? 15 : currentTool.type === 'eraser' ? 25 : 20}
+                    min={currentTool.type === 'highlighter' ? 5 : currentTool.type === 'eraser' ? 5 : 1}
                     step={1}
                     className="w-full"
                   />
                 </div>
               )}
               
-              {/* White-out Tool Info */}
+              {/* Tool Information */}
               {currentTool.type === 'whiteout' && (
                 <div className="space-y-2">
                   <Label>White-out Tool</Label>
-                  <p className="text-sm text-gray-500">Thick white pen for corrections (8px)</p>
+                  <p className="text-sm text-gray-500">Covers content with white paint (8px)</p>
+                </div>
+              )}
+              
+              {currentTool.type === 'eraser' && (
+                <div className="space-y-2">
+                  <Label>Eraser Tool</Label>
+                  <p className="text-sm text-gray-500">Completely removes drawn content (transparent)</p>
                 </div>
               )}
 
@@ -689,7 +713,7 @@ export default function Draw() {
               <div className={`border rounded-lg ${isFullscreen ? 'w-full h-full flex items-center justify-center' : 'max-h-[600px] overflow-auto'}`}>
                 <canvas
                   ref={canvasRef}
-                  className="cursor-crosshair"
+                  className={currentTool.type === 'eraser' ? 'cursor-pointer' : 'cursor-crosshair'}
                   style={{ 
                     maxWidth: isFullscreen ? 'calc(100vw - 320px)' : '100%',
                     maxHeight: isFullscreen ? 'calc(100vh - 140px)' : '600px',
