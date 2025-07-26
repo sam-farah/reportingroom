@@ -76,16 +76,9 @@ export default function Dashboard() {
                   onClick={() => setActivePanel("physicians")}
                 >
                   <Users className="w-4 h-4 mr-2" />
-                  Physicians
+                  Clinic
                 </Button>
-                <Button
-                  variant={activePanel === "staff" ? "default" : "ghost"}
-                  className={activePanel === "staff" ? "medical-btn-secondary" : ""}
-                  onClick={() => setActivePanel("staff")}
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  Staff
-                </Button>
+
                 <Button
                   variant={activePanel === "admin" ? "default" : "ghost"}
                   className={activePanel === "admin" ? "medical-btn-secondary" : ""}
@@ -128,8 +121,6 @@ export default function Dashboard() {
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
         <Physicians />
-      ) : activePanel === "staff" ? (
-        <StaffManagement />
       ) : (
         <AdminPanel />
       )}

@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope } from "lucide-react";
+import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle } from "lucide-react";
 
 export default function Clinic() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -576,7 +576,7 @@ export default function Clinic() {
 
         {/* Tabs */}
         <Tabs defaultValue="physicians" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 max-w-lg">
+          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
             <TabsTrigger value="physicians" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               Physicians
@@ -584,6 +584,10 @@ export default function Clinic() {
             <TabsTrigger value="sonographers" className="flex items-center gap-2">
               <Stethoscope className="w-4 h-4" />
               Sonographers
+            </TabsTrigger>
+            <TabsTrigger value="staff" className="flex items-center gap-2">
+              <UserPlus className="w-4 h-4" />
+              Staff
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <Building2 className="w-4 h-4" />
@@ -1003,6 +1007,136 @@ export default function Clinic() {
                 )}
               </DialogContent>
             </Dialog>
+          </TabsContent>
+
+          {/* Staff Management Tab */}
+          <TabsContent value="staff" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Staff Management
+                </h2>
+                <p className="text-gray-600 dark:text-gray-300">
+                  Invite and manage clinic staff members
+                </p>
+              </div>
+              
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Invite Staff
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Invite New Staff Member</DialogTitle>
+                    <DialogDescription>
+                      Send an invitation to join your clinic
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="staff-email">Email Address</Label>
+                      <Input
+                        id="staff-email"
+                        placeholder="staff@example.com"
+                        type="email"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="staff-role">Role</Label>
+                      <select 
+                        id="staff-role"
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="sonographer">Sonographer</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline">Cancel</Button>
+                      <Button className="bg-blue-600 hover:bg-blue-700">
+                        Send Invitation
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {/* Pending Invitations */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="w-5 h-5" />
+                  Pending Invitations
+                </CardTitle>
+                <CardDescription>
+                  Staff invitations waiting for acceptance
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-4 h-4 text-yellow-600" />
+                      <div>
+                        <p className="font-medium">staff@example.com</p>
+                        <p className="text-sm text-gray-600">Role: Sonographer • Sent 2 days ago</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm">
+                      <XCircle className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    No pending invitations
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Current Staff */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Current Staff Members
+                </CardTitle>
+                <CardDescription>
+                  Active clinic staff and their roles
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <div>
+                        <p className="font-medium">Dr. John Smith</p>
+                        <p className="text-sm text-gray-600">john@clinic.com • Admin • Joined 30 days ago</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <div>
+                        <p className="font-medium">Sarah Johnson</p>
+                        <p className="text-sm text-gray-600">sarah@clinic.com • Sonographer • Joined 15 days ago</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Clinic Settings Tab */}
