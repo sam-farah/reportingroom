@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -116,12 +116,17 @@ export default function ReportingRoom() {
       const response = await apiRequest(`/api/reports/${reportId}/finalize`, "POST");
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (finalizedReport: Report) => {
       toast({
         title: "Report Finalized",
         description: "Report has been electronically signed and finalized",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      
+      // Update the editing report if it's the one that was finalized
+      if (editingReport && editingReport.id === finalizedReport.id) {
+        setEditingReport(finalizedReport);
+      }
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -146,6 +151,34 @@ export default function ReportingRoom() {
   const handleEditReport = (report: Report) => {
     setEditingReport({ ...report });
     setIsEditDialogOpen(true);
+  };
+
+  // Navigation between reports in edit dialog
+  const getCurrentReportIndex = () => {
+    if (!editingReport) return -1;
+    return filteredReports.findIndex(r => r.id === editingReport.id);
+  };
+
+  const navigateToPreviousReport = () => {
+    const currentIndex = getCurrentReportIndex();
+    if (currentIndex > 0) {
+      const previousReport = filteredReports[currentIndex - 1];
+      setEditingReport({ ...previousReport });
+    }
+  };
+
+  const navigateToNextReport = () => {
+    const currentIndex = getCurrentReportIndex();
+    if (currentIndex < filteredReports.length - 1) {
+      const nextReport = filteredReports[currentIndex + 1];
+      setEditingReport({ ...nextReport });
+    }
+  };
+
+  const handleFinalizeInDialog = () => {
+    if (editingReport) {
+      finalizeReportMutation.mutate(editingReport.id);
+    }
   };
 
   const handleSaveReport = () => {
@@ -621,7 +654,37 @@ export default function ReportingRoom() {
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Report - {editingReport?.patientName}</DialogTitle>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>Edit Report - {editingReport?.patientName}</DialogTitle>
+                <DialogDescription>
+                  Review and modify report details, then save your changes.
+                </DialogDescription>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={navigateToPreviousReport}
+                  disabled={getCurrentReportIndex() <= 0}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-500">
+                  {getCurrentReportIndex() + 1} of {filteredReports.length}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={navigateToNextReport}
+                  disabled={getCurrentReportIndex() >= filteredReports.length - 1}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
           </DialogHeader>
 
           {editingReport && (
@@ -717,37 +780,69 @@ export default function ReportingRoom() {
                 />
               </div>
 
+              {/* Finalization Status */}
+              {editingReport.isFinalized && editingReport.finalizedAt && (
+                <div className="flex items-center space-x-2 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  <span className="text-sm font-medium text-green-700">
+                    Report electronically signed on {new Date(editingReport.finalizedAt).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
+
               {/* Action Buttons */}
-              <div className="flex justify-end space-x-2 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsEditDialogOpen(false)}
-                >
-                  <X className="w-4 h-4 mr-2" />
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => handleExportPDF(editingReport)}
-                  variant="outline"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export PDF
-                </Button>
-                <Button
-                  onClick={() => handleExportDOCX(editingReport)}
-                  variant="outline"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export DOCX
-                </Button>
-                <Button
-                  onClick={handleSaveReport}
-                  disabled={updateReportMutation.isPending}
-                  className="medical-btn-primary"
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
-                </Button>
+              <div className="flex justify-between items-center pt-4 border-t">
+                <div className="flex items-center space-x-2">
+                  {!editingReport.isFinalized && (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="finalize-dialog"
+                        checked={false}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            handleFinalizeInDialog();
+                          }
+                        }}
+                        disabled={finalizeReportMutation.isPending}
+                      />
+                      <label htmlFor="finalize-dialog" className="text-sm font-medium cursor-pointer">
+                        {finalizeReportMutation.isPending ? "Finalizing..." : "Finalize Report"}
+                      </label>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsEditDialogOpen(false)}
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => handleExportPDF(editingReport)}
+                    variant="outline"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export PDF
+                  </Button>
+                  <Button
+                    onClick={() => handleExportDOCX(editingReport)}
+                    variant="outline"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export DOCX
+                  </Button>
+                  <Button
+                    onClick={handleSaveReport}
+                    disabled={updateReportMutation.isPending}
+                    className="medical-btn-primary"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
