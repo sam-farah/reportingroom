@@ -756,9 +756,10 @@ export default function ReportingRoom() {
       }}>
         <DialogContent 
           className={isFullscreenMode ? 
-            "fixed inset-0 z-50 bg-white m-0 p-0 max-w-none max-h-none w-screen h-screen border-0" : 
+            "fixed inset-0 z-50 bg-white m-0 p-0 max-w-none max-h-none w-screen h-screen border-0 overflow-hidden" : 
             "max-w-4xl max-h-[90vh] overflow-y-auto"}
-          aria-describedby="dialog-description">
+          aria-describedby="dialog-description"
+          style={isFullscreenMode ? { width: '100vw', height: '100vh', maxWidth: 'none', maxHeight: 'none' } : {}}>
           
           {/* Fullscreen Split View */}
           {isFullscreenMode && editingReport ? (
