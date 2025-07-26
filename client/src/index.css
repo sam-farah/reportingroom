@@ -24,15 +24,16 @@
   --ring: hsl(20, 14.3%, 4.1%);
   --radius: 0.5rem;
   
-  /* Medical theme colors */
-  --medical-primary: hsl(207, 90%, 54%);
-  --medical-primary-dark: hsl(207, 90%, 40%);
+  /* Medical theme colors - Updated to match Reporting Room logo */
+  --medical-primary: hsl(219, 95%, 38%);
+  --medical-primary-dark: hsl(219, 95%, 28%);
   --medical-secondary: hsl(210, 40%, 98%);
   --medical-secondary-dark: hsl(210, 17%, 91%);
+  --medical-accent: hsl(172, 76%, 41%);
   --medical-success: hsl(142, 71%, 45%);
   --medical-error: hsl(0, 84%, 60%);
   --medical-warning: hsl(45, 100%, 51%);
-  --medical-info: hsl(188, 78%, 41%);
+  --medical-info: hsl(172, 76%, 41%);
 }
 
 .dark {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool } from "lucide-react";
+import logoPath from "@assets/reporting_room_logo_primary_1753496909201.png";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import UserPanel from "@/components/user-panel";
@@ -25,8 +26,11 @@ export default function Dashboard() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center">
-                <HeartPulse className="text-[var(--medical-primary)] text-2xl mr-3" />
-                <span className="text-xl font-semibold text-gray-900">Reporting Room</span>
+                <img 
+                  src={logoPath} 
+                  alt="Reporting Room" 
+                  className="h-8 w-auto mr-3"
+                />
               </div>
             </div>
             

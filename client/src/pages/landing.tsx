@@ -1,4 +1,5 @@
 import { HeartPulse, FileText, Brain, Shield, ChevronRight } from "lucide-react";
+import logoPath from "@assets/reporting_room_logo_primary_1753496909201.png";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -14,8 +15,11 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <HeartPulse className="text-[var(--medical-primary)] text-2xl mr-3" />
-              <span className="text-xl font-semibold text-gray-900">Reporting Room</span>
+              <img 
+                src={logoPath} 
+                alt="Reporting Room" 
+                className="h-8 w-auto mr-3"
+              />
             </div>
             <Button onClick={handleLogin} className="medical-btn-primary">
               Sign In
