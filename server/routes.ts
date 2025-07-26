@@ -1585,6 +1585,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Staff and invitation management routes
+  app.get('/api/staff', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser?.clinicId) {
+        return res.status(400).json({ message: "User not associated with a clinic" });
+      }
+
+      const staff = await storage.getClinicStaff(currentUser.clinicId);
+      res.json(staff);
+    } catch (error) {
+      console.error("Error fetching staff:", error);
+      res.status(500).json({ message: "Failed to fetch staff" });
+    }
+  });
+
+  app.get('/api/invitations', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser?.clinicId) {
+        return res.status(400).json({ message: "User not associated with a clinic" });
+      }
+
+      const invitations = await storage.getPendingInvitations(currentUser.clinicId);
+      res.json(invitations);
+    } catch (error) {
+      console.error("Error fetching invitations:", error);
+      res.status(500).json({ message: "Failed to fetch invitations" });
+    }
+  });
+
+  app.post('/api/invitations', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser?.clinicId) {
+        return res.status(400).json({ message: "User not associated with a clinic" });
+      }
+
+      const { email, role } = req.body;
+
+      if (!email || !role) {
+        return res.status(400).json({ message: "Email and role are required" });
+      }
+
+      const invitation = await storage.createInvitation({
+        email,
+        clinicId: currentUser.clinicId,
+        role,
+        invitedBy: userId,
+        token: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      });
+
+      res.json(invitation);
+    } catch (error) {
+      console.error("Error creating invitation:", error);
+      res.status(500).json({ message: "Failed to create invitation" });
+    }
+  });
+
+  app.delete('/api/invitations/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      const invitationId = parseInt(req.params.id);
+      
+      if (!currentUser?.clinicId) {
+        return res.status(400).json({ message: "User not associated with a clinic" });
+      }
+
+      await storage.cancelInvitation(invitationId, currentUser.clinicId);
+      res.json({ message: "Invitation cancelled successfully" });
+    } catch (error) {
+      console.error("Error cancelling invitation:", error);
+      res.status(500).json({ message: "Failed to cancel invitation" });
+    }
+  });
+
+  app.patch('/api/staff/:id/deactivate', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const currentUser = await storage.getUser(userId);
+      const staffId = req.params.id;
+      
+      if (!currentUser?.clinicId) {
+        return res.status(400).json({ message: "User not associated with a clinic" });
+      }
+
+      await storage.deactivateStaffMember(staffId, currentUser.clinicId);
+      res.json({ message: "Staff member deactivated successfully" });
+    } catch (error) {
+      console.error("Error deactivating staff:", error);
+      res.status(500).json({ message: "Failed to deactivate staff member" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

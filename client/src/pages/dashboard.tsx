@@ -8,11 +8,12 @@ import AdminPanel from "@/components/admin-panel";
 import Templates from "./templates";
 import ReportingRoom from "./reporting-room";
 import Physicians from "./physicians";
+import StaffManagement from "./staff-management";
 import Draw from "./draw";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates" | "reporting-room" | "physicians" | "draw">("user");
+  const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates" | "reporting-room" | "physicians" | "staff" | "draw">("user");
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -74,7 +75,15 @@ export default function Dashboard() {
                   onClick={() => setActivePanel("physicians")}
                 >
                   <Users className="w-4 h-4 mr-2" />
-                  Clinic
+                  Physicians
+                </Button>
+                <Button
+                  variant={activePanel === "staff" ? "default" : "ghost"}
+                  className={activePanel === "staff" ? "medical-btn-secondary" : ""}
+                  onClick={() => setActivePanel("staff")}
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  Staff
                 </Button>
                 <Button
                   variant={activePanel === "admin" ? "default" : "ghost"}
@@ -118,6 +127,8 @@ export default function Dashboard() {
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
         <Physicians />
+      ) : activePanel === "staff" ? (
+        <StaffManagement />
       ) : (
         <AdminPanel />
       )}

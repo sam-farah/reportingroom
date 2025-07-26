@@ -60,6 +60,13 @@ export interface IStorage {
   acceptInvitation(token: string, userId: string): Promise<void>;
   getUsersByClinic(clinicId: number): Promise<User[]>;
   
+  // Staff management operations
+  getClinicStaff(clinicId: number): Promise<User[]>;
+  getPendingInvitations(clinicId: number): Promise<UserInvitation[]>;
+  createInvitation(invitation: InsertUserInvitation): Promise<UserInvitation>;
+  cancelInvitation(invitationId: number, clinicId: number): Promise<void>;
+  deactivateStaffMember(staffId: string, clinicId: number): Promise<void>;
+  
   getAllPhysicians(): Promise<Physician[]>;
   getPhysician(id: number): Promise<Physician | undefined>;
   createPhysician(physician: InsertPhysician): Promise<Physician>;
@@ -230,6 +237,45 @@ export class DatabaseStorage implements IStorage {
       .from(users)
       .where(eq(users.clinicId, clinicId))
       .orderBy(desc(users.createdAt));
+  }
+
+  // Staff management operations
+  async getClinicStaff(clinicId: number): Promise<User[]> {
+    return await db
+      .select()
+      .from(users)
+      .where(eq(users.clinicId, clinicId))
+      .orderBy(desc(users.joinedAt));
+  }
+
+  async getPendingInvitations(clinicId: number): Promise<UserInvitation[]> {
+    return await db
+      .select()
+      .from(userInvitations)
+      .where(eq(userInvitations.clinicId, clinicId))
+      .orderBy(desc(userInvitations.createdAt));
+  }
+
+  async createInvitation(invitationData: InsertUserInvitation): Promise<UserInvitation> {
+    const [invitation] = await db
+      .insert(userInvitations)
+      .values(invitationData)
+      .returning();
+    return invitation;
+  }
+
+  async cancelInvitation(invitationId: number, clinicId: number): Promise<void> {
+    await db
+      .update(userInvitations)
+      .set({ isActive: false })
+      .where(eq(userInvitations.id, invitationId));
+  }
+
+  async deactivateStaffMember(staffId: string, clinicId: number): Promise<void> {
+    await db
+      .update(users)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(users.id, staffId));
   }
 
   async getAllPhysicians(): Promise<Physician[]> {

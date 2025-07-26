@@ -12,6 +12,7 @@ import ReportingRoom from "@/pages/reporting-room";
 import Physicians from "@/pages/physicians";
 import Draw from "@/pages/draw";
 import ClinicRegistration from "@/pages/clinic-registration";
+import StaffManagement from "@/pages/staff-management";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -29,6 +30,7 @@ function Router() {
           <Route path="/templates" component={Templates} />
           <Route path="/reporting-room" component={ReportingRoom} />
           <Route path="/physicians" component={Physicians} />
+          <Route path="/staff" component={StaffManagement} />
           <Route path="/draw" component={Draw} />
         </>
       )}
