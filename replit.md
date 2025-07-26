@@ -13,6 +13,9 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 - **TypeScript Error Resolution** - Corrected return types and type casting for React components and API responses
 - **Authentication Flow Debugging** - Ensured proper session handling and credentials passing for protected routes
 - **Drawing Session Workflow Testing** - Validated complete template selection, patient entry, and draft report creation flow
+- **Payload Size Optimization** - Fixed 413 "Request Entity Too Large" errors with 50MB body limits and JPEG compression
+- **Photo Workflow Database Integration** - Resolved reports saving to database with proper authentication handling
+- **Physician Signature Update Fix** - Corrected API parameter ordering in physician management for successful signature updates
 
 **July 25, 2025:**
 - **Application Rebranding** - Renamed from "JustScan" to "Reporting Room" across all interfaces and documentation
