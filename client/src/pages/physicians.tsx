@@ -78,7 +78,7 @@ export default function Clinic() {
   });
 
   // Fetch sonographers
-  const { data: sonographers = [], isLoading: sonographersLoading, error: sonographersError } = useQuery({
+  const { data: sonographers = [], isLoading: sonographersLoading, error: sonographersError } = useQuery<Sonographer[]>({
     queryKey: ["/api/sonographers"],
     enabled: isAuthenticated,
     retry: false,
@@ -87,7 +87,7 @@ export default function Clinic() {
   // Add physician mutation
   const addPhysicianMutation = useMutation({
     mutationFn: async (physician: InsertPhysician) => {
-      return await apiRequest("POST", "/api/physicians", physician);
+      return await apiRequest("/api/physicians", "POST", physician);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
@@ -127,7 +127,7 @@ export default function Clinic() {
   const updatePhysicianMutation = useMutation({
     mutationFn: async (physician: Physician) => {
       const { id, ...updateData } = physician;
-      return await apiRequest("PATCH", `/api/physicians/${id}`, updateData);
+      return await apiRequest(`/api/physicians/${id}`, "PATCH", updateData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
@@ -218,7 +218,7 @@ export default function Clinic() {
   // Delete physician mutation
   const deletePhysicianMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await apiRequest("DELETE", `/api/physicians/${id}`);
+      return await apiRequest(`/api/physicians/${id}`, "DELETE");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
@@ -250,7 +250,7 @@ export default function Clinic() {
   // Add sonographer mutation
   const addSonographerMutation = useMutation({
     mutationFn: async (sonographer: InsertSonographerData) => {
-      return await apiRequest("POST", "/api/sonographers", sonographer);
+      return await apiRequest("/api/sonographers", "POST", sonographer);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
@@ -285,7 +285,7 @@ export default function Clinic() {
   const updateSonographerMutation = useMutation({
     mutationFn: async (sonographer: Sonographer) => {
       const { id, createdAt, updatedAt, ...updateData } = sonographer;
-      return await apiRequest("PUT", `/api/sonographers/${id}`, updateData);
+      return await apiRequest(`/api/sonographers/${id}`, "PUT", updateData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
@@ -318,7 +318,7 @@ export default function Clinic() {
   // Delete sonographer mutation
   const deleteSonographerMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await apiRequest("DELETE", `/api/sonographers/${id}`);
+      return await apiRequest(`/api/sonographers/${id}`, "DELETE");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
