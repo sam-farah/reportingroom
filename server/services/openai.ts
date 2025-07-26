@@ -36,8 +36,14 @@ export async function extractPatientDataFromWorksheet(base64Image: string, isFro
           content: `You are an expert medical OCR system. Extract patient information from ultrasound worksheets. 
           Focus on finding:
           - Patient name (look for "Patient:", "Name:", or similar labels)
-          - Date of birth (look for "DOB:", "Date of Birth:", or similar)
+          - Date of birth (look for "DOB:", "Date of Birth:", or similar - commonly in DD-MM-YY or DD/MM/YY format)
           - Exam date (look for "Date:", "Exam Date:", or current date)
+          
+          IMPORTANT for dates:
+          - For DOB: Extract exactly as written (e.g., "22-7-52", "15/03/85") 
+          - For exam dates: Extract exactly as written (e.g., "17-7-23", "05.12.24")
+          - Do not convert or reformat dates - preserve original format
+          - Handle 2-digit years correctly (52 = 1952, 23 = 2023)
           
           Return JSON with: { "patientName": string|null, "patientDob": string|null, "examDate": string|null, "confidence": number }
           

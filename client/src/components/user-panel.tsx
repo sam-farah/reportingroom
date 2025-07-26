@@ -72,7 +72,43 @@ export default function UserPanel() {
       setUploadStatus('completed');
       if (data.ocrResult) {
         setPatientName(data.ocrResult.patientName || "");
-        setPatientDob(data.ocrResult.patientDob || "");
+        
+        // Parse DOB from various formats to YYYY-MM-DD
+        let dobFormatted = "";
+        if (data.ocrResult.patientDob) {
+          const dobStr = data.ocrResult.patientDob;
+          console.log('Raw DOB from OCR:', dobStr);
+          
+          // Try to parse various date formats
+          let parsedDate = null;
+          
+          // Format: 22-7-52, 15/03/85, 07.12.90 etc.
+          if (dobStr.match(/^\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}$/)) {
+            const parts = dobStr.split(/[\.\/\-]/);
+            let day = parseInt(parts[0]);
+            let month = parseInt(parts[1]);
+            let year = parseInt(parts[2]);
+            
+            // Handle 2-digit years for DOB (different logic than exam dates)
+            // For DOB: years 00-30 = 2000s, 31-99 = 1900s
+            if (year < 100) {
+              year = year <= 30 ? 2000 + year : 1900 + year;
+            }
+            
+            parsedDate = new Date(year, month - 1, day);
+            console.log('Attempted to parse DOB:', { day, month, year, parsedDate });
+          }
+          
+          if (parsedDate && !isNaN(parsedDate.getTime())) {
+            dobFormatted = parsedDate.toISOString().split('T')[0];
+            console.log('Successfully parsed DOB to:', dobFormatted);
+          } else {
+            console.log('Failed to parse DOB, leaving empty for manual entry');
+            dobFormatted = "";
+          }
+        }
+        
+        setPatientDob(dobFormatted);
         
         // Parse exam date from various formats to YYYY-MM-DD
         let examDateFormatted = "";
