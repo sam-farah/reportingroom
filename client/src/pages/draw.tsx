@@ -615,7 +615,7 @@ export default function Draw() {
                       ...prev, 
                       type: 'eraser', 
                       opacity: 1.0,
-                      size: 10
+                      size: 20
                     }))}
                   >
                     <Eraser className="w-4 h-4" />
