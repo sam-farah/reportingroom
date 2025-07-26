@@ -143,14 +143,22 @@ export default function Draw() {
       return await response.json();
     },
     onSuccess: () => {
+      // Exit fullscreen mode
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(console.error);
+      }
+      
       toast({
         title: "Draft Report Created",
         description: "Your drawing has been saved as a draft report",
       });
       setCurrentWorksheet(null);
       setSelectedTemplate(null);
-      // Navigate to reports page
-      window.location.href = "/reporting-room";
+      
+      // Small delay to ensure fullscreen exit completes before navigation
+      setTimeout(() => {
+        window.location.href = "/reporting-room";
+      }, 100);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
