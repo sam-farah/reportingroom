@@ -198,14 +198,18 @@ export default function ReportingRoom() {
   });
 
   const handleEditReport = (report: Report) => {
+    console.log('Opening report editor for:', report.patientName);
     setEditingReport({ ...report });
-    setIsEditDialogOpen(true);
     setIsFullscreenMode(true);
+    setIsEditDialogOpen(true);
+    
+    console.log('Fullscreen mode set to:', true);
     
     // Try to enter browser fullscreen for better experience
     setTimeout(() => {
-      document.documentElement.requestFullscreen?.().catch(() => {
-        // Ignore errors - we still show fullscreen UI
+      document.documentElement.requestFullscreen?.().catch((err) => {
+        console.log('Browser fullscreen not available:', err);
+        // Continue with app fullscreen UI
       });
     }, 100);
   };
@@ -750,9 +754,19 @@ export default function ReportingRoom() {
           }
         }
       }}>
-        <DialogContent className={isFullscreenMode ? 
-          "fixed inset-0 z-50 bg-white m-0 p-0 max-w-none max-h-none w-screen h-screen" : 
-          "max-w-4xl max-h-[90vh] overflow-y-auto"}>
+        <DialogContent 
+          className={isFullscreenMode ? 
+            "fixed inset-0 z-50 bg-white m-0 p-0 max-w-none max-h-none w-screen h-screen" : 
+            "max-w-4xl max-h-[90vh] overflow-y-auto"}
+          aria-describedby="dialog-description">
+          {/* Hidden title for accessibility */}
+          <div className="sr-only">
+            <DialogTitle>Edit Report - {editingReport?.patientName}</DialogTitle>
+            <DialogDescription id="dialog-description">
+              Review and modify report details in {isFullscreenMode ? 'fullscreen' : 'dialog'} mode.
+            </DialogDescription>
+          </div>
+          {console.log('Rendering mode:', { isFullscreenMode, hasEditingReport: !!editingReport })}
           {isFullscreenMode && editingReport && (
             <div className="flex h-full">
               {/* Left Panel - Worksheet */}
