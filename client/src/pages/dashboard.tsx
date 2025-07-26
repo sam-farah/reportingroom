@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
+import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import UserPanel from "@/components/user-panel";
@@ -26,13 +27,12 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <div className="flex-shrink-0 flex items-center gap-6">
+              <div className="flex-shrink-0 flex items-center">
                 <img 
                   src={logoIconPath} 
                   alt="Reporting Room" 
                   className="h-8 w-8"
                 />
-                <span className="text-xl font-bold text-gray-900">Reporting Room</span>
               </div>
             </div>
             
@@ -133,6 +133,15 @@ export default function Dashboard() {
       ) : (
         <AdminPanel />
       )}
+
+      {/* Logo with text in bottom right */}
+      <div className="fixed bottom-4 right-4 z-10">
+        <img 
+          src={logoWithTextPath} 
+          alt="Reporting Room" 
+          className="h-12 w-auto opacity-80 hover:opacity-100 transition-opacity"
+        />
+      </div>
     </div>
   );
 }
