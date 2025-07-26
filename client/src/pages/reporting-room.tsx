@@ -132,12 +132,32 @@ export default function ReportingRoom() {
       const response = await apiRequest(`/api/reports/${reportId}`, "DELETE");
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, deletedReportId) => {
       toast({
         title: "Report Deleted",
         description: "Report has been deleted successfully",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      
+      // Handle fullscreen mode navigation after deletion
+      if (isFullscreenMode && editingReport && editingReport.id === deletedReportId) {
+        const currentIndex = getCurrentReportIndex();
+        const availableReports = filteredReports.filter(r => r.id !== deletedReportId);
+        
+        if (availableReports.length === 0) {
+          // No reports left, exit fullscreen
+          setIsFullscreenMode(false);
+          setIsEditDialogOpen(false);
+          setEditingReport(null);
+        } else {
+          // Navigate to next available report
+          let nextIndex = currentIndex;
+          if (nextIndex >= availableReports.length) {
+            nextIndex = availableReports.length - 1;
+          }
+          setEditingReport({ ...availableReports[nextIndex] });
+        }
+      }
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
