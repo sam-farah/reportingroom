@@ -84,6 +84,7 @@ export interface IStorage {
   getRecentReports(limit: number): Promise<Report[]>;
   createReport(report: InsertReport): Promise<Report>;
   updateReport(id: number, report: Partial<InsertReport>): Promise<Report | undefined>;
+  amendReport(id: number, updates: Partial<InsertReport>, userId: string, reason: string): Promise<Report | undefined>;
   deleteReport(id: number): Promise<void>;
   
   getAllTrainingPairs(): Promise<TrainingPair[]>;
@@ -396,6 +397,25 @@ export class DatabaseStorage implements IStorage {
         finalizedAt: new Date(),
         finalizedBy: userId,
         isDraft: false,
+      })
+      .where(eq(reports.id, id))
+      .returning();
+    return report;
+  }
+
+  async amendReport(id: number, updates: Partial<InsertReport>, userId: string, reason: string): Promise<Report | undefined> {
+    const [report] = await db
+      .update(reports)
+      .set({
+        ...updates,
+        isAmended: true,
+        amendedAt: new Date(),
+        amendedBy: userId,
+        amendmentReason: reason,
+        // Reset finalization status if report was finalized
+        isFinalized: false,
+        finalizedAt: null,
+        finalizedBy: null,
       })
       .where(eq(reports.id, id))
       .returning();

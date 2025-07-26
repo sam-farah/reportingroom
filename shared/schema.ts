@@ -113,6 +113,10 @@ export const reports = pgTable("reports", {
   isFinalized: boolean("is_finalized").default(false),
   finalizedAt: timestamp("finalized_at"),
   finalizedBy: varchar("finalized_by").references(() => users.id),
+  isAmended: boolean("is_amended").default(false),
+  amendedAt: timestamp("amended_at"),
+  amendedBy: varchar("amended_by").references(() => users.id),
+  amendmentReason: text("amendment_reason"),
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
 });
 

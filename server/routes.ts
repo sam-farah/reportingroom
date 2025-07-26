@@ -385,6 +385,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Amendment endpoint
+  app.post("/api/reports/:id/amend", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid report ID" });
+      }
+
+      const userId = (req as any).user.claims.sub;
+      const { reason, ...reportUpdates } = req.body;
+
+      if (!reason || reason.trim() === '') {
+        return res.status(400).json({ error: "Amendment reason is required" });
+      }
+
+      // Validate report updates using partial report schema
+      const validatedUpdates = insertReportSchema.partial().parse(reportUpdates);
+      
+      const amendedReport = await storage.amendReport(id, validatedUpdates, userId, reason.trim());
+      
+      if (!amendedReport) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+      
+      res.json(amendedReport);
+    } catch (error) {
+      console.error("Amend report error:", error);
+      res.status(500).json({ error: "Failed to amend report" });
+    }
+  });
+
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       console.log("Report generation request:", req.body);

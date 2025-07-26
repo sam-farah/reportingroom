@@ -25,6 +25,9 @@ export default function ReportingRoom() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isAmendDialogOpen, setIsAmendDialogOpen] = useState(false);
+  const [amendingReport, setAmendingReport] = useState<EditableReport | null>(null);
+  const [amendmentReason, setAmendmentReason] = useState("");
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -72,6 +75,51 @@ export default function ReportingRoom() {
       toast({
         title: "Update Failed",
         description: error.message || "Failed to update report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Amendment report mutation
+  const amendReportMutation = useMutation({
+    mutationFn: async (data: { reportId: number; updates: Partial<Report>; reason: string }) => {
+      const response = await apiRequest(`/api/reports/${data.reportId}/amend`, "POST", {
+        ...data.updates,
+        reason: data.reason,
+      });
+      return await response.json();
+    },
+    onSuccess: (amendedReport: Report) => {
+      toast({
+        title: "Report Amended",
+        description: "Report has been successfully amended and requires re-finalization",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      
+      // Update the editing report if it's the same one
+      if (editingReport && editingReport.id === amendedReport.id) {
+        setEditingReport(amendedReport);
+      }
+      
+      setIsAmendDialogOpen(false);
+      setAmendingReport(null);
+      setAmendmentReason("");
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Amendment Failed",
+        description: error.message || "Failed to amend report",
         variant: "destructive",
       });
     },
@@ -179,6 +227,22 @@ export default function ReportingRoom() {
     if (editingReport) {
       finalizeReportMutation.mutate(editingReport.id);
     }
+  };
+
+  const handleAmendReport = (report: Report) => {
+    setAmendingReport({ ...report });
+    setIsAmendDialogOpen(true);
+  };
+
+  const handleSaveAmendment = () => {
+    if (!amendingReport || !amendmentReason.trim()) return;
+
+    const { id, generatedAt, worksheetId, ...updateData } = amendingReport;
+    amendReportMutation.mutate({
+      reportId: id,
+      updates: updateData,
+      reason: amendmentReason.trim(),
+    });
   };
 
   const handleSaveReport = () => {
@@ -515,6 +579,12 @@ export default function ReportingRoom() {
                     Signed: {format(new Date(report.finalizedAt), 'MMM dd, yyyy')}
                   </div>
                 )}
+                {report.isAmended && report.amendedAt && (
+                  <div className="flex items-center text-xs text-orange-600 mt-1">
+                    <Edit3 className="w-3 h-3 mr-1" />
+                    Amended: {format(new Date(report.amendedAt), 'MMM dd, yyyy')}
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col space-y-2">
@@ -527,6 +597,14 @@ export default function ReportingRoom() {
                   >
                     <Edit3 className="w-4 h-4 mr-1" />
                     Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAmendReport(report)}
+                    className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                  >
+                    Amend
                   </Button>
                   <Button
                     variant="outline"
@@ -841,6 +919,130 @@ export default function ReportingRoom() {
                   >
                     <Save className="w-4 h-4 mr-2" />
                     {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Amendment Dialog */}
+      <Dialog open={isAmendDialogOpen} onOpenChange={setIsAmendDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Amend Report - {amendingReport?.patientName}</DialogTitle>
+            <DialogDescription>
+              Make amendments to this report. All changes must include a reason and will reset finalization status.
+            </DialogDescription>
+          </DialogHeader>
+
+          {amendingReport && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="amend-patient-name">Patient Name</Label>
+                  <Input
+                    id="amend-patient-name"
+                    value={amendingReport.patientName}
+                    onChange={(e) => setAmendingReport(prev => prev ? { ...prev, patientName: e.target.value } : null)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="amend-patient-dob">Date of Birth</Label>
+                  <Input
+                    id="amend-patient-dob"
+                    value={amendingReport.patientDob}
+                    onChange={(e) => setAmendingReport(prev => prev ? { ...prev, patientDob: e.target.value } : null)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="amend-exam-date">Exam Date</Label>
+                  <Input
+                    id="amend-exam-date"
+                    value={amendingReport.examDate}
+                    onChange={(e) => setAmendingReport(prev => prev ? { ...prev, examDate: e.target.value } : null)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="amend-study-type">Study Type</Label>
+                  <Input
+                    id="amend-study-type"
+                    value={amendingReport.studyType}
+                    onChange={(e) => setAmendingReport(prev => prev ? { ...prev, studyType: e.target.value } : null)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="amend-indication">Indication</Label>
+                <Textarea
+                  id="amend-indication"
+                  value={amendingReport.indication}
+                  onChange={(e) => setAmendingReport(prev => prev ? { ...prev, indication: e.target.value } : null)}
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="amend-findings">Findings</Label>
+                <Textarea
+                  id="amend-findings"
+                  value={amendingReport.findings}
+                  onChange={(e) => setAmendingReport(prev => prev ? { ...prev, findings: e.target.value } : null)}
+                  rows={6}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="amend-impression">Impression</Label>
+                <Textarea
+                  id="amend-impression"
+                  value={amendingReport.impression}
+                  onChange={(e) => setAmendingReport(prev => prev ? { ...prev, impression: e.target.value } : null)}
+                  rows={4}
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <Label htmlFor="amendment-reason">Amendment Reason *</Label>
+                <Textarea
+                  id="amendment-reason"
+                  placeholder="Please provide a reason for this amendment (required)..."
+                  value={amendmentReason}
+                  onChange={(e) => setAmendmentReason(e.target.value)}
+                  rows={3}
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This reason will be recorded in the audit trail and cannot be changed after saving.
+                </p>
+              </div>
+
+              <div className="flex justify-between items-center pt-4 border-t">
+                <div className="text-sm text-orange-600 bg-orange-50 px-3 py-2 rounded-md border border-orange-200">
+                  ⚠️ Amending this report will reset its finalization status
+                </div>
+                
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsAmendDialogOpen(false);
+                      setAmendingReport(null);
+                      setAmendmentReason("");
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveAmendment}
+                    disabled={amendReportMutation.isPending || !amendmentReason.trim()}
+                    className="bg-orange-600 hover:bg-orange-700"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {amendReportMutation.isPending ? "Saving Amendment..." : "Save Amendment"}
                   </Button>
                 </div>
               </div>
