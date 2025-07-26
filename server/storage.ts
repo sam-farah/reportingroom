@@ -138,22 +138,23 @@ export class DatabaseStorage implements IStorage {
 
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return user ? FieldEncryption.decryptFields(user) as User : undefined;
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    const encryptedData = FieldEncryption.encryptFields(userData);
     const [user] = await db
       .insert(users)
-      .values(userData)
+      .values(encryptedData as any)
       .onConflictDoUpdate({
         target: users.id,
         set: {
-          ...userData,
+          ...encryptedData,
           updatedAt: new Date(),
         },
       })
       .returning();
-    return user;
+    return FieldEncryption.decryptFields(user) as User;
   }
 
   // Clinic operations
@@ -235,20 +236,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUsersByClinic(clinicId: number): Promise<User[]> {
-    return await db
+    const users_list = await db
       .select()
       .from(users)
       .where(eq(users.clinicId, clinicId))
       .orderBy(desc(users.createdAt));
+    return users_list.map(user => FieldEncryption.decryptFields(user) as User);
   }
 
   // Staff management operations
   async getClinicStaff(clinicId: number): Promise<User[]> {
-    return await db
+    const staff = await db
       .select()
       .from(users)
       .where(eq(users.clinicId, clinicId))
       .orderBy(desc(users.joinedAt));
+    return staff.map(user => FieldEncryption.decryptFields(user) as User);
   }
 
   async getPendingInvitations(clinicId: number): Promise<UserInvitation[]> {
@@ -281,24 +284,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, staffId));
   }
 
-  // Clinic operations
-  async getClinic(clinicId: number): Promise<Clinic | undefined> {
-    const [clinic] = await db
-      .select()
-      .from(clinics)
-      .where(eq(clinics.id, clinicId));
-    return clinic;
-  }
-
   async updateClinicLogo(clinicId: number, logoUrl: string): Promise<void> {
     await db
       .update(clinics)
       .set({ logoUrl, updatedAt: new Date() })
       .where(eq(clinics.id, clinicId));
-  }
-
-  async getAllClinics(): Promise<Clinic[]> {
-    return await db.select().from(clinics);
   }
 
   async getAllPhysicians(): Promise<Physician[]> {
@@ -358,13 +348,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllReports(): Promise<Report[]> {
-    const reports = await db.select().from(reports);
-    return reports.map(report => FieldEncryption.decryptFields(report));
+    const allReports = await db.select().from(reports);
+    return allReports.map(report => FieldEncryption.decryptFields(report) as Report);
   }
 
   async getReport(id: number): Promise<Report | undefined> {
     const [report] = await db.select().from(reports).where(eq(reports.id, id));
-    return report ? FieldEncryption.decryptFields(report) : undefined;
+    return report ? FieldEncryption.decryptFields(report) as Report : undefined;
   }
 
   async getReportsByWorksheet(worksheetId: number): Promise<Report[]> {
@@ -385,11 +375,11 @@ export class DatabaseStorage implements IStorage {
     
     const [report] = await db
       .insert(reports)
-      .values(encryptedData)
+      .values(encryptedData as any)
       .returning();
     
     // Decrypt for return (user expects decrypted data)
-    return FieldEncryption.decryptFields(report);
+    return FieldEncryption.decryptFields(report) as Report;
   }
 
   async updateReport(id: number, updates: Partial<InsertReport>): Promise<Report | undefined> {
@@ -402,7 +392,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(reports.id, id))
       .returning();
     
-    return report ? FieldEncryption.decryptFields(report) : undefined;
+    return report ? FieldEncryption.decryptFields(report) as Report : undefined;
   }
 
   async finalizeReport(id: number, userId: string): Promise<Report | undefined> {
@@ -706,7 +696,7 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     const allUsers = await db.select().from(users);
-    return allUsers.map(user => FieldEncryption.decryptFields(user));
+    return allUsers.map(user => FieldEncryption.decryptFields(user) as User);
   }
 }
 
