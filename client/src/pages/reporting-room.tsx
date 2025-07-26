@@ -777,6 +777,16 @@ export default function ReportingRoom() {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => handleDeleteReport(editingReport)}
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                disabled={deleteReportMutation.isPending}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                {deleteReportMutation.isPending ? "Deleting..." : "Delete"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setIsFullscreenMode(false);
                   setIsEditDialogOpen(false);
