@@ -59,6 +59,7 @@ export const worksheets = pgTable("worksheets", {
 export const reports = pgTable("reports", {
   id: serial("id").primaryKey(),
   worksheetId: integer("worksheet_id").references(() => worksheets.id),
+  digitalWorksheetId: integer("digital_worksheet_id").references(() => digitalWorksheets.id),
   patientName: text("patient_name").notNull(),
   patientDob: text("patient_dob").notNull(),
   examDate: text("exam_date").notNull(),
@@ -69,6 +70,7 @@ export const reports = pgTable("reports", {
   physicianId: integer("physician_id").references(() => physicians.id),
   sonographerId: integer("sonographer_id").references(() => sonographers.id),
   logoUrl: text("logo_url"),
+  isDraft: boolean("is_draft").default(true),
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
 });
 
@@ -143,15 +145,17 @@ export const worksheetTemplates = pgTable("worksheet_templates", {
 export const digitalWorksheets = pgTable("digital_worksheets", {
   id: serial("id").primaryKey(),
   templateId: integer("template_id").references(() => worksheetTemplates.id),
-  patientName: text("patient_name"),
+  patientName: text("patient_name").notNull(),
   patientDob: text("patient_dob"),
-  examDate: text("exam_date"),
+  examDate: text("exam_date").notNull(),
   studyType: text("study_type"),
-  drawingData: text("drawing_data"), // JSON string of canvas drawing data
+  drawingData: text("drawing_data").notNull(), // Base64 canvas data
   annotations: text("annotations"), // JSON string of text annotations
-  completedAt: timestamp("completed_at"),
-  userId: text("user_id"),
+  drawingHistory: text("drawing_history"), // JSON array of canvas states for undo
+  userId: text("user_id").notNull(),
   sonographerId: integer("sonographer_id").references(() => sonographers.id),
+  isDraft: boolean("is_draft").default(true),
+  completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

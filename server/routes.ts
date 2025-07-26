@@ -1290,6 +1290,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Digital worksheet routes
+  app.post("/api/digital-worksheets", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      const worksheetData = {
+        ...req.body,
+        userId,
+        isDraft: true,
+        drawingHistory: JSON.stringify([]), // Initialize empty history
+      };
+
+      const worksheet = await storage.createDigitalWorksheet(worksheetData);
+      res.json(worksheet);
+    } catch (error) {
+      console.error("Error creating digital worksheet:", error);
+      res.status(500).json({ message: "Failed to create digital worksheet" });
+    }
+  });
+
+  app.put("/api/digital-worksheets/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const worksheet = await storage.updateDigitalWorksheet(parseInt(id), req.body);
+      res.json(worksheet);
+    } catch (error) {
+      console.error("Error updating digital worksheet:", error);
+      res.status(500).json({ message: "Failed to update digital worksheet" });
+    }
+  });
+
+  app.get("/api/digital-worksheets", isAuthenticated, async (req: any, res) => {
+    try {
+      const worksheets = await storage.getAllDigitalWorksheets();
+      res.json(worksheets);
+    } catch (error) {
+      console.error("Error fetching digital worksheets:", error);
+      res.status(500).json({ message: "Failed to fetch digital worksheets" });
+    }
+  });
+
+  app.get("/api/digital-worksheets/drafts", isAuthenticated, async (req: any, res) => {
+    try {
+      const drafts = await storage.getDraftDigitalWorksheets();
+      res.json(drafts);
+    } catch (error) {
+      console.error("Error fetching draft worksheets:", error);
+      res.status(500).json({ message: "Failed to fetch draft worksheets" });
+    }
+  });
+
+  app.post("/api/digital-worksheets/:id/create-draft-report", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const worksheet = await storage.getDigitalWorksheet(parseInt(id));
+      
+      if (!worksheet) {
+        return res.status(404).json({ message: "Worksheet not found" });
+      }
+
+      const draftReport = await storage.createDraftReport({
+        digitalWorksheetId: worksheet.id,
+        patientName: worksheet.patientName,
+        patientDob: worksheet.patientDob,
+        examDate: worksheet.examDate,
+        studyType: worksheet.studyType || '',
+        indication: '',
+        findings: '',
+        impression: '',
+        sonographerId: worksheet.sonographerId,
+        isDraft: true,
+      });
+
+      // Mark worksheet as completed
+      await storage.updateDigitalWorksheet(parseInt(id), { 
+        isDraft: false,
+        completedAt: new Date(),
+      });
+
+      res.json(draftReport);
+    } catch (error) {
+      console.error("Error creating draft report:", error);
+      res.status(500).json({ message: "Failed to create draft report" });
+    }
+  });
   app.get("/api/digital-worksheets", isAuthenticated, async (req, res) => {
     try {
       const worksheets = await storage.getAllDigitalWorksheets();

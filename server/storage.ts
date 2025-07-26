@@ -395,6 +395,22 @@ export class DatabaseStorage implements IStorage {
   async deleteDigitalWorksheet(id: number): Promise<void> {
     await db.delete(digitalWorksheets).where(eq(digitalWorksheets.id, id));
   }
+
+  async getDraftDigitalWorksheets(): Promise<DigitalWorksheet[]> {
+    return await db
+      .select()
+      .from(digitalWorksheets)
+      .where(eq(digitalWorksheets.isDraft, true))
+      .orderBy(digitalWorksheets.updatedAt);
+  }
+
+  async createDraftReport(reportData: any): Promise<Report> {
+    const [created] = await db
+      .insert(reports)
+      .values({ ...reportData, isDraft: true })
+      .returning();
+    return created;
+  }
 }
 
 export const storage = new DatabaseStorage();
