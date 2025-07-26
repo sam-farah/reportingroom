@@ -26,11 +26,11 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <div className="flex-shrink-0 flex items-center">
+              <div className="flex-shrink-0 flex items-center space-x-3">
                 <img 
                   src={logoIconPath} 
                   alt="Reporting Room" 
-                  className="h-8 w-8 mr-3"
+                  className="h-8 w-8"
                 />
                 <span className="text-xl font-bold text-gray-900">Reporting Room</span>
               </div>
