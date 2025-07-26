@@ -110,6 +110,9 @@ export const reports = pgTable("reports", {
   sonographerId: integer("sonographer_id").references(() => sonographers.id),
   logoUrl: text("logo_url"),
   isDraft: boolean("is_draft").default(true),
+  isFinalized: boolean("is_finalized").default(false),
+  finalizedAt: timestamp("finalized_at"),
+  finalizedBy: varchar("finalized_by").references(() => users.id),
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
 });
 

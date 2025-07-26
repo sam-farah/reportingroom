@@ -1,11 +1,12 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -104,6 +105,39 @@ export default function ReportingRoom() {
       toast({
         title: "Delete Failed",
         description: error.message || "Failed to delete report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Finalize report mutation
+  const finalizeReportMutation = useMutation({
+    mutationFn: async (reportId: number) => {
+      const response = await apiRequest(`/api/reports/${reportId}/finalize`, "POST");
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Report Finalized",
+        description: "Report has been electronically signed and finalized",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Finalization Failed",
+        description: error.message || "Failed to finalize report",
         variant: "destructive",
       });
     },
@@ -293,6 +327,11 @@ export default function ReportingRoom() {
             <div class="signature-area">
               <div class="signature-line"></div>
               <div class="signature-text">Physician Signature & Date</div>
+              ${report.isFinalized && report.finalizedAt ? `
+                <div class="finalized-text" style="margin-top: 15px; font-size: 11px; color: #22c55e; font-weight: 600;">
+                  Electronically signed on ${new Date(report.finalizedAt).toLocaleDateString()}
+                </div>
+              ` : ''}
             </div>
           ` : ''}
 
@@ -437,6 +476,12 @@ export default function ReportingRoom() {
                 <div className="text-xs text-gray-500">
                   Generated: {format(new Date(report.generatedAt), 'MMM dd, yyyy')}
                 </div>
+                {report.isFinalized && report.finalizedAt && (
+                  <div className="flex items-center text-xs text-green-600 mt-1">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    Signed: {format(new Date(report.finalizedAt), 'MMM dd, yyyy')}
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col space-y-2">
@@ -465,16 +510,39 @@ export default function ReportingRoom() {
                     DOCX
                   </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDeleteReport(report)}
-                  className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
-                  disabled={deleteReportMutation.isPending}
-                >
-                  <Trash2 className="w-4 h-4 mr-1" />
-                  {deleteReportMutation.isPending ? "Deleting..." : "Delete"}
-                </Button>
+                <div className="flex space-x-2">
+                  {report.isFinalized ? (
+                    <div className="flex items-center justify-center w-full py-2 px-3 text-xs text-green-600 bg-green-50 border border-green-200 rounded">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Finalized
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2 w-full">
+                      <Checkbox
+                        checked={false}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            finalizeReportMutation.mutate(report.id);
+                          }
+                        }}
+                        disabled={finalizeReportMutation.isPending}
+                        className="scale-75"
+                      />
+                      <span className="text-xs text-gray-600 flex-1">
+                        {finalizeReportMutation.isPending ? "Finalizing..." : "Finalize"}
+                      </span>
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDeleteReport(report)}
+                    className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 px-2"
+                    disabled={deleteReportMutation.isPending}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

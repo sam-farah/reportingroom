@@ -388,6 +388,20 @@ export class DatabaseStorage implements IStorage {
     return report;
   }
 
+  async finalizeReport(id: number, userId: string): Promise<Report | undefined> {
+    const [report] = await db
+      .update(reports)
+      .set({
+        isFinalized: true,
+        finalizedAt: new Date(),
+        finalizedBy: userId,
+        isDraft: false,
+      })
+      .where(eq(reports.id, id))
+      .returning();
+    return report;
+  }
+
   async deleteReport(id: number): Promise<void> {
     await db.delete(reports).where(eq(reports.id, id));
   }

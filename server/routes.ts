@@ -368,6 +368,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/reports/:id/finalize", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = (req as any).user.claims.sub;
+      
+      const report = await storage.finalizeReport(id, userId);
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+      
+      res.json(report);
+    } catch (error) {
+      console.error("Error finalizing report:", error);
+      res.status(500).json({ error: "Failed to finalize report" });
+    }
+  });
+
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       console.log("Report generation request:", req.body);

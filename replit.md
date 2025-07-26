@@ -7,6 +7,12 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 ## Recent Changes
 
 **July 26, 2025:**
+- **Report Finalization System** - Implemented comprehensive report finalization with electronic signature timestamps and checkbox controls
+- **Database Schema Extension** - Added `isFinalized`, `finalizedAt`, and `finalizedBy` fields to reports table for audit trail
+- **Dual Finalization Interface** - Added finalization checkboxes in both report preview and reporting room with visual status indicators
+- **Electronic Signature Integration** - Finalized reports display "Electronically signed on [date]" in exports and UI
+- **Finalization API Endpoints** - Created `/api/reports/:id/finalize` endpoint for secure report finalization with authentication
+- **Visual Status Indicators** - Reports show green checkmark and signed date when finalized, with disabled editing for integrity
 - **Enhanced Legend System with Dual Input Methods** - Implemented comprehensive legend entry system supporting both image upload and direct drawing capabilities for AI training
 - **Drawing Canvas Integration** - Added interactive HTML5 canvas for sonographers to draw patterns directly in legend entries with real-time save functionality
 - **Database Schema Enhancement** - Extended legend entries table with `drawingData`, `imageType`, and `exampleImage` fields to support both input methods

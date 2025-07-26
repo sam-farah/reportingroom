@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Image, Edit3, Save, X } from "lucide-react";
+import { Image, Edit3, Save, X, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -29,6 +30,7 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
         method: "PATCH",
         body: JSON.stringify(updatedData),
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -62,6 +64,49 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
       toast({
         title: "Update Failed",
         description: error.message || "Failed to update report",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const finalizeReportMutation = useMutation({
+    mutationFn: async () => {
+      if (!report) throw new Error("No report to finalize");
+      
+      const response = await fetch(`/api/reports/${report.id}/finalize`, {
+        method: "POST",
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return response.json();
+    },
+    onSuccess: (finalizedReport: Report) => {
+      onReportUpdate?.(finalizedReport);
+      toast({
+        title: "Report Finalized",
+        description: "Report has been electronically signed and finalized",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Session Expired",
+          description: "Please log in again to continue",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Finalization Failed",
+        description: error.message || "Failed to finalize report",
         variant: "destructive",
       });
     },
@@ -288,7 +333,37 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
 
       {/* Signature */}
       <div className="border-t pt-6">
-        <div className="flex justify-end">
+        <div className="flex justify-between items-end">
+          <div>
+            {/* Finalization Status */}
+            {report.isFinalized ? (
+              <div className="flex items-center space-x-2 text-green-600">
+                <CheckCircle2 className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                  Electronically signed on {new Date(report.finalizedAt!).toLocaleDateString()}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="finalize-report"
+                    checked={false}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        finalizeReportMutation.mutate();
+                      }
+                    }}
+                    disabled={finalizeReportMutation.isPending}
+                  />
+                  <label htmlFor="finalize-report" className="text-sm font-medium cursor-pointer">
+                    {finalizeReportMutation.isPending ? "Finalizing..." : "Finalize Report"}
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+          
           <div className="text-right">
             <div className="w-48 h-16 bg-gray-100 rounded mb-2 flex items-center justify-center">
               <span className="text-xs text-gray-500">Digital Signature</span>
