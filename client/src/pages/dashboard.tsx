@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool } from "lucide-react";
-import logoPath from "@assets/reporting_room_logo_primary_1753496909201.png";
+import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import UserPanel from "@/components/user-panel";
@@ -28,10 +28,11 @@ export default function Dashboard() {
             <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center">
                 <img 
-                  src={logoPath} 
+                  src={logoIconPath} 
                   alt="Reporting Room" 
-                  className="h-8 w-auto mr-3"
+                  className="h-8 w-8 mr-3"
                 />
+                <span className="text-xl font-bold text-gray-900">Reporting Room</span>
               </div>
             </div>
             

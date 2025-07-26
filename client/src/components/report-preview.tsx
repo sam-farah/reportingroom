@@ -175,7 +175,7 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
             )}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Medical Center Name</h3>
+            <h3 className="text-lg font-bold text-gray-900">Reporting Room Medical</h3>
             <p className="text-sm text-gray-600">Ultrasound Report</p>
           </div>
         </div>

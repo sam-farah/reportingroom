@@ -1,5 +1,6 @@
 import { FileText, Brain, Shield, ChevronRight } from "lucide-react";
-import logoPath from "@assets/reporting_room_logo_primary_1753496909201.png";
+import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
+import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -16,9 +17,9 @@ export default function Landing() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <img 
-                src={logoPath} 
+                src={logoWithTextPath} 
                 alt="Reporting Room" 
-                className="h-8 w-auto mr-3"
+                className="h-10 w-auto"
               />
             </div>
             <Button onClick={handleLogin} className="medical-btn-primary">
@@ -39,7 +40,7 @@ export default function Landing() {
               {/* Logo Hero */}
               <div className="flex justify-center mb-8">
                 <img 
-                  src={logoPath} 
+                  src={logoWithTextPath} 
                   alt="Reporting Room" 
                   className="h-16 w-auto"
                 />
@@ -223,9 +224,9 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <img 
-              src={logoPath} 
+              src={logoIconPath} 
               alt="Reporting Room" 
-              className="h-8 w-auto mx-auto mb-4 filter brightness-0 invert"
+              className="h-8 w-8 mx-auto mb-4 filter brightness-0 invert"
             />
             <p className="text-gray-400">
               © 2025 Reporting Room. Transforming medical reporting with AI technology.

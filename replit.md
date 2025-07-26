@@ -7,12 +7,14 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 ## Recent Changes
 
 **July 26, 2025:**
+- **Updated Reporting Room Branding** - Integrated new professional logo designs with icon-only and text versions across landing and dashboard
 - **Report Amendment System** - Implemented comprehensive amendment functionality with audit trail tracking and automatic finalization reset
 - **Amendment Database Schema** - Added `isAmended`, `amendedAt`, `amendedBy`, and `amendmentReason` fields for complete audit trail
 - **Amendment API Endpoint** - Created `/api/reports/:id/amend` endpoint with reason validation and automatic finalization status reset
 - **Amendment Dialog Interface** - Built dedicated amendment dialog with reason requirement and visual warning about finalization reset
 - **Amendment Status Indicators** - Added orange amendment badges showing amendment date and visual markers in report cards
 - **Finalization Reset Logic** - Amended reports automatically reset finalization status requiring re-signature for data integrity
+- **Amendment Business Rule** - Amendment button only appears for finalized reports following proper medical documentation workflow
 - **Report Finalization System** - Implemented comprehensive report finalization with electronic signature timestamps and checkbox controls
 - **Database Schema Extension** - Added `isFinalized`, `finalizedAt`, and `finalizedBy` fields to reports table for audit trail
 - **Dual Finalization Interface** - Added finalization checkboxes in both report preview and reporting room with visual status indicators
