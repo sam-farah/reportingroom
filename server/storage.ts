@@ -38,6 +38,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
+import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Interface for storage operations
 export interface IStorage {
@@ -352,12 +353,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllReports(): Promise<Report[]> {
-    return await db.select().from(reports);
+    const reports = await db.select().from(reports);
+    return reports.map(report => FieldEncryption.decryptFields(report));
   }
 
   async getReport(id: number): Promise<Report | undefined> {
     const [report] = await db.select().from(reports).where(eq(reports.id, id));
-    return report;
+    return report ? FieldEncryption.decryptFields(report) : undefined;
   }
 
   async getReportsByWorksheet(worksheetId: number): Promise<Report[]> {
@@ -373,20 +375,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createReport(insertReport: InsertReport): Promise<Report> {
+    // Encrypt sensitive medical data before storing
+    const encryptedData = FieldEncryption.encryptFields(insertReport);
+    
     const [report] = await db
       .insert(reports)
-      .values(insertReport)
+      .values(encryptedData)
       .returning();
-    return report;
+    
+    // Decrypt for return (user expects decrypted data)
+    return FieldEncryption.decryptFields(report);
   }
 
   async updateReport(id: number, updates: Partial<InsertReport>): Promise<Report | undefined> {
+    // Encrypt sensitive fields in updates
+    const encryptedUpdates = FieldEncryption.encryptFields(updates);
+    
     const [report] = await db
       .update(reports)
-      .set(updates)
+      .set(encryptedUpdates)
       .where(eq(reports.id, id))
       .returning();
-    return report;
+    
+    return report ? FieldEncryption.decryptFields(report) : undefined;
   }
 
   async finalizeReport(id: number, userId: string): Promise<Report | undefined> {

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Encryption Key Generator - Reporting Room</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .key-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #2563eb;
+        }
+        .key-label {
+            font-weight: bold;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+        .key-output {
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        .copy-btn {
+            background: #059669;
+            font-size: 12px;
+            padding: 6px 12px;
+        }
+        .copy-btn:hover {
+            background: #047857;
+        }
+        .instructions {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .instructions h3 {
+            color: #92400e;
+            margin-top: 0;
+        }
+        .warning {
+            background: #fef2f2;
+            border: 1px solid #ef4444;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .warning h3 {
+            color: #dc2626;
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Medical Data Encryption Key Generator</h1>
+        
+        <div class="warning">
+            <h3>⚠️ Security Notice</h3>
+            <p>These keys are generated securely in your browser using cryptographically secure random functions. Never share these keys or store them in unsecured locations. They are required for regulatory compliance.</p>
+        </div>
+
+        <button onclick="generateKeys()">Generate New Encryption Keys</button>
+        
+        <div class="key-section">
+            <div class="key-label">MEDICAL_DATA_ENCRYPTION_KEY:</div>
+            <div class="key-output" id="encryptionKey">Click "Generate New Encryption Keys" to create secure keys</div>
+            <button class="copy-btn" onclick="copyToClipboard('encryptionKey')">Copy Key</button>
+        </div>
+
+        <div class="key-section">
+            <div class="key-label">MEDICAL_DATA_SALT:</div>
+            <div class="key-output" id="saltKey">Click "Generate New Encryption Keys" to create secure keys</div>
+            <button class="copy-btn" onclick="copyToClipboard('saltKey')">Copy Salt</button>
+        </div>
+
+        <div class="instructions">
+            <h3>📋 How to Add These Keys to Replit:</h3>
+            <ol>
+                <li>Generate the keys above by clicking the button</li>
+                <li>Copy each key using the "Copy Key" buttons</li>
+                <li>Go to your Replit project</li>
+                <li>Click the lock icon (🔒) in the left sidebar to open Secrets</li>
+                <li>Add a new secret named <code>MEDICAL_DATA_ENCRYPTION_KEY</code> and paste the first key</li>
+                <li>Add another secret named <code>MEDICAL_DATA_SALT</code> and paste the second key</li>
+                <li>Your server will automatically restart with encryption enabled</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function generateSecureHexKey(length = 32) {
+            const array = new Uint8Array(length);
+            crypto.getRandomValues(array);
+            return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+        }
+
+        function generateKeys() {
+            const encryptionKey = generateSecureHexKey(32); // 256-bit key
+            const saltKey = generateSecureHexKey(32); // 256-bit salt
+            
+            document.getElementById('encryptionKey').textContent = encryptionKey;
+            document.getElementById('saltKey').textContent = saltKey;
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            if (text.includes('Click "Generate')) {
+                alert('Please generate keys first!');
+                return;
+            }
+
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = element.textContent;
+                element.textContent = 'Copied to clipboard!';
+                element.style.color = '#10b981';
+                
+                setTimeout(() => {
+                    element.textContent = originalText;
+                    element.style.color = '#10b981';
+                }, 2000);
+            }).catch(err => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Key copied to clipboard!');
+            });
+        }
+
+        // Generate keys automatically when page loads
+        window.addEventListener('load', generateKeys);
+    </script>
+</body>
+</html>
