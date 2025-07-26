@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Save, RotateCcw, Download, Eraser, PenTool, Type, FileText, Undo } from "lucide-react";
+import { Save, RotateCcw, Download, Eraser, PenTool, Type, FileText, Undo, Highlighter, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,9 +14,10 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import type { WorksheetTemplate, DigitalWorksheet, Sonographer } from "@shared/schema";
 
 interface DrawingTool {
-  type: 'pen' | 'eraser' | 'text';
+  type: 'pen' | 'eraser' | 'text' | 'highlighter' | 'whiteout';
   color: string;
   size: number;
+  opacity?: number;
 }
 
 export default function Draw() {
@@ -30,8 +31,18 @@ export default function Draw() {
   const [currentTool, setCurrentTool] = useState<DrawingTool>({
     type: 'pen',
     color: '#000000',
-    size: 2
+    size: 2,
+    opacity: 1.0
   });
+  
+  // Highlighter colors
+  const highlighterColors = [
+    '#ffeb3b', // Yellow
+    '#4caf50', // Green
+    '#2196f3', // Blue
+    '#ff9800', // Orange
+    '#e91e63'  // Pink
+  ];
   const [patientInfo, setPatientInfo] = useState({
     patientName: '',
     patientDob: '',
@@ -198,9 +209,21 @@ export default function Draw() {
       ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = currentTool.color;
       ctx.lineWidth = currentTool.size;
+      ctx.globalAlpha = 1.0;
+    } else if (currentTool.type === 'highlighter') {
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.strokeStyle = currentTool.color;
+      ctx.lineWidth = currentTool.size;
+      ctx.globalAlpha = currentTool.opacity || 0.4;
+    } else if (currentTool.type === 'whiteout') {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = currentTool.size;
+      ctx.globalAlpha = 1.0;
     } else if (currentTool.type === 'eraser') {
       ctx.globalCompositeOperation = 'destination-out';
       ctx.lineWidth = currentTool.size;
+      ctx.globalAlpha = 1.0;
     }
     
     ctx.lineCap = 'round';
@@ -528,33 +551,94 @@ export default function Draw() {
               {/* Tool Selection */}
               <div className="space-y-2">
                 <Label>Tool</Label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Button
                     size="sm"
                     variant={currentTool.type === 'pen' ? 'default' : 'outline'}
-                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'pen' }))}
+                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'pen', opacity: 1.0 }))}
                   >
                     <PenTool className="w-4 h-4" />
                   </Button>
                   <Button
                     size="sm"
+                    variant={currentTool.type === 'highlighter' ? 'default' : 'outline'}
+                    onClick={() => setCurrentTool(prev => ({ 
+                      ...prev, 
+                      type: 'highlighter', 
+                      color: highlighterColors[0],
+                      opacity: 0.4,
+                      size: 8
+                    }))}
+                  >
+                    <Highlighter className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={currentTool.type === 'whiteout' ? 'default' : 'outline'}
+                    onClick={() => setCurrentTool(prev => ({ 
+                      ...prev, 
+                      type: 'whiteout',
+                      color: '#ffffff',
+                      opacity: 1.0,
+                      size: 8
+                    }))}
+                  >
+                    <Minus className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
                     variant={currentTool.type === 'eraser' ? 'default' : 'outline'}
-                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'eraser' }))}
+                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'eraser', opacity: 1.0 }))}
                   >
                     <Eraser className="w-4 h-4" />
                   </Button>
                   <Button
                     size="sm"
                     variant={currentTool.type === 'text' ? 'default' : 'outline'}
-                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'text' }))}
+                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'text', opacity: 1.0 }))}
                   >
                     <Type className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
 
-              {/* Color Selection */}
-              {currentTool.type !== 'eraser' && (
+              {/* Highlighter Colors */}
+              {currentTool.type === 'highlighter' && (
+                <div className="space-y-2">
+                  <Label>Highlighter Colors</Label>
+                  <div className="flex gap-2">
+                    {highlighterColors.map((color, index) => (
+                      <button
+                        key={index}
+                        className={`w-8 h-8 rounded border-2 transition-all ${
+                          currentTool.color === color ? 'border-gray-900 scale-110' : 'border-gray-300'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        onClick={() => setCurrentTool(prev => ({ ...prev, color }))}
+                        title={`Highlighter color ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Opacity Slider for Highlighter */}
+              {currentTool.type === 'highlighter' && (
+                <div className="space-y-2">
+                  <Label>Opacity: {Math.round((currentTool.opacity || 0.4) * 100)}%</Label>
+                  <Slider
+                    value={[(currentTool.opacity || 0.4) * 100]}
+                    onValueChange={(values) => setCurrentTool(prev => ({ ...prev, opacity: values[0] / 100 }))}
+                    min={10}
+                    max={80}
+                    step={5}
+                    className="w-full"
+                  />
+                </div>
+              )}
+
+              {/* Color Selection for Pen and Text */}
+              {(currentTool.type === 'pen' || currentTool.type === 'text') && (
                 <div className="space-y-2">
                   <Label>Color</Label>
                   <input
@@ -567,17 +651,27 @@ export default function Draw() {
               )}
 
               {/* Size Selection */}
-              <div className="space-y-2">
-                <Label>Size: {currentTool.size}px</Label>
-                <Slider
-                  value={[currentTool.size]}
-                  onValueChange={(value) => setCurrentTool(prev => ({ ...prev, size: value[0] }))}
-                  max={20}
-                  min={1}
-                  step={1}
-                  className="w-full"
-                />
-              </div>
+              {currentTool.type !== 'whiteout' && (
+                <div className="space-y-2">
+                  <Label>Size: {currentTool.size}px</Label>
+                  <Slider
+                    value={[currentTool.size]}
+                    onValueChange={(value) => setCurrentTool(prev => ({ ...prev, size: value[0] }))}
+                    max={currentTool.type === 'highlighter' ? 15 : 20}
+                    min={currentTool.type === 'highlighter' ? 5 : 1}
+                    step={1}
+                    className="w-full"
+                  />
+                </div>
+              )}
+              
+              {/* White-out Tool Info */}
+              {currentTool.type === 'whiteout' && (
+                <div className="space-y-2">
+                  <Label>White-out Tool</Label>
+                  <p className="text-sm text-gray-500">Thick white pen for corrections (8px)</p>
+                </div>
+              )}
 
               {/* Clear Canvas */}
               <Button onClick={clearCanvas} variant="outline" className="w-full">
