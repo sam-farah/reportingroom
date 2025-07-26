@@ -46,6 +46,7 @@ export interface IStorage {
   // (IMPORTANT) these user operations are mandatory for Replit Auth.
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
   
   // Clinic operations
   getAllClinics(): Promise<Clinic[]>;
@@ -294,6 +295,10 @@ export class DatabaseStorage implements IStorage {
       .update(clinics)
       .set({ logoUrl, updatedAt: new Date() })
       .where(eq(clinics.id, clinicId));
+  }
+
+  async getAllClinics(): Promise<Clinic[]> {
+    return await db.select().from(clinics);
   }
 
   async getAllPhysicians(): Promise<Physician[]> {
@@ -697,6 +702,11 @@ export class DatabaseStorage implements IStorage {
       .from(legendEntries)
       .where(eq(legendEntries.category, category))
       .orderBy(legendEntries.title);
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    const allUsers = await db.select().from(users);
+    return allUsers.map(user => FieldEncryption.decryptFields(user));
   }
 }
 

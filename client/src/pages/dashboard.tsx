@@ -79,14 +79,17 @@ export default function Dashboard() {
                   Clinic
                 </Button>
 
-                <Button
-                  variant={activePanel === "admin" ? "default" : "ghost"}
-                  className={activePanel === "admin" ? "medical-btn-secondary" : ""}
-                  onClick={() => setActivePanel("admin")}
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Admin Panel
-                </Button>
+                {/* Admin Panel - Only visible to webmaster */}
+                {user?.email === "contact@samfarah.com" && (
+                  <Button
+                    variant={activePanel === "admin" ? "default" : "ghost"}
+                    className={activePanel === "admin" ? "medical-btn-secondary" : ""}
+                    onClick={() => setActivePanel("admin")}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Admin Panel
+                  </Button>
+                )}
               </div>
               
               <div className="flex items-center space-x-3">
@@ -121,8 +124,12 @@ export default function Dashboard() {
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
         <Physicians />
-      ) : (
+      ) : activePanel === "staff" ? (
+        <StaffManagement />
+      ) : activePanel === "admin" && user?.email === "contact@samfarah.com" ? (
         <AdminPanel />
+      ) : (
+        <UserPanel />
       )}
 
       {/* Logo with text in bottom right */}

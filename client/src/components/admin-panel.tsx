@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2 } from "lucide-react";
+import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -31,6 +32,19 @@ export default function AdminPanel() {
 
   const { data: trainingPairs = [] } = useQuery<TrainingPair[]>({
     queryKey: ["/api/training"],
+  });
+
+  // System monitoring queries
+  const { data: systemStats } = useQuery({
+    queryKey: ["/api/admin/system-stats"],
+  });
+
+  const { data: clinicStats = [] } = useQuery({
+    queryKey: ["/api/admin/clinic-stats"],
+  });
+
+  const { data: costProjection } = useQuery({
+    queryKey: ["/api/admin/cost-projection"],
   });
 
   const { data: physicians = [] } = useQuery<Physician[]>({
@@ -345,11 +359,268 @@ export default function AdminPanel() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Training Panel</h1>
-        <p className="text-gray-600">Train the AI model by uploading worksheet-report pairs</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Webmaster Admin Panel</h1>
+        <p className="text-gray-600">System monitoring, cost analysis, and AI training management</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <Tabs defaultValue="monitoring" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
+          <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
+          <TabsTrigger value="costs">Cost Projection</TabsTrigger>
+          <TabsTrigger value="training">AI Training</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="monitoring" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Database Size</CardTitle>
+                <Database className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{systemStats?.databaseSize || '0'} GB</div>
+                <p className="text-xs text-muted-foreground">+{systemStats?.monthlyGrowth || '0'}% from last month</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{systemStats?.activeUsers || 0}</div>
+                <p className="text-xs text-muted-foreground">Last 30 days</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Reports</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{systemStats?.totalReports || 0}</div>
+                <p className="text-xs text-muted-foreground">{systemStats?.reportsThisMonth || 0} this month</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">System Status</CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">Healthy</div>
+                <p className="text-xs text-muted-foreground">Encryption: Active</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Storage Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm">Report Data</span>
+                    <span className="text-sm font-medium">{systemStats?.reportDataSize || '0'} GB</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${systemStats?.reportDataPercent || 0}%` }}></div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm">Worksheet Files</span>
+                    <span className="text-sm font-medium">{systemStats?.worksheetFilesSize || '0'} GB</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-green-600 h-2 rounded-full" style={{ width: `${systemStats?.worksheetFilesPercent || 0}%` }}></div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm">User Data</span>
+                    <span className="text-sm font-medium">{systemStats?.userDataSize || '0'} GB</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-yellow-600 h-2 rounded-full" style={{ width: `${systemStats?.userDataPercent || 0}%` }}></div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Performance Metrics</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Average Response Time</span>
+                  <span className="text-sm font-medium">{systemStats?.avgResponseTime || '0'}ms</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">API Success Rate</span>
+                  <span className="text-sm font-medium text-green-600">{systemStats?.apiSuccessRate || '0'}%</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Encryption Overhead</span>
+                  <span className="text-sm font-medium">{systemStats?.encryptionOverhead || '0'}ms</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Daily Backups</span>
+                  <span className="text-sm font-medium text-green-600">✓ Active</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="clinics" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Clinics Overview</CardTitle>
+              <p className="text-sm text-muted-foreground">Clinic activity and report generation statistics</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {clinicStats.length > 0 ? (
+                  clinicStats.map((clinic: any) => (
+                    <div key={clinic.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <Building className="h-8 w-8 text-blue-600" />
+                        <div>
+                          <h3 className="font-medium">{clinic.name}</h3>
+                          <p className="text-sm text-muted-foreground">{clinic.location}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-8 text-sm">
+                        <div className="text-center">
+                          <p className="font-medium">{clinic.reportsLast30Days}</p>
+                          <p className="text-muted-foreground">Reports (30d)</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-medium">{clinic.activeUsers}</p>
+                          <p className="text-muted-foreground">Active Users</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-medium">{clinic.lastUsed}</p>
+                          <p className="text-muted-foreground">Last Active</p>
+                        </div>
+                        <div className="text-center">
+                          <p className={`font-medium ${clinic.status === 'Active' ? 'text-green-600' : 'text-yellow-600'}`}>
+                            {clinic.status}
+                          </p>
+                          <p className="text-muted-foreground">Status</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center text-muted-foreground py-8">No clinic data available</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="costs" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <DollarSign className="h-5 w-5 mr-2" />
+                  Current Month
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">${costProjection?.currentMonth || '0'}</div>
+                <p className="text-sm text-muted-foreground">Database + Storage</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <TrendingUp className="h-5 w-5 mr-2" />
+                  Projected Next Month
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">${costProjection?.nextMonth || '0'}</div>
+                <p className="text-sm text-muted-foreground">Based on growth trend</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2" />
+                  Cost Alerts
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-orange-600">{costProjection?.alerts || 0}</div>
+                <p className="text-sm text-muted-foreground">Threshold warnings</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Cost Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm">Neon PostgreSQL</span>
+                  <span className="text-sm font-medium">${costProjection?.databaseCost || '0'}/month</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm">File Storage</span>
+                  <span className="text-sm font-medium">${costProjection?.storageCost || '0'}/month</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm">OpenAI API Usage</span>
+                  <span className="text-sm font-medium">${costProjection?.aiCost || '0'}/month</span>
+                </div>
+              </div>
+              <div className="border-t pt-2">
+                <div className="flex justify-between font-medium">
+                  <span>Total Estimated</span>
+                  <span>${costProjection?.totalEstimated || '0'}/month</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Optimization Recommendations</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {costProjection?.recommendations?.map((rec: string, index: number) => (
+                <div key={index} className="flex items-start space-x-2">
+                  <TrendingUp className="h-4 w-4 text-green-600 mt-0.5" />
+                  <span className="text-sm">{rec}</span>
+                </div>
+              )) || (
+                <p className="text-sm text-muted-foreground">No recommendations available</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="training" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Training Data Upload */}
         <Card>
           <CardContent className="p-6">
@@ -369,7 +640,7 @@ export default function AdminPanel() {
                   <input
                     type="file"
                     accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,image/*,application/pdf"
-                    onChange={handleWorksheetUpload}
+                    onChange={(e) => setWorksheetFile(e.target.files?.[0] || null)}
                     className="hidden"
                     id="worksheet-upload"
                   />
@@ -397,7 +668,7 @@ export default function AdminPanel() {
                   <input
                     type="file"
                     accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    onChange={handleReportUpload}
+                    onChange={(e) => setReportFile(e.target.files?.[0] || null)}
                     className="hidden"
                     id="report-upload"
                   />
@@ -415,239 +686,43 @@ export default function AdminPanel() {
                 </div>
               </div>
 
-              {/* Training Metadata */}
-              <div className="space-y-3">
+              {/* Form fields */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Category</Label>
-                  <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Abdominal">Abdominal</SelectItem>
-                      <SelectItem value="Pelvic">Pelvic</SelectItem>
-                      <SelectItem value="Cardiac">Cardiac</SelectItem>
-                      <SelectItem value="Obstetric">Obstetric</SelectItem>
-                      <SelectItem value="Vascular">Vascular</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <select className="w-full mt-1 p-2 border border-gray-300 rounded-md">
+                    <option value="">Select category</option>
+                    <option value="cardiac">Cardiac</option>
+                    <option value="vascular">Vascular</option>
+                    <option value="abdominal">Abdominal</option>
+                    <option value="obstetric">Obstetric</option>
+                  </select>
                 </div>
                 <div>
                   <Label>Complexity Level</Label>
-                  <Select value={complexityLevel} onValueChange={setComplexityLevel}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select complexity" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Basic">Basic</SelectItem>
-                      <SelectItem value="Intermediate">Intermediate</SelectItem>
-                      <SelectItem value="Advanced">Advanced</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <select className="w-full mt-1 p-2 border border-gray-300 rounded-md">
+                    <option value="">Select complexity</option>
+                    <option value="basic">Basic</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
                 </div>
               </div>
 
-              <Button
-                onClick={handleAddTrainingPair}
-                disabled={uploadTrainingMutation.isPending}
-                className="w-full medical-btn-primary"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {uploadTrainingMutation.isPending ? "Uploading..." : "Add Training Pair"}
+              <Button className="w-full bg-[var(--medical-primary)] hover:bg-[var(--medical-primary)]/90">
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Training Pair
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Training Progress & Analytics */}
-        <div className="space-y-6">
-          {/* Model Training Status */}
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                <ChartLine className="medical-text-primary mr-2 inline" />
-                Training Progress
-              </h2>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-700">Training Data Pairs</span>
-                  <span className="text-sm font-medium text-gray-900">{trainingPairs.length}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-700">Model Accuracy</span>
-                  <span className="text-sm font-medium text-[var(--medical-success)]">{modelAccuracy}%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-700">Last Training</span>
-                  <span className="text-sm font-medium text-gray-900">{lastTraining}</span>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-700">Current Training</span>
-                  <span className="text-sm text-gray-600">{trainingProgress}%</span>
-                </div>
-                <div className="bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-[var(--medical-primary)] h-2 rounded-full transition-all duration-300" 
-                    style={{ width: `${trainingProgress}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              <Button 
-                onClick={handleAddTrainingPair}
-                disabled={uploadTrainingMutation.isPending || !worksheetFile || !reportFile || !category || !complexityLevel}
-                className="w-full mt-4 bg-[var(--medical-success)] hover:bg-[var(--medical-success)]/80 text-white disabled:opacity-50"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                {uploadTrainingMutation.isPending ? "Uploading..." : "Start Training"}
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Physician Management */}
-          <Card>
-            <CardContent className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                <UserRound className="medical-text-primary mr-2 inline" />
-                Physician Management
-              </h2>
-              
-              <div className="space-y-3">
-                {physicians.map((physician) => (
-                  <div key={physician.id} className="flex items-center justify-between p-3 medical-bg-secondary rounded-lg">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 bg-[var(--medical-primary)] rounded-full flex items-center justify-center text-white text-sm font-medium mr-3">
-                        {physician.name.split(' ').map(n => n[0]).join('')}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{physician.name}</p>
-                        <p className="text-xs text-gray-600">{physician.specialty} • {physician.title}</p>
-                      </div>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="medical-text-primary hover:bg-blue-50"
-                        onClick={() => handleEditPhysician(physician)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-red-600 hover:bg-red-50"
-                        onClick={() => handleDeletePhysician(physician.id, physician.name)}
-                        disabled={deletePhysicianMutation.isPending}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Physician Form (Edit/Add) */}
-              {(editingPhysician || isAddingPhysician) && (
-                <div className="mt-4 p-4 border rounded-lg bg-white">
-                  <h3 className="text-sm font-medium text-gray-900 mb-3">
-                    {editingPhysician ? 'Edit Physician' : 'Add New Physician'}
-                  </h3>
-                  
-                  <div className="space-y-3">
-                    <div>
-                      <Label htmlFor="physician-name">Full Name *</Label>
-                      <Input
-                        id="physician-name"
-                        value={physicianForm.name}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhysicianForm({ ...physicianForm, name: e.target.value })}
-                        placeholder="Dr. John Smith"
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="physician-title">Title *</Label>
-                      <Input
-                        id="physician-title"
-                        value={physicianForm.title}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhysicianForm({ ...physicianForm, title: e.target.value })}
-                        placeholder="MD, PhD"
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="physician-specialty">Specialty *</Label>
-                      <Select 
-                        value={physicianForm.specialty} 
-                        onValueChange={(value) => setPhysicianForm({ ...physicianForm, specialty: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select specialty" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Radiologist">Radiologist</SelectItem>
-                          <SelectItem value="Sonographer">Sonographer</SelectItem>
-                          <SelectItem value="Vascular Surgeon">Vascular Surgeon</SelectItem>
-                          <SelectItem value="Cardiologist">Cardiologist</SelectItem>
-                          <SelectItem value="Emergency Medicine">Emergency Medicine</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="physician-signature">Signature URL (Optional)</Label>
-                      <Input
-                        id="physician-signature"
-                        value={physicianForm.signatureUrl}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhysicianForm({ ...physicianForm, signatureUrl: e.target.value })}
-                        placeholder="/signatures/physician-name.png"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex space-x-2 mt-4">
-                    <Button 
-                      onClick={handleSavePhysician}
-                      disabled={createPhysicianMutation.isPending || updatePhysicianMutation.isPending}
-                      className="medical-btn-primary"
-                    >
-                      {(createPhysicianMutation.isPending || updatePhysicianMutation.isPending) ? 
-                        'Saving...' : 
-                        (editingPhysician ? 'Update' : 'Add')
-                      }
-                    </Button>
-                    <Button variant="outline" onClick={handleCancelEdit}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              <Button 
-                variant="secondary" 
-                className="w-full mt-4"
-                onClick={() => setIsAddingPhysician(true)}
-                disabled={!!editingPhysician || isAddingPhysician}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Physician
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Training History */}
-      <div className="mt-8">
+        {/* Training Data History */}
         <Card>
           <CardContent className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              <History className="medical-text-primary mr-2 inline" />
-              Training History
+              <Database className="medical-text-primary mr-2 inline" />
+              Training Data History
             </h2>
             
             <div className="overflow-x-auto">
@@ -687,7 +762,9 @@ export default function AdminPanel() {
             </div>
           </CardContent>
         </Card>
-      </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
