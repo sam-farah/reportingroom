@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, Physician } from "@shared/schema";
@@ -21,6 +21,12 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editedReport, setEditedReport] = useState<Report | null>(null);
+
+  // Fetch clinic information
+  const { data: clinic } = useQuery({
+    queryKey: ["/api/clinic/info"],
+    retry: false,
+  });
 
   const updateReportMutation = useMutation({
     mutationFn: async (updatedData: Partial<Report>) => {
@@ -170,12 +176,18 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
                 alt="Logo" 
                 className="w-full h-full object-contain rounded-lg"
               />
+            ) : clinic?.logoUrl ? (
+              <img 
+                src={clinic.logoUrl} 
+                alt="Clinic Logo" 
+                className="w-full h-full object-contain rounded-lg"
+              />
             ) : (
               <Image className="w-8 h-8 text-gray-400" />
             )}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Reporting Room Medical</h3>
+            <h3 className="text-lg font-bold text-gray-900">{clinic?.name || 'Medical Clinic'}</h3>
             <p className="text-sm text-gray-600">Ultrasound Report</p>
           </div>
         </div>
