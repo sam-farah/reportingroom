@@ -19,6 +19,15 @@ export default function Clinic() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  
+  const resetAddDialog = () => {
+    setIsAddDialogOpen(false);
+    setNewPhysician({ name: "", title: "", specialty: "" });
+    setSignatureFile(null);
+    setSignatureMode("upload");
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    clearCanvas();
+  };
   const [editingPhysician, setEditingPhysician] = useState<Physician | null>(null);
   const [newPhysician, setNewPhysician] = useState<InsertPhysician>({
     name: "",
@@ -91,13 +100,7 @@ export default function Clinic() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
-      setIsAddDialogOpen(false);
-      setNewPhysician({ name: "", title: "", specialty: "" });
-      setSignatureFile(null);
-      clearCanvas();
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      resetAddDialog();
       toast({
         title: "Success",
         description: "Physician added successfully",
@@ -634,7 +637,7 @@ export default function Clinic() {
                 Add Physician
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto z-50">
               <DialogHeader>
                 <DialogTitle>Add New Physician</DialogTitle>
                 <DialogDescription>
@@ -747,12 +750,12 @@ export default function Clinic() {
                 </div>
                 
                 <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                  <Button variant="outline" onClick={resetAddDialog}>
                     Cancel
                   </Button>
                   <Button 
                     onClick={handleAddPhysician}
-                    disabled={addPhysicianMutation.isPending}
+                    disabled={addPhysicianMutation.isPending || !newPhysician.name}
                   >
                     {addPhysicianMutation.isPending ? "Adding..." : "Add Physician"}
                   </Button>
