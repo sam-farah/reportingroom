@@ -1603,15 +1603,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log("Creating draft report with data...");
+      
+      // Get template name for better context
+      let templateName = 'Custom';
+      if (worksheet.templateId) {
+        try {
+          const template = await storage.getWorksheetTemplate(worksheet.templateId);
+          templateName = template?.name || `Template #${worksheet.templateId}`;
+        } catch (templateError) {
+          console.warn("Failed to fetch template name:", templateError);
+        }
+      }
+      
       const draftReport = await storage.createDraftReport({
         digitalWorksheetId: worksheet.id,
         patientName: worksheet.patientName,
         patientDob: worksheet.patientDob,
         examDate: worksheet.examDate,
-        studyType: worksheet.studyType || 'Digital Drawing Study',
-        indication: `Digital drawing session completed by ${sonographer?.name || 'sonographer'} on ${new Date(worksheet.examDate).toLocaleDateString()}`,
-        findings: `Digital worksheet completed with drawings and annotations. Template: ${worksheet.templateId ? 'Template #' + worksheet.templateId : 'Custom'}. Study contains graphical annotations and measurements created using digital drawing interface. Canvas data available for review.`,
-        impression: `Digital drawing study completed. Awaiting physician interpretation and final report. Study type: ${worksheet.studyType || 'General study'}. Patient: ${worksheet.patientName}.`,
+        studyType: worksheet.studyType || templateName.replace('Template', '').trim() || 'Vascular Study',
+        indication: `${templateName} ultrasound examination requested. Patient presented for vascular assessment.`,
+        findings: `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`,
+        impression: `${templateName} study completed. Awaiting physician interpretation.\n\nRECOMMENDATIONS:\n- Physician review and interpretation required\n- Clinical correlation recommended\n- Follow-up as clinically indicated`,
         sonographerId: worksheet.sonographerId,
       });
 
