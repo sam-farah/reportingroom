@@ -1150,10 +1150,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const logoUrl = `/uploads/${req.file.filename}`;
+      
+      // Update clinic with new logo URL
+      const user = await storage.getUser((req as any).user.claims.sub);
+      if (user?.clinicId) {
+        await storage.updateClinicLogo(user.clinicId, logoUrl);
+      }
+      
       res.json({ url: logoUrl });
     } catch (error) {
       console.error("Logo upload error:", error);
       res.status(500).json({ error: "Failed to upload logo" });
+    }
+  });
+
+  // Get clinic info
+  app.get("/api/clinic", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser((req as any).user.claims.sub);
+      if (!user?.clinicId) {
+        return res.status(400).json({ error: "No clinic associated" });
+      }
+
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic) {
+        return res.status(404).json({ error: "Clinic not found" });
+      }
+
+      res.json(clinic);
+    } catch (error) {
+      console.error("Get clinic error:", error);
+      res.status(500).json({ error: "Failed to fetch clinic information" });
     }
   });
 

@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest } from "@/lib/queryClient";
-import type { Physician, InsertPhysician, Sonographer, InsertSonographerData } from "@shared/schema";
+import type { Physician, InsertPhysician, Sonographer, InsertSonographerData, Clinic } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,12 @@ export default function Clinic() {
   const { isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Fetch clinic data
+  const { data: clinic } = useQuery<Clinic>({
+    queryKey: ["/api/clinic"],
+    enabled: isAuthenticated,
+  });
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   
   const resetAddDialog = () => {
@@ -436,6 +442,8 @@ export default function Clinic() {
       if (logoInputRef.current) {
         logoInputRef.current.value = '';
       }
+      // Refresh clinic data to show updated logo
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -1027,6 +1035,12 @@ export default function Clinic() {
                         alt="Logo preview" 
                         className="w-full h-full object-contain rounded-lg"
                       />
+                    ) : clinic?.logoUrl ? (
+                      <img 
+                        src={clinic.logoUrl} 
+                        alt="Current clinic logo" 
+                        className="w-full h-full object-contain rounded-lg"
+                      />
                     ) : (
                       <Image className="text-gray-400 w-8 h-8" />
                     )}
@@ -1044,7 +1058,7 @@ export default function Clinic() {
                       <Button variant="outline" className="w-full" asChild>
                         <span>
                           <Upload className="w-4 h-4 mr-2" />
-                          {logoFile ? "Change Logo" : "Upload Logo"}
+                          {logoFile ? "Change Logo" : clinic?.logoUrl ? "Update Logo" : "Upload Logo"}
                         </span>
                       </Button>
                     </Label>

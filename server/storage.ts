@@ -278,6 +278,22 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, staffId));
   }
 
+  // Clinic operations
+  async getClinic(clinicId: number): Promise<Clinic | undefined> {
+    const [clinic] = await db
+      .select()
+      .from(clinics)
+      .where(eq(clinics.id, clinicId));
+    return clinic;
+  }
+
+  async updateClinicLogo(clinicId: number, logoUrl: string): Promise<void> {
+    await db
+      .update(clinics)
+      .set({ logoUrl, updatedAt: new Date() })
+      .where(eq(clinics.id, clinicId));
+  }
+
   async getAllPhysicians(): Promise<Physician[]> {
     return await db.select().from(physicians);
   }
