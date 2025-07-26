@@ -29,13 +29,13 @@ export default function ReportingRoom() {
   const REPORTS_PER_PAGE = 12;
 
   // Fetch recent reports
-  const { data: reports = [], isLoading: reportsLoading } = useQuery({
+  const { data: reports = [], isLoading: reportsLoading } = useQuery<Report[]>({
     queryKey: ["/api/reports/recent"],
     retry: false,
   });
 
   // Fetch all templates for selection
-  const { data: templates = [] } = useQuery({
+  const { data: templates = [] } = useQuery<ReportTemplate[]>({
     queryKey: ["/api/templates"],
     retry: false,
   });
@@ -44,7 +44,7 @@ export default function ReportingRoom() {
   const updateReportMutation = useMutation({
     mutationFn: async (reportData: Partial<Report>) => {
       if (!editingReport) throw new Error("No report to update");
-      const response = await apiRequest("PATCH", `/api/reports/${editingReport.id}`, reportData);
+      const response = await apiRequest(`/api/reports/${editingReport.id}`, "PATCH", reportData);
       return await response.json();
     },
     onSuccess: () => {
@@ -79,7 +79,7 @@ export default function ReportingRoom() {
   // Delete report mutation
   const deleteReportMutation = useMutation({
     mutationFn: async (reportId: number) => {
-      const response = await apiRequest("DELETE", `/api/reports/${reportId}`);
+      const response = await apiRequest(`/api/reports/${reportId}`, "DELETE");
       return await response.json();
     },
     onSuccess: () => {
@@ -126,7 +126,7 @@ export default function ReportingRoom() {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const template = templates.find(t => t.id === (editingReport?.templateId || 1)) || templates[0];
+    const template = templates.find((t: ReportTemplate) => t.id === (editingReport?.templateId || 1)) || templates[0];
     
     printWindow.document.write(`
       <!DOCTYPE html>
