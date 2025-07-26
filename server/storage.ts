@@ -75,17 +75,20 @@ export interface IStorage {
   updateSonographer(id: number, sonographer: Partial<InsertSonographerData>): Promise<Sonographer | undefined>;
   deleteSonographer(id: number): Promise<void>;
 
+  // Worksheet template operations
   getAllWorksheetTemplates(): Promise<WorksheetTemplate[]>;
   getWorksheetTemplate(id: number): Promise<WorksheetTemplate | undefined>;
   createWorksheetTemplate(template: InsertWorksheetTemplate): Promise<WorksheetTemplate>;
   updateWorksheetTemplate(id: number, template: Partial<InsertWorksheetTemplate>): Promise<WorksheetTemplate | undefined>;
   deleteWorksheetTemplate(id: number): Promise<void>;
 
+  // Digital worksheet operations
   getAllDigitalWorksheets(): Promise<DigitalWorksheet[]>;
   getDigitalWorksheet(id: number): Promise<DigitalWorksheet | undefined>;
   createDigitalWorksheet(worksheet: InsertDigitalWorksheet): Promise<DigitalWorksheet>;
   updateDigitalWorksheet(id: number, worksheet: Partial<InsertDigitalWorksheet>): Promise<DigitalWorksheet | undefined>;
-  deleteDigitalWorksheet(id: number): Promise<void>;
+  getDraftDigitalWorksheets(): Promise<DigitalWorksheet[]>;
+  createDraftReport(data: any): Promise<Report>;
 }
 
 export class DatabaseStorage implements IStorage {
