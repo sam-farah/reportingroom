@@ -915,7 +915,7 @@ export default function Clinic() {
                       <Input
                         id="sonographer-title"
                         placeholder="e.g., Registered Vascular Technologist"
-                        value={newSonographer.title}
+                        value={newSonographer.title || ""}
                         onChange={(e) => setNewSonographer({ ...newSonographer, title: e.target.value })}
                       />
                     </div>
@@ -924,7 +924,7 @@ export default function Clinic() {
                       <Input
                         id="sonographer-department"
                         placeholder="e.g., Vascular Lab"
-                        value={newSonographer.department}
+                        value={newSonographer.department || ""}
                         onChange={(e) => setNewSonographer({ ...newSonographer, department: e.target.value })}
                       />
                     </div>
@@ -1025,7 +1025,7 @@ export default function Clinic() {
                           </div>
                         )}
                         <div className="text-xs text-gray-500">
-                          Added: {new Date(sonographer.createdAt).toLocaleDateString()}
+                          Added: {sonographer.createdAt ? new Date(sonographer.createdAt).toLocaleDateString() : 'N/A'}
                         </div>
                       </div>
                     </CardContent>
