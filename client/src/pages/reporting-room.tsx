@@ -743,442 +743,408 @@ export default function ReportingRoom() {
         </div>
       )}
 
-      {/* Report Editor Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
-        setIsEditDialogOpen(open);
-        if (!open) {
-          setIsFullscreenMode(false);
-          // Exit browser fullscreen when closing
-          if (document.fullscreenElement) {
-            document.exitFullscreen?.().catch(() => {});
-          }
-        }
-      }}>
-        <DialogContent 
-          className={isFullscreenMode ? 
-            "fixed inset-0 z-50 bg-white m-0 p-0 max-w-none max-h-none w-screen h-screen border-0 overflow-hidden" : 
-            "max-w-4xl max-h-[90vh] overflow-y-auto"}
-          aria-describedby="dialog-description"
-          style={isFullscreenMode ? { width: '100vw', height: '100vh', maxWidth: 'none', maxHeight: 'none' } : {}}>
+      {/* Fullscreen Split View - Rendered Outside Dialog */}
+      {isFullscreenMode && editingReport && (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col">
+          {/* Fullscreen Header */}
+          <div className="flex items-center justify-between p-4 border-b bg-white shadow-sm">
+            <div>
+              <h2 className="text-xl font-semibold">Edit Report - {editingReport.patientName}</h2>
+              <p className="text-sm text-gray-600">Template: {templates.find(t => t.id === editingReport.templateId)?.name || 'Standard Report'}</p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={navigateToPreviousReport}
+                disabled={getCurrentReportIndex() <= 0}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Previous
+              </Button>
+              <span className="text-sm text-gray-500">
+                {getCurrentReportIndex() + 1} of {filteredReports.length}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={navigateToNextReport}
+                disabled={getCurrentReportIndex() >= filteredReports.length - 1}
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsFullscreenMode(false);
+                  setIsEditDialogOpen(false);
+                }}
+              >
+                <Minimize2 className="w-4 h-4 mr-2" />
+                Exit Fullscreen
+              </Button>
+            </div>
+          </div>
           
-          {/* Fullscreen Split View */}
-          {isFullscreenMode && editingReport ? (
-            <>
-              <DialogTitle className="sr-only">Edit Report - {editingReport.patientName}</DialogTitle>
-              <DialogDescription id="dialog-description" className="sr-only">
-                Review and modify report details in fullscreen mode.
-              </DialogDescription>
-              <div className="flex h-full">
-                {/* Left Panel - Worksheet */}
-                <div className="w-1/2 border-r bg-gray-50 flex flex-col">
-                  <div className="p-4 border-b bg-white">
-                    <h3 className="text-lg font-semibold">Worksheet - {editingReport.patientName}</h3>
-                    <p className="text-sm text-gray-600">Original drawing or uploaded worksheet</p>
-                  </div>
-                  <div className="flex-1 flex items-center justify-center p-4">
-                    {editingReport.digitalWorksheetId ? (
-                      <div className="max-w-full max-h-full flex items-center justify-center">
-                        <img 
-                          src={`/api/digital-worksheets/${editingReport.digitalWorksheetId}/image`}
-                          alt="Digital Worksheet"
-                          className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
-                          style={{ maxHeight: 'calc(100vh - 200px)' }}
-                        />
-                      </div>
-                    ) : editingReport.worksheetId ? (
-                      <div className="max-w-full max-h-full flex items-center justify-center">
-                        <img 
-                          src={`/api/worksheets/${editingReport.worksheetId}/image`}
-                          alt="Uploaded Worksheet"
-                          className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
-                          style={{ maxHeight: 'calc(100vh - 200px)' }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="text-center text-gray-500">
-                        <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <p>No worksheet image available</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Right Panel - Report Editor */}
-                <div className="w-1/2 flex flex-col">
-                  <div className="flex items-center justify-between p-4 border-b bg-white">
-                    <div>
-                      <h3 className="text-lg font-semibold">Report Editor - {editingReport.patientName}</h3>
-                      <p className="text-sm text-gray-600">Template: {templates.find(t => t.id === editingReport.templateId)?.name || 'Standard Report'}</p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={navigateToPreviousReport}
-                        disabled={getCurrentReportIndex() <= 0}
-                      >
-                        <ChevronLeft className="w-4 h-4 mr-1" />
-                        Previous
-                      </Button>
-                      <span className="text-sm text-gray-500">
-                        {getCurrentReportIndex() + 1} of {filteredReports.length}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={navigateToNextReport}
-                        disabled={getCurrentReportIndex() >= filteredReports.length - 1}
-                      >
-                        Next
-                        <ChevronRight className="w-4 h-4 ml-1" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setIsFullscreenMode(false);
-                          if (document.fullscreenElement) {
-                            document.exitFullscreen?.().catch(() => {});
-                          }
-                        }}
-                      >
-                        <Minimize2 className="w-4 h-4 mr-2" />
-                        Exit Fullscreen
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Report content here */}
-                    <div className="space-y-2">
-                      <Label htmlFor="template">Report Template</Label>
-                      <Select
-                        value={editingReport.templateId?.toString() || ""}
-                        onValueChange={(value) => updateEditingReport('templateId', parseInt(value))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select template" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {templates.map((template: ReportTemplate) => (
-                            <SelectItem key={template.id} value={template.id.toString()}>
-                              {template.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Patient Information */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="patientName">Patient Name</Label>
-                        <Input
-                          id="patientName"
-                          value={editingReport.patientName}
-                          onChange={(e) => updateEditingReport('patientName', e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="patientDob">Date of Birth</Label>
-                        <Input
-                          id="patientDob"
-                          value={editingReport.patientDob}
-                          onChange={(e) => updateEditingReport('patientDob', e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="examDate">Exam Date</Label>
-                        <Input
-                          id="examDate"
-                          value={editingReport.examDate}
-                          onChange={(e) => updateEditingReport('examDate', e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="studyType">Study Type</Label>
-                        <Input
-                          id="studyType"
-                          value={editingReport.studyType}
-                          onChange={(e) => updateEditingReport('studyType', e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Report Fields */}
-                    <div className="space-y-2">
-                      <Label htmlFor="indication">Indication</Label>
-                      <Textarea
-                        id="indication"
-                        value={editingReport.indication}
-                        onChange={(e) => updateEditingReport('indication', e.target.value)}
-                        rows={3}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="findings">Findings</Label>
-                      <Textarea
-                        id="findings"
-                        value={editingReport.findings}
-                        onChange={(e) => updateEditingReport('findings', e.target.value)}
-                        rows={6}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="impression">Impression</Label>
-                      <Textarea
-                        id="impression"
-                        value={editingReport.impression}
-                        onChange={(e) => updateEditingReport('impression', e.target.value)}
-                        rows={4}
-                      />
-                    </div>
-
-                    {/* Finalization */}
-                    <div className="border-t pt-4 space-y-4">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="finalizeReport"
-                          checked={editingReport.isFinalized}
-                          onCheckedChange={(checked) => updateEditingReport('isFinalized', checked)}
-                        />
-                        <Label htmlFor="finalizeReport" className="text-sm">
-                          Finalize this report (will add electronic signature timestamp)
-                        </Label>
-                      </div>
-                      
-                      {editingReport.isFinalized && (
-                        <div className="text-green-600 text-sm flex items-center">
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          This report will be electronically signed upon saving
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex space-x-2 pt-4 border-t">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setIsEditDialogOpen(false);
-                          setIsFullscreenMode(false);
-                          if (document.fullscreenElement) {
-                            document.exitFullscreen?.().catch(() => {});
-                          }
-                        }}
-                      >
-                        <X className="w-4 h-4 mr-2" />
-                        Close
-                      </Button>
-                      <Button
-                        onClick={() => handleExportPDF(editingReport)}
-                        variant="outline"
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Export PDF
-                      </Button>
-                      <Button
-                        onClick={() => handleExportDOCX(editingReport)}
-                        variant="outline"
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Export DOCX
-                      </Button>
-                      <Button
-                        onClick={handleSaveReport}
-                        disabled={updateReportMutation.isPending}
-                        className="medical-btn-primary"
-                      >
-                        <Save className="w-4 h-4 mr-2" />
-                        {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+          {/* Split View Content */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* Left Panel - Worksheet */}
+            <div className="w-1/2 border-r bg-gray-50 flex flex-col">
+              <div className="p-4 border-b bg-white">
+                <h3 className="text-lg font-semibold">Worksheet - {editingReport.patientName}</h3>
+                <p className="text-sm text-gray-600">Original drawing or uploaded worksheet</p>
               </div>
-            </>
-          ) : (
-            /* Regular Dialog View */
-            editingReport && (
-              <>
-                <DialogHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <DialogTitle>Edit Report - {editingReport.patientName}</DialogTitle>
-                      <DialogDescription>
-                        Review and modify report details, then save your changes.
-                      </DialogDescription>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={navigateToPreviousReport}
-                        disabled={getCurrentReportIndex() <= 0}
-                      >
-                        <ChevronLeft className="w-4 h-4 mr-1" />
-                        Previous
-                      </Button>
-                      <span className="text-sm text-gray-500">
-                        {getCurrentReportIndex() + 1} of {filteredReports.length}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={navigateToNextReport}
-                        disabled={getCurrentReportIndex() >= filteredReports.length - 1}
-                      >
-                        Next
-                        <ChevronRight className="w-4 h-4 ml-1" />
-                      </Button>
-                    </div>
+              <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+                {editingReport.digitalWorksheetId ? (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <img 
+                      src={`/api/digital-worksheets/${editingReport.digitalWorksheetId}/image`}
+                      alt="Digital Worksheet"
+                      className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
+                    />
                   </div>
-                </DialogHeader>
+                ) : editingReport.worksheetId ? (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <img 
+                      src={`/api/worksheets/${editingReport.worksheetId}/image`}
+                      alt="Uploaded Worksheet"
+                      className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-500">
+                    <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <p>No worksheet image available</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Right Panel - Report Editor */}
+            <div className="w-1/2 flex flex-col bg-white">
+              <div className="p-4 border-b">
+                <h3 className="text-lg font-semibold">Report Editor</h3>
+                <p className="text-sm text-gray-600">Edit report content and save changes</p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Template Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="fullscreen-template">Report Template</Label>
+                  <Select
+                    value={editingReport.templateId?.toString() || ""}
+                    onValueChange={(value) => updateEditingReport('templateId', parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((template: ReportTemplate) => (
+                        <SelectItem key={template.id} value={template.id.toString()}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                <div className="space-y-6">
-                  {/* Template Selection */}
+                {/* Patient Information */}
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="template">Report Template</Label>
-                    <Select
-                      value={editingReport.templateId?.toString() || ""}
-                      onValueChange={(value) => updateEditingReport('templateId', parseInt(value))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select template" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {templates.map((template: ReportTemplate) => (
-                          <SelectItem key={template.id} value={template.id.toString()}>
-                            {template.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Patient Information */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="patientName">Patient Name</Label>
-                      <Input
-                        id="patientName"
-                        value={editingReport.patientName}
-                        onChange={(e) => updateEditingReport('patientName', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="patientDob">Date of Birth</Label>
-                      <Input
-                        id="patientDob"
-                        value={editingReport.patientDob}
-                        onChange={(e) => updateEditingReport('patientDob', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="examDate">Exam Date</Label>
-                      <Input
-                        id="examDate"
-                        value={editingReport.examDate}
-                        onChange={(e) => updateEditingReport('examDate', e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="studyType">Study Type</Label>
+                    <Label htmlFor="fullscreen-patientName">Patient Name</Label>
                     <Input
-                      id="studyType"
+                      id="fullscreen-patientName"
+                      value={editingReport.patientName}
+                      onChange={(e) => updateEditingReport('patientName', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="fullscreen-patientDob">Date of Birth</Label>
+                    <Input
+                      id="fullscreen-patientDob"
+                      value={editingReport.patientDob}
+                      onChange={(e) => updateEditingReport('patientDob', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="fullscreen-examDate">Exam Date</Label>
+                    <Input
+                      id="fullscreen-examDate"
+                      value={editingReport.examDate}
+                      onChange={(e) => updateEditingReport('examDate', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="fullscreen-studyType">Study Type</Label>
+                    <Input
+                      id="fullscreen-studyType"
                       value={editingReport.studyType}
                       onChange={(e) => updateEditingReport('studyType', e.target.value)}
                     />
                   </div>
+                </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="indication">Indication</Label>
-                    <Textarea
-                      id="indication"
-                      value={editingReport.indication}
-                      onChange={(e) => updateEditingReport('indication', e.target.value)}
-                      rows={3}
+                {/* Report Fields */}
+                <div className="space-y-2">
+                  <Label htmlFor="fullscreen-indication">Indication</Label>
+                  <Textarea
+                    id="fullscreen-indication"
+                    value={editingReport.indication}
+                    onChange={(e) => updateEditingReport('indication', e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="fullscreen-findings">Findings</Label>
+                  <Textarea
+                    id="fullscreen-findings"
+                    value={editingReport.findings}
+                    onChange={(e) => updateEditingReport('findings', e.target.value)}
+                    rows={6}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="fullscreen-impression">Impression</Label>
+                  <Textarea
+                    id="fullscreen-impression"
+                    value={editingReport.impression}
+                    onChange={(e) => updateEditingReport('impression', e.target.value)}
+                    rows={4}
+                  />
+                </div>
+
+                {/* Finalization */}
+                <div className="border-t pt-4 space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="fullscreen-finalizeReport"
+                      checked={editingReport.isFinalized}
+                      onCheckedChange={(checked) => updateEditingReport('isFinalized', checked)}
                     />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="findings">Findings</Label>
-                    <Textarea
-                      id="findings"
-                      value={editingReport.findings}
-                      onChange={(e) => updateEditingReport('findings', e.target.value)}
-                      rows={6}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="impression">Impression</Label>
-                    <Textarea
-                      id="impression"
-                      value={editingReport.impression}
-                      onChange={(e) => updateEditingReport('impression', e.target.value)}
-                      rows={4}
-                    />
-                  </div>
-
-                  {/* Finalization */}
-                  <div className="border-t pt-4 space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="finalizeReport"
-                        checked={editingReport.isFinalized}
-                        onCheckedChange={(checked) => updateEditingReport('isFinalized', checked)}
-                      />
-                      <Label htmlFor="finalizeReport" className="text-sm">
-                        Finalize this report (will add electronic signature timestamp)
-                      </Label>
-                    </div>
-                    
-                    {editingReport.isFinalized && (
-                      <div className="text-green-600 text-sm flex items-center">
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        This report will be electronically signed upon saving
-                      </div>
-                    )}
+                    <Label htmlFor="fullscreen-finalizeReport" className="text-sm">
+                      Finalize this report (will add electronic signature timestamp)
+                    </Label>
                   </div>
                   
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsEditDialogOpen(false)}
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={() => handleExportPDF(editingReport)}
-                      variant="outline"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Export PDF
-                    </Button>
-                    <Button
-                      onClick={() => handleExportDOCX(editingReport)}
-                      variant="outline"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Export DOCX
-                    </Button>
-                    <Button
-                      onClick={handleSaveReport}
-                      disabled={updateReportMutation.isPending}
-                      className="medical-btn-primary"
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
-                    </Button>
+                  {editingReport.isFinalized && (
+                    <div className="text-green-600 text-sm flex items-center">
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      This report will be electronically signed upon saving
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-2 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsFullscreenMode(false);
+                      setIsEditDialogOpen(false);
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => handleExportPDF(editingReport)}
+                    variant="outline"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export PDF
+                  </Button>
+                  <Button
+                    onClick={() => handleExportDOCX(editingReport)}
+                    variant="outline"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export DOCX
+                  </Button>
+                  <Button
+                    onClick={handleSaveReport}
+                    disabled={updateReportMutation.isPending}
+                    className="medical-btn-primary"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Regular Report Editor Dialog */}
+      <Dialog open={isEditDialogOpen && !isFullscreenMode} onOpenChange={(open) => {
+        setIsEditDialogOpen(open);
+        if (!open) {
+          setIsFullscreenMode(false);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {editingReport && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Edit Report - {editingReport.patientName}</DialogTitle>
+                <DialogDescription>
+                  Review and modify report details, then save your changes.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {/* Template Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="template">Report Template</Label>
+                  <Select
+                    value={editingReport.templateId?.toString() || ""}
+                    onValueChange={(value) => updateEditingReport('templateId', parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((template: ReportTemplate) => (
+                        <SelectItem key={template.id} value={template.id.toString()}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Patient Information */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="patientName">Patient Name</Label>
+                    <Input
+                      id="patientName"
+                      value={editingReport.patientName}
+                      onChange={(e) => updateEditingReport('patientName', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="patientDob">Date of Birth</Label>
+                    <Input
+                      id="patientDob"
+                      value={editingReport.patientDob}
+                      onChange={(e) => updateEditingReport('patientDob', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="examDate">Exam Date</Label>
+                    <Input
+                      id="examDate"
+                      value={editingReport.examDate}
+                      onChange={(e) => updateEditingReport('examDate', e.target.value)}
+                    />
                   </div>
                 </div>
-              </>
-            )
+
+                {/* Study Type */}
+                <div className="space-y-2">
+                  <Label htmlFor="studyType">Study Type</Label>
+                  <Input
+                    id="studyType"
+                    value={editingReport.studyType}
+                    onChange={(e) => updateEditingReport('studyType', e.target.value)}
+                  />
+                </div>
+
+                {/* Indication */}
+                <div className="space-y-2">
+                  <Label htmlFor="indication">Indication</Label>
+                  <Textarea
+                    id="indication"
+                    value={editingReport.indication}
+                    onChange={(e) => updateEditingReport('indication', e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                {/* Findings */}
+                <div className="space-y-2">
+                  <Label htmlFor="findings">Findings</Label>
+                  <Textarea
+                    id="findings"
+                    value={editingReport.findings}
+                    onChange={(e) => updateEditingReport('findings', e.target.value)}
+                    rows={6}
+                  />
+                </div>
+
+                {/* Impression */}
+                <div className="space-y-2">
+                  <Label htmlFor="impression">Impression</Label>
+                  <Textarea
+                    id="impression"
+                    value={editingReport.impression}
+                    onChange={(e) => updateEditingReport('impression', e.target.value)}
+                    rows={4}
+                  />
+                </div>
+
+                {/* Finalization */}
+                <div className="border-t pt-4 space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="finalizeReport"
+                      checked={!!editingReport.isFinalized}
+                      onCheckedChange={(checked) => updateEditingReport('isFinalized', checked)}
+                    />
+                    <Label htmlFor="finalizeReport" className="text-sm">
+                      Finalize this report (will add electronic signature timestamp)
+                    </Label>
+                  </div>
+                  
+                  {editingReport.isFinalized && (
+                    <div className="text-green-600 text-sm flex items-center">
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      This report will be electronically signed upon saving
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-2 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditDialogOpen(false);
+                      setIsFullscreenMode(false);
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => handleExportPDF(editingReport)}
+                    variant="outline"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export PDF
+                  </Button>
+                  <Button
+                    onClick={() => handleExportDOCX(editingReport)}
+                    variant="outline"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export DOCX
+                  </Button>
+                  <Button
+                    onClick={handleSaveReport}
+                    disabled={updateReportMutation.isPending}
+                    className="medical-btn-primary"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
