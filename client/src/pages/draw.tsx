@@ -264,8 +264,17 @@ export default function Draw() {
     setIsDrawing(false);
     setLastPointer(null);
     
-    // Skip heavy eraser reconstruction during drawing for performance
-    // Only do this reconstruction on final stroke completion if needed
+    // For eraser, restore template underneath erased areas
+    if (currentTool.type === 'eraser' && canvasRef.current && templateImage) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Draw template underneath using destination-over
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.drawImage(templateImage, 0, 0, canvas.width, canvas.height);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
     
     // Reset canvas context to avoid tool interference  
     if (canvasRef.current) {
