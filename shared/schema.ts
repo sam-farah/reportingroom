@@ -189,7 +189,9 @@ export const legendEntries = pgTable("legend_entries", {
   medicalMeaning: text("medical_meaning").notNull(), // What it indicates medically
   category: varchar("category", { length: 100 }), // e.g., "vascular", "cardiac", "abdominal"
   keywords: text("keywords"), // Comma-separated keywords for AI matching
-  exampleImage: varchar("example_image", { length: 500 }), // Optional example image path
+  exampleImage: varchar("example_image", { length: 500 }), // Uploaded example image path
+  drawingData: text("drawing_data"), // Canvas drawing data as base64 string
+  imageType: varchar("image_type", { length: 20 }).default('upload'), // 'upload' or 'drawing'
   createdBy: varchar("created_by", { length: 255 }), // Sonographer who created this
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),

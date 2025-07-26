@@ -110,8 +110,12 @@ export default function Templates() {
     category: 'vascular',
     keywords: '',
     createdBy: '',
-    isActive: true
+    isActive: true,
+    imageType: 'upload' as 'upload' | 'drawing',
+    exampleImage: null as File | null,
+    drawingData: ''
   });
+  const [showDrawingCanvas, setShowDrawingCanvas] = useState(false);
 
   // Fetch all templates
   const { data: templates = [], isLoading } = useQuery({
@@ -291,8 +295,19 @@ export default function Templates() {
 
   // Legend entry mutations
   const createLegendMutation = useMutation({
-    mutationFn: async (entryData: InsertLegendEntryData) => {
-      return await apiRequest("/api/legend-entries", "POST", entryData);
+    mutationFn: async (formData: FormData) => {
+      const response = await fetch("/api/legend-entries", {
+        method: "POST",
+        body: formData,
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create legend entry: ${errorText}`);
+      }
+      
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -309,7 +324,10 @@ export default function Templates() {
         category: 'vascular',
         keywords: '',
         createdBy: '',
-        isActive: true
+        isActive: true,
+        imageType: 'upload',
+        exampleImage: null,
+        drawingData: ''
       });
     },
     onError: (error: Error) => {
@@ -333,8 +351,19 @@ export default function Templates() {
   });
 
   const updateLegendMutation = useMutation({
-    mutationFn: async ({ id, entryData }: { id: number; entryData: Partial<InsertLegendEntryData> }) => {
-      return await apiRequest(`/api/legend-entries/${id}`, "PATCH", entryData);
+    mutationFn: async ({ id, formData }: { id: number; formData: FormData }) => {
+      const response = await fetch(`/api/legend-entries/${id}`, {
+        method: "PATCH",
+        body: formData,
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update legend entry: ${errorText}`);
+      }
+      
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -352,7 +381,23 @@ export default function Templates() {
         category: 'vascular',
         keywords: '',
         createdBy: '',
-        isActive: true
+        isActive: true,
+        imageType: 'upload',
+        exampleImage: null,
+        drawingData: ''
+      });
+      setLegendForm({
+        title: '',
+        description: '',
+        drawingPattern: '',
+        medicalMeaning: '',
+        category: 'vascular',
+        keywords: '',
+        createdBy: '',
+        isActive: true,
+        imageType: 'upload',
+        exampleImage: null,
+        drawingData: ''
       });
     },
     onError: (error: Error) => {
@@ -543,7 +588,10 @@ export default function Templates() {
       category: 'vascular',
       keywords: '',
       createdBy: '',
-      isActive: true
+      isActive: true,
+      imageType: 'upload',
+      exampleImage: null,
+      drawingData: ''
     });
     setShowLegendDialog(true);
   };
@@ -558,16 +606,42 @@ export default function Templates() {
       category: entry.category || 'vascular',
       keywords: entry.keywords || '',
       createdBy: entry.createdBy || '',
-      isActive: entry.isActive
+      isActive: entry.isActive || false,
+      imageType: entry.imageType || 'upload',
+      exampleImage: null,
+      drawingData: entry.drawingData || ''
     });
     setShowLegendDialog(true);
   };
 
   const handleSubmitLegendEntry = () => {
+    const formData = new FormData();
+    
+    // Add all text fields to FormData
+    formData.append('title', legendForm.title);
+    formData.append('description', legendForm.description);
+    formData.append('drawingPattern', legendForm.drawingPattern);
+    formData.append('medicalMeaning', legendForm.medicalMeaning);
+    formData.append('category', legendForm.category);
+    formData.append('keywords', legendForm.keywords);
+    formData.append('createdBy', legendForm.createdBy);
+    formData.append('isActive', String(legendForm.isActive));
+    formData.append('imageType', legendForm.imageType);
+    
+    // Add image file if uploading
+    if (legendForm.imageType === 'upload' && legendForm.exampleImage) {
+      formData.append('exampleImage', legendForm.exampleImage);
+    }
+    
+    // Add drawing data if drawing
+    if (legendForm.imageType === 'drawing' && legendForm.drawingData) {
+      formData.append('drawingData', legendForm.drawingData);
+    }
+    
     if (editingLegendEntry) {
-      updateLegendMutation.mutate({ id: editingLegendEntry.id, entryData: legendForm });
+      updateLegendMutation.mutate({ id: editingLegendEntry.id, formData });
     } else {
-      createLegendMutation.mutate(legendForm);
+      createLegendMutation.mutate(formData);
     }
   };
 
@@ -827,6 +901,30 @@ export default function Templates() {
                   <p className="text-sm text-gray-600 mb-3">
                     {entry.description}
                   </p>
+                  
+                  {/* Visual Example */}
+                  {entry.imageType === 'upload' && entry.exampleImage && (
+                    <div className="mb-3">
+                      <span className="text-xs font-medium text-gray-700">Example Image:</span>
+                      <img 
+                        src={entry.exampleImage} 
+                        alt="Drawing pattern example"
+                        className="mt-1 w-full h-24 object-contain border border-gray-200 rounded bg-gray-50"
+                      />
+                    </div>
+                  )}
+                  
+                  {entry.imageType === 'drawing' && entry.drawingData && (
+                    <div className="mb-3">
+                      <span className="text-xs font-medium text-gray-700">Drawn Pattern:</span>
+                      <img 
+                        src={entry.drawingData} 
+                        alt="Hand-drawn pattern"
+                        className="mt-1 w-full h-24 object-contain border border-gray-200 rounded bg-white"
+                      />
+                    </div>
+                  )}
+                  
                   <div className="space-y-2">
                     <div className="flex items-start justify-between text-xs">
                       <span className="text-gray-500">Medical Meaning:</span>
@@ -835,9 +933,14 @@ export default function Templates() {
                     {entry.category && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-gray-500">Category:</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {entry.category}
-                        </Badge>
+                        <div className="flex gap-1">
+                          <Badge variant="secondary" className="text-xs">
+                            {entry.category}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {entry.imageType === 'upload' ? '📁' : '✏️'}
+                          </Badge>
+                        </div>
                       </div>
                     )}
                     {entry.keywords && (
@@ -852,6 +955,12 @@ export default function Templates() {
                         {entry.isActive ? "Active" : "Inactive"}
                       </Badge>
                     </div>
+                    {entry.createdBy && (
+                      <div className="flex items-start justify-between text-xs pt-2 border-t">
+                        <span className="text-gray-500">Created by:</span>
+                        <span className="font-medium text-right flex-1 ml-2">{entry.createdBy}</span>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1347,6 +1456,16 @@ export default function Templates() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="createdBy">Created By</Label>
+              <Input
+                id="createdBy"
+                value={legendForm.createdBy}
+                onChange={(e) => setLegendForm(prev => ({...prev, createdBy: e.target.value}))}
+                placeholder="e.g., Dr. Smith, Sarah Johnson RVT"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
               <Select
                 value={legendForm.category}
@@ -1363,6 +1482,118 @@ export default function Templates() {
                   <SelectItem value="general">General</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Image/Drawing Input Selection */}
+            <div className="space-y-4 border-t pt-4">
+              <Label>Teaching Method</Label>
+              <div className="flex gap-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="upload"
+                    name="imageType"
+                    value="upload"
+                    checked={legendForm.imageType === 'upload'}
+                    onChange={(e) => setLegendForm(prev => ({...prev, imageType: 'upload'}))}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <Label htmlFor="upload">Upload Image Example</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="drawing"
+                    name="imageType"
+                    value="drawing"
+                    checked={legendForm.imageType === 'drawing'}
+                    onChange={(e) => setLegendForm(prev => ({...prev, imageType: 'drawing'}))}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <Label htmlFor="drawing">Draw Pattern</Label>
+                </div>
+              </div>
+
+              {/* Image Upload Section */}
+              {legendForm.imageType === 'upload' && (
+                <div className="space-y-2">
+                  <Label htmlFor="exampleImage">Example Image</Label>
+                  <input
+                    type="file"
+                    id="exampleImage"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setLegendForm(prev => ({...prev, exampleImage: file}));
+                    }}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  />
+                  <p className="text-sm text-gray-500">
+                    Upload an image showing the drawing pattern you want to teach the AI
+                  </p>
+                </div>
+              )}
+
+              {/* Drawing Canvas Section */}
+              {legendForm.imageType === 'drawing' && (
+                <div className="space-y-2">
+                  <Label>Draw the Pattern</Label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                    <canvas
+                      width={400}
+                      height={300}
+                      className="border border-gray-300 rounded cursor-crosshair bg-white"
+                      onMouseDown={(e) => {
+                        const canvas = e.currentTarget;
+                        const rect = canvas.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                          ctx.beginPath();
+                          ctx.moveTo(x, y);
+                          const handleMouseMove = (e: MouseEvent) => {
+                            const newX = e.clientX - rect.left;
+                            const newY = e.clientY - rect.top;
+                            ctx.lineTo(newX, newY);
+                            ctx.stroke();
+                          };
+                          const handleMouseUp = () => {
+                            canvas.removeEventListener('mousemove', handleMouseMove);
+                            canvas.removeEventListener('mouseup', handleMouseUp);
+                            // Save canvas data
+                            setLegendForm(prev => ({...prev, drawingData: canvas.toDataURL()}));
+                          };
+                          canvas.addEventListener('mousemove', handleMouseMove);
+                          canvas.addEventListener('mouseup', handleMouseUp);
+                        }
+                      }}
+                    />
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+                          if (canvas) {
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                              ctx.clearRect(0, 0, canvas.width, canvas.height);
+                              setLegendForm(prev => ({...prev, drawingData: ''}));
+                            }
+                          }
+                        }}
+                      >
+                        Clear Canvas
+                      </Button>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Draw the pattern you want to teach the AI. This will help it recognize similar markings in future worksheets.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center space-x-2">

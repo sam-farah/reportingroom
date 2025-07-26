@@ -1416,9 +1416,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/legend-entries", isAuthenticated, async (req, res) => {
+  app.post("/api/legend-entries", isAuthenticated, upload.single('exampleImage'), async (req, res) => {
     try {
       const entryData = req.body;
+      
+      // Handle uploaded image file
+      if (req.file) {
+        entryData.exampleImage = `/uploads/${req.file.filename}`;
+        entryData.imageType = 'upload';
+      } else if (entryData.drawingData) {
+        // Drawing data is already in the body
+        entryData.imageType = 'drawing';
+      }
+      
       const entry = await storage.createLegendEntry(entryData);
       res.json(entry);
     } catch (error) {
@@ -1427,10 +1437,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/legend-entries/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/legend-entries/:id", isAuthenticated, upload.single('exampleImage'), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const updateData = req.body;
+      
+      // Handle uploaded image file for updates
+      if (req.file) {
+        updateData.exampleImage = `/uploads/${req.file.filename}`;
+        updateData.imageType = 'upload';
+      } else if (updateData.drawingData) {
+        updateData.imageType = 'drawing';
+      }
+      
       const entry = await storage.updateLegendEntry(id, updateData);
       
       if (!entry) {

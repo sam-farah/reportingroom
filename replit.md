@@ -7,10 +7,15 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 ## Recent Changes
 
 **July 26, 2025:**
+- **Enhanced Legend System with Dual Input Methods** - Implemented comprehensive legend entry system supporting both image upload and direct drawing capabilities for AI training
+- **Drawing Canvas Integration** - Added interactive HTML5 canvas for sonographers to draw patterns directly in legend entries with real-time save functionality
+- **Database Schema Enhancement** - Extended legend entries table with `drawingData`, `imageType`, and `exampleImage` fields to support both input methods
+- **Server File Upload Support** - Updated legend entry API routes to handle multipart form data for image uploads using FormData
+- **Visual Legend Display** - Enhanced legend entry cards to display uploaded images or drawn patterns with proper categorization and status indicators
+- **TypeScript Form State Management** - Corrected legend form state structure to handle new fields with proper type safety and validation
 - **Critical Digital Drawing Workflow Fixes** - Resolved duplicate API route definitions causing "not a valid HTTP method" errors
 - **Backend Storage Interface Implementation** - Added missing digital worksheet CRUD operations to storage layer
 - **API Parameter Ordering Correction** - Fixed apiRequest function parameter order for proper frontend-backend communication
-- **TypeScript Error Resolution** - Corrected return types and type casting for React components and API responses
 - **Authentication Flow Debugging** - Ensured proper session handling and credentials passing for protected routes
 - **Drawing Session Workflow Testing** - Validated complete template selection, patient entry, and draft report creation flow
 - **Payload Size Optimization** - Fixed 413 "Request Entity Too Large" errors with 50MB body limits and JPEG compression
