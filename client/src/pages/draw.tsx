@@ -325,18 +325,13 @@ export default function Draw() {
     const newHistory = drawingHistory.slice(0, -1);
     setDrawingHistory(newHistory);
     
-    // If we're undoing to the first state (template only), redraw template
-    if (newHistory.length === 1) {
+    // Always restore from the previous state in history
+    const img = new Image();
+    img.onload = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(templateImage, 0, 0, canvas.width, canvas.height);
-    } else {
-      const img = new Image();
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-      };
-      img.src = newHistory[newHistory.length - 1];
-    }
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = newHistory[newHistory.length - 1];
   };
 
   const clearCanvas = () => {
