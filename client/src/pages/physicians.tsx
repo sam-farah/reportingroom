@@ -416,6 +416,7 @@ export default function Clinic() {
       
       const response = await fetch('/api/upload-logo', {
         method: 'POST',
+        credentials: 'include',
         body: formData,
       });
       
@@ -437,6 +438,17 @@ export default function Clinic() {
       }
     },
     onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
       toast({
         title: "Upload Failed",
         description: error.message,
