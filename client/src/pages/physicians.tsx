@@ -481,54 +481,7 @@ export default function Clinic() {
       return;
     }
 
-    try {
-      let signatureUrl = null;
-
-      // Handle signature upload if provided
-      if (signatureMode === "upload" && signatureFile) {
-        const formData = new FormData();
-        formData.append('signature', signatureFile);
-        
-        const uploadResponse = await fetch('/api/upload-signature', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (uploadResponse.ok) {
-          const { url } = await uploadResponse.json();
-          signatureUrl = url;
-        }
-      } else if (signatureMode === "draw") {
-        const blob = await getCanvasBlob();
-        if (blob) {
-          const formData = new FormData();
-          formData.append('signature', blob, 'signature.png');
-          
-          const uploadResponse = await fetch('/api/upload-signature', {
-            method: 'POST',
-            body: formData,
-          });
-          
-          if (uploadResponse.ok) {
-            const { url } = await uploadResponse.json();
-            signatureUrl = url;
-          }
-        }
-      }
-
-      const physicianData = {
-        ...newPhysician,
-        ...(signatureUrl && { signatureUrl })
-      };
-
-      addPhysicianMutation.mutate(physicianData);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to process signature",
-        variant: "destructive",
-      });
-    }
+    addPhysicianMutation.mutate(newPhysician);
   };
 
 
@@ -637,7 +590,7 @@ export default function Clinic() {
                 Add Physician
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto z-50">
+            <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add New Physician</DialogTitle>
                 <DialogDescription>
@@ -673,80 +626,10 @@ export default function Clinic() {
                   />
                 </div>
                 
-                {/* Signature Section */}
-                <div className="space-y-3">
+                {/* Simplified Signature Section */}
+                <div className="space-y-2">
                   <Label>Signature (Optional)</Label>
-                  <Tabs value={signatureMode} onValueChange={(value) => setSignatureMode(value as "upload" | "draw")}>
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="upload">
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload
-                      </TabsTrigger>
-                      <TabsTrigger value="draw">
-                        <Pen className="w-4 h-4 mr-2" />
-                        Draw
-                      </TabsTrigger>
-                    </TabsList>
-                    
-                    <TabsContent value="upload" className="space-y-3">
-                      <div>
-                        <Input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleSignatureFileChange}
-                          className="cursor-pointer"
-                        />
-                        {signatureFile && (
-                          <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
-                            <span>✓ {signatureFile.name} selected</span>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSignatureFile(null);
-                                if (fileInputRef.current) fileInputRef.current.value = '';
-                              }}
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </TabsContent>
-                    
-                    <TabsContent value="draw" className="space-y-3">
-                      <div className="border border-gray-300 rounded-lg p-2 bg-white">
-                        <canvas
-                          ref={canvasRef}
-                          width={400}
-                          height={150}
-                          className="border border-gray-200 rounded cursor-crosshair touch-none"
-                          style={{ width: '100%', height: '150px', maxWidth: '400px' }}
-                          onMouseDown={startDrawing}
-                          onMouseMove={draw}
-                          onMouseUp={stopDrawing}
-                          onMouseLeave={stopDrawing}
-                          onTouchStart={startDrawing}
-                          onTouchMove={draw}
-                          onTouchEnd={stopDrawing}
-                        />
-                        <div className="flex justify-between items-center mt-2">
-                          <span className="text-xs text-gray-500">Draw your signature above</span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={clearCanvas}
-                          >
-                            <RotateCcw className="w-3 h-3 mr-1" />
-                            Clear
-                          </Button>
-                        </div>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
+                  <div className="text-xs text-gray-500 mb-2">You can add a signature after creating the physician</div>
                 </div>
                 
                 <div className="flex justify-end gap-2 pt-4">
