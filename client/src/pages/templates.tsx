@@ -105,11 +105,8 @@ export default function Templates() {
   const [legendForm, setLegendForm] = useState({
     title: '',
     description: '',
-    drawingPattern: '',
     medicalMeaning: '',
     category: 'vascular',
-    keywords: '',
-    createdBy: '',
     isActive: true,
     imageType: 'upload' as 'upload' | 'drawing',
     exampleImage: null as File | null,
@@ -319,11 +316,8 @@ export default function Templates() {
       setLegendForm({
         title: '',
         description: '',
-        drawingPattern: '',
         medicalMeaning: '',
         category: 'vascular',
-        keywords: '',
-        createdBy: '',
         isActive: true,
         imageType: 'upload',
         exampleImage: null,
@@ -376,24 +370,8 @@ export default function Templates() {
       setLegendForm({
         title: '',
         description: '',
-        drawingPattern: '',
         medicalMeaning: '',
         category: 'vascular',
-        keywords: '',
-        createdBy: '',
-        isActive: true,
-        imageType: 'upload',
-        exampleImage: null,
-        drawingData: ''
-      });
-      setLegendForm({
-        title: '',
-        description: '',
-        drawingPattern: '',
-        medicalMeaning: '',
-        category: 'vascular',
-        keywords: '',
-        createdBy: '',
         isActive: true,
         imageType: 'upload',
         exampleImage: null,
@@ -583,11 +561,8 @@ export default function Templates() {
     setLegendForm({
       title: '',
       description: '',
-      drawingPattern: '',
       medicalMeaning: '',
       category: 'vascular',
-      keywords: '',
-      createdBy: '',
       isActive: true,
       imageType: 'upload',
       exampleImage: null,
@@ -601,11 +576,8 @@ export default function Templates() {
     setLegendForm({
       title: entry.title,
       description: entry.description,
-      drawingPattern: entry.drawingPattern || '',
       medicalMeaning: entry.medicalMeaning,
       category: entry.category || 'vascular',
-      keywords: entry.keywords || '',
-      createdBy: entry.createdBy || '',
       isActive: entry.isActive || false,
       imageType: entry.imageType || 'upload',
       exampleImage: null,
@@ -620,11 +592,8 @@ export default function Templates() {
     // Add all text fields to FormData
     formData.append('title', legendForm.title);
     formData.append('description', legendForm.description);
-    formData.append('drawingPattern', legendForm.drawingPattern);
     formData.append('medicalMeaning', legendForm.medicalMeaning);
     formData.append('category', legendForm.category);
-    formData.append('keywords', legendForm.keywords);
-    formData.append('createdBy', legendForm.createdBy);
     formData.append('isActive', String(legendForm.isActive));
     formData.append('imageType', legendForm.imageType);
     
@@ -943,24 +912,14 @@ export default function Templates() {
                         </div>
                       </div>
                     )}
-                    {entry.keywords && (
-                      <div className="flex items-start justify-between text-xs">
-                        <span className="text-gray-500">Keywords:</span>
-                        <span className="font-medium text-right flex-1 ml-2">{entry.keywords}</span>
-                      </div>
-                    )}
+
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-500">Status:</span>
                       <Badge variant={entry.isActive ? "default" : "secondary"} className="text-xs">
                         {entry.isActive ? "Active" : "Inactive"}
                       </Badge>
                     </div>
-                    {entry.createdBy && (
-                      <div className="flex items-start justify-between text-xs pt-2 border-t">
-                        <span className="text-gray-500">Created by:</span>
-                        <span className="font-medium text-right flex-1 ml-2">{entry.createdBy}</span>
-                      </div>
-                    )}
+
                   </div>
                 </CardContent>
               </Card>
@@ -1435,35 +1394,7 @@ export default function Templates() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="drawingPattern">Drawing Pattern</Label>
-              <Input
-                id="drawingPattern"
-                value={legendForm.drawingPattern}
-                onChange={(e) => setLegendForm(prev => ({...prev, drawingPattern: e.target.value}))}
-                placeholder="e.g., wavy lines, circles, arrows"
-              />
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="keywords">Keywords</Label>
-              <Input
-                id="keywords"
-                value={legendForm.keywords}
-                onChange={(e) => setLegendForm(prev => ({...prev, keywords: e.target.value}))}
-                placeholder="e.g., stenosis, narrowing, blockage"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="createdBy">Created By</Label>
-              <Input
-                id="createdBy"
-                value={legendForm.createdBy}
-                onChange={(e) => setLegendForm(prev => ({...prev, createdBy: e.target.value}))}
-                placeholder="e.g., Dr. Smith, Sarah Johnson RVT"
-              />
-            </div>
 
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
