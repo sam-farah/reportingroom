@@ -180,8 +180,27 @@ export type InsertSonographer = typeof sonographers.$inferInsert;
 export type WorksheetTemplate = typeof worksheetTemplates.$inferSelect;
 export type InsertWorksheetTemplate = typeof worksheetTemplates.$inferInsert;
 
+// Legend entries for teaching AI about drawing meanings
+export const legendEntries = pgTable("legend_entries", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  drawingPattern: text("drawing_pattern"), // Description of visual pattern
+  medicalMeaning: text("medical_meaning").notNull(), // What it indicates medically
+  category: varchar("category", { length: 100 }), // e.g., "vascular", "cardiac", "abdominal"
+  keywords: text("keywords"), // Comma-separated keywords for AI matching
+  exampleImage: varchar("example_image", { length: 500 }), // Optional example image path
+  createdBy: varchar("created_by", { length: 255 }), // Sonographer who created this
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export type DigitalWorksheet = typeof digitalWorksheets.$inferSelect;
 export type InsertDigitalWorksheet = typeof digitalWorksheets.$inferInsert;
+
+export type LegendEntry = typeof legendEntries.$inferSelect;
+export type InsertLegendEntry = typeof legendEntries.$inferInsert;
 
 export const insertPhysicianSchema = createInsertSchema(physicians).omit({
   id: true,
@@ -226,6 +245,12 @@ export const insertDigitalWorksheetSchema = createInsertSchema(digitalWorksheets
   updatedAt: true,
 });
 
+export const insertLegendEntrySchema = createInsertSchema(legendEntries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const updateReportTemplateSchema = insertReportTemplateSchema.partial();
 
 export type Physician = typeof physicians.$inferSelect;
@@ -239,3 +264,4 @@ export type InsertTrainingPair = z.infer<typeof insertTrainingPairSchema>;
 export type ReportTemplate = typeof reportTemplates.$inferSelect;
 export type InsertReportTemplate = z.infer<typeof insertReportTemplateSchema>;
 export type InsertSonographerData = z.infer<typeof insertSonographerSchema>;
+export type InsertLegendEntryData = z.infer<typeof insertLegendEntrySchema>;

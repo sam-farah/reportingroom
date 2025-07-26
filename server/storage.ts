@@ -25,7 +25,10 @@ import {
   type WorksheetTemplate,
   type DigitalWorksheet,
   type InsertWorksheetTemplate,
-  type InsertDigitalWorksheet
+  type InsertDigitalWorksheet,
+  legendEntries,
+  type LegendEntry,
+  type InsertLegendEntry
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -89,6 +92,14 @@ export interface IStorage {
   updateDigitalWorksheet(id: number, worksheet: Partial<InsertDigitalWorksheet>): Promise<DigitalWorksheet | undefined>;
   getDraftDigitalWorksheets(): Promise<DigitalWorksheet[]>;
   createDraftReport(data: any): Promise<Report>;
+
+  // Legend entries operations
+  getAllLegendEntries(): Promise<LegendEntry[]>;
+  getLegendEntry(id: number): Promise<LegendEntry | undefined>;
+  createLegendEntry(entry: InsertLegendEntry): Promise<LegendEntry>;
+  updateLegendEntry(id: number, entry: Partial<InsertLegendEntry>): Promise<LegendEntry | undefined>;
+  deleteLegendEntry(id: number): Promise<void>;
+  getLegendEntriesByCategory(category: string): Promise<LegendEntry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -428,6 +439,51 @@ export class DatabaseStorage implements IStorage {
       .values(reportToInsert)
       .returning();
     return created;
+  }
+
+  // Legend Entries operations
+  async getAllLegendEntries(): Promise<LegendEntry[]> {
+    return await db.select().from(legendEntries).orderBy(desc(legendEntries.createdAt));
+  }
+
+  async getLegendEntry(id: number): Promise<LegendEntry | undefined> {
+    const [entry] = await db
+      .select()
+      .from(legendEntries)
+      .where(eq(legendEntries.id, id));
+    return entry;
+  }
+
+  async createLegendEntry(entryData: InsertLegendEntry): Promise<LegendEntry> {
+    const [entry] = await db
+      .insert(legendEntries)
+      .values(entryData)
+      .returning();
+    return entry;
+  }
+
+  async updateLegendEntry(id: number, entryData: Partial<InsertLegendEntry>): Promise<LegendEntry | undefined> {
+    const [entry] = await db
+      .update(legendEntries)
+      .set({
+        ...entryData,
+        updatedAt: new Date(),
+      })
+      .where(eq(legendEntries.id, id))
+      .returning();
+    return entry;
+  }
+
+  async deleteLegendEntry(id: number): Promise<void> {
+    await db.delete(legendEntries).where(eq(legendEntries.id, id));
+  }
+
+  async getLegendEntriesByCategory(category: string): Promise<LegendEntry[]> {
+    return await db
+      .select()
+      .from(legendEntries)
+      .where(eq(legendEntries.category, category))
+      .orderBy(legendEntries.title);
   }
 }
 
