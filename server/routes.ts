@@ -429,6 +429,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Physician ID is required" });
       }
 
+      // Get user's clinic information
+      const user = await storage.getUser((req as any).user.claims.sub);
+      let clinic = null;
+      if (user?.clinicId) {
+        clinic = await storage.getClinic(user.clinicId);
+      }
+
       const worksheet = await storage.getWorksheet(worksheetId);
       if (!worksheet) {
         console.error("Worksheet not found for ID:", worksheetId);
@@ -490,7 +497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         findings: reportData.findings,
         impression: reportData.impression,
         physicianId,
-        logoUrl
+        logoUrl: clinic?.logoUrl || logoUrl
       });
 
       console.log("Report saved to storage:", report.id);
@@ -515,6 +522,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!report) {
         return res.status(404).json({ error: "Report not found" });
+      }
+
+      // Get user's clinic information
+      const user = await storage.getUser((req as any).user.claims.sub);
+      let clinic = null;
+      if (user?.clinicId) {
+        clinic = await storage.getClinic(user.clinicId);
       }
 
       // Get physician info if available
@@ -678,8 +692,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 </head>
 <body>
     <div class="header">
-        <div class="clinic-name">Reporting Room Medical</div>
+        <div class="clinic-name">${clinic?.name || 'Medical Clinic'}</div>
         <div class="report-title">Medical Examination Report</div>
+        ${clinic?.address ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">${clinic.address}</div>` : ''}
+        ${clinic?.phone || clinic?.fax || clinic?.email ? 
+          `<div style="font-size: 11px; color: #666; margin-top: 3px;">
+             ${clinic?.phone ? `Phone: ${clinic.phone}` : ''}${clinic?.phone && clinic?.fax ? ' | ' : ''}
+             ${clinic?.fax ? `Fax: ${clinic.fax}` : ''}${(clinic?.phone || clinic?.fax) && clinic?.email ? ' | ' : ''}
+             ${clinic?.email ? `Email: ${clinic.email}` : ''}
+           </div>` : ''}
     </div>
 
     <div class="patient-info">
@@ -787,6 +808,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get template for styling
       const template = await storage.getReportTemplate(templateId) || await storage.getReportTemplate(1);
 
+      // Get user's clinic information
+      const user = await storage.getUser((req as any).user.claims.sub);
+      let clinic = null;
+      if (user?.clinicId) {
+        clinic = await storage.getClinic(user.clinicId);
+      }
+
       // Get physician info if available
       let physician = null;
       if (report.physicianId) {
@@ -832,7 +860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               new Paragraph({
                 children: [
                   new TextRun({ 
-                    text: template?.clinicName || "Reporting Room Medical",
+                    text: clinic?.name || "Medical Clinic",
                     bold: true,
                     size: 32,
                     color: template?.primaryColor?.replace('#', '') || '0066cc',
@@ -850,21 +878,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }),
                 ],
                 alignment: AlignmentType.CENTER,
-                spacing: { after: 400 },
+                spacing: { after: 200 },
               }),
-              ...(template?.clinicAddress ? [
+              ...(clinic?.address ? [
                 new Paragraph({
-                  children: [new TextRun({ text: template.clinicAddress, size: 20, color: "666666" })],
+                  children: [new TextRun({ text: clinic.address, size: 20, color: "666666" })],
                   alignment: AlignmentType.CENTER,
+                  spacing: { after: 100 },
                 }),
               ] : []),
-              ...(template?.clinicPhone ? [
+              ...(clinic?.phone || clinic?.fax || clinic?.email ? [
                 new Paragraph({
-                  children: [new TextRun({ text: template.clinicPhone, size: 20, color: "666666" })],
+                  children: [new TextRun({ 
+                    text: [
+                      clinic?.phone ? `Phone: ${clinic.phone}` : '',
+                      clinic?.fax ? `Fax: ${clinic.fax}` : '',
+                      clinic?.email ? `Email: ${clinic.email}` : ''
+                    ].filter(Boolean).join(' | '),
+                    size: 18,
+                    color: "666666"
+                  })],
                   alignment: AlignmentType.CENTER,
                   spacing: { after: 400 },
                 }),
-              ] : []),
+              ] : [
+                new Paragraph({ text: "", spacing: { after: 400 } })
+              ]),
             ] : []),
             
             // Patient Information Section
