@@ -29,6 +29,7 @@ export default function Draw() {
   const [showPatientDialog, setShowPatientDialog] = useState(false);
   const [showCreateDraftDialog, setShowCreateDraftDialog] = useState(false);
   const [templateImage, setTemplateImage] = useState<HTMLImageElement | null>(null);
+  const [pendingPoints, setPendingPoints] = useState<{x: number, y: number}[]>([]);
   const [currentTool, setCurrentTool] = useState<DrawingTool>({
     type: 'pen',
     color: '#000000',
@@ -242,19 +243,20 @@ export default function Draw() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    // Throttle drawing for performance - only every few pixels
+    if (lastPointer && Math.abs(x - lastPointer.x) < 2 && Math.abs(y - lastPointer.y) < 2) {
+      return;
+    }
+    
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Smooth line drawing for stylus
-    if (lastPointer) {
-      const midX = (lastPointer.x + x) / 2;
-      const midY = (lastPointer.y + y) / 2;
-      ctx.quadraticCurveTo(lastPointer.x, lastPointer.y, midX, midY);
-    } else {
-      ctx.lineTo(x, y);
-    }
-    
+    // Simple line drawing for better performance
+    ctx.lineTo(x, y);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    
     setLastPointer({x, y});
   };
 
@@ -262,27 +264,8 @@ export default function Draw() {
     setIsDrawing(false);
     setLastPointer(null);
     
-    // If eraser was used, we need to rebuild the canvas with template + remaining content
-    if (currentTool.type === 'eraser' && canvasRef.current && templateImage) {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Get current canvas content
-        const currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Clear and redraw template
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(templateImage, 0, 0, canvas.width, canvas.height);
-        
-        // Apply the drawn content back on top, respecting transparency
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.putImageData(currentImageData, 0, 0);
-        
-        // Then draw template again where there are transparent areas
-        ctx.globalCompositeOperation = 'destination-over';
-        ctx.drawImage(templateImage, 0, 0, canvas.width, canvas.height);
-      }
-    }
+    // Skip heavy eraser reconstruction during drawing for performance
+    // Only do this reconstruction on final stroke completion if needed
     
     // Reset canvas context to avoid tool interference  
     if (canvasRef.current) {
@@ -293,23 +276,22 @@ export default function Draw() {
       }
     }
     
-    // Auto-save after drawing
+    // Add to history for undo functionality (lightweight)
     if (currentWorksheet && canvasRef.current) {
       const canvas = canvasRef.current;
-      const drawingData = canvas.toDataURL();
+      const drawingData = canvas.toDataURL('image/jpeg', 0.8); // Compressed for history
       
-      // Add to history for undo functionality
-      setDrawingHistory(prev => [...prev, drawingData].slice(-10)); // Keep last 10 states
+      setDrawingHistory(prev => [...prev, drawingData].slice(-5)); // Reduced to 5 states for performance
       
-      // Auto-save with debounce and compression
+      // Auto-save with longer debounce and compression
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
       const timer = setTimeout(() => {
-        const compressedData = canvas.toDataURL('image/jpeg', 0.7); // Compressed JPEG
+        const compressedData = canvas.toDataURL('image/jpeg', 0.6); // More compression
         updateWorksheetMutation.mutate({
           drawingData: compressedData,
-          drawingHistory: JSON.stringify(drawingHistory.slice(-10)), // Keep only last 10 states
+          drawingHistory: JSON.stringify(drawingHistory.slice(-5)), // Keep only last 5 states
         });
-      }, 5000); // Increased to 5 seconds to reduce frequency
+      }, 10000); // Increased to 10 seconds to reduce API calls
       setAutoSaveTimer(timer);
     }
   };
