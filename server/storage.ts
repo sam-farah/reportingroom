@@ -58,6 +58,7 @@ export interface IStorage {
   // User invitation operations
   createUserInvitation(invitation: InsertUserInvitation): Promise<UserInvitation>;
   getUserInvitation(token: string): Promise<UserInvitation | undefined>;
+  getInvitationByToken(token: string): Promise<UserInvitation | undefined>;
   getClinicInvitations(clinicId: number): Promise<UserInvitation[]>;
   acceptInvitation(token: string, userId: string): Promise<void>;
   getUsersByClinic(clinicId: number): Promise<User[]>;
@@ -201,6 +202,10 @@ export class DatabaseStorage implements IStorage {
       .from(userInvitations)
       .where(eq(userInvitations.token, token));
     return invitation;
+  }
+
+  async getInvitationByToken(token: string): Promise<UserInvitation | undefined> {
+    return this.getUserInvitation(token);
   }
 
   async getClinicInvitations(clinicId: number): Promise<UserInvitation[]> {

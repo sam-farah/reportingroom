@@ -13,6 +13,7 @@ import Physicians from "@/pages/physicians";
 import Draw from "@/pages/draw";
 import ClinicRegistration from "@/pages/clinic-registration";
 import StaffManagement from "@/pages/staff-management";
+import InvitationPage from "@/pages/invitation";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -23,6 +24,7 @@ function Router() {
         <>
           <Route path="/" component={Landing} />
           <Route path="/register-clinic" component={ClinicRegistration} />
+          <Route path="/invite/:token" component={InvitationPage} />
         </>
       ) : (
         <>

@@ -134,11 +134,28 @@ export default function Clinic() {
       const response = await apiRequest("/api/invitations", "POST", { email, role });
       return await response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Invitation Sent",
-        description: "Staff invitation has been sent successfully",
-      });
+    onSuccess: (response) => {
+      // Show the invitation URL in a toast or alert that can be copied
+      if (response.invitationUrl) {
+        toast({
+          title: "Invitation Created",
+          description: `Share this link with ${response.email}: ${response.invitationUrl}`,
+          duration: 10000, // Show for 10 seconds so user can copy it
+        });
+        
+        // Also copy to clipboard if available
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(response.invitationUrl).catch(() => {
+            console.warn('Could not copy invitation URL to clipboard');
+          });
+        }
+      } else {
+        toast({
+          title: "Invitation Created",
+          description: "Staff invitation has been created successfully",
+        });
+      }
+      
       queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
       setIsInviteDialogOpen(false);
       setInviteEmail("");

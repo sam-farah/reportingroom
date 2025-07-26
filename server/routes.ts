@@ -1913,10 +1913,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const invitation = await storage.createUserInvitation(invitationData);
       
-      // TODO: Send invitation email here
-      console.log(`Invitation created for ${invitation.email} with token: ${invitation.token}`);
+      // Create invitation URL for manual sharing
+      const invitationUrl = `${req.protocol}://${req.get('host')}/invite/${invitation.token}`;
       
-      res.status(201).json(invitation);
+      console.log(`Invitation created for ${invitation.email}`);
+      console.log(`Invitation URL: ${invitationUrl}`);
+      console.log(`Share this link with ${invitation.email} to join your clinic`);
+      
+      // Return the invitation with the shareable URL
+      res.status(201).json({
+        ...invitation,
+        invitationUrl,
+        message: `Share this link with ${invitation.email}: ${invitationUrl}`
+      });
     } catch (error) {
       console.error("Invitation creation error:", error);
       res.status(400).json({ message: "Failed to create invitation" });
@@ -1935,6 +1944,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Fetch invitations error:", error);
       res.status(500).json({ message: "Failed to fetch invitations" });
+    }
+  });
+
+  // Get invitation details (public endpoint for invitation page)
+  app.get("/api/invitations/:token/details", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const invitation = await storage.getInvitationByToken(token);
+      
+      if (!invitation || !invitation.isActive || new Date() > new Date(invitation.expiresAt)) {
+        return res.status(404).json({ message: "Invalid or expired invitation" });
+      }
+
+      // Get clinic information
+      const clinic = await storage.getClinic(invitation.clinicId);
+      
+      res.json({
+        ...invitation,
+        clinic: clinic ? {
+          name: clinic.name,
+          address: clinic.address
+        } : null
+      });
+    } catch (error) {
+      console.error("Fetch invitation details error:", error);
+      res.status(500).json({ message: "Failed to fetch invitation details" });
     }
   });
 
