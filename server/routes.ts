@@ -5,7 +5,17 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { insertPhysicianSchema, insertTrainingPairSchema, insertWorksheetSchema, insertReportSchema, insertReportTemplateSchema, updateReportTemplateSchema, insertSonographerSchema } from "@shared/schema";
+import { 
+  insertPhysicianSchema, 
+  insertTrainingPairSchema, 
+  insertWorksheetSchema, 
+  insertReportSchema, 
+  insertReportTemplateSchema, 
+  updateReportTemplateSchema, 
+  insertSonographerSchema,
+  insertClinicSchema,
+  insertUserInvitationSchema
+} from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 
@@ -1388,7 +1398,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
   // Legend entries routes
   app.get("/api/legend-entries", isAuthenticated, async (req, res) => {
     try {
@@ -1467,7 +1476,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       await storage.deleteLegendEntry(id);
-      res.json({ success: true });
+      res.status(204).send();
     } catch (error) {
       console.error("Error deleting legend entry:", error);
       res.status(500).json({ error: "Failed to delete legend entry" });
@@ -1485,5 +1494,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clinic registration routes (public)
+  app.post("/api/clinics/register", async (req, res) => {
+    try {
+      const clinicData = insertClinicSchema.parse(req.body);
+      
+      // Check if clinic already exists
+      const existingClinic = await storage.getClinicByEmail(clinicData.email);
+      if (existingClinic) {
+        return res.status(400).json({ message: "A clinic with this email already exists" });
+      }
+
+      const clinic = await storage.createClinic(clinicData);
+      res.status(201).json(clinic);
+    } catch (error) {
+      console.error("Clinic registration error:", error);
+      res.status(400).json({ message: "Failed to register clinic" });
+    }
+  });
+
+  // User invitation routes
+  app.post("/api/invitations", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user?.clinicId || !['admin', 'clinic_owner'].includes(user.role)) {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+
+      const invitationData = {
+        ...insertUserInvitationSchema.parse(req.body),
+        clinicId: user.clinicId,
+        invitedBy: user.id,
+        token: generateInvitationToken(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      };
+
+      const invitation = await storage.createUserInvitation(invitationData);
+      
+      // TODO: Send invitation email here
+      console.log(`Invitation created for ${invitation.email} with token: ${invitation.token}`);
+      
+      res.status(201).json(invitation);
+    } catch (error) {
+      console.error("Invitation creation error:", error);
+      res.status(400).json({ message: "Failed to create invitation" });
+    }
+  });
+
+  app.get("/api/invitations", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user?.clinicId) {
+        return res.status(403).json({ message: "No clinic associated" });
+      }
+
+      const invitations = await storage.getClinicInvitations(user.clinicId);
+      res.json(invitations);
+    } catch (error) {
+      console.error("Fetch invitations error:", error);
+      res.status(500).json({ message: "Failed to fetch invitations" });
+    }
+  });
+
+  app.post("/api/invitations/:token/accept", isAuthenticated, async (req: any, res) => {
+    try {
+      const { token } = req.params;
+      const userId = req.user.claims.sub;
+
+      await storage.acceptInvitation(token, userId);
+      res.json({ message: "Invitation accepted successfully" });
+    } catch (error) {
+      console.error("Accept invitation error:", error);
+      res.status(400).json({ message: "Failed to accept invitation" });
+    }
+  });
+
+  // Clinic users route
+  app.get("/api/clinic/users", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user?.clinicId) {
+        return res.status(403).json({ message: "No clinic associated" });
+      }
+
+      const users = await storage.getUsersByClinic(user.clinicId);
+      res.json(users);
+    } catch (error) {
+      console.error("Fetch clinic users error:", error);
+      res.status(500).json({ message: "Failed to fetch clinic users" });
+    }
+  });
+
+  const httpServer = createServer(app);
   return httpServer;
+}
+
+// Utility function to generate invitation tokens
+function generateInvitationToken(): string {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }

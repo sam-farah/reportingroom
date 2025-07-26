@@ -69,8 +69,9 @@ export default function Landing() {
                 <Button 
                   variant="outline" 
                   className="text-lg px-8 py-4 rounded-full border-2 border-gray-300 hover:border-[var(--medical-primary)] transition-colors"
+                  onClick={() => window.location.href = "/register-clinic"}
                 >
-                  Watch Demo
+                  Register Your Clinic
                 </Button>
               </div>
               

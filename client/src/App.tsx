@@ -11,6 +11,7 @@ import Templates from "@/pages/templates";
 import ReportingRoom from "@/pages/reporting-room";
 import Physicians from "@/pages/physicians";
 import Draw from "@/pages/draw";
+import ClinicRegistration from "@/pages/clinic-registration";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -18,7 +19,10 @@ function Router() {
   return (
     <Switch>
       {isLoading || !isAuthenticated ? (
-        <Route path="/" component={Landing} />
+        <>
+          <Route path="/" component={Landing} />
+          <Route path="/register-clinic" component={ClinicRegistration} />
+        </>
       ) : (
         <>
           <Route path="/" component={Dashboard} />

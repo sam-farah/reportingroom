@@ -1,5 +1,7 @@
 import {
   users,
+  clinics,
+  userInvitations,
   physicians,
   worksheets,
   reports,
@@ -8,6 +10,10 @@ import {
   sonographers,
   type User,
   type UpsertUser,
+  type Clinic,
+  type InsertClinic,
+  type UserInvitation,
+  type InsertUserInvitation,
   type Physician,
   type InsertPhysician,
   type Worksheet,
@@ -39,6 +45,20 @@ export interface IStorage {
   // (IMPORTANT) these user operations are mandatory for Replit Auth.
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  
+  // Clinic operations
+  getAllClinics(): Promise<Clinic[]>;
+  getClinic(id: number): Promise<Clinic | undefined>;
+  getClinicByEmail(email: string): Promise<Clinic | undefined>;
+  createClinic(clinic: InsertClinic): Promise<Clinic>;
+  updateClinic(id: number, clinic: Partial<InsertClinic>): Promise<Clinic | undefined>;
+  
+  // User invitation operations
+  createUserInvitation(invitation: InsertUserInvitation): Promise<UserInvitation>;
+  getUserInvitation(token: string): Promise<UserInvitation | undefined>;
+  getClinicInvitations(clinicId: number): Promise<UserInvitation[]>;
+  acceptInvitation(token: string, userId: string): Promise<void>;
+  getUsersByClinic(clinicId: number): Promise<User[]>;
   
   getAllPhysicians(): Promise<Physician[]>;
   getPhysician(id: number): Promise<Physician | undefined>;
@@ -124,6 +144,92 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return user;
+  }
+
+  // Clinic operations
+  async getAllClinics(): Promise<Clinic[]> {
+    return await db.select().from(clinics).orderBy(desc(clinics.createdAt));
+  }
+
+  async getClinic(id: number): Promise<Clinic | undefined> {
+    const [clinic] = await db.select().from(clinics).where(eq(clinics.id, id));
+    return clinic;
+  }
+
+  async getClinicByEmail(email: string): Promise<Clinic | undefined> {
+    const [clinic] = await db.select().from(clinics).where(eq(clinics.email, email));
+    return clinic;
+  }
+
+  async createClinic(clinicData: InsertClinic): Promise<Clinic> {
+    const [clinic] = await db.insert(clinics).values(clinicData).returning();
+    return clinic;
+  }
+
+  async updateClinic(id: number, clinicData: Partial<InsertClinic>): Promise<Clinic | undefined> {
+    const [clinic] = await db
+      .update(clinics)
+      .set({ ...clinicData, updatedAt: new Date() })
+      .where(eq(clinics.id, id))
+      .returning();
+    return clinic;
+  }
+
+  // User invitation operations
+  async createUserInvitation(invitationData: InsertUserInvitation): Promise<UserInvitation> {
+    const [invitation] = await db
+      .insert(userInvitations)
+      .values(invitationData)
+      .returning();
+    return invitation;
+  }
+
+  async getUserInvitation(token: string): Promise<UserInvitation | undefined> {
+    const [invitation] = await db
+      .select()
+      .from(userInvitations)
+      .where(eq(userInvitations.token, token));
+    return invitation;
+  }
+
+  async getClinicInvitations(clinicId: number): Promise<UserInvitation[]> {
+    return await db
+      .select()
+      .from(userInvitations)
+      .where(eq(userInvitations.clinicId, clinicId))
+      .orderBy(desc(userInvitations.createdAt));
+  }
+
+  async acceptInvitation(token: string, userId: string): Promise<void> {
+    const invitation = await this.getUserInvitation(token);
+    if (!invitation || invitation.acceptedAt) {
+      throw new Error("Invalid or already accepted invitation");
+    }
+
+    // Update user with clinic information
+    await db
+      .update(users)
+      .set({
+        clinicId: invitation.clinicId,
+        role: invitation.role,
+        joinedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+
+    // Mark invitation as accepted
+    await db
+      .update(userInvitations)
+      .set({ acceptedAt: new Date() })
+      .where(eq(userInvitations.token, token));
+  }
+
+  async getUsersByClinic(clinicId: number): Promise<User[]> {
+    return await db
+      .select()
+      .from(users)
+      .where(eq(users.clinicId, clinicId))
+      .orderBy(desc(users.createdAt));
   }
 
   async getAllPhysicians(): Promise<Physician[]> {

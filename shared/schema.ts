@@ -9,6 +9,7 @@ import {
   integer,
   boolean,
 } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -24,6 +25,24 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
+// Clinics table - Each clinic can have multiple users
+export const clinics = pgTable("clinics", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).unique().notNull(),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 50 }),
+  zipCode: varchar("zip_code", { length: 20 }),
+  phone: varchar("phone", { length: 50 }),
+  website: varchar("website", { length: 255 }),
+  logoUrl: varchar("logo_url", { length: 500 }),
+  subscription: varchar("subscription", { length: 50 }).notNull().default('basic'), // 'basic', 'premium', 'enterprise'
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // User storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
@@ -32,8 +51,28 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  role: varchar("role", { length: 50 }).notNull().default('sonographer'), // 'admin', 'sonographer', 'clinic_owner'
+  isActive: boolean("is_active").notNull().default(true),
+  invitedBy: varchar("invited_by").references(() => users.id),
+  invitedAt: timestamp("invited_at"),
+  joinedAt: timestamp("joined_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// User invitations table for email invitations
+export const userInvitations = pgTable("user_invitations", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  role: varchar("role", { length: 50 }).notNull().default('sonographer'),
+  invitedBy: varchar("invited_by").notNull().references(() => users.id),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const physicians = pgTable("physicians", {
@@ -160,8 +199,42 @@ export const digitalWorksheets = pgTable("digital_worksheets", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Relations
+export const clinicsRelations = relations(clinics, ({ many }) => ({
+  users: many(users),
+  invitations: many(userInvitations),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  clinic: one(clinics, {
+    fields: [users.clinicId],
+    references: [clinics.id],
+  }),
+  invitedByUser: one(users, {
+    fields: [users.invitedBy],
+    references: [users.id],
+  }),
+  invitedUsers: many(users),
+  sentInvitations: many(userInvitations),
+}));
+
+export const userInvitationsRelations = relations(userInvitations, ({ one }) => ({
+  clinic: one(clinics, {
+    fields: [userInvitations.clinicId],
+    references: [clinics.id],
+  }),
+  invitedByUser: one(users, {
+    fields: [userInvitations.invitedBy],
+    references: [users.id],
+  }),
+}));
+
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+export type Clinic = typeof clinics.$inferSelect;
+export type InsertClinic = typeof clinics.$inferInsert;
+export type UserInvitation = typeof userInvitations.$inferSelect;
+export type InsertUserInvitation = typeof userInvitations.$inferInsert;
 
 // Sonographers table
 export const sonographers = pgTable("sonographers", {
@@ -251,6 +324,17 @@ export const insertLegendEntrySchema = createInsertSchema(legendEntries).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const insertClinicSchema = createInsertSchema(clinics).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertUserInvitationSchema = createInsertSchema(userInvitations).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const updateReportTemplateSchema = insertReportTemplateSchema.partial();
