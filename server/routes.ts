@@ -1375,21 +1375,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/digital-worksheets", isAuthenticated, async (req, res) => {
-    try {
-      const worksheetData = {
-        ...req.body,
-        userId: (req.user as any)?.claims?.sub,
-      };
-
-      const worksheet = await storage.createDigitalWorksheet(worksheetData);
-      res.status(201).json(worksheet);
-    } catch (error) {
-      console.error("Error creating digital worksheet:", error);
-      res.status(500).json({ message: "Failed to create digital worksheet" });
-    }
-  });
-
   // Serve uploaded files
   app.use('/uploads', (req, res, next) => {
     const filePath = path.join(uploadDir, req.path);
