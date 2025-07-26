@@ -106,10 +106,10 @@ export default function Draw() {
     mutationFn: async () => {
       // Save current canvas state before creating report
       if (canvasRef.current && currentWorksheet) {
-        const canvasData = canvasRef.current.toDataURL();
+        const canvasData = canvasRef.current.toDataURL('image/jpeg', 0.8); // High quality for final save
         await updateWorksheetMutation.mutateAsync({
           drawingData: canvasData,
-          drawingHistory: JSON.stringify(drawingHistory),
+          drawingHistory: JSON.stringify(drawingHistory.slice(-10)),
         });
       }
       
@@ -243,14 +243,15 @@ export default function Draw() {
       // Add to history for undo functionality
       setDrawingHistory(prev => [...prev, drawingData].slice(-10)); // Keep last 10 states
       
-      // Auto-save with debounce
+      // Auto-save with debounce and compression
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
       const timer = setTimeout(() => {
+        const compressedData = canvas.toDataURL('image/jpeg', 0.7); // Compressed JPEG
         updateWorksheetMutation.mutate({
-          drawingData,
-          drawingHistory: JSON.stringify(drawingHistory),
+          drawingData: compressedData,
+          drawingHistory: JSON.stringify(drawingHistory.slice(-10)), // Keep only last 10 states
         });
-      }, 1000);
+      }, 5000); // Increased to 5 seconds to reduce frequency
       setAutoSaveTimer(timer);
     }
   };
