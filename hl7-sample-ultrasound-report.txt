@@ -1,0 +1,16 @@
+MSH|^~\&|REPORTING_ROOM|CLINIC001|HEALTHLINK|GP_PRACTICE|||20250726234500||ORU^R01^ORU_R01|MSG20250726001|P|2.5.1|||NE|NE|AU
+EVN|R01|20250726234500|||DR_SMITH^JANE^M^^^DR
+PID|1||MRN123456789^^^CLINIC001^MR||SMITH^JOHN^MICHAEL^^MR||19850315|M|||123 MAIN ST^^SYDNEY^NSW^2000^AU||(02)9123-4567||(02)9123-4568||S||MRN123456789|123456789|||||||||||20250726
+PV1|1|O|ULTRASOUND^^^CLINIC001^^^^^DEPT||||||||||||||VN^20250726001|||||||||||||||||||||||||20250726
+ORC|RE|ORD123456|RPT789012|||||||||PERERA^KALPA^^^^^DR|||20250726||||CLINIC001
+OBR|1|ORD123456|RPT789012|76700^ABDOMINAL ULTRASOUND COMPLETE^CPT4|R|20250726100000|20250726103000|||||||20250726103000|ABDOMEN^ULTRASOUND^L|PERERA^KALPA^^^^^DR||||||20250726234500|||F|||||||SONOGRAPHER^JANE^^^^^TECH
+OBX|1|TX|CLINICAL_INFO^CLINICAL INFORMATION^L||Abdominal pain, rule out gallstones. Patient fasting for 12 hours.||||||F|||20250726103000
+OBX|2|TX|TECHNIQUE^TECHNIQUE^L||Real-time ultrasound examination of the abdomen was performed using curvilinear and linear array transducers. Multiple images were obtained in sagittal, transverse, and oblique planes.||||||F|||20250726103000
+OBX|3|TX|FINDINGS^FINDINGS^L||LIVER: Normal size, shape and echogenicity. No focal lesions identified. Portal vein is patent with normal flow direction.\n\nGALLBLADDER: Well-distended gallbladder with thin walls. No gallstones or sludge identified. No pericholecystic fluid.\n\nBILE DUCTS: Common bile duct measures 4mm, within normal limits. No intrahepatic biliary dilatation.\n\nPANCREAS: Head and body of pancreas appear normal. Tail partially obscured by bowel gas.\n\nKIDNEYS: Both kidneys are normal in size and echogenicity. No hydronephrosis or renal stones identified. Right kidney measures 10.2cm, left kidney measures 10.4cm.\n\nAORTA: Normal caliber abdominal aorta with no evidence of aneurysm.\n\nOTHER: No ascites or masses identified.||||||F|||20250726103000
+OBX|4|TX|IMPRESSION^IMPRESSION^L||NORMAL ABDOMINAL ULTRASOUND EXAMINATION.\n\nNo evidence of gallstones or biliary obstruction.\nLiver, kidneys, and other visualized structures appear normal.||||||F|||20250726103000
+OBX|5|TX|RECOMMENDATION^RECOMMENDATIONS^L||Clinical correlation recommended. If symptoms persist, consider alternative imaging modalities or specialist referral.||||||F|||20250726103000
+OBX|6|TX|REPORT_STATUS^REPORT STATUS^L||FINAL REPORT - Electronically signed on 26/07/2025 at 23:45||||||F|||20250726234500
+OBX|7|TX|REPORTING_PHYSICIAN^REPORTING PHYSICIAN^L||Dr. Kalpa Perera\nSpecialist Radiologist\nFRACR, MBBS\nProvider Number: 123456A||||||F|||20250726234500
+NTE|1||This report was generated using Reporting Room AI-powered ultrasound reporting system.
+NTE|2||Report ID: RPT789012 | Digital Worksheet ID: 16
+NTE|3||For technical queries regarding this report, contact: support@reportingroom.net
