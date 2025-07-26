@@ -12,6 +12,8 @@ if (!encryptionValidation.valid) {
   encryptionValidation.issues.forEach(issue => console.error(`   - ${issue}`));
   console.error('   Please set MEDICAL_DATA_ENCRYPTION_KEY and MEDICAL_DATA_SALT environment variables');
   console.error('   Generate secure keys with: openssl rand -hex 32');
+  console.warn('⚠️  DEVELOPMENT MODE: Continuing without encryption for testing purposes');
+  console.warn('   This is NOT suitable for production use with real medical data');
 } else {
   console.log('✅ Encryption validation passed - ready for medical data processing');
 }
@@ -21,7 +23,10 @@ const app = express();
 // Apply security middleware for regulatory compliance
 app.use(securityMiddleware.addSecurityHeaders);
 app.use(securityMiddleware.auditLogger);
-app.use(securityMiddleware.rateLimiter);
+// Rate limiter disabled in development mode
+if (process.env.NODE_ENV === 'production') {
+  app.use(securityMiddleware.rateLimiter);
+}
 app.use(securityMiddleware.requestSizeValidator(50 * 1024 * 1024)); // 50MB limit
 
 app.use(express.json({ limit: '50mb' }));
