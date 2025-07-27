@@ -525,11 +525,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get user's clinic information
-      const user = await storage.getUser((req as any).user.claims.sub);
+      const userId = (req as any).user.claims.sub;
+      console.log('PDF Generation - Getting user data for:', userId);
+      const user = await storage.getUser(userId);
+      console.log('PDF Generation - User found:', user ? { id: user.id, clinicId: user.clinicId } : 'Not found');
+      
       let clinic = null;
       let clinicLogoDataUrl = null;
       if (user?.clinicId) {
+        console.log('PDF Generation - Getting clinic data for clinicId:', user.clinicId);
         clinic = await storage.getClinic(user.clinicId);
+        console.log('PDF Generation - Clinic found:', clinic ? { id: clinic.id, name: clinic.name, address: clinic.address, phone: clinic.phone, fax: clinic.fax, email: clinic.email, logoUrl: clinic.logoUrl } : 'Not found');
         
         // Load clinic logo if available
         if (clinic?.logoUrl) {
