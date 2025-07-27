@@ -86,34 +86,53 @@ export async function setupAuth(app: Express) {
 
   for (const domain of process.env
     .REPLIT_DOMAINS!.split(",")) {
-    const strategy = new Strategy(
-      {
-        name: `replitauth:${domain}`,
-        config,
-        scope: "openid email profile offline_access",
-        callbackURL: `https://${domain}/api/callback`,
-      },
-      verify,
-    );
-    passport.use(strategy);
+    try {
+      const strategy = new Strategy(
+        {
+          name: `replitauth:${domain}`,
+          config,
+          scope: "openid email profile offline_access",
+          callbackURL: `https://${domain}/api/callback`,
+        },
+        verify,
+      );
+      passport.use(strategy);
+      console.log(`✅ Registered strategy: replitauth:${domain}`);
+    } catch (error) {
+      console.error(`❌ Failed to register strategy for ${domain}:`, error);
+    }
   }
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
-    // Get the configured domain or fallback to hostname
-    const domains = process.env.REPLIT_DOMAINS!.split(",");
-    const targetDomain = domains.find(domain => 
-      req.hostname.includes(domain) || domain.includes(req.hostname)
-    ) || domains[0];
-    
-    console.log(`Login attempt: hostname=${req.hostname}, using strategy=replitauth:${targetDomain}`);
-    
-    passport.authenticate(`replitauth:${targetDomain}`, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
-    })(req, res, next);
+    try {
+      // Get the configured domain or fallback to hostname
+      const domains = process.env.REPLIT_DOMAINS!.split(",");
+      const targetDomain = domains.find(domain => 
+        req.hostname.includes(domain) || domain.includes(req.hostname)
+      ) || domains[0];
+      
+      console.log(`Login attempt: hostname=${req.hostname}, using strategy=replitauth:${targetDomain}`);
+      console.log(`Available domains: ${domains.join(', ')}`);
+      
+      const authenticator = passport.authenticate(`replitauth:${targetDomain}`, {
+        prompt: "login consent",
+        scope: ["openid", "email", "profile", "offline_access"],
+      });
+      
+      if (!authenticator) {
+        console.error(`No authenticator found for strategy: replitauth:${targetDomain}`);
+        return res.status(500).json({ error: "Authentication strategy not found" });
+      }
+      
+      authenticator(req, res, next);
+    } catch (error) {
+      console.error("Login error:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Authentication setup failed", details: errorMessage });
+    }
   });
 
   app.get("/api/callback", (req, res, next) => {
