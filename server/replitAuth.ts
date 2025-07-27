@@ -54,16 +54,28 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
-async function upsertUser(
-  claims: any,
-) {
-  await storage.upsertUser({
-    id: claims["sub"],
-    email: claims["email"],
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
-    profileImageUrl: claims["profile_image_url"],
-  });
+async function upsertUser(claims: any) {
+  try {
+    console.log('Upserting user with claims:', { 
+      sub: claims["sub"], 
+      email: claims["email"],
+      first_name: claims["first_name"],
+      last_name: claims["last_name"]
+    });
+    
+    await storage.upsertUser({
+      id: claims["sub"],
+      email: claims["email"],
+      firstName: claims["first_name"],
+      lastName: claims["last_name"],
+      profileImageUrl: claims["profile_image_url"],
+    });
+    
+    console.log('User upserted successfully');
+  } catch (error) {
+    console.error('Error upserting user:', error);
+    throw error;
+  }
 }
 
 export async function setupAuth(app: Express) {
@@ -136,18 +148,32 @@ export async function setupAuth(app: Express) {
   });
 
   app.get("/api/callback", (req, res, next) => {
-    // Get the configured domain or fallback to hostname
-    const domains = process.env.REPLIT_DOMAINS!.split(",");
-    const targetDomain = domains.find(domain => 
-      req.hostname.includes(domain) || domain.includes(req.hostname)
-    ) || domains[0];
-    
-    console.log(`Callback attempt: hostname=${req.hostname}, using strategy=replitauth:${targetDomain}`);
-    
-    passport.authenticate(`replitauth:${targetDomain}`, {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
-    })(req, res, next);
+    try {
+      // Get the configured domain or fallback to hostname
+      const domains = process.env.REPLIT_DOMAINS!.split(",");
+      const targetDomain = domains.find(domain => 
+        req.hostname.includes(domain) || domain.includes(req.hostname)
+      ) || domains[0];
+      
+      console.log(`Callback attempt: hostname=${req.hostname}, using strategy=replitauth:${targetDomain}`);
+      console.log(`Query params:`, req.query);
+      
+      const authenticator = passport.authenticate(`replitauth:${targetDomain}`, {
+        successReturnToOrRedirect: "/",
+        failureRedirect: "/api/login",
+      });
+      
+      if (!authenticator) {
+        console.error(`No authenticator found for strategy: replitauth:${targetDomain}`);
+        return res.status(500).json({ error: "Authentication strategy not found" });
+      }
+      
+      authenticator(req, res, next);
+    } catch (error) {
+      console.error("Callback error:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "Authentication callback failed", details: errorMessage });
+    }
   });
 
   app.get("/api/logout", (req, res) => {
