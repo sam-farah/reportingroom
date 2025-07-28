@@ -135,6 +135,20 @@ export async function setupAuth(app: Express) {
   for (const domain of process.env
     .REPLIT_DOMAINS!.split(",")) {
     try {
+      // Add localhost strategy for development
+      const localStrategy = new Strategy(
+        {
+          name: `replitauth:localhost:5000`,
+          config,
+          scope: "openid email profile offline_access",
+          callbackURL: `http://localhost:5000/api/callback`,
+        },
+        verify,
+      );
+      passport.use(localStrategy);
+      console.log(`✅ Registered strategy: replitauth:localhost:5000`);
+      
+      // Production strategy
       const strategy = new Strategy(
         {
           name: `replitauth:${domain}`,
@@ -155,61 +169,49 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
-    try {
+    let strategyName;
+    
+    if (req.hostname === 'localhost') {
+      strategyName = 'replitauth:localhost:5000';
+      console.log(`Login attempt: hostname=${req.hostname}, using LOCAL strategy=${strategyName}`);
+    } else {
       // Get the configured domain or fallback to hostname
       const domains = process.env.REPLIT_DOMAINS!.split(",");
       const targetDomain = domains.find(domain => 
         req.hostname.includes(domain) || domain.includes(req.hostname)
       ) || domains[0];
-      
-      console.log(`Login attempt: hostname=${req.hostname}, using strategy=replitauth:${targetDomain}`);
-      console.log(`Available domains: ${domains.join(', ')}`);
-      
-      const authenticator = passport.authenticate(`replitauth:${targetDomain}`, {
-        prompt: "login consent",
-        scope: ["openid", "email", "profile", "offline_access"],
-      });
-      
-      if (!authenticator) {
-        console.error(`No authenticator found for strategy: replitauth:${targetDomain}`);
-        return res.status(500).json({ error: "Authentication strategy not found" });
-      }
-      
-      authenticator(req, res, next);
-    } catch (error) {
-      console.error("Login error:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      res.status(500).json({ error: "Authentication setup failed", details: errorMessage });
+      strategyName = `replitauth:${targetDomain}`;
+      console.log(`Login attempt: hostname=${req.hostname}, using PRODUCTION strategy=${strategyName}`);
     }
+    
+    passport.authenticate(strategyName, {
+      prompt: "login consent",
+      scope: ["openid", "email", "profile", "offline_access"],
+    })(req, res, next);
   });
 
   app.get("/api/callback", (req, res, next) => {
-    try {
+    let strategyName;
+    
+    if (req.hostname === 'localhost') {
+      strategyName = 'replitauth:localhost:5000';
+      console.log(`Callback attempt: hostname=${req.hostname}, using LOCAL strategy=${strategyName}`);
+    } else {
       // Get the configured domain or fallback to hostname
       const domains = process.env.REPLIT_DOMAINS!.split(",");
       const targetDomain = domains.find(domain => 
         req.hostname.includes(domain) || domain.includes(req.hostname)
       ) || domains[0];
-      
-      console.log(`Callback attempt: hostname=${req.hostname}, using strategy=replitauth:${targetDomain}`);
-      console.log(`Query params:`, req.query);
-      
-      const authenticator = passport.authenticate(`replitauth:${targetDomain}`, {
-        successReturnToOrRedirect: "/",
-        failureRedirect: "/api/login",
-      });
-      
-      if (!authenticator) {
-        console.error(`No authenticator found for strategy: replitauth:${targetDomain}`);
-        return res.status(500).json({ error: "Authentication strategy not found" });
-      }
-      
-      authenticator(req, res, next);
-    } catch (error) {
-      console.error("Callback error:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      res.status(500).json({ error: "Authentication callback failed", details: errorMessage });
+      strategyName = `replitauth:${targetDomain}`;
+      console.log(`Callback attempt: hostname=${req.hostname}, using PRODUCTION strategy=${strategyName}`);
     }
+    
+    console.log(`Query params:`, req.query);
+    
+    passport.authenticate(strategyName, {
+      successReturnToOrRedirect: "/",
+      failureRedirect: "/api/login",
+    })(req, res, next);
   });
 
   app.get("/api/logout", (req, res) => {
