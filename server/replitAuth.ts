@@ -148,20 +148,10 @@ export async function setupAuth(app: Express) {
       passport.use(localStrategy);
       console.log(`✅ Registered strategy: replitauth:localhost:5000`);
       
-      // Add reportingroom.net custom domain strategy
-      const customDomainStrategy = new Strategy(
-        {
-          name: `replitauth:reportingroom.net`,
-          config,
-          scope: "openid email profile offline_access",
-          callbackURL: `https://reportingroom.net/api/callback`,
-        },
-        verify,
-      );
-      passport.use(customDomainStrategy);
-      console.log(`✅ Registered strategy: replitauth:reportingroom.net`);
+      // Remove custom domain strategy - use production strategy for reportingroom.net
+      // since the OAuth is configured for the main replit domain
       
-      // Production strategy
+      // Production strategy for main replit domain
       const strategy = new Strategy(
         {
           name: `replitauth:${domain}`,
@@ -173,6 +163,19 @@ export async function setupAuth(app: Express) {
       );
       passport.use(strategy);
       console.log(`✅ Registered strategy: replitauth:${domain}`);
+      
+      // Custom domain strategy that redirects back to custom domain
+      const customStrategy = new Strategy(
+        {
+          name: `replitauth:reportingroom.net`,
+          config,
+          scope: "openid email profile offline_access",
+          callbackURL: `https://reportingroom.net/api/callback`,
+        },
+        verify,
+      );
+      passport.use(customStrategy);
+      console.log(`✅ Registered custom domain strategy: replitauth:reportingroom.net`);
     } catch (error) {
       console.error(`❌ Failed to register strategy for ${domain}:`, error);
     }
@@ -203,10 +206,15 @@ export async function setupAuth(app: Express) {
       console.log(`Using PRODUCTION strategy=${strategyName}`);
     }
     
-    passport.authenticate(strategyName, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
-    })(req, res, next);
+    try {
+      passport.authenticate(strategyName, {
+        prompt: "login consent",
+        scope: ["openid", "email", "profile", "offline_access"],
+      })(req, res, next);
+    } catch (error) {
+      console.error(`CRITICAL LOGIN ERROR for ${req.hostname}:`, error);
+      res.status(500).json({ error: "Authentication failed", details: error.message });
+    }
   });
 
   app.get("/api/callback", (req, res, next) => {
@@ -232,10 +240,22 @@ export async function setupAuth(app: Express) {
       console.log(`Using PRODUCTION callback strategy=${strategyName}`);
     }
     
-    passport.authenticate(strategyName, {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
-    })(req, res, next);
+    try {
+      passport.authenticate(strategyName, {
+        successReturnToOrRedirect: "/",
+        failureRedirect: "/api/login",
+        failureFlash: false,
+      })(req, res, (err) => {
+        if (err) {
+          console.error(`CRITICAL CALLBACK ERROR for ${req.hostname}:`, err);
+          return res.status(500).json({ error: "Callback authentication failed", details: err.message });
+        }
+        next();
+      });
+    } catch (error) {
+      console.error(`CRITICAL CALLBACK ERROR for ${req.hostname}:`, error);
+      res.status(500).json({ error: "Callback failed", details: error.message });
+    }
   });
 
   app.get("/api/logout", (req, res) => {

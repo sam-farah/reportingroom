@@ -49,8 +49,11 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware
+  // Auth middleware - setup authentication BEFORE any protected routes
   await setupAuth(app);
+
+  // Public routes (no authentication required)
+  // Login and callback routes are handled in setupAuth()
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
