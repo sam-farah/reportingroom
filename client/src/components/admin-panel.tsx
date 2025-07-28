@@ -690,7 +690,11 @@ export default function AdminPanel() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Category</Label>
-                  <select className="w-full mt-1 p-2 border border-gray-300 rounded-md">
+                  <select 
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                  >
                     <option value="">Select category</option>
                     <option value="cardiac">Cardiac</option>
                     <option value="vascular">Vascular</option>
@@ -700,7 +704,11 @@ export default function AdminPanel() {
                 </div>
                 <div>
                   <Label>Complexity Level</Label>
-                  <select className="w-full mt-1 p-2 border border-gray-300 rounded-md">
+                  <select 
+                    value={complexityLevel}
+                    onChange={(e) => setComplexityLevel(e.target.value)}
+                    className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                  >
                     <option value="">Select complexity</option>
                     <option value="basic">Basic</option>
                     <option value="intermediate">Intermediate</option>
@@ -709,9 +717,13 @@ export default function AdminPanel() {
                 </div>
               </div>
 
-              <Button className="w-full bg-[var(--medical-primary)] hover:bg-[var(--medical-primary)]/90">
+              <Button 
+                onClick={handleAddTrainingPair}
+                disabled={uploadTrainingMutation.isPending}
+                className="w-full bg-[var(--medical-primary)] hover:bg-[var(--medical-primary)]/90"
+              >
                 <Upload className="h-4 w-4 mr-2" />
-                Upload Training Pair
+                {uploadTrainingMutation.isPending ? "Uploading..." : "Upload Training Pair"}
               </Button>
             </div>
           </CardContent>
