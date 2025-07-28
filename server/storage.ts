@@ -139,23 +139,23 @@ export class DatabaseStorage implements IStorage {
 
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user ? FieldEncryption.decryptFields(user) as User : undefined;
+    return user || undefined;
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const encryptedData = FieldEncryption.encryptFields(userData);
+    // User authentication data doesn't need medical-level encryption
     const [user] = await db
       .insert(users)
-      .values(encryptedData as any)
+      .values(userData)
       .onConflictDoUpdate({
         target: users.id,
         set: {
-          ...encryptedData,
+          ...userData,
           updatedAt: new Date(),
         },
       })
       .returning();
-    return FieldEncryption.decryptFields(user) as User;
+    return user;
   }
 
   // Clinic operations
