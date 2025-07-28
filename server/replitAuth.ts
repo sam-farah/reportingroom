@@ -14,10 +14,21 @@ if (!process.env.REPLIT_DOMAINS) {
 
 const getOidcConfig = memoize(
   async () => {
-    return await client.discovery(
-      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
-    );
+    try {
+      console.log('Getting OIDC config with:', {
+        issuer: process.env.ISSUER_URL ?? "https://replit.com/oidc",
+        clientId: process.env.REPL_ID
+      });
+      const config = await client.discovery(
+        new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
+        process.env.REPL_ID!
+      );
+      console.log('OIDC config obtained successfully');
+      return config;
+    } catch (error) {
+      console.error('Failed to get OIDC config:', error);
+      throw error;
+    }
   },
   { maxAge: 3600 * 1000 }
 );
@@ -27,7 +38,7 @@ export function getSession() {
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
+    createTableIfMissing: true, // Allow session table creation
     ttl: sessionTtl,
     tableName: "sessions",
   });
@@ -38,7 +49,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: false, // Disable secure for localhost development
       maxAge: sessionTtl,
     },
   });
@@ -91,14 +102,17 @@ async function upsertUser(claims: any) {
 }
 
 export async function setupAuth(app: Express) {
-  app.set("trust proxy", 1);
-  app.use(getSession());
-  app.use(passport.initialize());
-  app.use(passport.session());
+  try {
+    app.set("trust proxy", 1);
+    app.use(getSession());
+    app.use(passport.initialize());
+    app.use(passport.session());
 
-  const config = await getOidcConfig();
+    console.log('Getting OIDC configuration...');
+    const config = await getOidcConfig();
+    console.log('OIDC configuration loaded successfully');
 
-  const verify: VerifyFunction = async (
+    const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
@@ -208,6 +222,12 @@ export async function setupAuth(app: Express) {
       );
     });
   });
+  
+    console.log('Authentication setup completed successfully');
+  } catch (error) {
+    console.error('Failed to setup authentication:', error);
+    throw error;
+  }
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
