@@ -473,9 +473,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("Image file read successfully, base64 length:", base64Image.length);
       }
 
-      // Get training data for context
-      const trainingData = await storage.getAllTrainingPairs();
-      console.log("Training data count:", trainingData.length);
+      // Get training data for context - filter by relevant categories if possible
+      const allTrainingData = await storage.getAllTrainingPairs();
+      console.log("Total training data count:", allTrainingData.length);
+      
+      // For now, use all training data. In future, we could filter by detected study type
+      const trainingData = allTrainingData;
+      console.log("Using training examples for AI context:", trainingData.length);
 
       // Generate report using AI
       const ocrData = {
@@ -486,8 +490,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       console.log("Generating report with OCR data:", ocrData);
+      console.log("Training data integration:", trainingData.length > 0 ? 
+        `✅ ACTIVE (${trainingData.length} examples)` : 
+        '❌ INACTIVE (no training data)');
+      
       const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, isFromPdf);
-      console.log("Report generated successfully:", reportData);
+      console.log("Report generated successfully with training context:", reportData.studyType);
       
       // Create report in storage
       const report = await storage.createReport({
