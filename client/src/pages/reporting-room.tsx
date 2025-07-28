@@ -967,8 +967,8 @@ export default function ReportingRoom() {
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="fullscreen-finalizeReport"
-                      checked={editingReport.isFinalized}
-                      onCheckedChange={(checked) => updateEditingReport('isFinalized', checked)}
+                      checked={Boolean(editingReport.isFinalized)}
+                      onCheckedChange={(checked) => updateEditingReport('isFinalized', Boolean(checked))}
                     />
                     <Label htmlFor="fullscreen-finalizeReport" className="text-sm">
                       Finalize this report (will add electronic signature timestamp)

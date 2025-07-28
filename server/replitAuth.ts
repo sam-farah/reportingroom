@@ -63,17 +63,29 @@ async function upsertUser(claims: any) {
       last_name: claims["last_name"]
     });
     
-    await storage.upsertUser({
-      id: claims["sub"],
-      email: claims["email"],
-      firstName: claims["first_name"],
-      lastName: claims["last_name"],
-      profileImageUrl: claims["profile_image_url"],
-    });
+    // Validate required fields
+    if (!claims["sub"]) {
+      throw new Error('Missing required field: sub');
+    }
     
-    console.log('User upserted successfully');
+    const userData = {
+      id: String(claims["sub"]), // Ensure it's a string
+      email: claims["email"] || null,
+      firstName: claims["first_name"] || null,
+      lastName: claims["last_name"] || null,
+      profileImageUrl: claims["profile_image_url"] || null,
+      role: 'sonographer' as const, // Default role for new users
+      isActive: true, // Default active status
+    };
+    
+    console.log('Attempting to upsert user data:', userData);
+    const result = await storage.upsertUser(userData);
+    console.log('User upserted successfully:', { id: result.id, email: result.email });
+    
+    return result;
   } catch (error) {
-    console.error('Error upserting user:', error);
+    console.error('Error upserting user - Full error:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
     throw error;
   }
 }
@@ -90,10 +102,20 @@ export async function setupAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
-    verified(null, user);
+    try {
+      console.log('Starting verification process...');
+      const user = {};
+      updateUserSession(user, tokens);
+      console.log('User session updated');
+      
+      await upsertUser(tokens.claims());
+      console.log('User upserted, calling verified callback');
+      
+      verified(null, user);
+    } catch (error) {
+      console.error('Verification process failed:', error);
+      verified(error instanceof Error ? error : new Error('Authentication failed'), null);
+    }
   };
 
   for (const domain of process.env
