@@ -148,6 +148,19 @@ export async function setupAuth(app: Express) {
       passport.use(localStrategy);
       console.log(`✅ Registered strategy: replitauth:localhost:5000`);
       
+      // Add reportingroom.net custom domain strategy
+      const customDomainStrategy = new Strategy(
+        {
+          name: `replitauth:reportingroom.net`,
+          config,
+          scope: "openid email profile offline_access",
+          callbackURL: `https://reportingroom.net/api/callback`,
+        },
+        verify,
+      );
+      passport.use(customDomainStrategy);
+      console.log(`✅ Registered strategy: replitauth:reportingroom.net`);
+      
       // Production strategy
       const strategy = new Strategy(
         {
@@ -171,9 +184,15 @@ export async function setupAuth(app: Express) {
   app.get("/api/login", (req, res, next) => {
     let strategyName;
     
+    console.log(`Login attempt: hostname=${req.hostname}, headers=${JSON.stringify(req.headers.host)}`);
+    
     if (req.hostname === 'localhost') {
       strategyName = 'replitauth:localhost:5000';
-      console.log(`Login attempt: hostname=${req.hostname}, using LOCAL strategy=${strategyName}`);
+      console.log(`Using LOCAL strategy=${strategyName}`);
+    } else if (req.hostname === 'reportingroom.net' || req.hostname.includes('reportingroom.net')) {
+      // Handle custom domain with dedicated strategy
+      strategyName = 'replitauth:reportingroom.net';
+      console.log(`Using CUSTOM DOMAIN strategy=${strategyName} for reportingroom.net`);
     } else {
       // Get the configured domain or fallback to hostname
       const domains = process.env.REPLIT_DOMAINS!.split(",");
@@ -181,7 +200,7 @@ export async function setupAuth(app: Express) {
         req.hostname.includes(domain) || domain.includes(req.hostname)
       ) || domains[0];
       strategyName = `replitauth:${targetDomain}`;
-      console.log(`Login attempt: hostname=${req.hostname}, using PRODUCTION strategy=${strategyName}`);
+      console.log(`Using PRODUCTION strategy=${strategyName}`);
     }
     
     passport.authenticate(strategyName, {
@@ -193,9 +212,16 @@ export async function setupAuth(app: Express) {
   app.get("/api/callback", (req, res, next) => {
     let strategyName;
     
+    console.log(`Callback attempt: hostname=${req.hostname}, headers=${JSON.stringify(req.headers.host)}`);
+    console.log(`Query params:`, req.query);
+    
     if (req.hostname === 'localhost') {
       strategyName = 'replitauth:localhost:5000';
-      console.log(`Callback attempt: hostname=${req.hostname}, using LOCAL strategy=${strategyName}`);
+      console.log(`Using LOCAL callback strategy=${strategyName}`);
+    } else if (req.hostname === 'reportingroom.net' || req.hostname.includes('reportingroom.net')) {
+      // Handle custom domain with dedicated strategy
+      strategyName = 'replitauth:reportingroom.net';
+      console.log(`Using CUSTOM DOMAIN callback strategy=${strategyName} for reportingroom.net`);
     } else {
       // Get the configured domain or fallback to hostname
       const domains = process.env.REPLIT_DOMAINS!.split(",");
@@ -203,10 +229,8 @@ export async function setupAuth(app: Express) {
         req.hostname.includes(domain) || domain.includes(req.hostname)
       ) || domains[0];
       strategyName = `replitauth:${targetDomain}`;
-      console.log(`Callback attempt: hostname=${req.hostname}, using PRODUCTION strategy=${strategyName}`);
+      console.log(`Using PRODUCTION callback strategy=${strategyName}`);
     }
-    
-    console.log(`Query params:`, req.query);
     
     passport.authenticate(strategyName, {
       successReturnToOrRedirect: "/",
