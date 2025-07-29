@@ -689,30 +689,38 @@ export default function AdminPanel() {
               {/* Form fields */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Category</Label>
+                  <Label>Scan Type</Label>
                   <select 
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
                     className="w-full mt-1 p-2 border border-gray-300 rounded-md"
                   >
-                    <option value="">Select category</option>
-                    <option value="cardiac">Cardiac</option>
-                    <option value="vascular">Vascular</option>
-                    <option value="abdominal">Abdominal</option>
-                    <option value="obstetric">Obstetric</option>
+                    <option value="">Select scan type</option>
+                    <option value="Lower Limb Venous">Lower Limb Venous</option>
+                    <option value="Upper Limb Venous">Upper Limb Venous</option>
+                    <option value="Lower Limb Arterial">Lower Limb Arterial</option>
+                    <option value="Upper Limb Arterial">Upper Limb Arterial</option>
+                    <option value="Carotid Duplex">Carotid Duplex</option>
+                    <option value="Vertebral Duplex">Vertebral Duplex</option>
+                    <option value="Abdominal Aorta">Abdominal Aorta</option>
+                    <option value="Renal Duplex">Renal Duplex</option>
+                    <option value="Mesenteric Duplex">Mesenteric Duplex</option>
+                    <option value="DVT Assessment">DVT Assessment</option>
+                    <option value="AV Fistula/Graft">AV Fistula/Graft</option>
+                    <option value="Transcranial Doppler">Transcranial Doppler</option>
                   </select>
                 </div>
                 <div>
-                  <Label>Complexity Level</Label>
+                  <Label>Clinical Finding</Label>
                   <select 
                     value={complexityLevel}
                     onChange={(e) => setComplexityLevel(e.target.value)}
                     className="w-full mt-1 p-2 border border-gray-300 rounded-md"
                   >
-                    <option value="">Select complexity</option>
-                    <option value="basic">Basic</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
+                    <option value="">Select finding type</option>
+                    <option value="normal">Normal Study</option>
+                    <option value="abnormal">Abnormal Findings</option>
+                    <option value="complex">Complex Pathology</option>
                   </select>
                 </div>
               </div>
@@ -742,8 +750,8 @@ export default function AdminPanel() {
                 <thead>
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Date</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Category</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Complexity</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Scan Type</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Finding</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Status</th>
                   </tr>
                 </thead>

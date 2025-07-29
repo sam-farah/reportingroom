@@ -258,7 +258,9 @@ ${relevantExamples.map((pair, index) =>
 6. **PHRASE ADOPTION**: Adopt key phrases, measurements formats, and clinical descriptions from the sample language examples
 
 AI TRAINING INSTRUCTIONS:
-1. **Category Matching**: If the current study appears to be ${relevantExamples[0]?.category || 'similar'}, use ${relevantExamples[0]?.category || 'similar'} training patterns for medical terminology and structure
+1. **Scan Type Matching**: If the current study appears to be ${relevantExamples[0]?.category || 'Lower Limb Venous'}, use the exact language patterns from ${relevantExamples[0]?.category || 'Lower Limb Venous'} training examples
+2. **Study-Specific Language**: Each scan type has specific terminology - Lower Limb Venous uses "reflux", "saphenous vein", "varicosities" etc.
+3. **Finding Type Adoption**: If training examples show ${relevantExamples[0]?.complexityLevel || 'abnormal'} findings, replicate that reporting style and language
 2. **Complexity Adaptation**: Generate ${relevantExamples[0]?.complexityLevel || 'intermediate'}-level detail matching the uploaded training examples  
 3. **Professional Standards**: Follow medical reporting standards demonstrated in the ${trainingData.length} training examples
 4. **Consistency**: Maintain reporting style, structure, and clinical approach consistent with training data

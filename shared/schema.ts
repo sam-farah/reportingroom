@@ -125,8 +125,8 @@ export const trainingPairs = pgTable("training_pairs", {
   id: serial("id").primaryKey(),
   worksheetUrl: text("worksheet_url").notNull(),
   reportUrl: text("report_url").notNull(),
-  category: text("category").notNull(),
-  complexityLevel: text("complexity_level").notNull(),
+  category: text("category").notNull(), // e.g., "Lower Limb Venous", "Carotid Duplex", "Abdominal Aorta"
+  complexityLevel: text("complexity_level").notNull(), // e.g., "normal", "abnormal", "complex"
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
 });
 
