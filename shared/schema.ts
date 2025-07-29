@@ -285,6 +285,23 @@ export type InsertDigitalWorksheet = typeof digitalWorksheets.$inferInsert;
 export type LegendEntry = typeof legendEntries.$inferSelect;
 export type InsertLegendEntry = typeof legendEntries.$inferInsert;
 
+// Text shortcuts table for frequently used text snippets
+export const textShortcuts = pgTable("text_shortcuts", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  shortText: text("short_text").notNull(), // The actual text snippet
+  category: varchar("category", { length: 100 }).default('general'), // 'findings', 'impressions', 'recommendations', 'general'
+  tags: text("tags"), // Comma-separated keywords for searching
+  isGlobal: boolean("is_global").notNull().default(true), // Available to all users
+  userId: text("user_id"), // Optional: for user-specific shortcuts
+  usageCount: integer("usage_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type TextShortcut = typeof textShortcuts.$inferSelect;
+export type InsertTextShortcut = typeof textShortcuts.$inferInsert;
+
 export const insertPhysicianSchema = createInsertSchema(physicians).omit({
   id: true,
 });
@@ -333,6 +350,14 @@ export const insertLegendEntrySchema = createInsertSchema(legendEntries).omit({
   createdAt: true,
   updatedAt: true,
 });
+
+export const insertTextShortcutSchema = createInsertSchema(textShortcuts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTextShortcut = z.infer<typeof insertTextShortcutSchema>;
 
 export const insertClinicSchema = createInsertSchema(clinics).omit({
   id: true,

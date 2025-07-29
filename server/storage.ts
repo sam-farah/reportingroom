@@ -34,7 +34,10 @@ import {
   type InsertDigitalWorksheet,
   legendEntries,
   type LegendEntry,
-  type InsertLegendEntry
+  type InsertLegendEntry,
+  textShortcuts,
+  type TextShortcut,
+  type InsertTextShortcut
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -130,6 +133,13 @@ export interface IStorage {
   createLegendEntry(entry: InsertLegendEntry): Promise<LegendEntry>;
   updateLegendEntry(id: number, entry: Partial<InsertLegendEntry>): Promise<LegendEntry | undefined>;
   deleteLegendEntry(id: number): Promise<void>;
+  
+  // Text shortcuts operations
+  getAllTextShortcuts(): Promise<TextShortcut[]>;
+  createTextShortcut(shortcut: InsertTextShortcut): Promise<TextShortcut>;
+  updateTextShortcut(id: number, shortcut: Partial<InsertTextShortcut>): Promise<TextShortcut | undefined>;
+  deleteTextShortcut(id: number): Promise<void>;
+  incrementShortcutUsage(id: number): Promise<void>;
   getLegendEntriesByCategory(category: string): Promise<LegendEntry[]>;
 }
 
@@ -708,6 +718,39 @@ export class DatabaseStorage implements IStorage {
       .from(legendEntries)
       .where(eq(legendEntries.category, category))
       .orderBy(legendEntries.title);
+  }
+
+  // Text shortcuts operations
+  async getAllTextShortcuts(): Promise<TextShortcut[]> {
+    return await db.select().from(textShortcuts).orderBy(desc(textShortcuts.usageCount), textShortcuts.title);
+  }
+
+  async createTextShortcut(shortcut: InsertTextShortcut): Promise<TextShortcut> {
+    const [newShortcut] = await db.insert(textShortcuts).values(shortcut).returning();
+    return newShortcut;
+  }
+
+  async updateTextShortcut(id: number, shortcut: Partial<InsertTextShortcut>): Promise<TextShortcut | undefined> {
+    const [updated] = await db
+      .update(textShortcuts)
+      .set({ ...shortcut, updatedAt: new Date() })
+      .where(eq(textShortcuts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTextShortcut(id: number): Promise<void> {
+    await db.delete(textShortcuts).where(eq(textShortcuts.id, id));
+  }
+
+  async incrementShortcutUsage(id: number): Promise<void> {
+    await db
+      .update(textShortcuts)
+      .set({ 
+        usageCount: textShortcuts.usageCount + 1,
+        updatedAt: new Date() 
+      })
+      .where(eq(textShortcuts.id, id));
   }
 
   async getAllUsers(): Promise<User[]> {

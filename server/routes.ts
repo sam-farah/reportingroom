@@ -14,7 +14,8 @@ import {
   updateReportTemplateSchema, 
   insertSonographerSchema,
   insertClinicSchema,
-  insertUserInvitationSchema
+  insertUserInvitationSchema,
+  insertTextShortcutSchema
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
@@ -2321,6 +2322,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error calculating cost projection:", error);
       res.status(500).json({ message: "Failed to calculate cost projection" });
+    }
+  });
+
+  // Text shortcuts endpoints
+  app.get('/api/text-shortcuts', isAuthenticated, async (req, res) => {
+    try {
+      const shortcuts = await storage.getAllTextShortcuts();
+      res.json(shortcuts);
+    } catch (error) {
+      console.error("Error fetching text shortcuts:", error);
+      res.status(500).json({ error: "Failed to fetch text shortcuts" });
+    }
+  });
+
+  app.post('/api/text-shortcuts', isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertTextShortcutSchema.parse(req.body);
+      const shortcut = await storage.createTextShortcut(validatedData);
+      res.json(shortcut);
+    } catch (error) {
+      console.error("Error creating text shortcut:", error);
+      res.status(500).json({ error: "Failed to create text shortcut" });
+    }
+  });
+
+  app.put('/api/text-shortcuts/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertTextShortcutSchema.partial().parse(req.body);
+      const shortcut = await storage.updateTextShortcut(id, validatedData);
+      
+      if (!shortcut) {
+        return res.status(404).json({ error: "Text shortcut not found" });
+      }
+      
+      res.json(shortcut);
+    } catch (error) {
+      console.error("Error updating text shortcut:", error);
+      res.status(500).json({ error: "Failed to update text shortcut" });
+    }
+  });
+
+  app.delete('/api/text-shortcuts/:id', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteTextShortcut(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting text shortcut:", error);
+      res.status(500).json({ error: "Failed to delete text shortcut" });
+    }
+  });
+
+  app.post('/api/text-shortcuts/:id/use', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.incrementShortcutUsage(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error incrementing shortcut usage:", error);
+      res.status(500).json({ error: "Failed to increment usage" });
     }
   });
 

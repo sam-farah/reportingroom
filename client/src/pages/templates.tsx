@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Settings, Trash2, FileText, Download, Eye, BookOpen, Edit, Info } from "lucide-react";
+import { Plus, Settings, Trash2, FileText, Download, Eye, BookOpen, Edit, Info, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
 import type { ReportTemplate, InsertReportTemplate, LegendEntry, InsertLegendEntryData } from "@shared/schema";
+import TextShortcuts from "@/components/text-shortcuts";
 
 interface TemplateFormData {
   name: string;
@@ -87,7 +88,7 @@ const defaultFormData: TemplateFormData = {
 export default function Templates() {
   const { toast } = useToast();
   const { isAuthenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState<'reports' | 'worksheets' | 'legend'>('reports');
+  const [activeTab, setActiveTab] = useState<'reports' | 'worksheets' | 'legend' | 'shortcuts'>('reports');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ReportTemplate | null>(null);
   const [formData, setFormData] = useState<TemplateFormData>(defaultFormData);
@@ -643,7 +644,9 @@ export default function Templates() {
               ? 'Create and manage custom report layouts for PDF and DOCX exports'
               : activeTab === 'worksheets'
               ? 'Upload and manage blank worksheet templates for digital drawing'
-              : 'Teach the AI about drawing meanings to improve report generation accuracy'
+              : activeTab === 'legend'
+              ? 'Teach the AI about drawing meanings to improve report generation accuracy'
+              : 'Manage frequently used text snippets for faster report writing'
             }
           </p>
         </div>
@@ -668,6 +671,13 @@ export default function Templates() {
           >
             <BookOpen className="w-4 h-4 mr-2" />
             Legend
+          </Button>
+          <Button
+            variant={activeTab === 'shortcuts' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('shortcuts')}
+          >
+            <Hash className="w-4 h-4 mr-2" />
+            Shortcuts
           </Button>
           {activeTab === 'reports' ? (
             <Button onClick={handleCreateTemplate} className="medical-btn-primary">
@@ -1557,6 +1567,13 @@ export default function Templates() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Text Shortcuts Tab */}
+      {activeTab === 'shortcuts' && (
+        <div className="mt-6">
+          <TextShortcuts />
+        </div>
+      )}
     </div>
   );
 }
