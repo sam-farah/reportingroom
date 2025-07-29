@@ -26,6 +26,59 @@ export interface ReportData {
   impression: string;
 }
 
+export async function extractTextFromImage(base64Image: string): Promise<{ extractedText: string }> {
+  try {
+    console.log("🔍 Starting OCR text extraction from training report...");
+    
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are an OCR text extraction specialist. Extract ALL visible text from this medical report image, maintaining the original structure, spacing, and medical terminology exactly as written.
+
+          EXTRACTION REQUIREMENTS:
+          - Extract every word, number, and punctuation mark visible in the image
+          - Preserve the original formatting, line breaks, and spacing as much as possible
+          - Include medical terminology, measurements, abbreviations exactly as shown
+          - Do not interpret or modify the text - extract exactly what you see
+          - Include headers, body text, footnotes, and any annotations
+          - Maintain the logical flow and structure of the original document
+          
+          Return JSON format: { "extractedText": "complete extracted text here" }`
+        },
+        {
+          role: "user", 
+          content: [
+            {
+              type: "text",
+              text: "Extract all visible text from this medical report image, preserving exact formatting and terminology:"
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${base64Image}`
+              }
+            }
+          ]
+        }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 2000
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    const extractedText = result.extractedText || "";
+    
+    console.log(`✅ OCR extraction completed: ${extractedText.length} characters extracted`);
+    return { extractedText };
+    
+  } catch (error) {
+    console.error("❌ OCR text extraction failed:", error);
+    return { extractedText: "" };
+  }
+}
+
 export async function extractPatientDataFromWorksheet(base64Image: string, isFromPdf: boolean = false): Promise<OCRResult> {
   try {
     const response = await openai.chat.completions.create({
@@ -190,18 +243,17 @@ ${relevantExamples.map((pair, index) =>
   ▪ Clinical Pattern: This training worksheet shows ${pair.category} pathology patterns
   ▪ Finding Style: Professional ${pair.category} ultrasound reporting with ${pair.complexityLevel} level clinical detail
   ▪ Training Files: Worksheet (${pair.worksheetUrl}) + Report (${pair.reportUrl})
-  ${pair.sampleLanguage ? `▪ SAMPLE LANGUAGE from similar reports:
-    - Findings: "${pair.sampleLanguage.findings}"
-    - Impression: "${pair.sampleLanguage.impression}"
-  ▪ USE SIMILAR TERMINOLOGY: Match the specific medical language and phrasing shown above` : ''}
+  ${pair.extractedReportText ? `▪ 🎯 EXACT TRAINING REPORT TEXT (USE THIS LANGUAGE):
+    "${pair.extractedReportText.substring(0, 500)}${pair.extractedReportText.length > 500 ? '...' : ''}"
+  ▪ 🚨 MANDATORY: Copy the exact medical terminology, phrasing, and report structure from above text` : ''}
   ▪ IMPORTANT: If current worksheet shows similar patterns to this training example, generate findings consistent with the training data`
 ).join('\n\n')}
 
 🚨 MANDATORY TRAINING COMPLIANCE:
 1. **CLINICAL FINDINGS**: If the current worksheet shows venous insufficiency patterns similar to training examples, you MUST report venous insufficiency
-2. **LANGUAGE MATCHING**: Use the EXACT terminology and phrasing from the sample language provided in training examples  
+2. **EXACT TEXT COPYING**: Copy the EXACT terminology, phrasing, and sentence structure from the extracted training report text  
 3. **DIAGNOSTIC ACCURACY**: Do NOT contradict clinical findings shown in the training data  
-4. **TERMINOLOGY CONSISTENCY**: Match the specific medical language, sentence structure, and report style from sample language
+4. **TEXT REPLICATION**: Replicate the specific medical language, sentence structure, and report style from the extracted training report text
 5. **PATHOLOGY DETECTION**: If training shows pathology, look for and report similar pathology using the same language patterns
 6. **PHRASE ADOPTION**: Adopt key phrases, measurements formats, and clinical descriptions from the sample language examples
 

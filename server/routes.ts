@@ -16,7 +16,7 @@ import {
   insertClinicSchema,
   insertUserInvitationSchema
 } from "@shared/schema";
-import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing } from "./services/openai";
+import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 
 // Configure multer for file uploads
@@ -477,18 +477,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allTrainingData = await storage.getAllTrainingPairs();
       console.log("Total training data count:", allTrainingData.length);
       
-      // Enhance training data with sample report language from existing reports
+      // Extract actual text content from training report images using OCR
       const enhancedTrainingData = await Promise.all(allTrainingData.map(async (pair) => {
-        // Get example language from recent reports of the same category
-        const sampleReports = await storage.getReportsByCategory(pair.category, 3);
-        const sampleLanguage = sampleReports.map(r => ({
-          findings: r.findings?.substring(0, 200) + "...",
-          impression: r.impression?.substring(0, 100) + "..."
-        }));
+        console.log(`🔍 Processing training pair ${pair.id}: ${pair.category} (${pair.complexityLevel})`);
+        
+        let extractedReportText = null;
+        
+        // Try to extract text from the training report image
+        if (pair.reportUrl) {
+          try {
+            const reportPath = path.join(uploadDir, path.basename(pair.reportUrl));
+            console.log(`📄 Extracting text from training report: ${reportPath}`);
+            
+            if (fs.existsSync(reportPath)) {
+              const reportBuffer = fs.readFileSync(reportPath);
+              const base64Report = reportBuffer.toString('base64');
+              
+              // Use OCR to extract text from the training report image
+              const ocrResult = await extractTextFromImage(base64Report);
+              extractedReportText = ocrResult.extractedText;
+              
+              console.log(`✅ Extracted ${extractedReportText.length} characters from training report`);
+              console.log(`📝 Sample text: "${extractedReportText.substring(0, 150)}..."`);
+            }
+          } catch (error) {
+            console.error(`❌ Failed to extract text from training report ${pair.reportUrl}:`, error);
+          }
+        }
         
         return {
           ...pair,
-          sampleLanguage: sampleLanguage.length > 0 ? sampleLanguage[0] : null
+          extractedReportText: extractedReportText
         };
       }));
       
