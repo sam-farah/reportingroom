@@ -707,6 +707,7 @@ export default function AdminPanel() {
                     <option value="Mesenteric Duplex">Mesenteric Duplex</option>
                     <option value="DVT Assessment">DVT Assessment</option>
                     <option value="AV Fistula/Graft">AV Fistula/Graft</option>
+                    <option value="Post Endovenous Intervention">Post Endovenous Intervention</option>
                     <option value="Transcranial Doppler">Transcranial Doppler</option>
                   </select>
                 </div>

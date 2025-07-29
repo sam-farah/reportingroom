@@ -13,7 +13,8 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 - **Exact Text Replication System** - Enhanced AI training to copy exact terminology, phrasing, and sentence structure from extracted training report text
 - **Clinical Finding Classification** - Changed complexity levels to clinical finding types: "normal", "abnormal", "complex" for better medical relevance
 - **Global Training Interface** - Updated admin panel with clear indicators that training affects all users system-wide
-- **Training Data Consolidation** - Migrated existing training pairs to new scan-specific categories with 8 total examples across Lower Limb Venous and Lower Limb Arterial
+- **Training Data Consolidation** - Migrated existing training pairs to new scan-specific categories with expanding dataset across Lower Limb Venous, Lower Limb Arterial, and Upper Limb Venous
+- **Post Endovenous Intervention Category** - Added specialized scan type for post-intervention follow-up studies to capture treatment outcomes and complications
 - **System-Wide Consistency** - Global training ensures consistent medical terminology and reporting standards across all clinics and users
 
 **July 27, 2025:**
