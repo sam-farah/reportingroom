@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2 } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, ReportTemplate } from "@shared/schema";
 import { format } from "date-fns";
+import TextShortcuts from "@/components/text-shortcuts";
 
 interface EditableReport extends Report {
   templateId?: number;
@@ -29,6 +30,8 @@ export default function ReportingRoom() {
   const [isAmendDialogOpen, setIsAmendDialogOpen] = useState(false);
   const [amendingReport, setAmendingReport] = useState<EditableReport | null>(null);
   const [amendmentReason, setAmendmentReason] = useState("");
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -513,6 +516,24 @@ export default function ReportingRoom() {
     setEditingReport(prev => prev ? { ...prev, [field]: value } : null);
   };
 
+  const handleInsertShortcut = (text: string, shortcutId: number) => {
+    if (!editingReport || !activeTextArea) return;
+    
+    // Get current cursor position if possible, otherwise append
+    const currentValue = editingReport[activeTextArea as keyof EditableReport] as string || '';
+    const newValue = currentValue + (currentValue ? '\n\n' : '') + text;
+    
+    updateEditingReport(activeTextArea as keyof EditableReport, newValue);
+    
+    // Close shortcuts panel
+    setShowShortcuts(false);
+    
+    toast({
+      title: "Text Inserted",
+      description: "Shortcut text has been added to the report",
+    });
+  };
+
   const handleDeleteReport = (report: Report) => {
     if (window.confirm(`Are you sure you want to delete the report for ${report.patientName}? This action cannot be undone.`)) {
       deleteReportMutation.mutate(report.id);
@@ -933,7 +954,21 @@ export default function ReportingRoom() {
 
                 {/* Report Fields */}
                 <div className="space-y-2">
-                  <Label htmlFor="fullscreen-indication">Indication</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="fullscreen-indication">Indication</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setActiveTextArea('indication');
+                        setShowShortcuts(!showShortcuts);
+                      }}
+                    >
+                      <Hash className="w-4 h-4 mr-1" />
+                      Shortcuts
+                    </Button>
+                  </div>
                   <Textarea
                     id="fullscreen-indication"
                     value={editingReport.indication}
@@ -943,7 +978,21 @@ export default function ReportingRoom() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="fullscreen-findings">Findings</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="fullscreen-findings">Findings</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setActiveTextArea('findings');
+                        setShowShortcuts(!showShortcuts);
+                      }}
+                    >
+                      <Hash className="w-4 h-4 mr-1" />
+                      Shortcuts
+                    </Button>
+                  </div>
                   <Textarea
                     id="fullscreen-findings"
                     value={editingReport.findings}
@@ -953,7 +1002,21 @@ export default function ReportingRoom() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="fullscreen-impression">Impression</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="fullscreen-impression">Impression</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setActiveTextArea('impression');
+                        setShowShortcuts(!showShortcuts);
+                      }}
+                    >
+                      <Hash className="w-4 h-4 mr-1" />
+                      Shortcuts
+                    </Button>
+                  </div>
                   <Textarea
                     id="fullscreen-impression"
                     value={editingReport.impression}
@@ -1021,6 +1084,34 @@ export default function ReportingRoom() {
               </div>
             </div>
           </div>
+
+          {/* Text Shortcuts Side Panel */}
+          {showShortcuts && (
+            <div className="fixed top-0 right-0 h-full w-96 bg-white border-l shadow-lg z-[110] overflow-y-auto">
+              <div className="p-4 border-b">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Text Shortcuts</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowShortcuts(false)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-600 mt-1">
+                  Click any shortcut to insert into {activeTextArea}
+                </p>
+              </div>
+              <div className="p-4">
+                <TextShortcuts
+                  onInsertShortcut={handleInsertShortcut}
+                  compact={true}
+                  showUsageTracking={true}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1102,7 +1193,21 @@ export default function ReportingRoom() {
 
                 {/* Indication */}
                 <div className="space-y-2">
-                  <Label htmlFor="indication">Indication</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="indication">Indication</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setActiveTextArea('indication');
+                        setShowShortcuts(!showShortcuts);
+                      }}
+                    >
+                      <Hash className="w-4 h-4 mr-1" />
+                      Shortcuts
+                    </Button>
+                  </div>
                   <Textarea
                     id="indication"
                     value={editingReport.indication}
@@ -1113,7 +1218,21 @@ export default function ReportingRoom() {
 
                 {/* Findings */}
                 <div className="space-y-2">
-                  <Label htmlFor="findings">Findings</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="findings">Findings</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setActiveTextArea('findings');
+                        setShowShortcuts(!showShortcuts);
+                      }}
+                    >
+                      <Hash className="w-4 h-4 mr-1" />
+                      Shortcuts
+                    </Button>
+                  </div>
                   <Textarea
                     id="findings"
                     value={editingReport.findings}
@@ -1124,7 +1243,21 @@ export default function ReportingRoom() {
 
                 {/* Impression */}
                 <div className="space-y-2">
-                  <Label htmlFor="impression">Impression</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="impression">Impression</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setActiveTextArea('impression');
+                        setShowShortcuts(!showShortcuts);
+                      }}
+                    >
+                      <Hash className="w-4 h-4 mr-1" />
+                      Shortcuts
+                    </Button>
+                  </div>
                   <Textarea
                     id="impression"
                     value={editingReport.impression}
@@ -1193,6 +1326,34 @@ export default function ReportingRoom() {
             </>
           )}
         </DialogContent>
+
+        {/* Text Shortcuts Side Panel for Regular Dialog */}
+        {showShortcuts && (
+          <div className="fixed top-0 right-0 h-full w-96 bg-white border-l shadow-lg z-[60] overflow-y-auto">
+            <div className="p-4 border-b">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Text Shortcuts</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowShortcuts(false)}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Click any shortcut to insert into {activeTextArea}
+              </p>
+            </div>
+            <div className="p-4">
+              <TextShortcuts
+                onInsertShortcut={handleInsertShortcut}
+                compact={true}
+                showUsageTracking={true}
+              />
+            </div>
+          </div>
+        )}
       </Dialog>
 
       {/* Amendment Dialog */}

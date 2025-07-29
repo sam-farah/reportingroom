@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Edit, Trash2, Copy, Hash, Tag } from "lucide-react";
+import { Plus, Edit, Trash2, Copy, Hash, Tag, MousePointer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -40,11 +40,12 @@ const defaultFormData: ShortcutFormData = {
 };
 
 interface TextShortcutsProps {
-  onInsertText?: (text: string, shortcutId: number) => void;
-  showInsertButtons?: boolean;
+  onInsertShortcut?: (text: string, shortcutId: number) => void;
+  compact?: boolean;
+  showUsageTracking?: boolean;
 }
 
-export default function TextShortcuts({ onInsertText, showInsertButtons = false }: TextShortcutsProps) {
+export default function TextShortcuts({ onInsertShortcut, compact = false, showUsageTracking = false }: TextShortcutsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingShortcut, setEditingShortcut] = useState<TextShortcut | null>(null);
   const [formData, setFormData] = useState(defaultFormData);
@@ -53,9 +54,19 @@ export default function TextShortcuts({ onInsertText, showInsertButtons = false 
   const { toast } = useToast();
 
   // Fetch text shortcuts
-  const { data: shortcuts = [], isLoading } = useQuery({
+  const { data: shortcuts = [], isLoading } = useQuery<TextShortcut[]>({
     queryKey: ["/api/text-shortcuts"],
     retry: false,
+  });
+
+  // Track usage mutation
+  const trackUsageMutation = useMutation({
+    mutationFn: async (shortcutId: number) => {
+      return await apiRequest(`/api/text-shortcuts/${shortcutId}/use`, "POST");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/text-shortcuts"] });
+    },
   });
 
   // Create shortcut mutation
@@ -201,9 +212,11 @@ export default function TextShortcuts({ onInsertText, showInsertButtons = false 
   };
 
   const handleInsertShortcut = (shortcut: TextShortcut) => {
-    if (onInsertText) {
-      onInsertText(shortcut.shortText, shortcut.id);
-      incrementUsageMutation.mutate(shortcut.id);
+    if (onInsertShortcut) {
+      onInsertShortcut(shortcut.shortText, shortcut.id);
+      if (showUsageTracking) {
+        incrementUsageMutation.mutate(shortcut.id);
+      }
     }
   };
 
@@ -399,25 +412,27 @@ export default function TextShortcuts({ onInsertText, showInsertButtons = false 
                   </div>
                 )}
                 <div className="flex gap-2">
-                  {showInsertButtons && onInsertText && (
+                  {onInsertShortcut ? (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => handleInsertShortcut(shortcut)}
+                      className="flex-1 text-xs bg-blue-600 hover:bg-blue-700"
+                    >
+                      <MousePointer className="h-3 w-3 mr-1" />
+                      Insert
+                    </Button>
+                  ) : (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleInsertShortcut(shortcut)}
+                      onClick={() => handleCopyToClipboard(shortcut.shortText, shortcut.id)}
                       className="flex-1 text-xs"
                     >
-                      Insert
+                      <Copy className="h-3 w-3 mr-1" />
+                      Copy
                     </Button>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleCopyToClipboard(shortcut.shortText, shortcut.id)}
-                    className="flex-1 text-xs"
-                  >
-                    <Copy className="h-3 w-3 mr-1" />
-                    Copy
-                  </Button>
                 </div>
               </CardContent>
             </Card>
