@@ -477,9 +477,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allTrainingData = await storage.getAllTrainingPairs();
       console.log("Total training data count:", allTrainingData.length);
       
-      // For now, use all training data. In future, we could filter by detected study type
-      const trainingData = allTrainingData;
-      console.log("Using training examples for AI context:", trainingData.length);
+      // Enhance training data with sample report language from existing reports
+      const enhancedTrainingData = await Promise.all(allTrainingData.map(async (pair) => {
+        // Get example language from recent reports of the same category
+        const sampleReports = await storage.getReportsByCategory(pair.category, 3);
+        const sampleLanguage = sampleReports.map(r => ({
+          findings: r.findings?.substring(0, 200) + "...",
+          impression: r.impression?.substring(0, 100) + "..."
+        }));
+        
+        return {
+          ...pair,
+          sampleLanguage: sampleLanguage.length > 0 ? sampleLanguage[0] : null
+        };
+      }));
+      
+      const trainingData = enhancedTrainingData;
+      console.log("Using enhanced training examples for AI context:", trainingData.length);
 
       // Generate report using AI
       const ocrData = {

@@ -441,6 +441,17 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(trainingPairs);
   }
 
+  async getReportsByCategory(category: string, limit: number = 5): Promise<Report[]> {
+    const categoryReports = await db
+      .select()
+      .from(reports)
+      .where(sql`LOWER(${reports.studyType}) LIKE ${'%' + category.toLowerCase() + '%'}`)
+      .orderBy(desc(reports.createdAt))
+      .limit(limit);
+    
+    return categoryReports.map(report => FieldEncryption.decryptFields(report) as Report);
+  }
+
   async getTrainingPair(id: number): Promise<TrainingPair | undefined> {
     const [trainingPair] = await db.select().from(trainingPairs).where(eq(trainingPairs.id, id));
     return trainingPair;

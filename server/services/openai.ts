@@ -190,15 +190,20 @@ ${relevantExamples.map((pair, index) =>
   ▪ Clinical Pattern: This training worksheet shows ${pair.category} pathology patterns
   ▪ Finding Style: Professional ${pair.category} ultrasound reporting with ${pair.complexityLevel} level clinical detail
   ▪ Training Files: Worksheet (${pair.worksheetUrl}) + Report (${pair.reportUrl})
+  ${pair.sampleLanguage ? `▪ SAMPLE LANGUAGE from similar reports:
+    - Findings: "${pair.sampleLanguage.findings}"
+    - Impression: "${pair.sampleLanguage.impression}"
+  ▪ USE SIMILAR TERMINOLOGY: Match the specific medical language and phrasing shown above` : ''}
   ▪ IMPORTANT: If current worksheet shows similar patterns to this training example, generate findings consistent with the training data`
 ).join('\n\n')}
 
 🚨 MANDATORY TRAINING COMPLIANCE:
-1. If the current worksheet shows venous insufficiency patterns similar to training examples, you MUST report venous insufficiency
-2. Do NOT contradict clinical findings shown in the training data  
-3. Match the diagnostic accuracy demonstrated in the uploaded training pairs
-4. Use the same level of clinical detail and terminology as the training examples
-5. If training shows pathology, look for and report similar pathology in the current study
+1. **CLINICAL FINDINGS**: If the current worksheet shows venous insufficiency patterns similar to training examples, you MUST report venous insufficiency
+2. **LANGUAGE MATCHING**: Use the EXACT terminology and phrasing from the sample language provided in training examples  
+3. **DIAGNOSTIC ACCURACY**: Do NOT contradict clinical findings shown in the training data  
+4. **TERMINOLOGY CONSISTENCY**: Match the specific medical language, sentence structure, and report style from sample language
+5. **PATHOLOGY DETECTION**: If training shows pathology, look for and report similar pathology using the same language patterns
+6. **PHRASE ADOPTION**: Adopt key phrases, measurements formats, and clinical descriptions from the sample language examples
 
 AI TRAINING INSTRUCTIONS:
 1. **Category Matching**: If the current study appears to be ${relevantExamples[0]?.category || 'similar'}, use ${relevantExamples[0]?.category || 'similar'} training patterns for medical terminology and structure
