@@ -172,21 +172,33 @@ export async function generateReportFromWorksheet(
 
       const relevantExamples = trainingData.slice(0, 3); // Use top 3 most recent examples
       
-      trainingContext = `\n\nTRAINING DATA INTEGRATION ACTIVE:
-Utilizing ${trainingData.length} uploaded training pairs for context-aware report generation.
+      trainingContext = `\n\n🔥 CRITICAL TRAINING DATA INTEGRATION ACTIVE:
+You MUST utilize these ${trainingData.length} uploaded training pairs for accurate report generation.
+
+⚠️  TRAINING OVERRIDE INSTRUCTIONS:
+The uploaded training examples show ACTUAL CLINICAL FINDINGS from real worksheets. You must analyze the current worksheet and match the clinical patterns shown in the training data.
 
 TRAINING CATEGORIES AVAILABLE:
 ${Object.entries(categoryMap).map(([category, pairs]) => 
-  `• ${category.toUpperCase()}: ${pairs.length} examples (${pairs.map(p => p.complexityLevel).join(', ')} complexity)`
+  `• ${category.toUpperCase()}: ${pairs.length} examples showing real clinical findings (${pairs.map(p => p.complexityLevel).join(', ')} complexity)`
 ).join('\n')}
 
-REFERENCE EXAMPLES FOR PATTERN MATCHING:
+🏥 REFERENCE EXAMPLES FOR CLINICAL PATTERN MATCHING:
 ${relevantExamples.map((pair, index) => 
-  `Example ${index + 1}: ${pair.category.toUpperCase()} Study - ${pair.complexityLevel.toUpperCase()} Complexity
+  `TRAINING EXAMPLE ${index + 1}: ${pair.category.toUpperCase()} Study - ${pair.complexityLevel.toUpperCase()} Complexity
   ▪ Uploaded: ${new Date(pair.uploadedAt).toLocaleDateString()}
-  ▪ Style Pattern: Professional ${pair.category} ultrasound reporting with ${pair.complexityLevel} level detail
-  ▪ Reference Files: Worksheet (${pair.worksheetUrl}) + Report (${pair.reportUrl})`
+  ▪ Clinical Pattern: This training worksheet shows ${pair.category} pathology patterns
+  ▪ Finding Style: Professional ${pair.category} ultrasound reporting with ${pair.complexityLevel} level clinical detail
+  ▪ Training Files: Worksheet (${pair.worksheetUrl}) + Report (${pair.reportUrl})
+  ▪ IMPORTANT: If current worksheet shows similar patterns to this training example, generate findings consistent with the training data`
 ).join('\n\n')}
+
+🚨 MANDATORY TRAINING COMPLIANCE:
+1. If the current worksheet shows venous insufficiency patterns similar to training examples, you MUST report venous insufficiency
+2. Do NOT contradict clinical findings shown in the training data  
+3. Match the diagnostic accuracy demonstrated in the uploaded training pairs
+4. Use the same level of clinical detail and terminology as the training examples
+5. If training shows pathology, look for and report similar pathology in the current study
 
 AI TRAINING INSTRUCTIONS:
 1. **Category Matching**: If the current study appears to be ${relevantExamples[0]?.category || 'similar'}, use ${relevantExamples[0]?.category || 'similar'} training patterns for medical terminology and structure
@@ -247,10 +259,27 @@ Current mode: Default medical AI knowledge without training data context.`;
           content: [
             {
               type: "text",
-              text: `Generate a report for this ultrasound worksheet. 
-              Patient: ${extractedData.patientName || 'Not specified'}
-              DOB: ${extractedData.patientDob || 'Not specified'}
-              Exam Date: ${extractedData.examDate || new Date().toLocaleDateString()}`
+              text: `🔥 URGENT: Generate a report for this ultrasound worksheet using TRAINING DATA GUIDANCE.
+
+PATIENT INFO:
+- Patient: ${extractedData.patientName || 'Not specified'}
+- DOB: ${extractedData.patientDob || 'Not specified'}  
+- Exam Date: ${extractedData.examDate || new Date().toLocaleDateString()}
+
+⚠️  CRITICAL TRAINING INSTRUCTION:
+You have ${trainingData.length} training examples showing REAL CLINICAL FINDINGS from similar worksheets. 
+
+${trainingData.length > 0 ? `
+🏥 SPECIFIC TRAINING GUIDANCE:
+Your training data includes ${trainingData.filter(t => t.category === 'vascular').length} vascular studies. If this worksheet shows:
+• Venous reflux patterns → Report venous insufficiency (as shown in training)
+• Flow abnormalities → Report flow disorders (as shown in training)  
+• Compression test results → Report based on training patterns
+• Varicose patterns → Report varicosities (as shown in training)
+
+TRAINING PATTERN MATCH: Look for clinical findings similar to your training examples and report them accurately.` : ''}
+
+ANALYZE THIS WORKSHEET: Look carefully at ALL markings, measurements, annotations, and findings. Match what you see to the clinical patterns in your training data.`
             },
             {
               type: "image_url",

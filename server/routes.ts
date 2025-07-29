@@ -496,10 +496,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log detailed training data being sent to AI
       if (trainingData.length > 0) {
-        console.log("TRAINING DATA DETAILS:");
+        console.log("🔥 TRAINING DATA DETAILS - CRITICAL FOR AI:");
         trainingData.forEach((pair, index) => {
           console.log(`  ${index + 1}. Category: ${pair.category}, Complexity: ${pair.complexityLevel}, Uploaded: ${new Date(pair.uploadedAt).toLocaleDateString()}`);
+          console.log(`      Training files: ${pair.worksheetUrl} + ${pair.reportUrl}`);
         });
+        console.log("🚨 AI MUST use these training patterns for accurate clinical findings!");
       } else {
         console.log("⚠️  NO TRAINING DATA - AI will use default knowledge only");
       }
