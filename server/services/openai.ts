@@ -210,6 +210,10 @@ RECOMMENDATION: Upload worksheet-report training pairs via Admin Panel → AI Tr
 Current mode: Default medical AI knowledge without training data context.`;
     }
 
+    console.log("=== AI TRAINING INTEGRATION DEBUG ===");
+    console.log("Training context length:", trainingContext.length);
+    console.log("Training context preview:", trainingContext.substring(0, 500) + "...");
+    
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [

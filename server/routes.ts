@@ -494,6 +494,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `✅ ACTIVE (${trainingData.length} examples)` : 
         '❌ INACTIVE (no training data)');
       
+      // Log detailed training data being sent to AI
+      if (trainingData.length > 0) {
+        console.log("TRAINING DATA DETAILS:");
+        trainingData.forEach((pair, index) => {
+          console.log(`  ${index + 1}. Category: ${pair.category}, Complexity: ${pair.complexityLevel}, Uploaded: ${new Date(pair.uploadedAt).toLocaleDateString()}`);
+        });
+      } else {
+        console.log("⚠️  NO TRAINING DATA - AI will use default knowledge only");
+      }
+      
       const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, isFromPdf);
       console.log("Report generated successfully with training context:", reportData.studyType);
       
