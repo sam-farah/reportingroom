@@ -6,6 +6,16 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 
 ## Recent Changes
 
+**July 29, 2025:**
+- **Global AI Training System** - Implemented system-wide training where uploaded training data affects ALL users across the entire platform
+- **Scan-Specific Training Categories** - Replaced generic difficulty levels with specific ultrasound scan types like "Lower Limb Venous", "Carotid Duplex", "Abdominal Aorta"
+- **OCR Training Report Extraction** - Implemented complete OCR text extraction from uploaded training report screenshots to capture exact medical language
+- **Exact Text Replication System** - Enhanced AI training to copy exact terminology, phrasing, and sentence structure from extracted training report text
+- **Clinical Finding Classification** - Changed complexity levels to clinical finding types: "normal", "abnormal", "complex" for better medical relevance
+- **Global Training Interface** - Updated admin panel with clear indicators that training affects all users system-wide
+- **Training Data Consolidation** - Migrated existing training pairs to new scan-specific categories with 8 total examples across Lower Limb Venous and Lower Limb Arterial
+- **System-Wide Consistency** - Global training ensures consistent medical terminology and reporting standards across all clinics and users
+
 **July 27, 2025:**
 - **Authentication System Repair** - Fixed critical login functionality causing internal server errors during Google account authentication
 - **Hostname Resolution Fix** - Resolved domain matching issues between localhost development and Replit production domains

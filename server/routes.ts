@@ -473,9 +473,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("Image file read successfully, base64 length:", base64Image.length);
       }
 
-      // Get training data for context - filter by relevant categories if possible
+      // Get GLOBAL training data for context - affects ALL users system-wide
       const allTrainingData = await storage.getAllTrainingPairs();
-      console.log("Total training data count:", allTrainingData.length);
+      console.log("🌍 GLOBAL TRAINING DATA - affects all users system-wide:", allTrainingData.length, "examples");
       
       // Extract actual text content from training report images using OCR
       const enhancedTrainingData = await Promise.all(allTrainingData.map(async (pair) => {
@@ -523,9 +523,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       console.log("Generating report with OCR data:", ocrData);
-      console.log("Training data integration:", trainingData.length > 0 ? 
-        `✅ ACTIVE (${trainingData.length} examples)` : 
-        '❌ INACTIVE (no training data)');
+      console.log("🌍 GLOBAL TRAINING INTEGRATION:", trainingData.length > 0 ? 
+        `✅ ACTIVE (${trainingData.length} global examples affecting ALL users)` : 
+        '❌ INACTIVE (no global training data)');
       
       // Log detailed training data being sent to AI
       if (trainingData.length > 0) {
@@ -534,7 +534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`  ${index + 1}. Category: ${pair.category}, Complexity: ${pair.complexityLevel}, Uploaded: ${new Date(pair.uploadedAt).toLocaleDateString()}`);
           console.log(`      Training files: ${pair.worksheetUrl} + ${pair.reportUrl}`);
         });
-        console.log("🚨 AI MUST use these training patterns for accurate clinical findings!");
+        console.log("🚨 AI MUST use these GLOBAL training patterns for consistent clinical findings across ALL users!");
       } else {
         console.log("⚠️  NO TRAINING DATA - AI will use default knowledge only");
       }

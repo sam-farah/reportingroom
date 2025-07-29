@@ -368,7 +368,7 @@ export default function AdminPanel() {
           <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
           <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
           <TabsTrigger value="costs">Cost Projection</TabsTrigger>
-          <TabsTrigger value="training">AI Training</TabsTrigger>
+          <TabsTrigger value="training">🌍 Global AI Training</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monitoring" className="space-y-6">
@@ -742,7 +742,7 @@ export default function AdminPanel() {
           <CardContent className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               <Database className="medical-text-primary mr-2 inline" />
-              Training Data History
+              🌍 Global Training Data History
             </h2>
             
             <div className="overflow-x-auto">
