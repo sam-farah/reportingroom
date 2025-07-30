@@ -3,7 +3,7 @@ import forge from 'node-forge';
 
 // Encryption configuration for medical data compliance
 export class MedicalDataEncryption {
-  private static readonly ALGORITHM = 'AES-256-GCM';
+  private static readonly ALGORITHM = 'AES-256-CBC';
   private static readonly KEY_SIZE = 256;
   private static readonly IV_SIZE = 16;
   
@@ -31,9 +31,10 @@ export class MedicalDataEncryption {
         return `DEV_UNENCRYPTED:${plaintext}`;
       }
       
+      // Use CBC mode with PKCS7 padding for better compatibility
       const encrypted = CryptoJS.AES.encrypt(plaintext, key, {
-        mode: CryptoJS.mode.GCM,
-        padding: CryptoJS.pad.NoPadding
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
       });
       
       return encrypted.toString();
@@ -57,8 +58,8 @@ export class MedicalDataEncryption {
       
       const key = this.getEncryptionKey();
       const decrypted = CryptoJS.AES.decrypt(ciphertext, key, {
-        mode: CryptoJS.mode.GCM,
-        padding: CryptoJS.pad.NoPadding
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
       });
       
       return decrypted.toString(CryptoJS.enc.Utf8);
@@ -113,7 +114,7 @@ export class MedicalDataEncryption {
       
       const decipher = forge.cipher.createDecipher('AES-GCM', key);
       decipher.start({ iv, tag });
-      decipher.update(forge.util.createBuffer(encryptedData));
+      decipher.update(forge.util.createBuffer(encryptedData.toString('binary')));
       
       if (!decipher.finish()) {
         throw new Error('File decryption authentication failed');
