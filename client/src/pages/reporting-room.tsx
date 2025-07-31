@@ -831,6 +831,10 @@ export default function ReportingRoom() {
                 onClick={() => {
                   setIsFullscreenMode(false);
                   setIsEditDialogOpen(false);
+                  // Exit browser fullscreen if active
+                  if (document.fullscreenElement) {
+                    document.exitFullscreen().catch(console.error);
+                  }
                 }}
               >
                 <Minimize2 className="w-4 h-4 mr-2" />
@@ -1053,6 +1057,10 @@ export default function ReportingRoom() {
                     onClick={() => {
                       setIsFullscreenMode(false);
                       setIsEditDialogOpen(false);
+                      // Exit browser fullscreen if active
+                      if (document.fullscreenElement) {
+                        document.exitFullscreen().catch(console.error);
+                      }
                     }}
                   >
                     <X className="w-4 h-4 mr-2" />
@@ -1294,6 +1302,10 @@ export default function ReportingRoom() {
                     onClick={() => {
                       setIsEditDialogOpen(false);
                       setIsFullscreenMode(false);
+                      // Exit browser fullscreen if active
+                      if (document.fullscreenElement) {
+                        document.exitFullscreen().catch(console.error);
+                      }
                     }}
                   >
                     <X className="w-4 h-4 mr-2" />

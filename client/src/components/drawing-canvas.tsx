@@ -551,6 +551,10 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
       
       onWorksheetCreated(imageData, templateName);
       setIsFullscreen(false);
+      // Exit browser fullscreen if active
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(console.error);
+      }
       
       toast({
         title: "Worksheet Created",
@@ -578,7 +582,13 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
             </Select>
           </div>
           
-          <Button variant="outline" onClick={() => setIsFullscreen(false)}>
+          <Button variant="outline" onClick={() => {
+            setIsFullscreen(false);
+            // Exit browser fullscreen if active
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch(console.error);
+            }
+          }}>
             <X className="w-4 h-4 mr-1" />
             Exit
           </Button>

@@ -7,9 +7,13 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 ## Recent Changes
 
 **July 31, 2025:**
+- **Fullscreen Browser Exit Fix** - Fixed critical issue where browsers remained in fullscreen mode after clicking exit buttons
+- **Comprehensive Fullscreen API Integration** - Added proper `document.exitFullscreen()` calls to all exit buttons in report editing and drawing interfaces
+- **Text Shortcuts Integration** - Successfully integrated text shortcuts into report editing with side panel and insert functionality
 - **Encryption System Fix** - Resolved critical encryption compatibility issues that were preventing patient name OCR data from being saved
 - **CryptoJS Compatibility Update** - Changed from AES-GCM to default AES encryption mode for improved stability and compatibility
 - **OCR Data Persistence Fix** - Patient names extracted via OCR now save correctly to database without encryption errors
+- **Report Decryption Fix** - Fixed encrypted gibberish display in reports by adding proper decryption to all report retrieval methods
 - **Medical Data Protection** - Maintained end-to-end encryption compliance while fixing compatibility issues
 
 **July 29, 2025:**
