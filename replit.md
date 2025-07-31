@@ -6,6 +6,12 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 
 ## Recent Changes
 
+**July 31, 2025:**
+- **Encryption System Fix** - Resolved critical encryption compatibility issues that were preventing patient name OCR data from being saved
+- **CryptoJS Compatibility Update** - Changed from AES-GCM to default AES encryption mode for improved stability and compatibility
+- **OCR Data Persistence Fix** - Patient names extracted via OCR now save correctly to database without encryption errors
+- **Medical Data Protection** - Maintained end-to-end encryption compliance while fixing compatibility issues
+
 **July 29, 2025:**
 - **Global AI Training System** - Implemented system-wide training where uploaded training data affects ALL users across the entire platform
 - **Scan-Specific Training Categories** - Replaced generic difficulty levels with specific ultrasound scan types like "Lower Limb Venous", "Carotid Duplex", "Abdominal Aorta"

@@ -31,11 +31,8 @@ export class MedicalDataEncryption {
         return `DEV_UNENCRYPTED:${plaintext}`;
       }
       
-      // Use CBC mode with PKCS7 padding for better compatibility
-      const encrypted = CryptoJS.AES.encrypt(plaintext, key, {
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
+      // Use default AES encryption (most compatible)
+      const encrypted = CryptoJS.AES.encrypt(plaintext, key);
       
       return encrypted.toString();
     } catch (error) {
@@ -57,10 +54,7 @@ export class MedicalDataEncryption {
       }
       
       const key = this.getEncryptionKey();
-      const decrypted = CryptoJS.AES.decrypt(ciphertext, key, {
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
+      const decrypted = CryptoJS.AES.decrypt(ciphertext, key);
       
       return decrypted.toString(CryptoJS.enc.Utf8);
     } catch (error) {
