@@ -373,15 +373,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getReportsByWorksheet(worksheetId: number): Promise<Report[]> {
-    return await db.select().from(reports).where(eq(reports.worksheetId, worksheetId));
+    const reports = await db.select().from(reports).where(eq(reports.worksheetId, worksheetId));
+    return reports.map(report => FieldEncryption.decryptFields(report) as Report);
   }
 
   async getRecentReports(limit: number): Promise<Report[]> {
-    return await db
+    const reports = await db
       .select()
       .from(reports)
       .orderBy(desc(reports.generatedAt))
       .limit(limit);
+    return reports.map(report => FieldEncryption.decryptFields(report) as Report);
   }
 
   async createReport(insertReport: InsertReport): Promise<Report> {
