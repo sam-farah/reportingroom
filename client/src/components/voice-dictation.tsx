@@ -154,8 +154,9 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
       updateAudioLevel();
       
       toast({
-        title: "Recording Started",
-        description: `Recording to ${targetField} field`,
+        title: "🎤 Recording Started",
+        description: `Recording to ${targetField} field - speak clearly into your microphone`,
+        duration: 2000,
       });
       
     } catch (error) {
@@ -182,7 +183,19 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
       }
       
       setAudioLevel(0);
+      
+      toast({
+        title: "🔄 Processing Recording",
+        description: "Converting speech to text using Whisper AI...",
+        duration: 2000,
+      });
     }
+  };
+  
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const processTranscription = async (audioBlob: Blob) => {
@@ -205,8 +218,9 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
         onTranscription(cleanText, true); // Append to existing text
         
         toast({
-          title: "Transcription Complete",
-          description: `Added text to ${targetField}`,
+          title: "✅ Transcription Complete",
+          description: `Successfully added text to ${targetField} field`,
+          duration: 3000,
         });
       }
       
@@ -229,11 +243,7 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
+
 
   // Cleanup on unmount
   useEffect(() => {
