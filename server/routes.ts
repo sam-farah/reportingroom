@@ -40,13 +40,18 @@ const upload = multer({
       'image/png',
       'image/gif',
       'image/webp',
-      'application/pdf'
+      'application/pdf',
+      'audio/webm',
+      'audio/wav',
+      'audio/mp3',
+      'audio/ogg',
+      'audio/mpeg'
     ];
     
     if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Unsupported file type: ${file.mimetype}. Please upload images (JPEG, PNG, GIF, WebP) or PDF files.`));
+      cb(new Error(`Unsupported file type: ${file.mimetype}. Please upload images (JPEG, PNG, GIF, WebP), PDF files, or audio files.`));
     }
   }
 });
