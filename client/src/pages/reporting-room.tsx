@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic } from "lucide-react";
-import VoiceDictation from "@/components/voice-dictation";
+import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,8 +33,7 @@ export default function ReportingRoom() {
   const [amendmentReason, setAmendmentReason] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
-  const [showVoiceDictation, setShowVoiceDictation] = useState(false);
-  const [dictationTargetField, setDictationTargetField] = useState<string>('');
+  const [activeVoiceDictation, setActiveVoiceDictation] = useState<string>('');
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -520,20 +519,21 @@ export default function ReportingRoom() {
   };
 
   // Handle voice dictation transcription
-  const handleVoiceTranscription = (text: string, append: boolean = true) => {
-    if (editingReport && dictationTargetField) {
-      const currentValue = editingReport[dictationTargetField as keyof EditableReport] as string || '';
-      const newValue = append ? 
-        (currentValue ? currentValue + ' ' + text : text) : 
-        text;
-      updateEditingReport(dictationTargetField as keyof EditableReport, newValue);
+  const handleVoiceTranscription = (text: string, field: string) => {
+    if (editingReport) {
+      const currentValue = editingReport[field as keyof EditableReport] as string || '';
+      const newValue = currentValue ? currentValue + ' ' + text : text;
+      updateEditingReport(field as keyof EditableReport, newValue);
     }
   };
 
-  // Open voice dictation for a specific field
-  const openVoiceDictation = (field: string) => {
-    setDictationTargetField(field);
-    setShowVoiceDictation(true);
+  // Toggle voice dictation for a specific field
+  const toggleVoiceDictation = (field: string) => {
+    if (activeVoiceDictation === field) {
+      setActiveVoiceDictation('');
+    } else {
+      setActiveVoiceDictation(field);
+    }
   };
 
   const handleInsertShortcut = (text: string, shortcutId: number) => {
@@ -983,13 +983,13 @@ export default function ReportingRoom() {
                     <div className="flex gap-2">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={activeVoiceDictation === 'indication' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => openVoiceDictation('indication')}
+                        onClick={() => toggleVoiceDictation('indication')}
                         data-testid="button-dictate-indication"
                       >
                         <Mic className="w-4 h-4 mr-1" />
-                        Dictate
+                        {activeVoiceDictation === 'indication' ? 'Recording...' : 'Dictate'}
                       </Button>
                       <Button
                         type="button"
@@ -1011,6 +1011,15 @@ export default function ReportingRoom() {
                     onChange={(e) => updateEditingReport('indication', e.target.value)}
                     rows={3}
                   />
+                  
+                  {/* Inline Voice Recorder */}
+                  {activeVoiceDictation === 'indication' && (
+                    <InlineVoiceRecorder
+                      fieldName="indication"
+                      onTranscription={handleVoiceTranscription}
+                      onClose={() => setActiveVoiceDictation('')}
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1019,13 +1028,13 @@ export default function ReportingRoom() {
                     <div className="flex gap-2">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={activeVoiceDictation === 'findings' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => openVoiceDictation('findings')}
+                        onClick={() => toggleVoiceDictation('findings')}
                         data-testid="button-dictate-findings"
                       >
                         <Mic className="w-4 h-4 mr-1" />
-                        Dictate
+                        {activeVoiceDictation === 'findings' ? 'Recording...' : 'Dictate'}
                       </Button>
                       <Button
                         type="button"
@@ -1047,6 +1056,15 @@ export default function ReportingRoom() {
                     onChange={(e) => updateEditingReport('findings', e.target.value)}
                     rows={6}
                   />
+                  
+                  {/* Inline Voice Recorder */}
+                  {activeVoiceDictation === 'findings' && (
+                    <InlineVoiceRecorder
+                      fieldName="findings"
+                      onTranscription={handleVoiceTranscription}
+                      onClose={() => setActiveVoiceDictation('')}
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1055,13 +1073,13 @@ export default function ReportingRoom() {
                     <div className="flex gap-2">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={activeVoiceDictation === 'impression' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => openVoiceDictation('impression')}
+                        onClick={() => toggleVoiceDictation('impression')}
                         data-testid="button-dictate-impression"
                       >
                         <Mic className="w-4 h-4 mr-1" />
-                        Dictate
+                        {activeVoiceDictation === 'impression' ? 'Recording...' : 'Dictate'}
                       </Button>
                       <Button
                         type="button"
@@ -1083,6 +1101,15 @@ export default function ReportingRoom() {
                     onChange={(e) => updateEditingReport('impression', e.target.value)}
                     rows={4}
                   />
+                  
+                  {/* Inline Voice Recorder */}
+                  {activeVoiceDictation === 'impression' && (
+                    <InlineVoiceRecorder
+                      fieldName="impression"
+                      onTranscription={handleVoiceTranscription}
+                      onClose={() => setActiveVoiceDictation('')}
+                    />
+                  )}
                 </div>
 
                 {/* Finalization */}
@@ -1262,13 +1289,13 @@ export default function ReportingRoom() {
                     <div className="flex gap-2">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={activeVoiceDictation === 'indication' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => openVoiceDictation('indication')}
+                        onClick={() => toggleVoiceDictation('indication')}
                         data-testid="button-dictate-indication-dialog"
                       >
                         <Mic className="w-4 h-4 mr-1" />
-                        Dictate
+                        {activeVoiceDictation === 'indication' ? 'Recording...' : 'Dictate'}
                       </Button>
                       <Button
                         type="button"
@@ -1290,6 +1317,15 @@ export default function ReportingRoom() {
                     onChange={(e) => updateEditingReport('indication', e.target.value)}
                     rows={3}
                   />
+                  
+                  {/* Inline Voice Recorder */}
+                  {activeVoiceDictation === 'indication' && (
+                    <InlineVoiceRecorder
+                      fieldName="indication"
+                      onTranscription={handleVoiceTranscription}
+                      onClose={() => setActiveVoiceDictation('')}
+                    />
+                  )}
                 </div>
 
                 {/* Findings */}
@@ -1299,13 +1335,13 @@ export default function ReportingRoom() {
                     <div className="flex gap-2">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={activeVoiceDictation === 'findings' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => openVoiceDictation('findings')}
+                        onClick={() => toggleVoiceDictation('findings')}
                         data-testid="button-dictate-findings-dialog"
                       >
                         <Mic className="w-4 h-4 mr-1" />
-                        Dictate
+                        {activeVoiceDictation === 'findings' ? 'Recording...' : 'Dictate'}
                       </Button>
                       <Button
                         type="button"
@@ -1327,6 +1363,15 @@ export default function ReportingRoom() {
                     onChange={(e) => updateEditingReport('findings', e.target.value)}
                     rows={6}
                   />
+                  
+                  {/* Inline Voice Recorder */}
+                  {activeVoiceDictation === 'findings' && (
+                    <InlineVoiceRecorder
+                      fieldName="findings"
+                      onTranscription={handleVoiceTranscription}
+                      onClose={() => setActiveVoiceDictation('')}
+                    />
+                  )}
                 </div>
 
                 {/* Impression */}
@@ -1336,13 +1381,13 @@ export default function ReportingRoom() {
                     <div className="flex gap-2">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={activeVoiceDictation === 'impression' ? 'default' : 'outline'}
                         size="sm"
-                        onClick={() => openVoiceDictation('impression')}
+                        onClick={() => toggleVoiceDictation('impression')}
                         data-testid="button-dictate-impression-dialog"
                       >
                         <Mic className="w-4 h-4 mr-1" />
-                        Dictate
+                        {activeVoiceDictation === 'impression' ? 'Recording...' : 'Dictate'}
                       </Button>
                       <Button
                         type="button"
@@ -1364,6 +1409,15 @@ export default function ReportingRoom() {
                     onChange={(e) => updateEditingReport('impression', e.target.value)}
                     rows={4}
                   />
+                  
+                  {/* Inline Voice Recorder */}
+                  {activeVoiceDictation === 'impression' && (
+                    <InlineVoiceRecorder
+                      fieldName="impression"
+                      onTranscription={handleVoiceTranscription}
+                      onClose={() => setActiveVoiceDictation('')}
+                    />
+                  )}
                 </div>
 
                 {/* Finalization */}
@@ -1584,15 +1638,7 @@ export default function ReportingRoom() {
         </DialogContent>
       </Dialog>
 
-      {/* Voice Dictation Component */}
-      {showVoiceDictation && (
-        <VoiceDictation
-          isOpen={showVoiceDictation}
-          onClose={() => setShowVoiceDictation(false)}
-          onTranscription={handleVoiceTranscription}
-          targetField={dictationTargetField}
-        />
-      )}
+
     </div>
   );
 }
