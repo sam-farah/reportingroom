@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic } from "lucide-react";
+import VoiceDictation from "@/components/voice-dictation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,8 @@ export default function ReportingRoom() {
   const [amendmentReason, setAmendmentReason] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
+  const [showVoiceDictation, setShowVoiceDictation] = useState(false);
+  const [dictationTargetField, setDictationTargetField] = useState<string>('');
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -516,6 +519,23 @@ export default function ReportingRoom() {
     setEditingReport(prev => prev ? { ...prev, [field]: value } : null);
   };
 
+  // Handle voice dictation transcription
+  const handleVoiceTranscription = (text: string, append: boolean = true) => {
+    if (editingReport && dictationTargetField) {
+      const currentValue = editingReport[dictationTargetField as keyof EditableReport] as string || '';
+      const newValue = append ? 
+        (currentValue ? currentValue + ' ' + text : text) : 
+        text;
+      updateEditingReport(dictationTargetField as keyof EditableReport, newValue);
+    }
+  };
+
+  // Open voice dictation for a specific field
+  const openVoiceDictation = (field: string) => {
+    setDictationTargetField(field);
+    setShowVoiceDictation(true);
+  };
+
   const handleInsertShortcut = (text: string, shortcutId: number) => {
     if (!editingReport || !activeTextArea) return;
     
@@ -960,18 +980,30 @@ export default function ReportingRoom() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="fullscreen-indication">Indication</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setActiveTextArea('indication');
-                        setShowShortcuts(!showShortcuts);
-                      }}
-                    >
-                      <Hash className="w-4 h-4 mr-1" />
-                      Shortcuts
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openVoiceDictation('indication')}
+                        data-testid="button-dictate-indication"
+                      >
+                        <Mic className="w-4 h-4 mr-1" />
+                        Dictate
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setActiveTextArea('indication');
+                          setShowShortcuts(!showShortcuts);
+                        }}
+                      >
+                        <Hash className="w-4 h-4 mr-1" />
+                        Shortcuts
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     id="fullscreen-indication"
@@ -984,18 +1016,30 @@ export default function ReportingRoom() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="fullscreen-findings">Findings</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setActiveTextArea('findings');
-                        setShowShortcuts(!showShortcuts);
-                      }}
-                    >
-                      <Hash className="w-4 h-4 mr-1" />
-                      Shortcuts
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openVoiceDictation('findings')}
+                        data-testid="button-dictate-findings"
+                      >
+                        <Mic className="w-4 h-4 mr-1" />
+                        Dictate
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setActiveTextArea('findings');
+                          setShowShortcuts(!showShortcuts);
+                        }}
+                      >
+                        <Hash className="w-4 h-4 mr-1" />
+                        Shortcuts
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     id="fullscreen-findings"
@@ -1008,18 +1052,30 @@ export default function ReportingRoom() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="fullscreen-impression">Impression</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setActiveTextArea('impression');
-                        setShowShortcuts(!showShortcuts);
-                      }}
-                    >
-                      <Hash className="w-4 h-4 mr-1" />
-                      Shortcuts
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openVoiceDictation('impression')}
+                        data-testid="button-dictate-impression"
+                      >
+                        <Mic className="w-4 h-4 mr-1" />
+                        Dictate
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setActiveTextArea('impression');
+                          setShowShortcuts(!showShortcuts);
+                        }}
+                      >
+                        <Hash className="w-4 h-4 mr-1" />
+                        Shortcuts
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     id="fullscreen-impression"
@@ -1203,18 +1259,30 @@ export default function ReportingRoom() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="indication">Indication</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setActiveTextArea('indication');
-                        setShowShortcuts(!showShortcuts);
-                      }}
-                    >
-                      <Hash className="w-4 h-4 mr-1" />
-                      Shortcuts
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openVoiceDictation('indication')}
+                        data-testid="button-dictate-indication-dialog"
+                      >
+                        <Mic className="w-4 h-4 mr-1" />
+                        Dictate
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setActiveTextArea('indication');
+                          setShowShortcuts(!showShortcuts);
+                        }}
+                      >
+                        <Hash className="w-4 h-4 mr-1" />
+                        Shortcuts
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     id="indication"
@@ -1228,18 +1296,30 @@ export default function ReportingRoom() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="findings">Findings</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setActiveTextArea('findings');
-                        setShowShortcuts(!showShortcuts);
-                      }}
-                    >
-                      <Hash className="w-4 h-4 mr-1" />
-                      Shortcuts
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openVoiceDictation('findings')}
+                        data-testid="button-dictate-findings-dialog"
+                      >
+                        <Mic className="w-4 h-4 mr-1" />
+                        Dictate
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setActiveTextArea('findings');
+                          setShowShortcuts(!showShortcuts);
+                        }}
+                      >
+                        <Hash className="w-4 h-4 mr-1" />
+                        Shortcuts
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     id="findings"
@@ -1253,18 +1333,30 @@ export default function ReportingRoom() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="impression">Impression</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setActiveTextArea('impression');
-                        setShowShortcuts(!showShortcuts);
-                      }}
-                    >
-                      <Hash className="w-4 h-4 mr-1" />
-                      Shortcuts
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openVoiceDictation('impression')}
+                        data-testid="button-dictate-impression-dialog"
+                      >
+                        <Mic className="w-4 h-4 mr-1" />
+                        Dictate
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setActiveTextArea('impression');
+                          setShowShortcuts(!showShortcuts);
+                        }}
+                      >
+                        <Hash className="w-4 h-4 mr-1" />
+                        Shortcuts
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     id="impression"
@@ -1491,6 +1583,16 @@ export default function ReportingRoom() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Voice Dictation Component */}
+      {showVoiceDictation && (
+        <VoiceDictation
+          isOpen={showVoiceDictation}
+          onClose={() => setShowVoiceDictation(false)}
+          onTranscription={handleVoiceTranscription}
+          targetField={dictationTargetField}
+        />
+      )}
     </div>
   );
 }

@@ -19,6 +19,8 @@ import {
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
+import OpenAI from "openai";
+import { createReadStream } from "fs";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -2383,6 +2385,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error incrementing shortcut usage:", error);
       res.status(500).json({ error: "Failed to increment usage" });
+    }
+  });
+
+  // Whisper transcription endpoint
+  app.post("/api/transcribe", isAuthenticated, upload.single('audio'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No audio file provided" });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+
+      // Create a ReadStream from the uploaded file
+      const audioStream = createReadStream(req.file.path);
+      
+      const transcription = await openai.audio.transcriptions.create({
+        file: audioStream as any,
+        model: "whisper-1",
+        language: "en", // Can be made configurable
+        response_format: "json",
+      });
+
+      // Clean up uploaded file
+      await fs.promises.unlink(req.file.path);
+
+      res.json({ 
+        text: transcription.text,
+        duration: transcription.duration || 0
+      });
+
+    } catch (error: any) {
+      console.error("Transcription error:", error);
+      
+      // Clean up file on error
+      if (req.file?.path) {
+        try {
+          await fs.promises.unlink(req.file.path);
+        } catch (unlinkError) {
+          console.error("Error cleaning up file:", unlinkError);
+        }
+      }
+      
+      res.status(500).json({ 
+        error: "Transcription failed", 
+        details: error.message 
+      });
     }
   });
 

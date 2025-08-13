@@ -378,12 +378,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRecentReports(limit: number): Promise<Report[]> {
-    const reports = await db
+    const reportResults = await db
       .select()
       .from(reports)
       .orderBy(desc(reports.generatedAt))
       .limit(limit);
-    return reports.map(report => FieldEncryption.decryptFields(report) as Report);
+    return reportResults.map(report => FieldEncryption.decryptFields(report) as Report);
   }
 
   async createReport(insertReport: InsertReport): Promise<Report> {
