@@ -24,7 +24,7 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
 
   // Fetch clinic information
   const { data: clinic } = useQuery({
-    queryKey: ["/api/clinic/info"],
+    queryKey: ["/api/clinic"],
     retry: false,
   });
 

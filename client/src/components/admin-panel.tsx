@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw } from "lucide-react";
+import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
-import type { TrainingPair, Physician } from "@shared/schema";
+import type { TrainingPair, Physician, ReportTemplate } from "@shared/schema";
 
 export default function AdminPanel() {
   const { toast } = useToast();
@@ -57,6 +58,10 @@ export default function AdminPanel() {
     filesSinceLastBackup: number;
   }>({
     queryKey: ["/api/backup/info"],
+  });
+
+  const { data: templates = [] } = useQuery<ReportTemplate[]>({
+    queryKey: ["/api/templates"],
   });
 
   const [isDownloading, setIsDownloading] = useState(false);
@@ -415,11 +420,12 @@ export default function AdminPanel() {
       </div>
 
       <Tabs defaultValue="monitoring" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
           <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
           <TabsTrigger value="costs">Cost Projection</TabsTrigger>
           <TabsTrigger value="training">🌍 Global AI Training</TabsTrigger>
+          <TabsTrigger value="templates">📝 Report Templates</TabsTrigger>
           <TabsTrigger value="backup">💾 Backup</TabsTrigger>
         </TabsList>
 
@@ -836,6 +842,147 @@ export default function AdminPanel() {
           </CardContent>
         </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="templates" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="h-5 w-5" />
+                Report Template Customization
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <h4 className="font-medium text-blue-900 mb-2">About Report Templates</h4>
+                <p className="text-sm text-blue-800">
+                  Customize how your ultrasound reports look when exported to PDF or DOCX. Configure headers, 
+                  footers, clinic branding, section visibility, fonts, and colors. Templates ensure consistent 
+                  professional appearance across all your reports.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Active Templates</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{templates.length}</div>
+                    <p className="text-xs text-muted-foreground">custom report layouts</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Default Template</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-lg font-bold truncate">
+                      {templates.find(t => t.isDefault)?.name || 'None set'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">used for new reports</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Template Types</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex gap-2 flex-wrap">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">PDF</span>
+                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">DOCX</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">export formats</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {templates.length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Template Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Features</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {templates.map((template) => (
+                        <tr key={template.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-gray-900">{template.name}</div>
+                            {template.description && (
+                              <div className="text-xs text-gray-500">{template.description}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 text-xs rounded ${
+                              template.templateType === 'pdf' ? 'bg-blue-100 text-blue-800' :
+                              template.templateType === 'docx' ? 'bg-green-100 text-green-800' :
+                              'bg-purple-100 text-purple-800'
+                            }`}>
+                              {template.templateType === 'both' ? 'PDF & DOCX' : template.templateType.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {template.isDefault ? (
+                              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded font-medium">
+                                Default
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-1 flex-wrap">
+                              {template.showLogo && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">Logo</span>}
+                              {template.showHeader && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">Header</span>}
+                              {template.showFooter && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">Footer</span>}
+                              {template.showSignature && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">Signature</span>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Link href="/templates">
+                              <Button size="sm" variant="outline">
+                                <Edit className="w-3 h-3 mr-1" />
+                                Edit
+                              </Button>
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                  <Palette className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-1">No Templates Created</h3>
+                  <p className="text-gray-500 mb-4">Create your first report template to customize how reports look</p>
+                  <Link href="/templates">
+                    <Button className="medical-btn-primary">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create First Template
+                    </Button>
+                  </Link>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-4 border-t">
+                <Link href="/templates">
+                  <Button className="medical-btn-primary">
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Open Full Template Editor
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="backup" className="space-y-6">
