@@ -569,6 +569,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteSonographer(id: number): Promise<void> {
+    // First, remove the sonographer reference from any associated reports
+    await db.update(reports).set({ sonographerId: null }).where(eq(reports.sonographerId, id));
+    // Also remove from digital worksheets
+    await db.update(digitalWorksheets).set({ sonographerId: null }).where(eq(digitalWorksheets.sonographerId, id));
+    // Now delete the sonographer
     await db.delete(sonographers).where(eq(sonographers.id, id));
   }
 
