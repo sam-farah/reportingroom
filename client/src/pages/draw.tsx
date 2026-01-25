@@ -472,6 +472,7 @@ export default function Draw() {
       examDate: patientInfo.examDate,
       studyType: patientInfo.studyType,
       sonographerId: parseInt(patientInfo.sonographerId),
+      patientId: patientInfo.patientId,
       drawingData: '', // Will be set after canvas initialization
     });
   };

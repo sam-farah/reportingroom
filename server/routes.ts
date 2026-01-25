@@ -1961,6 +1961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         findings: aiGeneratedFindings || `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`,
         impression: aiGeneratedImpression || `${templateName} study completed. Awaiting physician interpretation.\n\nRECOMMENDATIONS:\n- Physician review and interpretation required\n- Clinical correlation recommended\n- Follow-up as clinically indicated`,
         sonographerId: worksheet.sonographerId,
+        patientId: worksheet.patientId,
       });
 
       console.log("Draft report created successfully:", draftReport.id);
