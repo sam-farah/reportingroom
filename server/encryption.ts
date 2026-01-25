@@ -196,12 +196,18 @@ export const FieldEncryption = {
     return encrypted;
   },
 
+  // Check if a value looks like encrypted data (CryptoJS format starts with "U2FsdGVk" = base64 "Salted__")
+  isEncrypted(value: any): boolean {
+    return typeof value === 'string' && value.startsWith('U2FsdGVk');
+  },
+
   // Decrypt specific fields in an object
   decryptFields(obj: Record<string, any>): Record<string, any> {
     const decrypted = { ...obj };
     
     this.ENCRYPTED_FIELDS.forEach(field => {
-      if (decrypted[field] && decrypted[`${field}_encrypted`]) {
+      // Check for encrypted flag OR detect encrypted format
+      if (decrypted[field] && (decrypted[`${field}_encrypted`] || this.isEncrypted(decrypted[field]))) {
         try {
           decrypted[field] = MedicalDataEncryption.decryptMedicalData(decrypted[field]);
           delete decrypted[`${field}_encrypted`];
