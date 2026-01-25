@@ -519,49 +519,85 @@ export default function Calendar() {
               </div>
             )}
             {viewMode === "week" && (
-              <div className="min-h-[500px]">
-                <div className="grid grid-cols-7 gap-0">
-                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => {
-                    const weekDay = addDays(startOfWeek(currentDate), index);
-                    return (
-                      <div key={day} className="p-2 text-center font-semibold text-gray-600 bg-gray-100 border border-gray-200">
-                        <div>{day}</div>
-                        <div className={`text-lg ${isSameDay(weekDay, new Date()) ? "text-blue-600 font-bold" : ""}`}>
-                          {format(weekDay, "d")}
+              <div className="min-h-[500px] overflow-x-auto">
+                <div className="flex">
+                  <div className="w-16 flex-shrink-0"></div>
+                  <div className="flex-1 grid grid-cols-7">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => {
+                      const weekDay = addDays(startOfWeek(currentDate), index);
+                      return (
+                        <div key={day} className="p-2 text-center font-semibold text-gray-600 bg-gray-100 border border-gray-200">
+                          <div>{day}</div>
+                          <div className={`text-lg ${isSameDay(weekDay, new Date()) ? "text-blue-600 font-bold" : ""}`}>
+                            {format(weekDay, "d")}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="grid grid-cols-7 gap-0">
-                  {Array.from({ length: 7 }).map((_, index) => {
-                    const weekDay = addDays(startOfWeek(currentDate), index);
-                    const dayAppointments = getAppointmentsForDate(weekDay);
-                    return (
-                      <div
-                        key={index}
-                        className={`min-h-[400px] border border-gray-200 p-1 cursor-pointer hover:bg-gray-50 ${
-                          isSameDay(weekDay, new Date()) ? "ring-2 ring-blue-500 ring-inset" : ""
-                        }`}
-                        onClick={() => handleDateClick(weekDay)}
-                      >
-                        <div className="space-y-1">
-                          {dayAppointments.map((apt) => (
-                            <div
-                              key={apt.id}
-                              className={`text-xs p-1 rounded truncate cursor-pointer border ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setViewingAppointment(apt);
-                              }}
-                            >
-                              {format(new Date(apt.appointmentDate), "HH:mm")} - {apt.patientName}
-                            </div>
-                          ))}
-                        </div>
+                <div className="flex">
+                  <div className="w-16 flex-shrink-0">
+                    {HOURS.map((hour) => (
+                      <div key={hour} className="h-[60px] border-b border-gray-200 text-xs text-gray-500 text-right pr-2 pt-1">
+                        {format(new Date().setHours(hour, 0), "h a")}
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+                  <div className="flex-1 grid grid-cols-7">
+                    {Array.from({ length: 7 }).map((_, dayIndex) => {
+                      const weekDay = addDays(startOfWeek(currentDate), dayIndex);
+                      const dayAppointments = getAppointmentsForDate(weekDay);
+                      return (
+                        <div
+                          key={dayIndex}
+                          className={`relative border-r border-gray-200 ${
+                            isSameDay(weekDay, new Date()) ? "bg-blue-50/30" : ""
+                          }`}
+                        >
+                          {HOURS.map((hour) => (
+                            <div
+                              key={hour}
+                              className="h-[60px] border-b border-gray-100 cursor-pointer hover:bg-gray-50"
+                              onClick={() => {
+                                const clickedDate = new Date(weekDay);
+                                clickedDate.setHours(hour, 0, 0, 0);
+                                setSelectedDate(clickedDate);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  appointmentDate: format(clickedDate, "yyyy-MM-dd"),
+                                  appointmentTime: format(clickedDate, "HH:mm"),
+                                }));
+                                setEditingAppointment(null);
+                                setIsBookingDialogOpen(true);
+                              }}
+                            />
+                          ))}
+                          {dayAppointments.map((apt) => {
+                            const { top, height } = getAppointmentPosition(apt);
+                            if (top < 0 || top > HOURS.length * 60) return null;
+                            return (
+                              <div
+                                key={apt.id}
+                                className={`absolute left-0 right-0 mx-0.5 p-1 rounded text-xs cursor-pointer border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
+                                style={{
+                                  top: `${top}px`,
+                                  height: `${Math.max(height, 20)}px`,
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingAppointment(apt);
+                                }}
+                              >
+                                <div className="font-medium truncate">{format(new Date(apt.appointmentDate), "HH:mm")}</div>
+                                <div className="truncate">{apt.patientName}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
