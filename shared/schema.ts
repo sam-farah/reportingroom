@@ -386,3 +386,32 @@ export type ReportTemplate = typeof reportTemplates.$inferSelect;
 export type InsertReportTemplate = z.infer<typeof insertReportTemplateSchema>;
 export type InsertSonographerData = z.infer<typeof insertSonographerSchema>;
 export type InsertLegendEntryData = z.infer<typeof insertLegendEntrySchema>;
+
+// Appointments/Bookings table
+export const appointments = pgTable("appointments", {
+  id: serial("id").primaryKey(),
+  patientName: varchar("patient_name", { length: 255 }).notNull(),
+  patientDob: varchar("patient_dob", { length: 20 }),
+  patientPhone: varchar("patient_phone", { length: 50 }),
+  patientEmail: varchar("patient_email", { length: 255 }),
+  appointmentDate: timestamp("appointment_date").notNull(),
+  duration: integer("duration").notNull().default(30), // in minutes
+  scanType: varchar("scan_type", { length: 100 }),
+  physicianId: integer("physician_id").references(() => physicians.id),
+  sonographerId: integer("sonographer_id").references(() => sonographers.id),
+  notes: text("notes"),
+  status: varchar("status", { length: 50 }).notNull().default('scheduled'), // 'scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAppointmentSchema = createInsertSchema(appointments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type Appointment = typeof appointments.$inferSelect;
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
