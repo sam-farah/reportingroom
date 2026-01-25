@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2 } from "lucide-react";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes } from "date-fns";
 import type { Appointment, Physician, Sonographer } from "@shared/schema";
 
 const SCAN_TYPES = [
@@ -66,13 +66,24 @@ export default function Calendar() {
   const getDateRange = () => {
     switch (viewMode) {
       case "day":
-        return { start: currentDate, end: currentDate };
+        return { start: startOfDay(currentDate), end: endOfDay(currentDate) };
       case "week":
-        return { start: startOfWeek(currentDate), end: endOfWeek(currentDate) };
+        return { start: startOfDay(startOfWeek(currentDate)), end: endOfDay(endOfWeek(currentDate)) };
       case "month":
       default:
-        return { start: startOfWeek(startOfMonth(currentDate)), end: endOfWeek(endOfMonth(currentDate)) };
+        return { start: startOfDay(startOfWeek(startOfMonth(currentDate))), end: endOfDay(endOfWeek(endOfMonth(currentDate))) };
     }
+  };
+  
+  const HOURS = Array.from({ length: 12 }, (_, i) => i + 7);
+  
+  const getAppointmentPosition = (apt: Appointment) => {
+    const aptDate = new Date(apt.appointmentDate);
+    const hours = getHours(aptDate);
+    const minutes = getMinutes(aptDate);
+    const top = ((hours - 7) * 60 + minutes) * (60 / 60);
+    const height = apt.duration * (60 / 60);
+    return { top, height };
   };
 
   const { start: startDate, end: endDate } = getDateRange();
@@ -400,35 +411,49 @@ export default function Calendar() {
             {viewMode === "day" && (
               <div className="min-h-[500px]">
                 <div className="text-center font-semibold text-gray-600 bg-gray-100 p-2 border border-gray-200 mb-2">
-                  {format(currentDate, "EEEE")}
+                  {format(currentDate, "EEEE, MMMM d")}
                 </div>
-                <div className="border border-gray-200 p-4 min-h-[450px]">
-                  {getAppointmentsForDate(currentDate).length === 0 ? (
-                    <div className="text-gray-500 text-center py-8">No appointments for this day</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {getAppointmentsForDate(currentDate)
-                        .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())
-                        .map((apt) => (
+                <div className="flex border border-gray-200">
+                  <div className="w-20 flex-shrink-0 bg-gray-50">
+                    {HOURS.map((hour) => (
+                      <div key={hour} className="h-[60px] border-b border-gray-200 pr-2 text-right text-sm text-gray-500 pt-1">
+                        {format(new Date().setHours(hour, 0), "h a")}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex-1 relative">
+                    {HOURS.map((hour) => (
+                      <div 
+                        key={hour} 
+                        className="h-[60px] border-b border-gray-200 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => {
+                          const clickedDate = new Date(currentDate);
+                          clickedDate.setHours(hour, 0, 0, 0);
+                          setFormData(prev => ({
+                            ...prev,
+                            appointmentDate: format(currentDate, "yyyy-MM-dd"),
+                            appointmentTime: format(clickedDate, "HH:mm"),
+                          }));
+                          setEditingAppointment(null);
+                          setIsBookingDialogOpen(true);
+                        }}
+                      />
+                    ))}
+                    {getAppointmentsForDate(currentDate).map((apt) => {
+                      const { top, height } = getAppointmentPosition(apt);
+                      return (
                         <div
                           key={apt.id}
-                          className={`p-3 rounded cursor-pointer border ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
+                          className={`absolute left-1 right-1 p-2 rounded cursor-pointer border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
+                          style={{ top: `${top}px`, height: `${Math.max(height, 30)}px` }}
                           onClick={() => setViewingAppointment(apt)}
                         >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <div className="font-medium">{apt.patientName}</div>
-                              <div className="text-sm">{apt.scanType}</div>
-                            </div>
-                            <div className="text-right text-sm">
-                              <div>{format(new Date(apt.appointmentDate), "h:mm a")}</div>
-                              <div className="text-xs">{apt.duration} min</div>
-                            </div>
-                          </div>
+                          <div className="text-sm font-medium truncate">{apt.patientName}</div>
+                          <div className="text-xs truncate">{format(new Date(apt.appointmentDate), "h:mm a")} - {apt.scanType}</div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
