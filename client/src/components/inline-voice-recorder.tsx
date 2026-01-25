@@ -32,6 +32,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
   const analyzerRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const isRecordingRef = useRef<boolean>(false);
 
   // Get available audio devices and auto-start recording
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
 
   // Audio level monitoring
   const updateAudioLevel = () => {
-    if (analyzerRef.current) {
+    if (analyzerRef.current && isRecordingRef.current) {
       const dataArray = new Uint8Array(analyzerRef.current.frequencyBinCount);
       analyzerRef.current.getByteFrequencyData(dataArray);
       
@@ -73,9 +74,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       const level = (average / 255) * 100;
       setAudioLevel(level);
       
-      if (isRecording) {
-        animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
-      }
+      animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
     }
   };
 
@@ -131,6 +130,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       };
       
       mediaRecorderRef.current.start();
+      isRecordingRef.current = true;
       setIsRecording(true);
       setRecordingTime(0);
       
@@ -160,6 +160,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
+      isRecordingRef.current = false;
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       
