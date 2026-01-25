@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -56,7 +57,7 @@ export default function Calendar() {
     appointmentDate: "",
     appointmentTime: "09:00",
     duration: "30",
-    scanType: "",
+    scanTypes: [] as string[],
     physicianId: "",
     sonographerId: "",
     notes: "",
@@ -245,7 +246,7 @@ export default function Calendar() {
       appointmentDate: "",
       appointmentTime: "09:00",
       duration: "30",
-      scanType: "",
+      scanTypes: [],
       physicianId: "",
       sonographerId: "",
       notes: "",
@@ -254,6 +255,15 @@ export default function Calendar() {
     });
     setSelectedPatient(null);
     setPatientSearch("");
+  };
+
+  const handleScanTypeToggle = (scanType: string) => {
+    setFormData(prev => ({
+      ...prev,
+      scanTypes: prev.scanTypes.includes(scanType)
+        ? prev.scanTypes.filter(t => t !== scanType)
+        : [...prev.scanTypes, scanType]
+    }));
   };
 
   const handleDateClick = (date: Date) => {
@@ -268,6 +278,7 @@ export default function Calendar() {
 
   const handleEditAppointment = (appointment: Appointment) => {
     const appointmentDate = new Date(appointment.appointmentDate);
+    const scanTypesArray = appointment.scanType ? appointment.scanType.split(", ") : [];
     setFormData({
       patientName: appointment.patientName,
       patientDob: appointment.patientDob || "",
@@ -276,7 +287,7 @@ export default function Calendar() {
       appointmentDate: format(appointmentDate, "yyyy-MM-dd"),
       appointmentTime: format(appointmentDate, "HH:mm"),
       duration: String(appointment.duration),
-      scanType: appointment.scanType || "",
+      scanTypes: scanTypesArray,
       physicianId: appointment.physicianId ? String(appointment.physicianId) : "",
       sonographerId: appointment.sonographerId ? String(appointment.sonographerId) : "",
       notes: appointment.notes || "",
@@ -302,7 +313,7 @@ export default function Calendar() {
       patientId: formData.patientId,
       appointmentDate: appointmentDateTime.toISOString(),
       duration: parseInt(formData.duration),
-      scanType: formData.scanType || null,
+      scanType: formData.scanTypes.length > 0 ? formData.scanTypes.join(", ") : null,
       physicianId: formData.physicianId ? parseInt(formData.physicianId) : null,
       sonographerId: formData.sonographerId ? parseInt(formData.sonographerId) : null,
       notes: formData.notes || null,
@@ -704,18 +715,30 @@ export default function Calendar() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label htmlFor="scanType">Scan Type</Label>
-                  <Select value={formData.scanType} onValueChange={(value) => setFormData(prev => ({ ...prev, scanType: value }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select scan type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SCAN_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="col-span-2">
+                  <Label>Scan Type(s)</Label>
+                  <div className="grid grid-cols-2 gap-2 mt-2 p-3 border rounded-lg bg-gray-50">
+                    {SCAN_TYPES.map((type) => (
+                      <div key={type} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`scan-${type}`}
+                          checked={formData.scanTypes.includes(type)}
+                          onCheckedChange={() => handleScanTypeToggle(type)}
+                        />
+                        <label
+                          htmlFor={`scan-${type}`}
+                          className="text-sm cursor-pointer"
+                        >
+                          {type}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  {formData.scanTypes.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Selected: {formData.scanTypes.join(", ")}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="physicianId">Physician</Label>
