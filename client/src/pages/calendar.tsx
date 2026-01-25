@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2 } from "lucide-react";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth, isSameDay, parseISO } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO } from "date-fns";
 import type { Appointment, Physician, Sonographer } from "@shared/schema";
 
 const SCAN_TYPES = [
@@ -36,10 +36,13 @@ const STATUS_COLORS: Record<string, string> = {
   no_show: "bg-orange-100 text-orange-800 border-orange-200",
 };
 
+type ViewMode = "day" | "week" | "month";
+
 export default function Calendar() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
@@ -60,8 +63,59 @@ export default function Calendar() {
     status: "scheduled",
   });
 
-  const startDate = startOfWeek(startOfMonth(currentMonth));
-  const endDate = endOfWeek(endOfMonth(currentMonth));
+  const getDateRange = () => {
+    switch (viewMode) {
+      case "day":
+        return { start: currentDate, end: currentDate };
+      case "week":
+        return { start: startOfWeek(currentDate), end: endOfWeek(currentDate) };
+      case "month":
+      default:
+        return { start: startOfWeek(startOfMonth(currentDate)), end: endOfWeek(endOfMonth(currentDate)) };
+    }
+  };
+
+  const { start: startDate, end: endDate } = getDateRange();
+
+  const navigatePrevious = () => {
+    switch (viewMode) {
+      case "day":
+        setCurrentDate(addDays(currentDate, -1));
+        break;
+      case "week":
+        setCurrentDate(subWeeks(currentDate, 1));
+        break;
+      case "month":
+        setCurrentDate(subMonths(currentDate, 1));
+        break;
+    }
+  };
+
+  const navigateNext = () => {
+    switch (viewMode) {
+      case "day":
+        setCurrentDate(addDays(currentDate, 1));
+        break;
+      case "week":
+        setCurrentDate(addWeeks(currentDate, 1));
+        break;
+      case "month":
+        setCurrentDate(addMonths(currentDate, 1));
+        break;
+    }
+  };
+
+  const getHeaderTitle = () => {
+    switch (viewMode) {
+      case "day":
+        return format(currentDate, "EEEE, MMMM d, yyyy");
+      case "week":
+        return `${format(startOfWeek(currentDate), "MMM d")} - ${format(endOfWeek(currentDate), "MMM d, yyyy")}`;
+      case "month":
+      default:
+        return format(currentDate, "MMMM yyyy");
+    }
+  };
 
   const { data: appointments = [], isLoading: appointmentsLoading } = useQuery<Appointment[]>({
     queryKey: ["/api/appointments", startDate.toISOString(), endDate.toISOString()],
@@ -214,7 +268,7 @@ export default function Calendar() {
     while (day <= endDate) {
       const currentDay = day;
       const dayAppointments = getAppointmentsForDate(currentDay);
-      const isCurrentMonth = isSameMonth(currentDay, currentMonth);
+      const isCurrentMonth = isSameMonth(currentDay, currentDate);
       const isToday = isSameDay(currentDay, new Date());
 
       days.push(
@@ -300,26 +354,141 @@ export default function Calendar() {
         <Card>
           <CardHeader className="pb-2">
             <div className="flex justify-between items-center">
-              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={navigatePrevious}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentDate(new Date())}>
+                  Today
+                </Button>
+                <Button variant="outline" size="sm" onClick={navigateNext}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
               <CardTitle className="text-xl">
-                {format(currentMonth, "MMMM yyyy")}
+                {getHeaderTitle()}
               </CardTitle>
-              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                <Button
+                  variant={viewMode === "day" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("day")}
+                  className="text-xs"
+                >
+                  Day
+                </Button>
+                <Button
+                  variant={viewMode === "week" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("week")}
+                  className="text-xs"
+                >
+                  Week
+                </Button>
+                <Button
+                  variant={viewMode === "month" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("month")}
+                  className="text-xs"
+                >
+                  Month
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-7 gap-0">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <div key={day} className="p-2 text-center font-semibold text-gray-600 bg-gray-100 border border-gray-200">
-                  {day}
+            {viewMode === "day" && (
+              <div className="min-h-[500px]">
+                <div className="text-center font-semibold text-gray-600 bg-gray-100 p-2 border border-gray-200 mb-2">
+                  {format(currentDate, "EEEE")}
                 </div>
-              ))}
-              {renderCalendarDays()}
-            </div>
+                <div className="border border-gray-200 p-4 min-h-[450px]">
+                  {getAppointmentsForDate(currentDate).length === 0 ? (
+                    <div className="text-gray-500 text-center py-8">No appointments for this day</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {getAppointmentsForDate(currentDate)
+                        .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())
+                        .map((apt) => (
+                        <div
+                          key={apt.id}
+                          className={`p-3 rounded cursor-pointer border ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
+                          onClick={() => setViewingAppointment(apt)}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-medium">{apt.patientName}</div>
+                              <div className="text-sm">{apt.scanType}</div>
+                            </div>
+                            <div className="text-right text-sm">
+                              <div>{format(new Date(apt.appointmentDate), "h:mm a")}</div>
+                              <div className="text-xs">{apt.duration} min</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {viewMode === "week" && (
+              <div className="min-h-[500px]">
+                <div className="grid grid-cols-7 gap-0">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => {
+                    const weekDay = addDays(startOfWeek(currentDate), index);
+                    return (
+                      <div key={day} className="p-2 text-center font-semibold text-gray-600 bg-gray-100 border border-gray-200">
+                        <div>{day}</div>
+                        <div className={`text-lg ${isSameDay(weekDay, new Date()) ? "text-blue-600 font-bold" : ""}`}>
+                          {format(weekDay, "d")}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-7 gap-0">
+                  {Array.from({ length: 7 }).map((_, index) => {
+                    const weekDay = addDays(startOfWeek(currentDate), index);
+                    const dayAppointments = getAppointmentsForDate(weekDay);
+                    return (
+                      <div
+                        key={index}
+                        className={`min-h-[400px] border border-gray-200 p-1 cursor-pointer hover:bg-gray-50 ${
+                          isSameDay(weekDay, new Date()) ? "ring-2 ring-blue-500 ring-inset" : ""
+                        }`}
+                        onClick={() => handleDateClick(weekDay)}
+                      >
+                        <div className="space-y-1">
+                          {dayAppointments.map((apt) => (
+                            <div
+                              key={apt.id}
+                              className={`text-xs p-1 rounded truncate cursor-pointer border ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setViewingAppointment(apt);
+                              }}
+                            >
+                              {format(new Date(apt.appointmentDate), "HH:mm")} - {apt.patientName}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {viewMode === "month" && (
+              <div className="grid grid-cols-7 gap-0">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                  <div key={day} className="p-2 text-center font-semibold text-gray-600 bg-gray-100 border border-gray-200">
+                    {day}
+                  </div>
+                ))}
+                {renderCalendarDays()}
+              </div>
+            )}
           </CardContent>
         </Card>
 

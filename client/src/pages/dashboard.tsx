@@ -40,6 +40,14 @@ export default function Dashboard() {
             <div className="flex items-center space-x-4">
               <div className="flex space-x-2">
                 <Button
+                  variant={activePanel === "calendar" ? "default" : "ghost"}
+                  className={activePanel === "calendar" ? "medical-btn-secondary" : ""}
+                  onClick={() => setActivePanel("calendar")}
+                >
+                  <CalendarIcon className="w-4 h-4 mr-2" />
+                  Calendar
+                </Button>
+                <Button
                   variant={activePanel === "user" ? "default" : "ghost"}
                   className={activePanel === "user" ? "medical-btn-secondary" : ""}
                   onClick={() => setActivePanel("user")}
@@ -78,14 +86,6 @@ export default function Dashboard() {
                 >
                   <Users className="w-4 h-4 mr-2" />
                   Clinic
-                </Button>
-                <Button
-                  variant={activePanel === "calendar" ? "default" : "ghost"}
-                  className={activePanel === "calendar" ? "medical-btn-secondary" : ""}
-                  onClick={() => setActivePanel("calendar")}
-                >
-                  <CalendarIcon className="w-4 h-4 mr-2" />
-                  Calendar
                 </Button>
 
                 {/* Admin Panel - Only visible to webmaster */}
