@@ -251,6 +251,7 @@ export const sonographers = pgTable("sonographers", {
   initials: varchar("initials", { length: 10 }).notNull(),
   title: varchar("title", { length: 100 }),
   department: varchar("department", { length: 100 }),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

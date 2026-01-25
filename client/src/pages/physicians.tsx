@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle } from "lucide-react";
+import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle, UserMinus, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 
 export default function Clinic() {
@@ -508,6 +508,38 @@ export default function Clinic() {
       toast({
         title: "Error",
         description: error.message || "Failed to update sonographer",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Toggle sonographer status mutation (deactivate/activate)
+  const toggleSonographerMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest(`/api/sonographers/${id}/toggle-status`, "PATCH");
+    },
+    onSuccess: (data: Sonographer) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
+      toast({
+        title: "Success",
+        description: data.isActive ? "Sonographer activated" : "Sonographer deactivated",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update sonographer status",
         variant: "destructive",
       });
     },
@@ -1066,11 +1098,18 @@ export default function Clinic() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {sonographers.map((sonographer: Sonographer) => (
-                  <Card key={sonographer.id} className="hover:shadow-lg transition-shadow">
+                  <Card key={sonographer.id} className={`hover:shadow-lg transition-shadow ${!sonographer.isActive ? 'opacity-60 bg-gray-50 dark:bg-gray-800' : ''}`}>
                     <CardHeader>
                       <div className="flex justify-between items-start">
                         <div>
-                          <CardTitle className="text-lg">{sonographer.name}</CardTitle>
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-lg">{sonographer.name}</CardTitle>
+                            {!sonographer.isActive && (
+                              <span className="px-2 py-0.5 text-xs font-medium bg-gray-200 text-gray-600 rounded-full">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
                           <CardDescription className="font-medium text-blue-600">
                             Initials: {sonographer.initials}
                           </CardDescription>
@@ -1088,30 +1127,19 @@ export default function Clinic() {
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Sonographer</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete {sonographer.name}? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => deleteSonographerMutation.mutate(sonographer.id)}
-                                  className="bg-red-600 hover:bg-red-700"
-                                >
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={sonographer.isActive ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
+                            onClick={() => toggleSonographerMutation.mutate(sonographer.id)}
+                            disabled={toggleSonographerMutation.isPending}
+                          >
+                            {sonographer.isActive ? (
+                              <UserMinus className="w-4 h-4" />
+                            ) : (
+                              <UserCheck className="w-4 h-4" />
+                            )}
+                          </Button>
                         </div>
                       </div>
                     </CardHeader>

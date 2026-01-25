@@ -110,6 +110,7 @@ export interface IStorage {
   getSonographerByInitials(initials: string): Promise<Sonographer | undefined>;
   createSonographer(sonographer: InsertSonographerData): Promise<Sonographer>;
   updateSonographer(id: number, sonographer: Partial<InsertSonographerData>): Promise<Sonographer | undefined>;
+  toggleSonographerStatus(id: number): Promise<Sonographer | undefined>;
   deleteSonographer(id: number): Promise<void>;
 
   // Worksheet template operations
@@ -575,6 +576,20 @@ export class DatabaseStorage implements IStorage {
     await db.update(digitalWorksheets).set({ sonographerId: null }).where(eq(digitalWorksheets.sonographerId, id));
     // Now delete the sonographer
     await db.delete(sonographers).where(eq(sonographers.id, id));
+  }
+
+  async toggleSonographerStatus(id: number): Promise<Sonographer | undefined> {
+    // Get current sonographer
+    const [current] = await db.select().from(sonographers).where(eq(sonographers.id, id));
+    if (!current) return undefined;
+    
+    // Toggle isActive
+    const [sonographer] = await db
+      .update(sonographers)
+      .set({ isActive: !current.isActive, updatedAt: new Date() })
+      .where(eq(sonographers.id, id))
+      .returning();
+    return sonographer;
   }
 
   // Worksheet Template operations

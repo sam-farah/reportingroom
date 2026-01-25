@@ -207,6 +207,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/sonographers/:id/toggle-status", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sonographer = await storage.toggleSonographerStatus(id);
+      if (!sonographer) {
+        return res.status(404).json({ error: "Sonographer not found" });
+      }
+      res.json(sonographer);
+    } catch (error) {
+      console.error("Error toggling sonographer status:", error);
+      res.status(500).json({ error: "Failed to toggle sonographer status" });
+    }
+  });
+
   // Worksheets API
   app.get("/api/worksheets", isAuthenticated, async (req, res) => {
     try {
