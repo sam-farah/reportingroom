@@ -64,14 +64,22 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
     getDevicesAndStart();
   }, []);
 
-  // Audio level monitoring
+  // Audio level monitoring - using peak detection for more responsive display
   const updateAudioLevel = () => {
     if (analyzerRef.current && isRecordingRef.current) {
       const dataArray = new Uint8Array(analyzerRef.current.frequencyBinCount);
       analyzerRef.current.getByteFrequencyData(dataArray);
       
-      const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-      const level = (average / 255) * 100;
+      // Use peak value instead of average for more responsive display
+      const peak = Math.max(...dataArray);
+      // Also calculate RMS for speech-focused frequencies (300Hz-3400Hz range, roughly indices 5-50)
+      const speechRange = dataArray.slice(5, 50);
+      const rms = Math.sqrt(speechRange.reduce((sum, val) => sum + val * val, 0) / speechRange.length);
+      
+      // Combine peak and RMS for lively but accurate display
+      const combinedLevel = (peak * 0.6 + rms * 0.4);
+      const level = Math.min((combinedLevel / 200) * 100, 100);
+      
       setAudioLevel(level);
       
       animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
