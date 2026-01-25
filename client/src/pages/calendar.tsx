@@ -10,9 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes } from "date-fns";
-import type { Appointment, Physician, Sonographer } from "@shared/schema";
+import type { Appointment, Physician, Sonographer, Patient } from "@shared/schema";
 
 const SCAN_TYPES = [
   "Lower Limb Venous",
@@ -61,7 +61,51 @@ export default function Calendar() {
     sonographerId: "",
     notes: "",
     status: "scheduled",
+    patientId: null as number | null,
   });
+
+  const [patientSearch, setPatientSearch] = useState("");
+  const [showPatientResults, setShowPatientResults] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+
+  const { data: searchedPatients = [] } = useQuery<Patient[]>({
+    queryKey: ["/api/patients", "search", patientSearch],
+    queryFn: async () => {
+      if (!patientSearch || patientSearch.length < 2) return [];
+      const response = await fetch(`/api/patients?search=${encodeURIComponent(patientSearch)}`, {
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: patientSearch.length >= 2,
+  });
+
+  const handleSelectPatient = (patient: Patient) => {
+    setSelectedPatient(patient);
+    setFormData(prev => ({
+      ...prev,
+      patientName: `${patient.firstName} ${patient.lastName}`,
+      patientDob: patient.dateOfBirth,
+      patientPhone: patient.phone || "",
+      patientEmail: patient.email || "",
+      patientId: patient.id,
+    }));
+    setPatientSearch("");
+    setShowPatientResults(false);
+  };
+
+  const handleClearPatient = () => {
+    setSelectedPatient(null);
+    setFormData(prev => ({
+      ...prev,
+      patientName: "",
+      patientDob: "",
+      patientPhone: "",
+      patientEmail: "",
+      patientId: null,
+    }));
+  };
 
   const getDateRange = () => {
     switch (viewMode) {
@@ -206,7 +250,10 @@ export default function Calendar() {
       sonographerId: "",
       notes: "",
       status: "scheduled",
+      patientId: null,
     });
+    setSelectedPatient(null);
+    setPatientSearch("");
   };
 
   const handleDateClick = (date: Date) => {
@@ -234,7 +281,9 @@ export default function Calendar() {
       sonographerId: appointment.sonographerId ? String(appointment.sonographerId) : "",
       notes: appointment.notes || "",
       status: appointment.status,
+      patientId: appointment.patientId || null,
     });
+    setSelectedPatient(null);
     setEditingAppointment(appointment);
     setViewingAppointment(null);
     setIsBookingDialogOpen(true);
@@ -250,6 +299,7 @@ export default function Calendar() {
       patientDob: formData.patientDob || null,
       patientPhone: formData.patientPhone || null,
       patientEmail: formData.patientEmail || null,
+      patientId: formData.patientId,
       appointmentDate: appointmentDateTime.toISOString(),
       duration: parseInt(formData.duration),
       scanType: formData.scanType || null,
@@ -525,12 +575,69 @@ export default function Calendar() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
+                  <Label>Search Existing Patient</Label>
+                  {selectedPatient ? (
+                    <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg mt-1">
+                      <UserCheck className="w-5 h-5 text-green-600" />
+                      <div className="flex-1">
+                        <div className="font-medium text-green-800">
+                          {selectedPatient.firstName} {selectedPatient.lastName}
+                        </div>
+                        <div className="text-sm text-green-600">
+                          DOB: {selectedPatient.dateOfBirth}
+                          {selectedPatient.phone && ` | ${selectedPatient.phone}`}
+                        </div>
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" onClick={handleClearPatient}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="relative mt-1">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        placeholder="Type patient name to search..."
+                        value={patientSearch}
+                        onChange={(e) => {
+                          setPatientSearch(e.target.value);
+                          setShowPatientResults(true);
+                        }}
+                        onFocus={() => setShowPatientResults(true)}
+                        className="pl-10"
+                      />
+                      {showPatientResults && patientSearch.length >= 2 && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {searchedPatients.length === 0 ? (
+                            <div className="p-3 text-sm text-gray-500">No patients found</div>
+                          ) : (
+                            searchedPatients.map((patient) => (
+                              <div
+                                key={patient.id}
+                                className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                                onClick={() => handleSelectPatient(patient)}
+                              >
+                                <div className="font-medium">{patient.firstName} {patient.lastName}</div>
+                                <div className="text-sm text-gray-500">
+                                  DOB: {patient.dateOfBirth}
+                                  {patient.phone && ` | ${patient.phone}`}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">Search for existing patient or enter details manually below</p>
+                </div>
+                <div className="col-span-2">
                   <Label htmlFor="patientName">Patient Name *</Label>
                   <Input
                     id="patientName"
                     value={formData.patientName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))}
+                    onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value, patientId: null }))}
                     required
+                    disabled={!!selectedPatient}
                   />
                 </div>
                 <div>
@@ -540,6 +647,7 @@ export default function Calendar() {
                     type="date"
                     value={formData.patientDob}
                     onChange={(e) => setFormData(prev => ({ ...prev, patientDob: e.target.value }))}
+                    disabled={!!selectedPatient}
                   />
                 </div>
                 <div>
@@ -548,6 +656,7 @@ export default function Calendar() {
                     id="patientPhone"
                     value={formData.patientPhone}
                     onChange={(e) => setFormData(prev => ({ ...prev, patientPhone: e.target.value }))}
+                    disabled={!!selectedPatient}
                   />
                 </div>
                 <div className="col-span-2">
@@ -557,6 +666,7 @@ export default function Calendar() {
                     type="email"
                     value={formData.patientEmail}
                     onChange={(e) => setFormData(prev => ({ ...prev, patientEmail: e.target.value }))}
+                    disabled={!!selectedPatient}
                   />
                 </div>
                 <div>
