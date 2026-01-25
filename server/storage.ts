@@ -37,10 +37,13 @@ import {
   type InsertLegendEntry,
   textShortcuts,
   type TextShortcut,
-  type InsertTextShortcut
+  type InsertTextShortcut,
+  appointments,
+  type Appointment,
+  type InsertAppointment
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, gte, lte, and } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Interface for storage operations
@@ -143,6 +146,14 @@ export interface IStorage {
   deleteTextShortcut(id: number): Promise<void>;
   incrementShortcutUsage(id: number): Promise<void>;
   getLegendEntriesByCategory(category: string): Promise<LegendEntry[]>;
+  
+  // Appointment operations
+  getAllAppointments(): Promise<Appointment[]>;
+  getAppointment(id: number): Promise<Appointment | undefined>;
+  getAppointmentsByDateRange(startDate: Date, endDate: Date): Promise<Appointment[]>;
+  createAppointment(appointment: InsertAppointment): Promise<Appointment>;
+  updateAppointment(id: number, appointment: Partial<InsertAppointment>): Promise<Appointment | undefined>;
+  deleteAppointment(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -791,6 +802,47 @@ export class DatabaseStorage implements IStorage {
   async getAllUsers(): Promise<User[]> {
     const allUsers = await db.select().from(users);
     return allUsers.map(user => FieldEncryption.decryptFields(user) as User);
+  }
+
+  // Appointment operations
+  async getAllAppointments(): Promise<Appointment[]> {
+    return await db.select().from(appointments).orderBy(desc(appointments.appointmentDate));
+  }
+
+  async getAppointment(id: number): Promise<Appointment | undefined> {
+    const [appointment] = await db.select().from(appointments).where(eq(appointments.id, id));
+    return appointment;
+  }
+
+  async getAppointmentsByDateRange(startDate: Date, endDate: Date): Promise<Appointment[]> {
+    return await db
+      .select()
+      .from(appointments)
+      .where(
+        and(
+          gte(appointments.appointmentDate, startDate),
+          lte(appointments.appointmentDate, endDate)
+        )
+      )
+      .orderBy(appointments.appointmentDate);
+  }
+
+  async createAppointment(appointment: InsertAppointment): Promise<Appointment> {
+    const [newAppointment] = await db.insert(appointments).values(appointment).returning();
+    return newAppointment;
+  }
+
+  async updateAppointment(id: number, appointment: Partial<InsertAppointment>): Promise<Appointment | undefined> {
+    const [updated] = await db
+      .update(appointments)
+      .set({ ...appointment, updatedAt: new Date() })
+      .where(eq(appointments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAppointment(id: number): Promise<void> {
+    await db.delete(appointments).where(eq(appointments.id, id));
   }
 }
 
