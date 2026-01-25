@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Save, RotateCcw, Download, Eraser, PenTool, Type, FileText, Undo, Highlighter, Minus } from "lucide-react";
+import { Save, RotateCcw, Download, Eraser, PenTool, Type, FileText, Undo, Highlighter, Minus, Search, UserCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { WorksheetTemplate, DigitalWorksheet, Sonographer } from "@shared/schema";
+import type { WorksheetTemplate, DigitalWorksheet, Sonographer, Patient } from "@shared/schema";
 
 interface DrawingTool {
   type: 'pen' | 'eraser' | 'text' | 'highlighter' | 'whiteout';
@@ -62,8 +62,47 @@ export default function Draw() {
     patientDob: '',
     examDate: new Date().toISOString().split('T')[0],
     studyType: '',
-    sonographerId: ''
+    sonographerId: '',
+    patientId: null as number | null
   });
+  const [patientSearch, setPatientSearch] = useState("");
+  const [showPatientResults, setShowPatientResults] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+
+  const { data: searchedPatients = [] } = useQuery<Patient[]>({
+    queryKey: ["/api/patients", "search", patientSearch],
+    queryFn: async () => {
+      if (!patientSearch || patientSearch.length < 2) return [];
+      const response = await fetch(`/api/patients?search=${encodeURIComponent(patientSearch)}`, {
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: patientSearch.length >= 2,
+  });
+
+  const handleSelectPatient = (patient: Patient) => {
+    setSelectedPatient(patient);
+    setPatientInfo(prev => ({
+      ...prev,
+      patientName: `${patient.firstName} ${patient.lastName}`,
+      patientDob: patient.dateOfBirth,
+      patientId: patient.id,
+    }));
+    setPatientSearch("");
+    setShowPatientResults(false);
+  };
+
+  const handleClearPatient = () => {
+    setSelectedPatient(null);
+    setPatientInfo(prev => ({
+      ...prev,
+      patientName: "",
+      patientDob: "",
+      patientId: null,
+    }));
+  };
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [lastPointer, setLastPointer] = useState<{x: number, y: number} | null>(null);
   const [drawingHistory, setDrawingHistory] = useState<string[]>([]);
@@ -506,19 +545,82 @@ export default function Draw() {
         )}
 
         {/* Patient Session Creation Dialog */}
-        <Dialog open={showPatientDialog} onOpenChange={setShowPatientDialog}>
+        <Dialog open={showPatientDialog} onOpenChange={(open) => {
+          setShowPatientDialog(open);
+          if (!open) {
+            setSelectedPatient(null);
+            setPatientSearch("");
+          }
+        }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Start Patient Session</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label>Search Existing Patient</Label>
+                {selectedPatient ? (
+                  <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <UserCheck className="w-5 h-5 text-green-600" />
+                    <div className="flex-1">
+                      <div className="font-medium text-green-800">
+                        {selectedPatient.firstName} {selectedPatient.lastName}
+                      </div>
+                      <div className="text-sm text-green-600">
+                        DOB: {selectedPatient.dateOfBirth}
+                        {selectedPatient.phone && ` | ${selectedPatient.phone}`}
+                      </div>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClearPatient}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Input
+                      placeholder="Type patient name to search..."
+                      value={patientSearch}
+                      onChange={(e) => {
+                        setPatientSearch(e.target.value);
+                        setShowPatientResults(true);
+                      }}
+                      onFocus={() => setShowPatientResults(true)}
+                      className="pl-10"
+                    />
+                    {showPatientResults && patientSearch.length >= 2 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {searchedPatients.length === 0 ? (
+                          <div className="p-3 text-sm text-gray-500">No patients found</div>
+                        ) : (
+                          searchedPatients.map((patient) => (
+                            <div
+                              key={patient.id}
+                              className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                              onClick={() => handleSelectPatient(patient)}
+                            >
+                              <div className="font-medium">{patient.firstName} {patient.lastName}</div>
+                              <div className="text-sm text-gray-500">
+                                DOB: {patient.dateOfBirth}
+                                {patient.phone && ` | ${patient.phone}`}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-gray-500">Search for existing patient or enter details manually below</p>
+              </div>
+              <div className="space-y-2">
                 <Label>Patient Name *</Label>
                 <Input
                   value={patientInfo.patientName}
-                  onChange={(e) => setPatientInfo(prev => ({ ...prev, patientName: e.target.value }))}
+                  onChange={(e) => setPatientInfo(prev => ({ ...prev, patientName: e.target.value, patientId: null }))}
                   placeholder="Enter patient name"
                   required
+                  disabled={!!selectedPatient}
                 />
               </div>
               <div className="space-y-2">
@@ -527,6 +629,7 @@ export default function Draw() {
                   type="date"
                   value={patientInfo.patientDob}
                   onChange={(e) => setPatientInfo(prev => ({ ...prev, patientDob: e.target.value }))}
+                  disabled={!!selectedPatient}
                 />
               </div>
               <div className="space-y-2">
