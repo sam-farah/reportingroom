@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool } from "lucide-react";
+import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool, Calendar as CalendarIcon } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,11 @@ import ReportingRoom from "./reporting-room";
 import Physicians from "./physicians";
 import StaffManagement from "./staff-management";
 import Draw from "./draw";
+import Calendar from "./calendar";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates" | "reporting-room" | "physicians" | "staff" | "draw">("user");
+  const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates" | "reporting-room" | "physicians" | "staff" | "draw" | "calendar">("user");
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -78,6 +79,14 @@ export default function Dashboard() {
                   <Users className="w-4 h-4 mr-2" />
                   Clinic
                 </Button>
+                <Button
+                  variant={activePanel === "calendar" ? "default" : "ghost"}
+                  className={activePanel === "calendar" ? "medical-btn-secondary" : ""}
+                  onClick={() => setActivePanel("calendar")}
+                >
+                  <CalendarIcon className="w-4 h-4 mr-2" />
+                  Calendar
+                </Button>
 
                 {/* Admin Panel - Only visible to webmaster */}
                 {user?.email === "contact@samfarah.com" && (
@@ -126,6 +135,8 @@ export default function Dashboard() {
         <Physicians />
       ) : activePanel === "staff" ? (
         <StaffManagement />
+      ) : activePanel === "calendar" ? (
+        <Calendar />
       ) : activePanel === "admin" && user?.email === "contact@samfarah.com" ? (
         <AdminPanel />
       ) : (

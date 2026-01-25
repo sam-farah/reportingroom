@@ -14,6 +14,7 @@ import Draw from "@/pages/draw";
 import ClinicRegistration from "@/pages/clinic-registration";
 import StaffManagement from "@/pages/staff-management";
 import InvitationPage from "@/pages/invitation";
+import Calendar from "@/pages/calendar";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -34,6 +35,7 @@ function Router() {
           <Route path="/physicians" component={Physicians} />
           <Route path="/staff" component={StaffManagement} />
           <Route path="/draw" component={Draw} />
+          <Route path="/calendar" component={Calendar} />
         </>
       )}
       <Route component={NotFound} />
