@@ -387,6 +387,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Patient documents routes
+  app.get("/api/patients/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const documents = await storage.getPatientDocuments(id);
+      res.json(documents);
+    } catch (error) {
+      console.error("Error fetching patient documents:", error);
+      res.status(500).json({ error: "Failed to fetch patient documents" });
+    }
+  });
+
+  app.post("/api/patients/:id/documents", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const title = req.body.title || "Request Form";
+      const documentDate = req.body.documentDate || new Date().toISOString().split('T')[0];
+      const notes = req.body.notes || null;
+
+      const document = await storage.createPatientDocument({
+        patientId,
+        title,
+        filename: file.filename,
+        originalName: file.originalname,
+        fileUrl: `/uploads/${file.filename}`,
+        documentDate,
+        notes,
+      });
+
+      res.status(201).json(document);
+    } catch (error) {
+      console.error("Error uploading patient document:", error);
+      res.status(500).json({ error: "Failed to upload document" });
+    }
+  });
+
+  app.delete("/api/patients/documents/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deletePatientDocument(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting patient document:", error);
+      res.status(500).json({ error: "Failed to delete document" });
+    }
+  });
+
+  // Serve patient document files
+  app.get("/api/patients/documents/:id/file", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const documents = await storage.getPatientDocuments(id);
+      // Find the document - need to get by document ID
+      const document = documents.find(d => d.id === id);
+      if (!document) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      
+      const filePath = path.join(uploadDir, document.filename);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Error serving document file:", error);
+      res.status(500).json({ error: "Failed to serve document" });
+    }
+  });
+
   app.post("/api/patients", isAuthenticated, async (req, res) => {
     try {
       const patient = await storage.createPatient(req.body);

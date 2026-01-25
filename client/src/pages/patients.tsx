@@ -11,9 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload } from "lucide-react";
 import { format } from "date-fns";
-import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet } from "@shared/schema";
+import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument } from "@shared/schema";
 
 export default function Patients() {
   const { toast } = useToast();
@@ -21,7 +21,7 @@ export default function Patients() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment'; id: number } | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment' | 'document'; id: number } | null>(null);
   const [showPatientInfo, setShowPatientInfo] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -95,6 +95,51 @@ export default function Patients() {
       return response.json();
     },
     enabled: !!selectedPatient,
+  });
+
+  const { data: patientDocuments = [] } = useQuery<PatientDocument[]>({
+    queryKey: ["/api/patients", selectedPatient?.id, "documents"],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const response = await fetch(`/api/patients/${selectedPatient.id}/documents`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch documents");
+      return response.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [uploadTitle, setUploadTitle] = useState("Request Form");
+  const [uploadDate, setUploadDate] = useState(new Date().toISOString().split('T')[0]);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+
+  const uploadDocumentMutation = useMutation({
+    mutationFn: async ({ file, title, documentDate }: { file: File; title: string; documentDate: string }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("title", title);
+      formData.append("documentDate", documentDate);
+      
+      const response = await fetch(`/api/patients/${selectedPatient!.id}/documents`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      
+      if (!response.ok) throw new Error("Upload failed");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, "documents"] });
+      setIsUploadDialogOpen(false);
+      setUploadFile(null);
+      setUploadTitle("Request Form");
+      setUploadDate(new Date().toISOString().split('T')[0]);
+      toast({ title: "Document uploaded successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to upload document", variant: "destructive" });
+    },
   });
 
   const createMutation = useMutation({
@@ -236,6 +281,15 @@ export default function Patients() {
       isAmended: false,
       data: a,
     })),
+    ...patientDocuments.map(d => ({
+      type: 'document' as const,
+      id: d.id,
+      title: d.title || 'Document',
+      date: d.documentDate || '',
+      status: 'uploaded',
+      isAmended: false,
+      data: d,
+    })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const getSelectedDocumentData = () => {
@@ -251,6 +305,9 @@ export default function Patients() {
     }
     if (selectedDocument.type === 'appointment') {
       return patientAppointments.find(a => a.id === selectedDocument.id);
+    }
+    if (selectedDocument.type === 'document') {
+      return patientDocuments.find(d => d.id === selectedDocument.id);
     }
     return null;
   };
@@ -451,6 +508,60 @@ export default function Patients() {
       );
     }
 
+    if (selectedDocument?.type === 'document') {
+      const patientDoc = doc as PatientDocument;
+      const isImage = patientDoc.originalName?.match(/\.(jpg|jpeg|png|gif|bmp)$/i);
+      const isPdf = patientDoc.originalName?.match(/\.pdf$/i);
+      
+      return (
+        <div className="h-full overflow-auto">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg">
+            <div className="border-b pb-4 mb-4">
+              <h2 className="text-xl font-bold">{patientDoc.title}</h2>
+              <p className="text-gray-600">Date: {patientDoc.documentDate}</p>
+              <p className="text-sm text-gray-500">Original file: {patientDoc.originalName}</p>
+            </div>
+            <div className="mt-4">
+              {isImage && (
+                <img 
+                  src={patientDoc.fileUrl} 
+                  alt={patientDoc.title}
+                  className="max-w-full rounded-lg shadow"
+                />
+              )}
+              {isPdf && (
+                <iframe
+                  src={patientDoc.fileUrl}
+                  className="w-full h-[600px] rounded-lg border"
+                  title={patientDoc.title}
+                />
+              )}
+              {!isImage && !isPdf && (
+                <div className="text-center py-8">
+                  <FileText className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                  <p className="text-gray-600 mb-4">Preview not available for this file type</p>
+                  <a 
+                    href={patientDoc.fileUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    Download file
+                  </a>
+                </div>
+              )}
+              {patientDoc.notes && (
+                <div className="mt-4">
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Notes</h3>
+                  <p className="text-gray-600">{patientDoc.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -499,8 +610,17 @@ export default function Patients() {
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel - Document List */}
           <div className="w-80 bg-white dark:bg-gray-800 border-r flex flex-col">
-            <div className="p-3 border-b bg-gray-50 dark:bg-gray-700">
+            <div className="p-3 border-b bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documents ({allDocuments.length})</h2>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setIsUploadDialogOpen(true)}
+                className="h-7 px-2"
+              >
+                <Upload className="w-4 h-4 mr-1" />
+                Upload
+              </Button>
             </div>
             <div className="flex-1 overflow-auto">
               {allDocuments.length === 0 ? (
@@ -525,11 +645,13 @@ export default function Patients() {
                           doc.type === 'report' ? 'bg-green-100 text-green-600' :
                           doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
                           doc.type === 'digitalWorksheet' ? 'bg-orange-100 text-orange-600' :
+                          doc.type === 'document' ? 'bg-yellow-100 text-yellow-600' :
                           'bg-blue-100 text-blue-600'
                         }`}>
                           {doc.type === 'report' ? <FileText className="w-4 h-4" /> :
                            doc.type === 'worksheet' ? <ClipboardList className="w-4 h-4" /> :
                            doc.type === 'digitalWorksheet' ? <ClipboardList className="w-4 h-4" /> :
+                           doc.type === 'document' ? <File className="w-4 h-4" /> :
                            <Calendar className="w-4 h-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -652,6 +774,66 @@ export default function Patients() {
                   <div className="text-sm text-gray-600">{selectedPatient.notes}</div>
                 </div>
               )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Upload Document Dialog */}
+        <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                Upload Document
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="docTitle">Document Title</Label>
+                <Input
+                  id="docTitle"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  placeholder="Request Form"
+                />
+              </div>
+              <div>
+                <Label htmlFor="docDate">Document Date</Label>
+                <Input
+                  id="docDate"
+                  type="date"
+                  value={uploadDate}
+                  onChange={(e) => setUploadDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="docFile">File</Label>
+                <Input
+                  id="docFile"
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (uploadFile) {
+                      uploadDocumentMutation.mutate({
+                        file: uploadFile,
+                        title: uploadTitle,
+                        documentDate: uploadDate,
+                      });
+                    }
+                  }}
+                  disabled={!uploadFile || uploadDocumentMutation.isPending}
+                >
+                  {uploadDocumentMutation.isPending ? "Uploading..." : "Upload"}
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

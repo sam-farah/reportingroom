@@ -9,6 +9,7 @@ import {
   reportTemplates,
   sonographers,
   patients,
+  patientDocuments,
   type User,
   type UpsertUser,
   type Clinic,
@@ -29,6 +30,8 @@ import {
   type InsertSonographerData,
   type Patient,
   type InsertPatientData,
+  type PatientDocument,
+  type InsertPatientDocument,
   worksheetTemplates,
   digitalWorksheets,
   type WorksheetTemplate,
@@ -169,6 +172,11 @@ export interface IStorage {
   getPatientDigitalWorksheets(patientId: number): Promise<DigitalWorksheet[]>;
   getPatientReports(patientId: number): Promise<Report[]>;
   getPatientAppointments(patientId: number): Promise<Appointment[]>;
+  
+  // Patient document operations
+  getPatientDocuments(patientId: number): Promise<PatientDocument[]>;
+  createPatientDocument(document: InsertPatientDocument): Promise<PatientDocument>;
+  deletePatientDocument(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -914,6 +922,19 @@ export class DatabaseStorage implements IStorage {
 
   async getPatientAppointments(patientId: number): Promise<Appointment[]> {
     return await db.select().from(appointments).where(eq(appointments.patientId, patientId)).orderBy(desc(appointments.appointmentDate));
+  }
+
+  async getPatientDocuments(patientId: number): Promise<PatientDocument[]> {
+    return await db.select().from(patientDocuments).where(eq(patientDocuments.patientId, patientId)).orderBy(desc(patientDocuments.documentDate));
+  }
+
+  async createPatientDocument(document: InsertPatientDocument): Promise<PatientDocument> {
+    const [created] = await db.insert(patientDocuments).values(document).returning();
+    return created;
+  }
+
+  async deletePatientDocument(id: number): Promise<void> {
+    await db.delete(patientDocuments).where(eq(patientDocuments.id, id));
   }
 }
 

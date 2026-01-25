@@ -291,6 +291,22 @@ export const patients = pgTable("patients", {
 export type Patient = typeof patients.$inferSelect;
 export type InsertPatient = typeof patients.$inferInsert;
 
+// Patient documents table for custom uploads (request forms, etc.)
+export const patientDocuments = pgTable("patient_documents", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id),
+  title: varchar("title", { length: 255 }).notNull().default('Request Form'),
+  filename: text("filename").notNull(),
+  originalName: text("original_name").notNull(),
+  fileUrl: text("file_url").notNull(),
+  documentDate: varchar("document_date", { length: 20 }).notNull(),
+  notes: text("notes"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+export type PatientDocument = typeof patientDocuments.$inferSelect;
+export type InsertPatientDocument = typeof patientDocuments.$inferInsert;
+
 export type WorksheetTemplate = typeof worksheetTemplates.$inferSelect;
 export type InsertWorksheetTemplate = typeof worksheetTemplates.$inferInsert;
 
