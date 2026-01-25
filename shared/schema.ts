@@ -95,6 +95,7 @@ export const worksheets = pgTable("worksheets", {
   patientDob: text("patient_dob"),
   examDate: text("exam_date"),
   ocrProcessed: boolean("ocr_processed").default(false),
+  patientId: integer("patient_id").references(() => patients.id),
 });
 
 export const reports = pgTable("reports", {
@@ -120,6 +121,7 @@ export const reports = pgTable("reports", {
   amendedBy: varchar("amended_by").references(() => users.id),
   amendmentReason: text("amendment_reason"),
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  patientId: integer("patient_id").references(() => patients.id),
 });
 
 export const trainingPairs = pgTable("training_pairs", {
@@ -206,6 +208,7 @@ export const digitalWorksheets = pgTable("digital_worksheets", {
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  patientId: integer("patient_id").references(() => patients.id),
 });
 
 // Relations
@@ -259,6 +262,34 @@ export const sonographers = pgTable("sonographers", {
 
 export type Sonographer = typeof sonographers.$inferSelect;
 export type InsertSonographer = typeof sonographers.$inferInsert;
+
+// Patients table - Central patient records
+export const patients = pgTable("patients", {
+  id: serial("id").primaryKey(),
+  firstName: varchar("first_name", { length: 100 }).notNull(),
+  lastName: varchar("last_name", { length: 100 }).notNull(),
+  dateOfBirth: varchar("date_of_birth", { length: 20 }).notNull(),
+  gender: varchar("gender", { length: 20 }),
+  phone: varchar("phone", { length: 50 }),
+  email: varchar("email", { length: 255 }),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 50 }),
+  zipCode: varchar("zip_code", { length: 20 }),
+  insuranceProvider: varchar("insurance_provider", { length: 255 }),
+  insuranceId: varchar("insurance_id", { length: 100 }),
+  referringPhysician: varchar("referring_physician", { length: 255 }),
+  medicalHistory: text("medical_history"),
+  allergies: text("allergies"),
+  notes: text("notes"),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Patient = typeof patients.$inferSelect;
+export type InsertPatient = typeof patients.$inferInsert;
 
 export type WorksheetTemplate = typeof worksheetTemplates.$inferSelect;
 export type InsertWorksheetTemplate = typeof worksheetTemplates.$inferInsert;
@@ -387,6 +418,14 @@ export type InsertReportTemplate = z.infer<typeof insertReportTemplateSchema>;
 export type InsertSonographerData = z.infer<typeof insertSonographerSchema>;
 export type InsertLegendEntryData = z.infer<typeof insertLegendEntrySchema>;
 
+export const insertPatientSchema = createInsertSchema(patients).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPatientData = z.infer<typeof insertPatientSchema>;
+
 // Appointments/Bookings table
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
@@ -405,6 +444,7 @@ export const appointments = pgTable("appointments", {
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  patientId: integer("patient_id").references(() => patients.id),
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({

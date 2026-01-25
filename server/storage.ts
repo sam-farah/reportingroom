@@ -8,6 +8,7 @@ import {
   trainingPairs,
   reportTemplates,
   sonographers,
+  patients,
   type User,
   type UpsertUser,
   type Clinic,
@@ -26,6 +27,8 @@ import {
   type InsertReportTemplate,
   type Sonographer,
   type InsertSonographerData,
+  type Patient,
+  type InsertPatientData,
   worksheetTemplates,
   digitalWorksheets,
   type WorksheetTemplate,
@@ -43,7 +46,7 @@ import {
   type InsertAppointment
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, gte, lte, and } from "drizzle-orm";
+import { eq, desc, gte, lte, and, or, ilike } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Interface for storage operations
@@ -154,6 +157,17 @@ export interface IStorage {
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
   updateAppointment(id: number, appointment: Partial<InsertAppointment>): Promise<Appointment | undefined>;
   deleteAppointment(id: number): Promise<void>;
+  
+  // Patient operations
+  getAllPatients(): Promise<Patient[]>;
+  getPatient(id: number): Promise<Patient | undefined>;
+  searchPatients(query: string): Promise<Patient[]>;
+  createPatient(patient: InsertPatientData): Promise<Patient>;
+  updatePatient(id: number, patient: Partial<InsertPatientData>): Promise<Patient | undefined>;
+  deletePatient(id: number): Promise<void>;
+  getPatientWorksheets(patientId: number): Promise<Worksheet[]>;
+  getPatientReports(patientId: number): Promise<Report[]>;
+  getPatientAppointments(patientId: number): Promise<Appointment[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -843,6 +857,57 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAppointment(id: number): Promise<void> {
     await db.delete(appointments).where(eq(appointments.id, id));
+  }
+
+  // Patient operations
+  async getAllPatients(): Promise<Patient[]> {
+    return await db.select().from(patients).orderBy(desc(patients.createdAt));
+  }
+
+  async getPatient(id: number): Promise<Patient | undefined> {
+    const [patient] = await db.select().from(patients).where(eq(patients.id, id));
+    return patient;
+  }
+
+  async searchPatients(query: string): Promise<Patient[]> {
+    const searchTerm = `%${query}%`;
+    return await db.select().from(patients).where(
+      or(
+        ilike(patients.firstName, searchTerm),
+        ilike(patients.lastName, searchTerm),
+        ilike(patients.phone, searchTerm),
+        ilike(patients.email, searchTerm)
+      )
+    ).orderBy(patients.lastName, patients.firstName);
+  }
+
+  async createPatient(patient: InsertPatientData): Promise<Patient> {
+    const [created] = await db.insert(patients).values(patient).returning();
+    return created;
+  }
+
+  async updatePatient(id: number, patient: Partial<InsertPatientData>): Promise<Patient | undefined> {
+    const [updated] = await db.update(patients)
+      .set({ ...patient, updatedAt: new Date() })
+      .where(eq(patients.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePatient(id: number): Promise<void> {
+    await db.update(patients).set({ isActive: false }).where(eq(patients.id, id));
+  }
+
+  async getPatientWorksheets(patientId: number): Promise<Worksheet[]> {
+    return await db.select().from(worksheets).where(eq(worksheets.patientId, patientId)).orderBy(desc(worksheets.uploadedAt));
+  }
+
+  async getPatientReports(patientId: number): Promise<Report[]> {
+    return await db.select().from(reports).where(eq(reports.patientId, patientId)).orderBy(desc(reports.generatedAt));
+  }
+
+  async getPatientAppointments(patientId: number): Promise<Appointment[]> {
+    return await db.select().from(appointments).where(eq(appointments.patientId, patientId)).orderBy(desc(appointments.appointmentDate));
   }
 }
 

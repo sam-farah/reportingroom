@@ -313,6 +313,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Patients API
+  app.get("/api/patients", isAuthenticated, async (req, res) => {
+    try {
+      const { search } = req.query;
+      if (search && typeof search === 'string') {
+        const patients = await storage.searchPatients(search);
+        return res.json(patients);
+      }
+      const patients = await storage.getAllPatients();
+      res.json(patients);
+    } catch (error) {
+      console.error("Error fetching patients:", error);
+      res.status(500).json({ error: "Failed to fetch patients" });
+    }
+  });
+
+  app.get("/api/patients/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const patient = await storage.getPatient(id);
+      if (!patient) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
+      res.json(patient);
+    } catch (error) {
+      console.error("Error fetching patient:", error);
+      res.status(500).json({ error: "Failed to fetch patient" });
+    }
+  });
+
+  app.get("/api/patients/:id/worksheets", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const worksheets = await storage.getPatientWorksheets(id);
+      res.json(worksheets);
+    } catch (error) {
+      console.error("Error fetching patient worksheets:", error);
+      res.status(500).json({ error: "Failed to fetch patient worksheets" });
+    }
+  });
+
+  app.get("/api/patients/:id/reports", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const reports = await storage.getPatientReports(id);
+      res.json(reports);
+    } catch (error) {
+      console.error("Error fetching patient reports:", error);
+      res.status(500).json({ error: "Failed to fetch patient reports" });
+    }
+  });
+
+  app.get("/api/patients/:id/appointments", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const appointments = await storage.getPatientAppointments(id);
+      res.json(appointments);
+    } catch (error) {
+      console.error("Error fetching patient appointments:", error);
+      res.status(500).json({ error: "Failed to fetch patient appointments" });
+    }
+  });
+
+  app.post("/api/patients", isAuthenticated, async (req, res) => {
+    try {
+      const patient = await storage.createPatient(req.body);
+      res.status(201).json(patient);
+    } catch (error) {
+      console.error("Error creating patient:", error);
+      res.status(500).json({ error: "Failed to create patient" });
+    }
+  });
+
+  app.put("/api/patients/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const patient = await storage.updatePatient(id, req.body);
+      if (!patient) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
+      res.json(patient);
+    } catch (error) {
+      console.error("Error updating patient:", error);
+      res.status(500).json({ error: "Failed to update patient" });
+    }
+  });
+
+  app.delete("/api/patients/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deletePatient(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting patient:", error);
+      res.status(500).json({ error: "Failed to delete patient" });
+    }
+  });
+
   // Worksheets API
   app.get("/api/worksheets", isAuthenticated, async (req, res) => {
     try {
