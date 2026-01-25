@@ -19,7 +19,8 @@ import {
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
-import { syncDocumentToPatientFolder, syncAllPatientFiles, syncWorksheetToPatientFolder, syncReportToPatientFolder, syncDigitalWorksheetToPatientFolder, getPatientFilesDir } from "./services/fileSync";
+import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
+import { createBackupArchive, getBackupInfo } from "./services/backup";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
 
@@ -2746,42 +2747,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // File sync routes
-  app.post("/api/sync/all", isAuthenticated, async (req, res) => {
+  // Backup routes
+  app.get("/api/backup/info", isAuthenticated, async (req, res) => {
     try {
-      console.log("Starting full patient files sync...");
-      const stats = await syncAllPatientFiles();
-      res.json({
-        success: true,
-        message: `Synced ${stats.worksheets} worksheets, ${stats.reports} reports, ${stats.documents} documents, ${stats.digitalWorksheets} digital worksheets`,
-        stats,
-        syncPath: getPatientFilesDir()
-      });
+      const info = await getBackupInfo();
+      res.json(info);
     } catch (error: any) {
-      console.error("Error during sync:", error);
-      res.status(500).json({ error: "Sync failed", details: error.message });
+      console.error("Error getting backup info:", error);
+      res.status(500).json({ error: "Failed to get backup info" });
     }
   });
 
-  app.get("/api/sync/status", isAuthenticated, async (req, res) => {
+  app.get("/api/backup/download", isAuthenticated, async (req, res) => {
     try {
-      const syncPath = getPatientFilesDir();
-      const exists = fs.existsSync(syncPath);
-      let patientCount = 0;
+      const includeAll = req.query.type !== 'changes';
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+      const filename = includeAll 
+        ? `patient-files-backup-${timestamp}.zip`
+        : `patient-files-changes-${timestamp}.zip`;
       
-      if (exists) {
-        const folders = fs.readdirSync(syncPath);
-        patientCount = folders.filter(f => fs.statSync(path.join(syncPath, f)).isDirectory()).length;
-      }
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       
-      res.json({
-        enabled: true,
-        syncPath,
-        folderExists: exists,
-        patientFolders: patientCount
-      });
+      const stats = await createBackupArchive(res, includeAll);
+      console.log(`Backup completed: ${stats.filesIncluded} files, ${stats.totalSize} bytes`);
     } catch (error: any) {
-      res.status(500).json({ error: "Failed to get sync status" });
+      console.error("Backup error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Backup failed", details: error.message });
+      }
     }
   });
 

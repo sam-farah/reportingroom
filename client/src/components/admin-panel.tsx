@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle } from "lucide-react";
+import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -50,6 +50,57 @@ export default function AdminPanel() {
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
   });
+
+  const { data: backupInfo, refetch: refetchBackupInfo } = useQuery<{
+    lastBackupDate: string | null;
+    totalFilesAvailable: number;
+    filesSinceLastBackup: number;
+  }>({
+    queryKey: ["/api/backup/info"],
+  });
+
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownloadBackup = async (type: 'all' | 'changes') => {
+    setIsDownloading(true);
+    try {
+      const response = await fetch(`/api/backup/download?type=${type}`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) throw new Error('Download failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+      a.download = type === 'all' 
+        ? `patient-files-backup-${timestamp}.zip`
+        : `patient-files-changes-${timestamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Download Complete",
+        description: type === 'all' 
+          ? "All patient files have been downloaded"
+          : "Changed files since last backup have been downloaded"
+      });
+      
+      refetchBackupInfo();
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: "Failed to download backup",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const uploadTrainingMutation = useMutation({
     mutationFn: async () => {
@@ -364,11 +415,12 @@ export default function AdminPanel() {
       </div>
 
       <Tabs defaultValue="monitoring" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
           <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
           <TabsTrigger value="costs">Cost Projection</TabsTrigger>
           <TabsTrigger value="training">🌍 Global AI Training</TabsTrigger>
+          <TabsTrigger value="backup">💾 Backup</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monitoring" className="space-y-6">
@@ -784,6 +836,99 @@ export default function AdminPanel() {
           </CardContent>
         </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="backup" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <HardDrive className="h-5 w-5" />
+                Patient Files Backup
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Total Files Available</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{backupInfo?.totalFilesAvailable || 0}</div>
+                    <p className="text-xs text-muted-foreground">worksheets, reports, documents</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Files Since Last Backup</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-600">{backupInfo?.filesSinceLastBackup || 0}</div>
+                    <p className="text-xs text-muted-foreground">new or modified files</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Last Backup</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-lg font-bold">
+                      {backupInfo?.lastBackupDate 
+                        ? new Date(backupInfo.lastBackupDate).toLocaleDateString()
+                        : 'Never'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {backupInfo?.lastBackupDate 
+                        ? new Date(backupInfo.lastBackupDate).toLocaleTimeString()
+                        : 'No backup taken yet'}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Button
+                  onClick={() => handleDownloadBackup('all')}
+                  disabled={isDownloading || !backupInfo?.totalFilesAvailable}
+                  className="flex-1"
+                  size="lg"
+                >
+                  {isDownloading ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
+                  Download All Files
+                </Button>
+                
+                <Button
+                  onClick={() => handleDownloadBackup('changes')}
+                  disabled={isDownloading || !backupInfo?.filesSinceLastBackup}
+                  variant="outline"
+                  className="flex-1"
+                  size="lg"
+                >
+                  {isDownloading ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
+                  Download Changes Only
+                </Button>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2">Backup Information</h4>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li>• <strong>Download All Files:</strong> Creates a complete backup of all patient files</li>
+                  <li>• <strong>Download Changes Only:</strong> Downloads only files created or modified since your last backup</li>
+                  <li>• Files are organized by patient name in the ZIP archive</li>
+                  <li>• Includes worksheets, reports (as JSON), documents, and digital worksheets</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

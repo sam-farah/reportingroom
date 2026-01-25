@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, FolderSync } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload } from "lucide-react";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument } from "@shared/schema";
 
@@ -187,21 +187,6 @@ export default function Patients() {
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to delete patient", variant: "destructive" });
-    },
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("/api/sync/all", "POST");
-    },
-    onSuccess: (data: any) => {
-      toast({ 
-        title: "Sync Complete", 
-        description: data.message || "All patient files synced to local storage" 
-      });
-    },
-    onError: (error: any) => {
-      toast({ title: "Sync Failed", description: error.message || "Failed to sync files", variant: "destructive" });
     },
   });
 
@@ -864,20 +849,10 @@ export default function Patients() {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Patient Records</h1>
             <p className="text-gray-600 dark:text-gray-400">Manage patient information and medical records</p>
           </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
-            >
-              <FolderSync className={`w-4 h-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-              {syncMutation.isPending ? "Syncing..." : "Sync Files"}
-            </Button>
-            <Button onClick={() => { resetForm(); setEditingPatient(null); setIsDialogOpen(true); }}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Patient
-            </Button>
-          </div>
+          <Button onClick={() => { resetForm(); setEditingPatient(null); setIsDialogOpen(true); }}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Patient
+          </Button>
         </div>
 
         <Card className="mb-6">
