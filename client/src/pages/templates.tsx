@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Settings, Trash2, FileText, Download, Eye, BookOpen, Edit, Info, Hash } from "lucide-react";
+import { Plus, Settings, Trash2, FileText, Download, Eye, BookOpen, Edit, Info, Hash, ArrowLeft } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -114,6 +115,12 @@ export default function Templates() {
     drawingData: ''
   });
   const [showDrawingCanvas, setShowDrawingCanvas] = useState(false);
+  
+  // Template preview state
+  const [previewTemplate, setPreviewTemplate] = useState<ReportTemplate | null>(null);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  
+  const [, setLocation] = useLocation();
 
   // Fetch all templates
   const { data: templates = [], isLoading } = useQuery({
@@ -637,8 +644,24 @@ export default function Templates() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Templates</h1>
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => {
+              if (window.history.length > 1) {
+                window.history.back();
+              } else {
+                setLocation('/dashboard');
+              }
+            }}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Templates</h1>
           <p className="text-gray-600 mt-1">
             {activeTab === 'reports' 
               ? 'Create and manage custom report layouts for PDF and DOCX exports'
@@ -649,6 +672,7 @@ export default function Templates() {
               : 'Manage frequently used text snippets for faster report writing'
             }
           </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -717,6 +741,17 @@ export default function Templates() {
                   )}
                 </CardTitle>
                 <div className="flex space-x-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setPreviewTemplate(template);
+                      setShowPreviewDialog(true);
+                    }}
+                    title="Preview template"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1574,6 +1609,169 @@ export default function Templates() {
           <TextShortcuts />
         </div>
       )}
+
+      {/* Template Preview Dialog */}
+      <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Template Preview: {previewTemplate?.name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {previewTemplate && (
+            <div className="border rounded-lg overflow-hidden bg-white">
+              {/* Report Preview */}
+              <div 
+                className="p-8" 
+                style={{ 
+                  fontFamily: previewTemplate.fontFamily,
+                  fontSize: previewTemplate.fontSize 
+                }}
+              >
+                {/* Header */}
+                {previewTemplate.showHeader && (
+                  <div className="flex items-start justify-between mb-6 pb-4 border-b-2" style={{ borderColor: previewTemplate.primaryColor }}>
+                    <div className="flex items-center gap-4">
+                      {previewTemplate.showLogo && (
+                        <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center">
+                          <FileText className="w-8 h-8 text-gray-400" />
+                        </div>
+                      )}
+                      <div>
+                        <h2 className="text-xl font-bold" style={{ color: previewTemplate.primaryColor }}>
+                          {previewTemplate.clinicName || 'Sample Medical Clinic'}
+                        </h2>
+                        <p className="text-sm text-gray-600">
+                          {previewTemplate.clinicAddress || '123 Medical Center Drive, Suite 100'}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {previewTemplate.clinicPhone || 'Phone: (555) 123-4567'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <h3 className="font-semibold" style={{ color: previewTemplate.primaryColor }}>
+                        Ultrasound Report
+                      </h3>
+                      <p className="text-sm text-gray-500">Report Date: {new Date().toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Patient Information */}
+                <div className={`mb-6 ${previewTemplate.patientInfoLayout === 'grid' ? 'grid grid-cols-2 gap-4' : ''}`}>
+                  <div className={previewTemplate.patientInfoLayout === 'compact' ? 'flex gap-6' : ''}>
+                    <div>
+                      <span className="font-semibold">Patient Name:</span>
+                      <span className="ml-2">John Sample</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold">DOB:</span>
+                      <span className="ml-2">01/15/1980</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold">Exam Date:</span>
+                      <span className="ml-2">{new Date().toLocaleDateString()}</span>
+                    </div>
+                    {previewTemplate.showPatientId && (
+                      <div>
+                        <span className="font-semibold">Patient ID:</span>
+                        <span className="ml-2">P-12345</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Study Type */}
+                {previewTemplate.showStudyType && (
+                  <div className="mb-4">
+                    <h4 className="font-semibold mb-1" style={{ color: previewTemplate.primaryColor }}>Study Type</h4>
+                    <p>Lower Limb Venous Duplex Ultrasound</p>
+                  </div>
+                )}
+
+                {/* Indication */}
+                {previewTemplate.showIndication && (
+                  <div className="mb-4">
+                    <h4 className="font-semibold mb-1" style={{ color: previewTemplate.primaryColor }}>Indication</h4>
+                    <p>Assessment of venous insufficiency and varicose veins</p>
+                  </div>
+                )}
+
+                {/* Findings */}
+                {previewTemplate.showFindings && (
+                  <div className="mb-4">
+                    <h4 className="font-semibold mb-1" style={{ color: previewTemplate.primaryColor }}>Findings</h4>
+                    <div className="text-gray-700">
+                      <p className="mb-2"><strong>Right Lower Limb:</strong></p>
+                      <p>The common femoral vein, femoral vein, and popliteal vein demonstrate normal compressibility with no evidence of deep vein thrombosis.</p>
+                      <p className="mt-2 mb-2"><strong>Left Lower Limb:</strong></p>
+                      <p>Similar findings noted on the left side with patent deep venous system.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Impression */}
+                {previewTemplate.showImpression && (
+                  <div className="mb-6">
+                    <h4 className="font-semibold mb-1" style={{ color: previewTemplate.primaryColor }}>Impression</h4>
+                    <p>No evidence of deep vein thrombosis in either lower limb. Normal venous duplex examination.</p>
+                  </div>
+                )}
+
+                {/* Signature */}
+                {previewTemplate.showSignature && (
+                  <div className={`pt-4 border-t mt-6 flex ${
+                    previewTemplate.signaturePosition === 'center' ? 'justify-center' : 
+                    previewTemplate.signaturePosition === 'right' ? 'justify-end' : 'justify-start'
+                  }`}>
+                    <div className={previewTemplate.signaturePosition === 'center' ? 'text-center' : ''}>
+                      <div className="w-48 h-12 bg-gray-100 rounded mb-2 flex items-center justify-center">
+                        <span className="text-xs text-gray-400 italic">Physician Signature</span>
+                      </div>
+                      <p className="font-medium">Dr. Sample Physician, MD</p>
+                      <p className="text-sm text-gray-600">Vascular Sonologist</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer */}
+                {previewTemplate.showFooter && (
+                  <div className="mt-8 pt-4 border-t text-sm text-gray-500 flex justify-between">
+                    <div>
+                      {previewTemplate.footerText || 'Confidential Medical Record - For Authorized Use Only'}
+                    </div>
+                    <div className="flex gap-4">
+                      {previewTemplate.showReportId && <span>Report ID: RPT-2024-001</span>}
+                      {previewTemplate.showGenerationDate && <span>Generated: {new Date().toLocaleString()}</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowPreviewDialog(false)}>
+              Close
+            </Button>
+            <Button 
+              onClick={() => {
+                setShowPreviewDialog(false);
+                if (previewTemplate) {
+                  handleEditTemplate(previewTemplate);
+                }
+              }}
+              className="medical-btn-primary"
+            >
+              <Edit className="w-4 h-4 mr-2" />
+              Edit Template
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
