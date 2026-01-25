@@ -903,7 +903,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPatientReports(patientId: number): Promise<Report[]> {
-    return await db.select().from(reports).where(eq(reports.patientId, patientId)).orderBy(desc(reports.generatedAt));
+    const reportResults = await db.select().from(reports).where(eq(reports.patientId, patientId)).orderBy(desc(reports.generatedAt));
+    return reportResults.map(report => FieldEncryption.decryptFields(report) as Report);
   }
 
   async getPatientAppointments(patientId: number): Promise<Appointment[]> {
