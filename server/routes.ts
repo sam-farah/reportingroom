@@ -19,6 +19,7 @@ import {
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
+import { syncDocumentToPatientFolder, syncAllPatientFiles, syncWorksheetToPatientFolder, syncReportToPatientFolder, syncDigitalWorksheetToPatientFolder, getPatientFilesDir } from "./services/fileSync";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
 
@@ -421,6 +422,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         documentDate,
         notes,
       });
+
+      syncDocumentToPatientFolder(patientId, {
+        id: document.id,
+        title: document.title,
+        fileUrl: document.fileUrl
+      }).catch(err => console.error('Background sync error:', err));
 
       res.status(201).json(document);
     } catch (error) {
@@ -854,6 +861,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         physicianId,
         logoUrl: clinic?.logoUrl || logoUrl
       });
+
+      syncReportToPatientFolder(report.id).catch(err => console.error('Background report sync error:', err));
 
       console.log("Report saved to storage:", report.id);
       res.json(report);
@@ -2734,6 +2743,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: "Transcription failed", 
         details: error.message 
       });
+    }
+  });
+
+  // File sync routes
+  app.post("/api/sync/all", isAuthenticated, async (req, res) => {
+    try {
+      console.log("Starting full patient files sync...");
+      const stats = await syncAllPatientFiles();
+      res.json({
+        success: true,
+        message: `Synced ${stats.worksheets} worksheets, ${stats.reports} reports, ${stats.documents} documents, ${stats.digitalWorksheets} digital worksheets`,
+        stats,
+        syncPath: getPatientFilesDir()
+      });
+    } catch (error: any) {
+      console.error("Error during sync:", error);
+      res.status(500).json({ error: "Sync failed", details: error.message });
+    }
+  });
+
+  app.get("/api/sync/status", isAuthenticated, async (req, res) => {
+    try {
+      const syncPath = getPatientFilesDir();
+      const exists = fs.existsSync(syncPath);
+      let patientCount = 0;
+      
+      if (exists) {
+        const folders = fs.readdirSync(syncPath);
+        patientCount = folders.filter(f => fs.statSync(path.join(syncPath, f)).isDirectory()).length;
+      }
+      
+      res.json({
+        enabled: true,
+        syncPath,
+        folderExists: exists,
+        patientFolders: patientCount
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to get sync status" });
     }
   });
 
