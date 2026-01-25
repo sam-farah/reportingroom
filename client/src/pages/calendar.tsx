@@ -589,8 +589,8 @@ export default function Calendar() {
                                   setViewingAppointment(apt);
                                 }}
                               >
-                                <div className="font-medium truncate">{format(new Date(apt.appointmentDate), "HH:mm")}</div>
-                                <div className="truncate">{apt.patientName}</div>
+                                <div className="font-medium truncate">{apt.patientName}</div>
+                                <div className="text-[10px] truncate">{format(new Date(apt.appointmentDate), "h:mm a")}</div>
                               </div>
                             );
                           })}
