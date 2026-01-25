@@ -2620,11 +2620,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-      // Create a ReadStream from the uploaded file
-      const audioStream = createReadStream(req.file.path);
+      // Read file into buffer and create a File object with proper extension
+      const audioBuffer = await fs.promises.readFile(req.file.path);
+      const originalName = req.file.originalname || 'recording.webm';
+      const audioFile = new File([audioBuffer], originalName, { 
+        type: req.file.mimetype || 'audio/webm' 
+      });
       
       const transcription = await openai.audio.transcriptions.create({
-        file: audioStream as any,
+        file: audioFile,
         model: "whisper-1",
         language: "en", // Can be made configurable
         response_format: "json",

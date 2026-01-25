@@ -33,9 +33,9 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  // Get available audio devices
+  // Get available audio devices and auto-start recording
   useEffect(() => {
-    const getDevices = async () => {
+    const getDevicesAndStart = async () => {
       try {
         await navigator.mediaDevices.getUserMedia({ audio: true });
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -48,15 +48,20 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
         
         setAudioDevices(audioInputs);
         if (audioInputs.length > 0 && !selectedDevice) {
-          setSelectedDevice(audioInputs[0].deviceId);
+          const deviceId = audioInputs[0].deviceId;
+          setSelectedDevice(deviceId);
+          // Auto-start recording after a brief delay
+          setTimeout(() => {
+            startRecordingWithDevice(deviceId);
+          }, 100);
         }
       } catch (error) {
         console.error('Error getting audio devices:', error);
       }
     };
     
-    getDevices();
-  }, [selectedDevice]);
+    getDevicesAndStart();
+  }, []);
 
   // Audio level monitoring
   const updateAudioLevel = () => {
@@ -74,12 +79,13 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
     }
   };
 
-  // Start recording
-  const startRecording = async () => {
+  // Start recording with optional device override
+  const startRecordingWithDevice = async (deviceId?: string) => {
+    const targetDevice = deviceId || selectedDevice;
     try {
       const constraints = {
         audio: {
-          deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
+          deviceId: targetDevice ? { exact: targetDevice } : undefined,
           sampleRate: 44100,
           channelCount: 1,
         }
@@ -311,7 +317,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
         <div className="flex items-center space-x-2">
           {!isRecording && !isProcessing && (
             <Button
-              onClick={startRecording}
+              onClick={() => startRecordingWithDevice()}
               disabled={!selectedDevice}
               size="sm"
               className="bg-red-600 hover:bg-red-700 text-white"
