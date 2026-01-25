@@ -149,6 +149,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/physicians/:id/toggle-status", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const physician = await storage.togglePhysicianStatus(id);
+      if (!physician) {
+        return res.status(404).json({ error: "Physician not found" });
+      }
+      res.json(physician);
+    } catch (error) {
+      console.error("Error toggling physician status:", error);
+      res.status(500).json({ error: "Failed to toggle physician status" });
+    }
+  });
+
   // Sonographers API
   app.get("/api/sonographers", isAuthenticated, async (req, res) => {
     try {

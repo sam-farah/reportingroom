@@ -413,6 +413,38 @@ export default function Clinic() {
     }
   };
 
+  // Toggle physician status mutation (deactivate/activate)
+  const togglePhysicianMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest(`/api/physicians/${id}/toggle-status`, "PATCH");
+    },
+    onSuccess: (data: Physician) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      toast({
+        title: "Success",
+        description: data.isActive ? "Physician activated" : "Physician deactivated",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update physician status",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Delete physician mutation
   const deletePhysicianMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -916,11 +948,18 @@ export default function Clinic() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {(physicians as Physician[]).map((physician: Physician) => (
-              <Card key={physician.id} className="hover:shadow-lg transition-shadow">
+              <Card key={physician.id} className={`hover:shadow-lg transition-shadow ${!physician.isActive ? 'opacity-60 bg-gray-50 dark:bg-gray-800' : ''}`}>
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>
-                      <CardTitle className="text-lg">{physician.name}</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-lg">{physician.name}</CardTitle>
+                        {!physician.isActive && (
+                          <span className="px-2 py-0.5 text-xs font-medium bg-gray-200 text-gray-600 rounded-full">
+                            Inactive
+                          </span>
+                        )}
+                      </div>
                       {physician.title && (
                         <CardDescription className="font-medium text-blue-600">
                           {physician.title}
@@ -940,30 +979,19 @@ export default function Clinic() {
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Physician</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete {physician.name}? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleDeletePhysician(physician.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={physician.isActive ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
+                        onClick={() => togglePhysicianMutation.mutate(physician.id)}
+                        disabled={togglePhysicianMutation.isPending}
+                      >
+                        {physician.isActive ? (
+                          <UserMinus className="w-4 h-4" />
+                        ) : (
+                          <UserCheck className="w-4 h-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>

@@ -82,6 +82,7 @@ export const physicians = pgTable("physicians", {
   title: text("title").notNull(),
   specialty: text("specialty").notNull(),
   signatureUrl: text("signature_url"),
+  isActive: boolean("is_active").notNull().default(true),
 });
 
 export const worksheets = pgTable("worksheets", {

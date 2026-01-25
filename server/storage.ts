@@ -77,6 +77,7 @@ export interface IStorage {
   getPhysician(id: number): Promise<Physician | undefined>;
   createPhysician(physician: InsertPhysician): Promise<Physician>;
   updatePhysician(id: number, physician: Partial<InsertPhysician>): Promise<Physician | undefined>;
+  togglePhysicianStatus(id: number): Promise<Physician | undefined>;
   deletePhysician(id: number): Promise<void>;
   
   getAllWorksheets(): Promise<Worksheet[]>;
@@ -335,6 +336,18 @@ export class DatabaseStorage implements IStorage {
 
   async deletePhysician(id: number): Promise<void> {
     await db.delete(physicians).where(eq(physicians.id, id));
+  }
+
+  async togglePhysicianStatus(id: number): Promise<Physician | undefined> {
+    const [current] = await db.select().from(physicians).where(eq(physicians.id, id));
+    if (!current) return undefined;
+    
+    const [physician] = await db
+      .update(physicians)
+      .set({ isActive: !current.isActive })
+      .where(eq(physicians.id, id))
+      .returning();
+    return physician;
   }
 
   async getAllWorksheets(): Promise<Worksheet[]> {
