@@ -49,6 +49,7 @@ export default function Calendar() {
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
+  const [resizingAppointment, setResizingAppointment] = useState<{ apt: Appointment; edge: "top" | "bottom" } | null>(null);
 
   const [formData, setFormData] = useState({
     patientName: "",
@@ -302,12 +303,107 @@ export default function Calendar() {
     updateMutation.mutate({
       id: draggingAppointment.id,
       data: {
-        ...draggingAppointment,
+        patientName: draggingAppointment.patientName,
+        patientDob: draggingAppointment.patientDob,
+        patientPhone: draggingAppointment.patientPhone,
+        patientEmail: draggingAppointment.patientEmail,
+        patientId: draggingAppointment.patientId,
         appointmentDate: newDateTime.toISOString(),
+        duration: draggingAppointment.duration,
+        scanType: draggingAppointment.scanType,
+        physicianId: draggingAppointment.physicianId,
+        sonographerId: draggingAppointment.sonographerId,
+        notes: draggingAppointment.notes,
+        status: draggingAppointment.status,
       },
     });
 
     setDraggingAppointment(null);
+  };
+
+  const handleResizeStart = (e: React.MouseEvent, apt: Appointment, edge: "top" | "bottom") => {
+    e.stopPropagation();
+    e.preventDefault();
+    setResizingAppointment({ apt, edge });
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault();
+    };
+    
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      
+      if (!resizingAppointment) return;
+      
+      const container = (upEvent.target as HTMLElement).closest(".relative");
+      if (!container) {
+        setResizingAppointment(null);
+        return;
+      }
+      
+      const rect = container.getBoundingClientRect();
+      const y = upEvent.clientY - rect.top;
+      const hour = Math.floor(y / 60) + 7;
+      const minutes = Math.round((y % 60) / 15) * 15;
+      
+      const aptDate = new Date(resizingAppointment.apt.appointmentDate);
+      
+      if (resizingAppointment.edge === "top") {
+        const newStartTime = new Date(aptDate);
+        newStartTime.setHours(hour, minutes, 0, 0);
+        const endTime = new Date(aptDate.getTime() + resizingAppointment.apt.duration * 60000);
+        const newDuration = Math.max(15, Math.round((endTime.getTime() - newStartTime.getTime()) / 60000));
+        
+        updateMutation.mutate({
+          id: resizingAppointment.apt.id,
+          data: {
+            patientName: resizingAppointment.apt.patientName,
+            patientDob: resizingAppointment.apt.patientDob,
+            patientPhone: resizingAppointment.apt.patientPhone,
+            patientEmail: resizingAppointment.apt.patientEmail,
+            patientId: resizingAppointment.apt.patientId,
+            appointmentDate: newStartTime.toISOString(),
+            duration: newDuration,
+            scanType: resizingAppointment.apt.scanType,
+            physicianId: resizingAppointment.apt.physicianId,
+            sonographerId: resizingAppointment.apt.sonographerId,
+            notes: resizingAppointment.apt.notes,
+            status: resizingAppointment.apt.status,
+          },
+        });
+      } else {
+        const newEndHour = hour;
+        const newEndMinutes = minutes;
+        const startTime = aptDate;
+        const endTime = new Date(aptDate);
+        endTime.setHours(newEndHour, newEndMinutes, 0, 0);
+        const newDuration = Math.max(15, Math.round((endTime.getTime() - startTime.getTime()) / 60000));
+        
+        updateMutation.mutate({
+          id: resizingAppointment.apt.id,
+          data: {
+            patientName: resizingAppointment.apt.patientName,
+            patientDob: resizingAppointment.apt.patientDob,
+            patientPhone: resizingAppointment.apt.patientPhone,
+            patientEmail: resizingAppointment.apt.patientEmail,
+            patientId: resizingAppointment.apt.patientId,
+            appointmentDate: resizingAppointment.apt.appointmentDate,
+            duration: newDuration,
+            scanType: resizingAppointment.apt.scanType,
+            physicianId: resizingAppointment.apt.physicianId,
+            sonographerId: resizingAppointment.apt.sonographerId,
+            notes: resizingAppointment.apt.notes,
+            status: resizingAppointment.apt.status,
+          },
+        });
+      }
+      
+      setResizingAppointment(null);
+    };
+    
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   };
 
   const handleEditAppointment = (appointment: Appointment) => {
@@ -546,14 +642,26 @@ export default function Calendar() {
                           draggable
                           onDragStart={(e) => handleDragStart(e, apt)}
                           onDragEnd={handleDragEnd}
-                          className={`absolute left-1 right-1 p-2 rounded cursor-grab active:cursor-grabbing border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
+                          className={`absolute left-1 right-1 rounded cursor-grab active:cursor-grabbing border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
                             draggingAppointment?.id === apt.id ? "opacity-50" : ""
                           }`}
                           style={{ top: `${top}px`, height: `${Math.max(height, 30)}px` }}
                           onClick={() => setViewingAppointment(apt)}
                         >
-                          <div className="text-sm font-medium truncate">{apt.patientName}</div>
-                          <div className="text-xs truncate">{format(new Date(apt.appointmentDate), "h:mm a")} - {apt.scanType}</div>
+                          <div
+                            className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
+                            onMouseDown={(e) => handleResizeStart(e, apt, "top")}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="p-2 pt-2">
+                            <div className="text-sm font-medium truncate">{apt.patientName}</div>
+                            <div className="text-xs truncate">{format(new Date(apt.appointmentDate), "h:mm a")} - {apt.scanType}</div>
+                          </div>
+                          <div
+                            className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
+                            onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
+                            onClick={(e) => e.stopPropagation()}
+                          />
                         </div>
                       );
                     })}
@@ -629,7 +737,7 @@ export default function Calendar() {
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, apt)}
                                 onDragEnd={handleDragEnd}
-                                className={`absolute left-0 right-0 mx-0.5 p-1 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
+                                className={`absolute left-0 right-0 mx-0.5 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
                                   draggingAppointment?.id === apt.id ? "opacity-50" : ""
                                 }`}
                                 style={{
@@ -641,8 +749,20 @@ export default function Calendar() {
                                   setViewingAppointment(apt);
                                 }}
                               >
-                                <div className="font-medium truncate">{apt.patientName}</div>
-                                <div className="text-[10px] truncate">{format(new Date(apt.appointmentDate), "h:mm a")}</div>
+                                <div
+                                  className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
+                                  onMouseDown={(e) => handleResizeStart(e, apt, "top")}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                <div className="p-1 pt-1.5">
+                                  <div className="font-medium truncate">{apt.patientName}</div>
+                                  <div className="text-[10px] truncate">{format(new Date(apt.appointmentDate), "h:mm a")}</div>
+                                </div>
+                                <div
+                                  className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
+                                  onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
                               </div>
                             );
                           })}
