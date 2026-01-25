@@ -235,6 +235,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Appointments API
+  app.get("/api/appointments", isAuthenticated, async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      if (startDate && endDate) {
+        const appointments = await storage.getAppointmentsByDateRange(
+          new Date(startDate as string),
+          new Date(endDate as string)
+        );
+        return res.json(appointments);
+      }
+      const appointments = await storage.getAllAppointments();
+      res.json(appointments);
+    } catch (error) {
+      console.error("Error fetching appointments:", error);
+      res.status(500).json({ error: "Failed to fetch appointments" });
+    }
+  });
+
+  app.get("/api/appointments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+      res.json(appointment);
+    } catch (error) {
+      console.error("Error fetching appointment:", error);
+      res.status(500).json({ error: "Failed to fetch appointment" });
+    }
+  });
+
+  app.post("/api/appointments", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req as any).user?.claims?.sub;
+      const appointmentData = {
+        ...req.body,
+        createdBy: userId,
+        appointmentDate: new Date(req.body.appointmentDate),
+      };
+      const appointment = await storage.createAppointment(appointmentData);
+      res.status(201).json(appointment);
+    } catch (error) {
+      console.error("Error creating appointment:", error);
+      res.status(500).json({ error: "Failed to create appointment" });
+    }
+  });
+
+  app.put("/api/appointments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updateData = {
+        ...req.body,
+        appointmentDate: req.body.appointmentDate ? new Date(req.body.appointmentDate) : undefined,
+      };
+      const appointment = await storage.updateAppointment(id, updateData);
+      if (!appointment) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+      res.json(appointment);
+    } catch (error) {
+      console.error("Error updating appointment:", error);
+      res.status(500).json({ error: "Failed to update appointment" });
+    }
+  });
+
+  app.delete("/api/appointments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteAppointment(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting appointment:", error);
+      res.status(500).json({ error: "Failed to delete appointment" });
+    }
+  });
+
   // Worksheets API
   app.get("/api/worksheets", isAuthenticated, async (req, res) => {
     try {
