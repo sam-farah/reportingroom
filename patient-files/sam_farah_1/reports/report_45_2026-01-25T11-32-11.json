@@ -1,0 +1,9 @@
+{
+  "id": 45,
+  "patientName": "sam farah",
+  "studyType": "Right LL Venous",
+  "findings": "The drawing on the Right LL Venous template indicates the presence of DVT (deep vein thrombosis) in the right lower limb. The annotations 'DVT' are marked twice along the vein, suggesting the thrombus is located in two segments. The presence of zigzag lines along the affected veins indicates venous reflux as per the legend provided. The affected veins are marked on the right anteromedial view of the leg, illustrating both reflux and the location of DVT.",
+  "impression": "The ultrasound drawing suggests deep vein thrombosis with associated venous reflux in the right lower limb anteromedial venous segments. Clinical correlation and further evaluation with duplex ultrasound are recommended for comprehensive management and treatment planning.",
+  "isFinalized": true,
+  "generatedAt": "2026-01-25T11:32:11.699Z"
+}
