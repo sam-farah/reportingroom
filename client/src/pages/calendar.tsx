@@ -48,6 +48,7 @@ export default function Calendar() {
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
+  const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
 
   const [formData, setFormData] = useState({
     patientName: "",
@@ -276,6 +277,39 @@ export default function Calendar() {
     setIsBookingDialogOpen(true);
   };
 
+  const handleDragStart = (e: React.DragEvent, appointment: Appointment) => {
+    setDraggingAppointment(appointment);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(appointment.id));
+  };
+
+  const handleDragEnd = () => {
+    setDraggingAppointment(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, targetDate: Date, targetHour: number) => {
+    e.preventDefault();
+    if (!draggingAppointment) return;
+
+    const newDateTime = new Date(targetDate);
+    newDateTime.setHours(targetHour, 0, 0, 0);
+
+    updateMutation.mutate({
+      id: draggingAppointment.id,
+      data: {
+        ...draggingAppointment,
+        appointmentDate: newDateTime.toISOString(),
+      },
+    });
+
+    setDraggingAppointment(null);
+  };
+
   const handleEditAppointment = (appointment: Appointment) => {
     const appointmentDate = new Date(appointment.appointmentDate);
     const scanTypesArray = appointment.scanType ? appointment.scanType.split(", ") : [];
@@ -486,7 +520,9 @@ export default function Calendar() {
                     {HOURS.map((hour) => (
                       <div 
                         key={hour} 
-                        className="h-[60px] border-b border-gray-200 hover:bg-gray-50 cursor-pointer"
+                        className={`h-[60px] border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors ${
+                          draggingAppointment ? "hover:bg-blue-100" : ""
+                        }`}
                         onClick={() => {
                           const clickedDate = new Date(currentDate);
                           clickedDate.setHours(hour, 0, 0, 0);
@@ -498,6 +534,8 @@ export default function Calendar() {
                           setEditingAppointment(null);
                           setIsBookingDialogOpen(true);
                         }}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, currentDate, hour)}
                       />
                     ))}
                     {getAppointmentsForDate(currentDate).map((apt) => {
@@ -505,7 +543,12 @@ export default function Calendar() {
                       return (
                         <div
                           key={apt.id}
-                          className={`absolute left-1 right-1 p-2 rounded cursor-pointer border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, apt)}
+                          onDragEnd={handleDragEnd}
+                          className={`absolute left-1 right-1 p-2 rounded cursor-grab active:cursor-grabbing border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
+                            draggingAppointment?.id === apt.id ? "opacity-50" : ""
+                          }`}
                           style={{ top: `${top}px`, height: `${Math.max(height, 30)}px` }}
                           onClick={() => setViewingAppointment(apt)}
                         >
@@ -558,7 +601,9 @@ export default function Calendar() {
                           {HOURS.map((hour) => (
                             <div
                               key={hour}
-                              className="h-[60px] border-b border-gray-100 cursor-pointer hover:bg-gray-50"
+                              className={`h-[60px] border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
+                                draggingAppointment ? "hover:bg-blue-100" : ""
+                              }`}
                               onClick={() => {
                                 const clickedDate = new Date(weekDay);
                                 clickedDate.setHours(hour, 0, 0, 0);
@@ -571,6 +616,8 @@ export default function Calendar() {
                                 setEditingAppointment(null);
                                 setIsBookingDialogOpen(true);
                               }}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleDrop(e, weekDay, hour)}
                             />
                           ))}
                           {dayAppointments.map((apt) => {
@@ -579,7 +626,12 @@ export default function Calendar() {
                             return (
                               <div
                                 key={apt.id}
-                                className={`absolute left-0 right-0 mx-0.5 p-1 rounded text-xs cursor-pointer border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, apt)}
+                                onDragEnd={handleDragEnd}
+                                className={`absolute left-0 right-0 mx-0.5 p-1 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
+                                  draggingAppointment?.id === apt.id ? "opacity-50" : ""
+                                }`}
                                 style={{
                                   top: `${top}px`,
                                   height: `${Math.max(height, 20)}px`,
