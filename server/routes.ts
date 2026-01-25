@@ -354,6 +354,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/patients/:id/digital-worksheets", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const digitalWorksheets = await storage.getPatientDigitalWorksheets(id);
+      res.json(digitalWorksheets);
+    } catch (error) {
+      console.error("Error fetching patient digital worksheets:", error);
+      res.status(500).json({ error: "Failed to fetch patient digital worksheets" });
+    }
+  });
+
   app.get("/api/patients/:id/reports", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);

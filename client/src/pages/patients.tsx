@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X } from "lucide-react";
 import { format } from "date-fns";
-import type { Patient, Worksheet, Report, Appointment } from "@shared/schema";
+import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet } from "@shared/schema";
 
 export default function Patients() {
   const { toast } = useToast();
@@ -21,7 +21,7 @@ export default function Patients() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'appointment'; id: number } | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment'; id: number } | null>(null);
   const [showPatientInfo, setShowPatientInfo] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -59,6 +59,17 @@ export default function Patients() {
       if (!selectedPatient) return [];
       const response = await fetch(`/api/patients/${selectedPatient.id}/worksheets`, { credentials: "include" });
       if (!response.ok) throw new Error("Failed to fetch worksheets");
+      return response.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const { data: patientDigitalWorksheets = [] } = useQuery<DigitalWorksheet[]>({
+    queryKey: ["/api/patients", selectedPatient?.id, "digital-worksheets"],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const response = await fetch(`/api/patients/${selectedPatient.id}/digital-worksheets`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch digital worksheets");
       return response.json();
     },
     enabled: !!selectedPatient,
@@ -207,6 +218,15 @@ export default function Patients() {
       isAmended: false,
       data: w,
     })),
+    ...patientDigitalWorksheets.map(dw => ({
+      type: 'digitalWorksheet' as const,
+      id: dw.id,
+      title: dw.patientName ? `${dw.studyType || 'Drawing'} - ${dw.patientName}` : (dw.studyType || 'Digital Worksheet'),
+      date: dw.createdAt ? format(new Date(dw.createdAt), "yyyy-MM-dd") : '',
+      status: dw.isDraft ? 'draft' : 'completed',
+      isAmended: false,
+      data: dw,
+    })),
     ...patientAppointments.map(a => ({
       type: 'appointment' as const,
       id: a.id,
@@ -225,6 +245,9 @@ export default function Patients() {
     }
     if (selectedDocument.type === 'worksheet') {
       return patientWorksheets.find(w => w.id === selectedDocument.id);
+    }
+    if (selectedDocument.type === 'digitalWorksheet') {
+      return patientDigitalWorksheets.find(dw => dw.id === selectedDocument.id);
     }
     if (selectedDocument.type === 'appointment') {
       return patientAppointments.find(a => a.id === selectedDocument.id);
@@ -348,6 +371,59 @@ export default function Patients() {
       );
     }
 
+    if (selectedDocument?.type === 'digitalWorksheet') {
+      const digitalWorksheet = doc as DigitalWorksheet;
+      return (
+        <div className="h-full overflow-auto">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg">
+            <div className="border-b pb-4 mb-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-xl font-bold">{digitalWorksheet.studyType || 'Digital Worksheet'}</h2>
+                  <p className="text-gray-600">Created: {digitalWorksheet.createdAt ? format(new Date(digitalWorksheet.createdAt), "PPP") : 'N/A'}</p>
+                </div>
+                <Badge variant={digitalWorksheet.isDraft ? "outline" : "default"}>
+                  {digitalWorksheet.isDraft ? "Draft" : "Completed"}
+                </Badge>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Patient Information</h3>
+                <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+                  <p><strong>Name:</strong> {digitalWorksheet.patientName}</p>
+                  {digitalWorksheet.patientDob && <p><strong>DOB:</strong> {digitalWorksheet.patientDob}</p>}
+                  <p><strong>Exam Date:</strong> {digitalWorksheet.examDate}</p>
+                </div>
+              </div>
+              {digitalWorksheet.drawingData && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Worksheet Drawing</h3>
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+                    <img 
+                      src={`/api/digital-worksheets/${digitalWorksheet.id}/image`} 
+                      alt="Digital Worksheet Drawing" 
+                      className="max-w-full rounded border"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              {digitalWorksheet.completedAt && (
+                <div className="border-t pt-4 mt-4">
+                  <p className="text-sm text-gray-500">
+                    Completed: {format(new Date(digitalWorksheet.completedAt), "PPP p")}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (selectedDocument?.type === 'appointment') {
       const appointment = doc as Appointment;
       return (
@@ -448,10 +524,12 @@ export default function Patients() {
                         <div className={`p-2 rounded ${
                           doc.type === 'report' ? 'bg-green-100 text-green-600' :
                           doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
+                          doc.type === 'digitalWorksheet' ? 'bg-orange-100 text-orange-600' :
                           'bg-blue-100 text-blue-600'
                         }`}>
                           {doc.type === 'report' ? <FileText className="w-4 h-4" /> :
                            doc.type === 'worksheet' ? <ClipboardList className="w-4 h-4" /> :
+                           doc.type === 'digitalWorksheet' ? <ClipboardList className="w-4 h-4" /> :
                            <Calendar className="w-4 h-4" />}
                         </div>
                         <div className="flex-1 min-w-0">

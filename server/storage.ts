@@ -166,6 +166,7 @@ export interface IStorage {
   updatePatient(id: number, patient: Partial<InsertPatientData>): Promise<Patient | undefined>;
   deletePatient(id: number): Promise<void>;
   getPatientWorksheets(patientId: number): Promise<Worksheet[]>;
+  getPatientDigitalWorksheets(patientId: number): Promise<DigitalWorksheet[]>;
   getPatientReports(patientId: number): Promise<Report[]>;
   getPatientAppointments(patientId: number): Promise<Appointment[]>;
 }
@@ -900,6 +901,10 @@ export class DatabaseStorage implements IStorage {
 
   async getPatientWorksheets(patientId: number): Promise<Worksheet[]> {
     return await db.select().from(worksheets).where(eq(worksheets.patientId, patientId)).orderBy(desc(worksheets.uploadedAt));
+  }
+
+  async getPatientDigitalWorksheets(patientId: number): Promise<DigitalWorksheet[]> {
+    return await db.select().from(digitalWorksheets).where(eq(digitalWorksheets.patientId, patientId)).orderBy(desc(digitalWorksheets.createdAt));
   }
 
   async getPatientReports(patientId: number): Promise<Report[]> {
