@@ -194,7 +194,10 @@ export default function Draw() {
       return await response.json();
     },
     onSuccess: () => {
-      // Exit fullscreen mode
+      // Exit component fullscreen mode
+      setIsFullscreen(false);
+      
+      // Exit browser fullscreen if active
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(console.error);
       }
@@ -205,6 +208,7 @@ export default function Draw() {
       });
       setCurrentWorksheet(null);
       setSelectedTemplate(null);
+      setShowCreateDraftDialog(false);
       
       // Small delay to ensure fullscreen exit completes before navigation
       setTimeout(() => {
