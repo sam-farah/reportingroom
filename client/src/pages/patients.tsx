@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X } from "lucide-react";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment } from "@shared/schema";
 
@@ -21,6 +21,8 @@ export default function Patients() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'appointment'; id: number } | null>(null);
+  const [showPatientInfo, setShowPatientInfo] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -185,194 +187,396 @@ export default function Patients() {
     }
   };
 
-  if (selectedPatient) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <Button variant="ghost" className="mb-4" onClick={() => setSelectedPatient(null)}>
-            <ChevronLeft className="w-4 h-4 mr-2" />
-            Back to Patient List
-          </Button>
+  // Combine all documents into a single list for EMR-style view
+  const allDocuments = [
+    ...patientReports.map(r => ({
+      type: 'report' as const,
+      id: r.id,
+      title: r.studyType || 'Report',
+      date: r.examDate || (r.generatedAt ? format(new Date(r.generatedAt), "yyyy-MM-dd") : ''),
+      status: r.isFinalized ? 'finalized' : r.isDraft ? 'draft' : 'pending',
+      isAmended: r.isAmended,
+      data: r,
+    })),
+    ...patientWorksheets.map(w => ({
+      type: 'worksheet' as const,
+      id: w.id,
+      title: w.originalName || 'Worksheet',
+      date: w.uploadedAt ? format(new Date(w.uploadedAt), "yyyy-MM-dd") : '',
+      status: w.ocrProcessed ? 'processed' : 'pending',
+      isAmended: false,
+      data: w,
+    })),
+    ...patientAppointments.map(a => ({
+      type: 'appointment' as const,
+      id: a.id,
+      title: a.scanType || 'Appointment',
+      date: a.appointmentDate ? format(new Date(a.appointmentDate), "yyyy-MM-dd") : '',
+      status: a.status || 'scheduled',
+      isAmended: false,
+      data: a,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="w-5 h-5" />
-                    Patient Details
-                  </CardTitle>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(selectedPatient)}>
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
+  const getSelectedDocumentData = () => {
+    if (!selectedDocument) return null;
+    if (selectedDocument.type === 'report') {
+      return patientReports.find(r => r.id === selectedDocument.id);
+    }
+    if (selectedDocument.type === 'worksheet') {
+      return patientWorksheets.find(w => w.id === selectedDocument.id);
+    }
+    if (selectedDocument.type === 'appointment') {
+      return patientAppointments.find(a => a.id === selectedDocument.id);
+    }
+    return null;
+  };
+
+  const renderDocumentPreview = () => {
+    const doc = getSelectedDocumentData();
+    if (!doc) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-gray-400">
+          <FileText className="w-16 h-16 mb-4" />
+          <p className="text-lg">Select a document to view</p>
+        </div>
+      );
+    }
+
+    if (selectedDocument?.type === 'report') {
+      const report = doc as Report;
+      return (
+        <div className="h-full overflow-auto">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg">
+            <div className="border-b pb-4 mb-4">
+              <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="text-xl font-semibold">{selectedPatient.firstName} {selectedPatient.lastName}</h3>
-                  {!selectedPatient.isActive && (
-                    <Badge variant="secondary" className="mt-1">Inactive</Badge>
-                  )}
+                  <h2 className="text-xl font-bold">{report.studyType}</h2>
+                  <p className="text-gray-600">Exam Date: {report.examDate}</p>
                 </div>
-                
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Calendar className="w-4 h-4" />
-                    <span>DOB: {selectedPatient.dateOfBirth}</span>
-                  </div>
-                  {selectedPatient.phone && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Phone className="w-4 h-4" />
-                      <span>{selectedPatient.phone}</span>
-                    </div>
-                  )}
-                  {selectedPatient.email && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Mail className="w-4 h-4" />
-                      <span>{selectedPatient.email}</span>
-                    </div>
-                  )}
-                  {(selectedPatient.address || selectedPatient.city) && (
-                    <div className="flex items-start gap-2 text-gray-600">
-                      <MapPin className="w-4 h-4 mt-0.5" />
-                      <span>
-                        {selectedPatient.address && <div>{selectedPatient.address}</div>}
-                        {selectedPatient.city && <div>{selectedPatient.city}, {selectedPatient.state} {selectedPatient.zipCode}</div>}
-                      </span>
-                    </div>
-                  )}
+                <div className="flex gap-2">
+                  {report.isFinalized && <Badge className="bg-green-600">Finalized</Badge>}
+                  {report.isAmended && <Badge variant="secondary">Amended</Badge>}
+                  {report.isDraft && <Badge variant="outline">Draft</Badge>}
                 </div>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Patient Information</h3>
+                <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+                  <p><strong>Name:</strong> {report.patientName}</p>
+                  <p><strong>DOB:</strong> {report.patientDob}</p>
+                </div>
+              </div>
 
-                {selectedPatient.insuranceProvider && (
-                  <div className="pt-2 border-t">
-                    <div className="text-sm font-medium">Insurance</div>
-                    <div className="text-sm text-gray-600">{selectedPatient.insuranceProvider}</div>
-                    {selectedPatient.insuranceId && (
-                      <div className="text-sm text-gray-600">ID: {selectedPatient.insuranceId}</div>
-                    )}
+              {report.indication && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Indication</h3>
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded whitespace-pre-wrap">
+                    {report.indication}
                   </div>
-                )}
+                </div>
+              )}
 
-                {selectedPatient.referringPhysician && (
-                  <div className="pt-2 border-t">
-                    <div className="text-sm font-medium">Referring Physician</div>
-                    <div className="text-sm text-gray-600">{selectedPatient.referringPhysician}</div>
+              <div>
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Findings</h3>
+                <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded whitespace-pre-wrap">
+                  {report.findings}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Impression</h3>
+                <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded whitespace-pre-wrap">
+                  {report.impression}
+                </div>
+              </div>
+
+              {report.isAmended && report.amendmentReason && (
+                <div>
+                  <h3 className="font-semibold text-orange-600 mb-2">Amendment Note</h3>
+                  <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded border border-orange-200">
+                    <p>{report.amendmentReason}</p>
+                    {report.amendedAt && <p className="text-sm text-gray-500 mt-2">Amended: {format(new Date(report.amendedAt), "PPP p")}</p>}
                   </div>
-                )}
+                </div>
+              )}
 
-                {selectedPatient.allergies && (
-                  <div className="pt-2 border-t">
-                    <div className="text-sm font-medium text-red-600">Allergies</div>
-                    <div className="text-sm text-gray-600">{selectedPatient.allergies}</div>
-                  </div>
-                )}
-
-                {selectedPatient.medicalHistory && (
-                  <div className="pt-2 border-t">
-                    <div className="text-sm font-medium">Medical History</div>
-                    <div className="text-sm text-gray-600">{selectedPatient.medicalHistory}</div>
-                  </div>
-                )}
-
-                {selectedPatient.notes && (
-                  <div className="pt-2 border-t">
-                    <div className="text-sm font-medium">Notes</div>
-                    <div className="text-sm text-gray-600">{selectedPatient.notes}</div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Patient Records</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="appointments">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="appointments">
-                      Appointments ({patientAppointments.length})
-                    </TabsTrigger>
-                    <TabsTrigger value="worksheets">
-                      Worksheets ({patientWorksheets.length})
-                    </TabsTrigger>
-                    <TabsTrigger value="reports">
-                      Reports ({patientReports.length})
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="appointments" className="mt-4">
-                    {patientAppointments.length === 0 ? (
-                      <div className="text-center text-gray-500 py-8">No appointments found</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {patientAppointments.map((apt) => (
-                          <div key={apt.id} className="p-3 border rounded-lg flex justify-between items-center">
-                            <div>
-                              <div className="font-medium">{format(new Date(apt.appointmentDate), "PPP p")}</div>
-                              <div className="text-sm text-gray-600">{apt.scanType}</div>
-                            </div>
-                            <Badge variant={apt.status === "completed" ? "secondary" : apt.status === "cancelled" ? "destructive" : "default"}>
-                              {apt.status}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="worksheets" className="mt-4">
-                    {patientWorksheets.length === 0 ? (
-                      <div className="text-center text-gray-500 py-8">No worksheets found</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {patientWorksheets.map((ws) => (
-                          <div key={ws.id} className="p-3 border rounded-lg flex justify-between items-center">
-                            <div>
-                              <div className="font-medium">{ws.originalName}</div>
-                              <div className="text-sm text-gray-600">
-                                Uploaded: {ws.uploadedAt ? format(new Date(ws.uploadedAt), "PPP") : "N/A"}
-                              </div>
-                            </div>
-                            <Badge variant={ws.ocrProcessed ? "default" : "secondary"}>
-                              {ws.ocrProcessed ? "Processed" : "Pending"}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="reports" className="mt-4">
-                    {patientReports.length === 0 ? (
-                      <div className="text-center text-gray-500 py-8">No reports found</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {patientReports.map((report) => (
-                          <div key={report.id} className="p-3 border rounded-lg flex justify-between items-center">
-                            <div>
-                              <div className="font-medium">{report.studyType}</div>
-                              <div className="text-sm text-gray-600">
-                                {report.examDate} | Generated: {format(new Date(report.generatedAt), "PPP")}
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              {report.isFinalized && <Badge variant="default">Finalized</Badge>}
-                              {report.isAmended && <Badge variant="secondary">Amended</Badge>}
-                              {report.isDraft && <Badge variant="outline">Draft</Badge>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
+              {report.isFinalized && (
+                <div className="border-t pt-4 mt-4">
+                  <p className="text-sm text-gray-500">
+                    Finalized: {report.finalizedAt ? format(new Date(report.finalizedAt), "PPP p") : 'N/A'}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+      );
+    }
+
+    if (selectedDocument?.type === 'worksheet') {
+      const worksheet = doc as Worksheet;
+      return (
+        <div className="h-full overflow-auto">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg">
+            <div className="border-b pb-4 mb-4">
+              <h2 className="text-xl font-bold">{worksheet.originalName}</h2>
+              <p className="text-gray-600">Uploaded: {worksheet.uploadedAt ? format(new Date(worksheet.uploadedAt), "PPP") : 'N/A'}</p>
+            </div>
+            <div className="space-y-4">
+              <Badge variant={worksheet.ocrProcessed ? "default" : "secondary"}>
+                {worksheet.ocrProcessed ? "OCR Processed" : "Pending Processing"}
+              </Badge>
+              {worksheet.filename && (
+                <div className="mt-4">
+                  <img 
+                    src={`/api/worksheets/${worksheet.id}/image`} 
+                    alt="Worksheet" 
+                    className="max-w-full rounded border"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (selectedDocument?.type === 'appointment') {
+      const appointment = doc as Appointment;
+      return (
+        <div className="h-full overflow-auto">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg">
+            <div className="border-b pb-4 mb-4">
+              <h2 className="text-xl font-bold">{appointment.scanType}</h2>
+              <p className="text-gray-600">{appointment.appointmentDate ? format(new Date(appointment.appointmentDate), "PPP p") : ''}</p>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge variant={appointment.status === "completed" ? "secondary" : appointment.status === "cancelled" ? "destructive" : "default"}>
+                  {appointment.status}
+                </Badge>
+              </div>
+              {appointment.notes && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Notes</h3>
+                  <p className="text-gray-600">{appointment.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  if (selectedPatient) {
+    return (
+      <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
+        {/* Patient Header Bar */}
+        <div className="bg-white dark:bg-gray-800 border-b shadow-sm px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" onClick={() => { setSelectedPatient(null); setSelectedDocument(null); }}>
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Back
+              </Button>
+              <div className="h-8 w-px bg-gray-300" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <User className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold">{selectedPatient.firstName} {selectedPatient.lastName}</h1>
+                  <div className="flex items-center gap-3 text-sm text-gray-600">
+                    <span>DOB: {selectedPatient.dateOfBirth}</span>
+                    {selectedPatient.phone && <span>{selectedPatient.phone}</span>}
+                    {selectedPatient.allergies && (
+                      <span className="text-red-600 font-medium">Allergies: {selectedPatient.allergies}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowPatientInfo(true)}>
+                <User className="w-4 h-4 mr-1" />
+                Full Details
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleEdit(selectedPatient)}>
+                <Edit className="w-4 h-4 mr-1" />
+                Edit
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content - EMR Style Split View */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Panel - Document List */}
+          <div className="w-80 bg-white dark:bg-gray-800 border-r flex flex-col">
+            <div className="p-3 border-b bg-gray-50 dark:bg-gray-700">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documents ({allDocuments.length})</h2>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {allDocuments.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No documents found</p>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {allDocuments.map((doc) => (
+                    <div
+                      key={`${doc.type}-${doc.id}`}
+                      className={`p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                        selectedDocument?.type === doc.type && selectedDocument?.id === doc.id
+                          ? 'bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500'
+                          : ''
+                      }`}
+                      onClick={() => setSelectedDocument({ type: doc.type, id: doc.id })}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded ${
+                          doc.type === 'report' ? 'bg-green-100 text-green-600' :
+                          doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
+                          'bg-blue-100 text-blue-600'
+                        }`}>
+                          {doc.type === 'report' ? <FileText className="w-4 h-4" /> :
+                           doc.type === 'worksheet' ? <ClipboardList className="w-4 h-4" /> :
+                           <Calendar className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{doc.title}</div>
+                          <div className="text-xs text-gray-500">{doc.date}</div>
+                          <div className="flex items-center gap-1 mt-1">
+                            <Badge variant="outline" className="text-xs px-1.5 py-0">
+                              {doc.type}
+                            </Badge>
+                            {doc.status === 'finalized' && (
+                              <CheckCircle className="w-3 h-3 text-green-500" />
+                            )}
+                            {doc.status === 'draft' && (
+                              <Clock className="w-3 h-3 text-yellow-500" />
+                            )}
+                            {doc.isAmended && (
+                              <AlertCircle className="w-3 h-3 text-orange-500" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Panel - Document Preview */}
+          <div className="flex-1 p-4 overflow-hidden bg-gray-50 dark:bg-gray-900">
+            {renderDocumentPreview()}
+          </div>
+        </div>
+
+        {/* Patient Info Modal */}
+        <Dialog open={showPatientInfo} onOpenChange={setShowPatientInfo}>
+          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <User className="w-5 h-5" />
+                Patient Details
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xl font-semibold">{selectedPatient.firstName} {selectedPatient.lastName}</h3>
+                {!selectedPatient.isActive && (
+                  <Badge variant="secondary" className="mt-1">Inactive</Badge>
+                )}
+              </div>
+              
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Calendar className="w-4 h-4" />
+                  <span>DOB: {selectedPatient.dateOfBirth}</span>
+                </div>
+                {selectedPatient.gender && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <User className="w-4 h-4" />
+                    <span>Gender: {selectedPatient.gender}</span>
+                  </div>
+                )}
+                {selectedPatient.phone && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Phone className="w-4 h-4" />
+                    <span>{selectedPatient.phone}</span>
+                  </div>
+                )}
+                {selectedPatient.email && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Mail className="w-4 h-4" />
+                    <span>{selectedPatient.email}</span>
+                  </div>
+                )}
+                {(selectedPatient.address || selectedPatient.city) && (
+                  <div className="flex items-start gap-2 text-gray-600">
+                    <MapPin className="w-4 h-4 mt-0.5" />
+                    <span>
+                      {selectedPatient.address && <div>{selectedPatient.address}</div>}
+                      {selectedPatient.city && <div>{selectedPatient.city}, {selectedPatient.state} {selectedPatient.zipCode}</div>}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {selectedPatient.insuranceProvider && (
+                <div className="pt-2 border-t">
+                  <div className="text-sm font-medium">Insurance</div>
+                  <div className="text-sm text-gray-600">{selectedPatient.insuranceProvider}</div>
+                  {selectedPatient.insuranceId && (
+                    <div className="text-sm text-gray-600">ID: {selectedPatient.insuranceId}</div>
+                  )}
+                </div>
+              )}
+
+              {selectedPatient.referringPhysician && (
+                <div className="pt-2 border-t">
+                  <div className="text-sm font-medium">Referring Physician</div>
+                  <div className="text-sm text-gray-600">{selectedPatient.referringPhysician}</div>
+                </div>
+              )}
+
+              {selectedPatient.allergies && (
+                <div className="pt-2 border-t">
+                  <div className="text-sm font-medium text-red-600">Allergies</div>
+                  <div className="text-sm text-gray-600">{selectedPatient.allergies}</div>
+                </div>
+              )}
+
+              {selectedPatient.medicalHistory && (
+                <div className="pt-2 border-t">
+                  <div className="text-sm font-medium">Medical History</div>
+                  <div className="text-sm text-gray-600">{selectedPatient.medicalHistory}</div>
+                </div>
+              )}
+
+              {selectedPatient.notes && (
+                <div className="pt-2 border-t">
+                  <div className="text-sm font-medium">Notes</div>
+                  <div className="text-sm text-gray-600">{selectedPatient.notes}</div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
