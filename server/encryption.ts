@@ -53,10 +53,22 @@ export class MedicalDataEncryption {
         return ciphertext.replace('DEV_UNENCRYPTED:', '');
       }
       
+      // If it doesn't look encrypted at all (no U2FsdGVk prefix), return as-is
+      if (!ciphertext.startsWith('U2FsdGVk')) {
+        return ciphertext;
+      }
+      
       const key = this.getEncryptionKey();
       const decrypted = CryptoJS.AES.decrypt(ciphertext, key);
+      const result = decrypted.toString(CryptoJS.enc.Utf8);
       
-      return decrypted.toString(CryptoJS.enc.Utf8);
+      // CryptoJS returns empty string if decryption fails (wrong key)
+      if (!result) {
+        console.warn('Decryption produced empty result - possible key mismatch, returning original');
+        return ciphertext;
+      }
+      
+      return result;
     } catch (error) {
       console.error('Medical data decryption failed:', error);
       if (process.env.NODE_ENV === 'development') {
@@ -170,10 +182,12 @@ export const encryptionMiddleware = {
 
 // Field-level encryption for specific sensitive fields
 export const FieldEncryption = {
-  // Fields that require encryption for regulatory compliance
+  // Fields that require encryption for regulatory compliance (both camelCase and snake_case)
   ENCRYPTED_FIELDS: [
     'patientName',
-    'patientDob', 
+    'patient_name',
+    'patientDob',
+    'patient_dob', 
     'findings',
     'impression',
     'indication',
