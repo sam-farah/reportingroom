@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
+import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -871,7 +872,7 @@ export default function ReportingRoom() {
                 <h3 className="text-lg font-semibold">Worksheet - {editingReport.patientName}</h3>
                 <p className="text-sm text-gray-600">Original drawing or uploaded worksheet</p>
               </div>
-              <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+              <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
                 {editingReport.digitalWorksheetId ? (
                   <div className="w-full h-full flex items-center justify-center">
                     <img 
@@ -879,37 +880,21 @@ export default function ReportingRoom() {
                       alt="Digital Worksheet"
                       className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
                       onError={(e) => {
-                        console.error('Failed to load digital worksheet image:', editingReport.digitalWorksheetId);
                         e.currentTarget.style.display = 'none';
                       }}
-                      onLoad={() => console.log('Successfully loaded digital worksheet:', editingReport.digitalWorksheetId)}
                     />
                   </div>
                 ) : editingReport.worksheetId ? (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <img 
-                      src={`/api/worksheets/${editingReport.worksheetId}/image`}
-                      alt="Uploaded Worksheet"
-                      className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
-                      onError={(e) => {
-                        console.error('Failed to load worksheet image:', editingReport.worksheetId);
-                        e.currentTarget.style.display = 'none';
-                      }}
-                      onLoad={() => console.log('Successfully loaded worksheet:', editingReport.worksheetId)}
-                    />
-                  </div>
+                  <WorksheetViewer 
+                    worksheetId={editingReport.worksheetId} 
+                    alt="Uploaded Worksheet"
+                  />
                 ) : (
                   <div className="text-center text-gray-500">
                     <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                     <p>No worksheet image available</p>
                   </div>
                 )}
-                
-                {/* Debug info */}
-                <div className="absolute bottom-4 right-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded">
-                  <div>Digital ID: {editingReport.digitalWorksheetId || 'None'}</div>
-                  <div>Worksheet ID: {editingReport.worksheetId || 'None'}</div>
-                </div>
               </div>
             </div>
             

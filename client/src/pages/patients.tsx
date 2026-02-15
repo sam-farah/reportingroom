@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload } from "lucide-react";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument } from "@shared/schema";
+import { WorksheetViewer } from "@/components/worksheet-viewer";
 
 export default function Patients() {
   const { toast } = useToast();
@@ -411,14 +412,10 @@ export default function Patients() {
                 {worksheet.ocrProcessed ? "OCR Processed" : "Pending Processing"}
               </Badge>
               {worksheet.filename && (
-                <div className="mt-4">
-                  <img 
-                    src={`/api/worksheets/${worksheet.id}/image`} 
-                    alt="Worksheet" 
-                    className="max-w-full rounded border"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
+                <div className="mt-4" style={{ minHeight: '400px' }}>
+                  <WorksheetViewer 
+                    worksheetId={worksheet.id} 
+                    alt={worksheet.originalName}
                   />
                 </div>
               )}
