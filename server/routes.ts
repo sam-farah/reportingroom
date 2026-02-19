@@ -65,6 +65,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public routes (no authentication required)
   // Login and callback routes are handled in setupAuth()
 
+  // Kiosk endpoints - no authentication required for patient self-check-in
+  app.get("/api/kiosk/appointments/today", async (req, res) => {
+    try {
+      const { search } = req.query;
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      
+      if (!search || typeof search !== 'string' || search.trim().length < 2) {
+        return res.json([]);
+      }
+
+      let todayAppointments = await storage.getAppointmentsByDateRange(startOfDay, endOfDay);
+      const searchLower = search.toLowerCase().trim();
+      todayAppointments = todayAppointments.filter(apt => 
+        apt.patientName.toLowerCase().includes(searchLower)
+      );
+
+      const safeAppointments = todayAppointments.map(apt => ({
+        id: apt.id,
+        patientName: apt.patientName,
+        appointmentDate: apt.appointmentDate,
+        duration: apt.duration,
+        scanType: apt.scanType,
+        status: apt.status,
+      }));
+
+      res.json(safeAppointments);
+    } catch (error) {
+      console.error("Kiosk search error:", error);
+      res.status(500).json({ error: "Failed to search appointments" });
+    }
+  });
+
+  app.post("/api/kiosk/checkin/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid appointment ID" });
+      }
+
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      const aptDate = new Date(appointment.appointmentDate);
+      if (aptDate < startOfDay || aptDate > endOfDay) {
+        return res.status(400).json({ error: "Can only check in for today's appointments" });
+      }
+
+      const updated = await storage.updateAppointment(id, { status: 'checked_in' });
+      res.json({ success: true, appointment: { id: updated?.id, patientName: updated?.patientName, status: updated?.status } });
+    } catch (error) {
+      console.error("Kiosk check-in error:", error);
+      res.status(500).json({ error: "Failed to check in" });
+    }
+  });
+
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {

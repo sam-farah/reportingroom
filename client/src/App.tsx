@@ -16,12 +16,14 @@ import StaffManagement from "@/pages/staff-management";
 import InvitationPage from "@/pages/invitation";
 import Calendar from "@/pages/calendar";
 import Patients from "@/pages/patients";
+import Kiosk from "@/pages/kiosk";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
   return (
     <Switch>
+      <Route path="/kiosk" component={Kiosk} />
       {isLoading || !isAuthenticated ? (
         <>
           <Route path="/" component={Landing} />

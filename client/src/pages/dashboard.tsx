@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool, Calendar as CalendarIcon, UserCircle } from "lucide-react";
+import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool, Calendar as CalendarIcon, UserCircle, Monitor } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,13 @@ export default function Dashboard() {
                 >
                   <UserCircle className="w-4 h-4 mr-2" />
                   Patients
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => window.open('/kiosk', '_blank')}
+                >
+                  <Monitor className="w-4 h-4 mr-2" />
+                  Kiosk
                 </Button>
 
                 {/* Admin Panel - Only visible to webmaster */}
