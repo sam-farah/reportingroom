@@ -392,37 +392,20 @@ export default function StaffManagement() {
             ) : (
               <div className="space-y-3">
                 {invitations.map((invitation: Invitation) => (
-                  <div key={invitation.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex-1">
-                      <div className="font-medium">{invitation.email}</div>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {invitation.role}
-                        </Badge>
-                        <div className="flex items-center text-xs text-gray-400">
-                          <Clock className="h-3 w-3 mr-1" />
-                          Sent {new Date(invitation.createdAt).toLocaleDateString()}
+                  <div key={invitation.id} className="p-3 border rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="font-medium">{invitation.email}</div>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <Badge variant="outline" className="text-xs">
+                            {invitation.role}
+                          </Badge>
+                          <div className="flex items-center text-xs text-gray-400">
+                            <Clock className="h-3 w-3 mr-1" />
+                            Sent {new Date(invitation.createdAt).toLocaleDateString()}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={async () => {
-                          const link = `${window.location.origin}/invite/${invitation.token}`;
-                          const success = await copyToClipboard(link);
-                          if (success) {
-                            toast({ title: "Copied!", description: "Invitation link copied to clipboard." });
-                          } else {
-                            toast({ title: "Copy failed", description: "Please copy this link manually: " + link, variant: "destructive" });
-                          }
-                        }}
-                        className="text-blue-600 hover:text-blue-800"
-                        title="Copy invitation link"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -432,6 +415,31 @@ export default function StaffManagement() {
                         title="Cancel invitation"
                       >
                         <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        readOnly
+                        value={`${window.location.origin}/invite/${invitation.token}`}
+                        className="flex-1 text-xs font-mono bg-gray-50 border rounded px-2 py-1.5 text-gray-600 cursor-text"
+                        onClick={(e) => (e.target as HTMLInputElement).select()}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const link = `${window.location.origin}/invite/${invitation.token}`;
+                          const success = await copyToClipboard(link);
+                          if (success) {
+                            toast({ title: "Copied!", description: "Invitation link copied to clipboard." });
+                          } else {
+                            toast({ title: "Copy failed", description: "Please copy this link manually.", variant: "destructive" });
+                          }
+                        }}
+                        className="text-blue-600 border-blue-200 hover:bg-blue-50 flex-shrink-0"
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-1" />
+                        Copy Link
                       </Button>
                     </div>
                   </div>
