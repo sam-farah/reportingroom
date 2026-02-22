@@ -1,11 +1,18 @@
 import { useState, useEffect } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Loader2, UserPlus } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CheckCircle, XCircle, Loader2, UserPlus, LogIn } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface InvitationDetails {
   id: number;
@@ -20,21 +27,56 @@ interface InvitationDetails {
   };
 }
 
+const loginSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+const registerSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string(),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
 export default function InvitationPage() {
   const { token } = useParams();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [invitation, setInvitation] = useState<InvitationDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loginForm = useForm({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  const registerForm = useForm({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { email: "", password: "", confirmPassword: "", firstName: "", lastName: "" },
+  });
+
   useEffect(() => {
-    if (token && !authLoading) {
+    if (token) {
       fetchInvitationDetails();
     }
-  }, [token, authLoading]);
+  }, [token]);
+
+  useEffect(() => {
+    if (invitation?.email) {
+      loginForm.setValue("email", invitation.email);
+      registerForm.setValue("email", invitation.email);
+    }
+  }, [invitation]);
 
   const fetchInvitationDetails = async () => {
     try {
@@ -53,35 +95,59 @@ export default function InvitationPage() {
     }
   };
 
-  const handleAcceptInvitation = async () => {
-    if (!isAuthenticated || !token) return;
+  const loginMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof loginSchema>) => {
+      return await apiRequest("/api/auth/login", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      handleAcceptInvitation();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Login Failed",
+        description: error.message || "Invalid email or password.",
+        variant: "destructive",
+      });
+    },
+  });
 
+  const registerMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof registerSchema>) => {
+      const { confirmPassword, ...registerData } = data;
+      return await apiRequest("/api/auth/register", "POST", registerData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      handleAcceptInvitation();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Registration Failed",
+        description: error.message || "Could not create account.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAcceptInvitation = async () => {
+    if (!token) return;
     setAccepting(true);
     try {
-      const response = await apiRequest(`/api/invitations/${token}/accept`, "POST");
-      if (response.ok) {
-        setAccepted(true);
-        toast({
-          title: "Welcome!",
-          description: `You've successfully joined ${invitation?.clinic?.name || 'the clinic'}`,
-        });
-        
-        // Redirect to dashboard after a short delay
-        setTimeout(() => {
-          window.location.href = "/";
-        }, 2000);
-      } else {
-        const errorData = await response.json();
-        toast({
-          title: "Failed to Accept Invitation",
-          description: errorData.message || "Please try again",
-          variant: "destructive",
-        });
-      }
-    } catch (err) {
+      await apiRequest(`/api/invitations/${token}/accept`, "POST");
+      setAccepted(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
-        title: "Error",
-        description: "Failed to accept invitation. Please try again.",
+        title: "Welcome!",
+        description: `You've successfully joined ${invitation?.clinic?.name || 'the clinic'}`,
+      });
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 2000);
+    } catch (err: any) {
+      toast({
+        title: "Failed to Accept Invitation",
+        description: err.message || "Please try again",
         variant: "destructive",
       });
     } finally {
@@ -89,37 +155,13 @@ export default function InvitationPage() {
     }
   };
 
-  if (authLoading || loading) {
+  if (loading || authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Loading invitation...</p>
         </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <UserPlus className="w-12 h-12 mx-auto mb-4 text-blue-600" />
-            <CardTitle>Login Required</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            <p className="text-gray-600">
-              You need to be logged in to accept this clinic invitation.
-            </p>
-            <Button 
-              className="w-full" 
-              onClick={() => window.location.href = "/api/login"}
-            >
-              Login to Continue
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     );
   }
@@ -134,11 +176,8 @@ export default function InvitationPage() {
           </CardHeader>
           <CardContent className="text-center space-y-4">
             <p className="text-gray-600">{error}</p>
-            <Button 
-              variant="outline" 
-              onClick={() => window.location.href = "/"}
-            >
-              Go to Dashboard
+            <Button variant="outline" onClick={() => setLocation("/login")}>
+              Go to Login
             </Button>
           </CardContent>
         </Card>
@@ -170,66 +209,198 @@ export default function InvitationPage() {
     );
   }
 
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <UserPlus className="w-12 h-12 mx-auto mb-4 text-blue-600" />
+            <CardTitle>Clinic Invitation</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {invitation && (
+              <div className="text-center space-y-3">
+                <p className="text-gray-600">You've been invited to join</p>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <h3 className="font-semibold text-blue-900">
+                    {invitation.clinic?.name || 'Medical Clinic'}
+                  </h3>
+                  {invitation.clinic?.address && (
+                    <p className="text-sm text-blue-700 mt-1">{invitation.clinic.address}</p>
+                  )}
+                </div>
+                <div className="bg-gray-50 p-3 rounded border">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Role:</span> {invitation.role}
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className="flex space-x-3">
+              <Button variant="outline" className="flex-1" onClick={() => setLocation("/")}>
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={handleAcceptInvitation}
+                disabled={accepting}
+              >
+                {accepting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Accepting...
+                  </>
+                ) : (
+                  "Accept Invitation"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-teal-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <UserPlus className="w-12 h-12 mx-auto mb-4 text-blue-600" />
-          <CardTitle>Clinic Invitation</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          <CardTitle>You're Invited!</CardTitle>
           {invitation && (
-            <div className="text-center space-y-3">
-              <p className="text-gray-600">
-                You've been invited to join
-              </p>
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <h3 className="font-semibold text-blue-900">
-                  {invitation.clinic?.name || 'Medical Clinic'}
-                </h3>
-                {invitation.clinic?.address && (
-                  <p className="text-sm text-blue-700 mt-1">
-                    {invitation.clinic.address}
-                  </p>
-                )}
-              </div>
-              <div className="bg-gray-50 p-3 rounded border">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Role:</span> {invitation.role}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Email:</span> {invitation.email}
-                </p>
-              </div>
-              <p className="text-xs text-gray-500">
-                Invitation expires: {new Date(invitation.expiresAt).toLocaleDateString()}
-              </p>
-            </div>
+            <CardDescription>
+              Join <span className="font-semibold">{invitation.clinic?.name || 'the clinic'}</span> as {invitation.role}
+            </CardDescription>
           )}
-          
-          <div className="flex space-x-3">
-            <Button 
-              variant="outline" 
-              className="flex-1"
-              onClick={() => window.location.href = "/"}
-            >
-              Cancel
-            </Button>
-            <Button 
-              className="flex-1 bg-blue-600 hover:bg-blue-700" 
-              onClick={handleAcceptInvitation}
-              disabled={accepting}
-            >
-              {accepting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Accepting...
-                </>
-              ) : (
-                "Accept Invitation"
-              )}
-            </Button>
-          </div>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="register" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="register">Create Account</TabsTrigger>
+              <TabsTrigger value="login">Sign In</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="register" className="space-y-4 mt-4">
+              <Form {...registerForm}>
+                <form onSubmit={registerForm.handleSubmit((data) => registerMutation.mutate(data))} className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={registerForm.control}
+                      name="firstName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>First Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="John" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={registerForm.control}
+                      name="lastName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Last Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Doe" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={registerForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={registerForm.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="At least 6 characters" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={registerForm.control}
+                    name="confirmPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Confirm Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Re-enter password" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
+                    {registerMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating Account...</>
+                    ) : (
+                      <><UserPlus className="w-4 h-4 mr-2" />Create Account & Join</>
+                    )}
+                  </Button>
+                </form>
+              </Form>
+            </TabsContent>
+
+            <TabsContent value="login" className="space-y-4 mt-4">
+              <Form {...loginForm}>
+                <form onSubmit={loginForm.handleSubmit((data) => loginMutation.mutate(data))} className="space-y-3">
+                  <FormField
+                    control={loginForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={loginForm.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
+                    {loginMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Signing in...</>
+                    ) : (
+                      <><LogIn className="w-4 h-4 mr-2" />Sign In & Join</>
+                    )}
+                  </Button>
+                </form>
+              </Form>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

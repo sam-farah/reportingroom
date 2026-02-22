@@ -5,15 +5,25 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import Dashboard from "@/pages/dashboard";
-import Landing from "@/pages/landing";
+import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
 import NotFound from "@/pages/not-found";
 import ClinicRegistration from "@/pages/clinic-registration";
 import InvitationPage from "@/pages/invitation";
 import Kiosk from "@/pages/kiosk";
 import OnboardingPage from "@/pages/onboarding";
+import { Loader2 } from "lucide-react";
 
 function Router() {
   const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   const needsOnboarding = isAuthenticated && user && !user.clinicId;
 
@@ -21,10 +31,11 @@ function Router() {
     <Switch>
       <Route path="/kiosk" component={Kiosk} />
       <Route path="/invite/:token" component={InvitationPage} />
-      {isLoading || !isAuthenticated ? (
+      {!isAuthenticated ? (
         <>
-          <Route path="/" component={Landing} />
-          <Route path="/register-clinic" component={ClinicRegistration} />
+          <Route path="/login" component={LoginPage} />
+          <Route path="/register" component={RegisterPage} />
+          <Route>{() => <LoginPage />}</Route>
         </>
       ) : needsOnboarding ? (
         <>

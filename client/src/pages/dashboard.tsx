@@ -5,6 +5,8 @@ import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import UserPanel from "@/components/user-panel";
 import AdminPanel from "@/components/admin-panel";
 import Templates from "./templates";
@@ -17,10 +19,17 @@ import Patients from "./patients";
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates" | "reporting-room" | "physicians" | "staff" | "draw" | "calendar" | "patients">("user");
 
-  const handleLogout = () => {
-    window.location.href = "/api/logout";
+  const handleLogout = async () => {
+    try {
+      await apiRequest("/api/auth/logout", "POST");
+      queryClient.clear();
+      window.location.href = "/login";
+    } catch {
+      window.location.href = "/login";
+    }
   };
 
   const isOwnerOrAdmin = user?.role === 'clinic_owner' || user?.role === 'admin';

@@ -50,15 +50,15 @@ export const clinics = pgTable("clinics", {
 });
 
 // User storage table.
-// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().notNull(),
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
+  passwordHash: varchar("password_hash"),
   profileImageUrl: varchar("profile_image_url"),
   clinicId: integer("clinic_id").references(() => clinics.id),
-  role: varchar("role", { length: 50 }).notNull().default('sonographer'), // 'admin', 'sonographer', 'clinic_owner'
+  role: varchar("role", { length: 50 }).notNull().default('sonographer'),
   isActive: boolean("is_active").notNull().default(true),
   invitedBy: varchar("invited_by").references(() => users.id),
   invitedAt: timestamp("invited_at"),

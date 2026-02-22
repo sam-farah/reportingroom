@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -179,16 +179,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
 
   // Signature upload endpoint
   app.post("/api/upload-signature", isAuthenticated, upload.single('signature'), async (req, res) => {
@@ -2395,7 +2385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/clinics/register", isAuthenticated, async (req: any, res) => {
     try {
       const clinicData = insertClinicSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.session.userId;
       
       const existingClinic = await storage.getClinicByEmail(clinicData.email);
       if (existingClinic) {
@@ -2430,7 +2420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User invitation routes
   app.post("/api/invitations", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       if (!user?.clinicId || !['admin', 'clinic_owner'].includes(user.role)) {
         return res.status(403).json({ message: "Insufficient permissions" });
       }
@@ -2479,7 +2469,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/invitations", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       if (!user?.clinicId || !['admin', 'clinic_owner'].includes(user.role)) {
         return res.status(403).json({ message: "Insufficient permissions" });
       }
@@ -2521,7 +2511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/invitations/:token/accept", isAuthenticated, async (req: any, res) => {
     try {
       const { token } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.session.userId;
 
       await storage.acceptInvitation(token, userId);
       res.json({ message: "Invitation accepted successfully" });
@@ -2534,7 +2524,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Clinic users route
   app.get("/api/clinic/users", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       if (!user?.clinicId) {
         return res.status(403).json({ message: "No clinic associated" });
       }
@@ -2550,7 +2540,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Staff and invitation management routes (owner/admin only)
   app.get('/api/staff', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.session.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser?.clinicId) {
@@ -2570,7 +2560,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/invitations/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.session.userId;
       const currentUser = await storage.getUser(userId);
       const invitationId = parseInt(req.params.id);
       
@@ -2588,7 +2578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/staff/:id/deactivate', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.session.userId;
       const currentUser = await storage.getUser(userId);
       const staffId = req.params.id;
       
