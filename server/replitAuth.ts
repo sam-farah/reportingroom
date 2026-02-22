@@ -74,24 +74,26 @@ async function upsertUser(claims: any) {
       last_name: claims["last_name"]
     });
     
-    // Validate required fields
     if (!claims["sub"]) {
       throw new Error('Missing required field: sub');
     }
     
+    const userId = String(claims["sub"]);
+    const existingUser = await storage.getUser(userId);
+    
     const userData = {
-      id: String(claims["sub"]), // Ensure it's a string
+      id: userId,
       email: claims["email"] || null,
       firstName: claims["first_name"] || null,
       lastName: claims["last_name"] || null,
       profileImageUrl: claims["profile_image_url"] || null,
-      role: 'sonographer' as const, // Default role for new users
-      isActive: true, // Default active status
+      role: existingUser?.role || 'sonographer',
+      isActive: existingUser?.isActive ?? true,
     };
     
     console.log('Attempting to upsert user data:', userData);
     const result = await storage.upsertUser(userData);
-    console.log('User upserted successfully:', { id: result.id, email: result.email });
+    console.log('User upserted successfully:', { id: result.id, email: result.email, role: result.role });
     
     return result;
   } catch (error) {

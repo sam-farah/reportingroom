@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -10,20 +10,22 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertClinicSchema } from "@shared/schema";
 import type { z } from "zod";
-import { Link } from "wouter";
-import { ArrowLeft, Building2, CheckCircle } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { ArrowLeft, Building2, CheckCircle, Loader2 } from "lucide-react";
 
 type ClinicFormData = z.infer<typeof insertClinicSchema>;
 
 export default function ClinicRegistration() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { toast } = useToast();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
 
   const form = useForm<ClinicFormData>({
     resolver: zodResolver(insertClinicSchema),
     defaultValues: {
       name: "",
-      email: "",
+      email: user?.email || "",
       phone: "",
       address: "",
       city: "",
@@ -38,9 +40,10 @@ export default function ClinicRegistration() {
     },
     onSuccess: () => {
       setIsSubmitted(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
         title: "Registration Successful",
-        description: "Your clinic has been registered successfully. You can now log in to access your dashboard.",
+        description: "Your clinic has been registered. You are now the clinic owner.",
       });
     },
     onError: (error: Error) => {
@@ -56,6 +59,43 @@ export default function ClinicRegistration() {
     registerMutation.mutate(data);
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center p-4">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+              <Building2 className="h-8 w-8 text-blue-600" />
+            </div>
+            <CardTitle className="text-2xl">Sign In First</CardTitle>
+            <CardDescription>
+              You need to sign in before registering your clinic.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button 
+              className="w-full" 
+              onClick={() => window.location.href = "/api/login"}
+            >
+              Sign In to Continue
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => window.location.href = "/"}>
+              Back to Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (isSubmitted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center p-4">
@@ -66,19 +106,12 @@ export default function ClinicRegistration() {
             </div>
             <CardTitle className="text-2xl text-green-700">Registration Complete!</CardTitle>
             <CardDescription>
-              Your clinic has been successfully registered. You can now log in to access your dashboard.
+              Your clinic has been registered and you are now the clinic owner. You can invite your team from the dashboard.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button asChild className="w-full">
-              <Link href="/api/login">
-                Log In to Dashboard
-              </Link>
-            </Button>
-            <Button variant="outline" asChild className="w-full">
-              <Link href="/">
-                Back to Home
-              </Link>
+            <Button className="w-full" onClick={() => window.location.href = "/"}>
+              Go to Dashboard
             </Button>
           </CardContent>
         </Card>
@@ -90,11 +123,9 @@ export default function ClinicRegistration() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
         <div className="mb-6">
-          <Button variant="ghost" asChild className="mb-4">
-            <Link href="/">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Home
-            </Link>
+          <Button variant="ghost" onClick={() => window.location.href = "/"} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
           </Button>
         </div>
 
@@ -105,7 +136,7 @@ export default function ClinicRegistration() {
             </div>
             <CardTitle className="text-3xl">Register Your Clinic</CardTitle>
             <CardDescription>
-              Join Reporting Room to streamline your medical reporting workflow
+              Set up your clinic to start using Reporting Room. You'll be the clinic owner and can invite your team.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -131,7 +162,7 @@ export default function ClinicRegistration() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email Address *</FormLabel>
+                        <FormLabel>Clinic Email *</FormLabel>
                         <FormControl>
                           <Input type="email" placeholder="clinic@example.com" {...field} />
                         </FormControl>
@@ -223,13 +254,6 @@ export default function ClinicRegistration() {
                   >
                     {registerMutation.isPending ? "Registering..." : "Register Clinic"}
                   </Button>
-                </div>
-
-                <div className="text-center text-sm text-gray-600">
-                  Already have an account?{" "}
-                  <Link href="/api/login" className="text-blue-600 hover:underline">
-                    Log in here
-                  </Link>
                 </div>
               </form>
             </Form>

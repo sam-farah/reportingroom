@@ -1,6 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import multer from "multer";
 import path from "path";
@@ -2389,19 +2392,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Clinic registration routes (public)
-  app.post("/api/clinics/register", async (req, res) => {
+  app.post("/api/clinics/register", isAuthenticated, async (req: any, res) => {
     try {
       const clinicData = insertClinicSchema.parse(req.body);
+      const userId = req.user.claims.sub;
       
-      // Check if clinic already exists
       const existingClinic = await storage.getClinicByEmail(clinicData.email);
       if (existingClinic) {
         return res.status(400).json({ message: "A clinic with this email already exists" });
       }
 
+      const currentUser = await storage.getUser(userId);
+      if (currentUser?.clinicId) {
+        return res.status(400).json({ message: "You are already associated with a clinic" });
+      }
+
       const clinic = await storage.createClinic(clinicData);
-      res.status(201).json(clinic);
+
+      await db
+        .update(users)
+        .set({
+          clinicId: clinic.id,
+          role: 'clinic_owner',
+          joinedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, userId));
+
+      const updatedUser = await storage.getUser(userId);
+      res.status(201).json({ clinic, user: updatedUser });
     } catch (error) {
       console.error("Clinic registration error:", error);
       res.status(400).json({ message: "Failed to register clinic" });
