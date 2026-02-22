@@ -266,7 +266,7 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(userInvitations)
-      .where(eq(userInvitations.clinicId, clinicId))
+      .where(and(eq(userInvitations.clinicId, clinicId), eq(userInvitations.isActive, true)))
       .orderBy(desc(userInvitations.createdAt));
   }
 

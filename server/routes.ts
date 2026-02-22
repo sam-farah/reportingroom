@@ -784,7 +784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/reports/:id/finalize", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = (req as any).user.claims.sub;
+      const userId = req.session.userId;
       
       const report = await storage.finalizeReport(id, userId);
       if (!report) {
@@ -806,7 +806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid report ID" });
       }
 
-      const userId = (req as any).user.claims.sub;
+      const userId = req.session.userId;
       const { reason, ...reportUpdates } = req.body;
 
       if (!reason || reason.trim() === '') {
@@ -843,7 +843,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get user's clinic information
-      const user = await storage.getUser((req as any).user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       let clinic = null;
       if (user?.clinicId) {
         clinic = await storage.getClinic(user.clinicId);
@@ -993,7 +993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get user's clinic information
-      const userId = (req as any).user.claims.sub;
+      const userId = req.session.userId;
       console.log('PDF Generation - Getting user data for:', userId);
       const user = await storage.getUser(userId);
       console.log('PDF Generation - User found:', user ? { id: user.id, clinicId: user.clinicId } : 'Not found');
@@ -1327,7 +1327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const template = await storage.getReportTemplate(templateId) || await storage.getReportTemplate(1);
 
       // Get user's clinic information
-      const user = await storage.getUser((req as any).user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       let clinic = null;
       if (user?.clinicId) {
         clinic = await storage.getClinic(user.clinicId);
@@ -1783,7 +1783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const logoUrl = `/uploads/${req.file.filename}`;
-      const user = await storage.getUser((req as any).user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       if (user?.clinicId) {
         await storage.updateClinic(user.clinicId, { kioskLogoUrl: logoUrl } as any);
       }
@@ -1798,7 +1798,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Save kiosk settings
   app.put("/api/kiosk/settings", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req as any).user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       if (!user?.clinicId) {
         return res.status(400).json({ error: "No clinic associated" });
       }
@@ -1829,7 +1829,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const logoUrl = `/uploads/${req.file.filename}`;
       
       // Update clinic with new logo URL
-      const user = await storage.getUser((req as any).user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       if (user?.clinicId) {
         await storage.updateClinicLogo(user.clinicId, logoUrl);
       }
@@ -1844,7 +1844,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get clinic info
   app.get("/api/clinic", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req as any).user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       if (!user?.clinicId) {
         return res.status(400).json({ error: "No clinic associated" });
       }
@@ -1864,7 +1864,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update clinic info
   app.put("/api/clinic/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req as any).user.claims.sub);
+      const user = await storage.getUser(req.session.userId);
       if (!user?.clinicId) {
         return res.status(400).json({ error: "No clinic associated" });
       }
@@ -2595,8 +2595,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Webmaster-only admin endpoints
-  const isWebmaster = (req: any, res: any, next: any) => {
-    if (!req.isAuthenticated() || req.user?.claims?.email !== 'contact@samfarah.com') {
+  const isWebmaster = async (req: any, res: any, next: any) => {
+    if (!req.session.userId) {
+      return res.status(403).json({ message: 'Webmaster access required' });
+    }
+    const user = await storage.getUser(req.session.userId);
+    if (!user || user.email !== 'contact@samfarah.com') {
       return res.status(403).json({ message: 'Webmaster access required' });
     }
     next();
