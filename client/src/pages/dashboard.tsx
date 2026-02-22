@@ -3,6 +3,7 @@ import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenToo
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import UserPanel from "@/components/user-panel";
 import AdminPanel from "@/components/admin-panel";
@@ -22,9 +23,12 @@ export default function Dashboard() {
     window.location.href = "/api/logout";
   };
 
+  const isOwnerOrAdmin = user?.role === 'clinic_owner' || user?.role === 'admin';
+
+  const roleLabel = user?.role === 'clinic_owner' ? 'Owner' : user?.role === 'admin' ? 'Admin' : 'Staff';
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center h-16 gap-4">
@@ -94,22 +98,34 @@ export default function Dashboard() {
                   Patients
                 </Button>
 
-                {/* Admin Panel - Only visible to webmaster */}
-                {user?.email === "contact@samfarah.com" && (
-                  <Button
-                    variant={activePanel === "admin" ? "default" : "ghost"}
-                    className={activePanel === "admin" ? "medical-btn-secondary" : ""}
-                    onClick={() => setActivePanel("admin")}
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    Admin Panel
-                  </Button>
+                {isOwnerOrAdmin && (
+                  <>
+                    <Button
+                      variant={activePanel === "staff" ? "default" : "ghost"}
+                      className={activePanel === "staff" ? "medical-btn-secondary" : ""}
+                      onClick={() => setActivePanel("staff")}
+                    >
+                      <Users className="w-4 h-4 mr-2" />
+                      Team
+                    </Button>
+                    <Button
+                      variant={activePanel === "admin" ? "default" : "ghost"}
+                      className={activePanel === "admin" ? "medical-btn-secondary" : ""}
+                      onClick={() => setActivePanel("admin")}
+                    >
+                      <Settings className="w-4 h-4 mr-2" />
+                      Admin
+                    </Button>
+                  </>
                 )}
               </div>
               
               <div className="flex items-center space-x-3">
                 <div className="text-sm text-gray-700">
-                  <span>{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}</span>
+                  <div className="flex items-center gap-2">
+                    <span>{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}</span>
+                    <Badge variant="outline" className="text-xs">{roleLabel}</Badge>
+                  </div>
                   {user?.email && user?.firstName && (
                     <div className="text-xs text-gray-500">{user.email}</div>
                   )}
@@ -128,7 +144,6 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      {/* Main Content */}
       {activePanel === "user" ? (
         <UserPanel />
       ) : activePanel === "draw" ? (
@@ -139,19 +154,18 @@ export default function Dashboard() {
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
         <Physicians />
-      ) : activePanel === "staff" ? (
+      ) : activePanel === "staff" && isOwnerOrAdmin ? (
         <StaffManagement />
       ) : activePanel === "calendar" ? (
         <Calendar />
       ) : activePanel === "patients" ? (
         <Patients />
-      ) : activePanel === "admin" && user?.email === "contact@samfarah.com" ? (
+      ) : activePanel === "admin" && isOwnerOrAdmin ? (
         <AdminPanel />
       ) : (
         <UserPanel />
       )}
 
-      {/* Logo with text in bottom right */}
       <div className="fixed bottom-4 right-4 z-10">
         <img 
           src={logoWithTextPath} 

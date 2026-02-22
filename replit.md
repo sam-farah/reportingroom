@@ -39,9 +39,16 @@ Preferred communication style: Simple, everyday language.
 - **Authentication System**: Replit OpenID Connect integration
 - **Session Management**: PostgreSQL-backed sessions with connect-pg-simple
 - **Security**: Full authentication required for all API endpoints
-- **User Management**: Automatic user creation/updates via OpenID claims
+- **User Management**: Automatic user creation/updates via OpenID claims (preserves existing role/clinicId on login)
+- **Role-Based Access Control**: Three roles - `clinic_owner`, `admin`, `sonographer`
+  - `clinic_owner`: Full access including Team management, Admin Panel, and invitations
+  - `admin`: Same access as clinic_owner (can manage staff/invitations)
+  - `sonographer`: Standard user access (upload, reports, templates, calendar, patients)
+- **Multi-Tenant**: Each clinic is a separate tenant with its own staff, patients, and data
+- **User Onboarding Flow**: New users without a clinic see onboarding page (register clinic or accept invitation)
+- **Invitation System**: Owners/admins create invitation links that new users can accept to join the clinic
 
-**Rationale**: Session-based authentication is appropriate for this medical application where security and audit trails are critical.
+**Rationale**: Session-based authentication is appropriate for this medical application where security and audit trails are critical. Role-based access ensures proper data isolation between clinics.
 
 ### Key Components
 

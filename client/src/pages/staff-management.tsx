@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Mail, Clock, CheckCircle, XCircle, Trash2, Users } from "lucide-react";
+import { Plus, Mail, Clock, CheckCircle, XCircle, Trash2, Users, Copy, Link2 } from "lucide-react";
 import { z } from "zod";
 
 const inviteSchema = z.object({
@@ -47,6 +47,7 @@ interface StaffMember {
 
 export default function StaffManagement() {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [lastInviteLink, setLastInviteLink] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -73,12 +74,18 @@ export default function StaffManagement() {
 
   const inviteMutation = useMutation({
     mutationFn: async (data: InviteFormData) => {
-      return await apiRequest("/api/invitations", "POST", data);
+      const res = await apiRequest("/api/invitations", "POST", data);
+      return res;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
+      const token = data?.token;
+      if (token) {
+        const link = `${window.location.origin}/invite/${token}`;
+        setLastInviteLink(link);
+      }
       toast({
-        title: "Invitation Sent",
-        description: "The staff invitation has been sent successfully.",
+        title: "Invitation Created",
+        description: "Share the invitation link with your team member.",
       });
       form.reset();
       setIsInviteDialogOpen(false);
@@ -218,8 +225,44 @@ export default function StaffManagement() {
         </div>
       </div>
 
+      {lastInviteLink && (
+        <Card className="mb-6 border-green-200 bg-green-50">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Link2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-green-800">Invitation link created! Share it with your team member:</p>
+                  <p className="text-xs text-green-700 truncate font-mono mt-1">{lastInviteLink}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-green-300 text-green-700 hover:bg-green-100"
+                  onClick={() => {
+                    navigator.clipboard.writeText(lastInviteLink);
+                    toast({ title: "Copied!", description: "Invitation link copied to clipboard." });
+                  }}
+                >
+                  <Copy className="h-4 w-4 mr-1" />
+                  Copy
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setLastInviteLink(null)}
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Current Staff Members */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
