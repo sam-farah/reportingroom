@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes } from "date-fns";
 import type { Appointment, Physician, Sonographer, Patient } from "@shared/schema";
 
@@ -1028,6 +1028,23 @@ export default function Calendar() {
                   <span className={`ml-auto px-2 py-1 text-xs rounded-full ${STATUS_COLORS[viewingAppointment.status]}`}>
                     {viewingAppointment.status.replace("_", " ")}
                   </span>
+                  {viewingAppointment.status === "checked_in" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                      onClick={() => {
+                        updateMutation.mutate({
+                          id: viewingAppointment.id,
+                          data: { status: "scheduled" },
+                        });
+                        setViewingAppointment({ ...viewingAppointment, status: "scheduled" });
+                      }}
+                    >
+                      <Undo2 className="w-3 h-3 mr-1" />
+                      Undo
+                    </Button>
+                  )}
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3 text-sm">
