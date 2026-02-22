@@ -49,7 +49,7 @@ import {
   type InsertAppointment
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, gte, lte, and, or, ilike } from "drizzle-orm";
+import { eq, desc, gte, lte, and, or, ilike, sql } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Interface for storage operations
@@ -885,7 +885,8 @@ export class DatabaseStorage implements IStorage {
         ilike(patients.firstName, searchTerm),
         ilike(patients.lastName, searchTerm),
         ilike(patients.phone, searchTerm),
-        ilike(patients.email, searchTerm)
+        ilike(patients.email, searchTerm),
+        sql`(${patients.firstName} || ' ' || ${patients.lastName}) ILIKE ${searchTerm}`
       )
     ).orderBy(patients.lastName, patients.firstName);
   }
