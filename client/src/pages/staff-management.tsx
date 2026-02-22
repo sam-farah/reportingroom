@@ -29,6 +29,7 @@ interface Invitation {
   id: number;
   email: string;
   role: string;
+  token: string;
   invitedBy: string;
   createdAt: string;
   acceptedAt?: string;
@@ -369,15 +370,31 @@ export default function StaffManagement() {
                         </div>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => cancelInvitationMutation.mutate(invitation.id)}
-                      disabled={cancelInvitationMutation.isPending}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const link = `${window.location.origin}/invite/${invitation.token}`;
+                          navigator.clipboard.writeText(link);
+                          toast({ title: "Copied!", description: "Invitation link copied to clipboard." });
+                        }}
+                        className="text-blue-600 hover:text-blue-800"
+                        title="Copy invitation link"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => cancelInvitationMutation.mutate(invitation.id)}
+                        disabled={cancelInvitationMutation.isPending}
+                        className="text-red-600 hover:text-red-800"
+                        title="Cancel invitation"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
