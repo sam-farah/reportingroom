@@ -16,6 +16,15 @@ interface KioskAppointment {
   status: string;
 }
 
+interface KioskSettings {
+  clinicName: string;
+  kioskLogoUrl: string | null;
+  kioskWelcomeText: string;
+  kioskInstructions: string;
+  kioskSuccessMessage: string;
+  kioskBackgroundColor: string | null;
+}
+
 export default function Kiosk() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -24,11 +33,16 @@ export default function Kiosk() {
   const [searching, setSearching] = useState(false);
   const [checkedIn, setCheckedIn] = useState<number | null>(null);
   const [checkingIn, setCheckingIn] = useState<number | null>(null);
+  const [settings, setSettings] = useState<KioskSettings | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
+    fetch('/api/kiosk/settings')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (data) setSettings(data); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -71,7 +85,7 @@ export default function Kiosk() {
         setCheckedIn(appointmentId);
         toast({
           title: "Checked In",
-          description: "You have been checked in successfully. Please take a seat.",
+          description: "You have been checked in successfully.",
         });
 
         setTimeout(() => {
@@ -99,10 +113,14 @@ export default function Kiosk() {
     }
   };
 
+  const bgStyle = settings?.kioskBackgroundColor
+    ? { background: settings.kioskBackgroundColor }
+    : { background: 'linear-gradient(to bottom right, #f0fdfa, #eff6ff)' };
+
   if (checkedIn) {
     const apt = appointments.find(a => a.id === checkedIn);
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 flex flex-col items-center justify-center p-8">
+      <div className="min-h-screen flex flex-col items-center justify-center p-8" style={bgStyle}>
         <div className="text-center max-w-2xl">
           <div className="w-32 h-32 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-8">
             <CheckCircle className="w-20 h-20 text-green-600" />
@@ -116,7 +134,7 @@ export default function Kiosk() {
             </p>
           )}
           <p className="text-xl text-gray-500">
-            Please take a seat. We will call you shortly.
+            {settings?.kioskSuccessMessage || "Please take a seat. We will call you shortly."}
           </p>
           <p className="text-sm text-gray-400 mt-8">
             This screen will reset automatically...
@@ -126,8 +144,10 @@ export default function Kiosk() {
     );
   }
 
+  const logoSrc = settings?.kioskLogoUrl || null;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50 flex flex-col">
+    <div className="min-h-screen flex flex-col" style={bgStyle}>
       <div className="p-4 flex justify-between items-center">
         <Button
           variant="ghost"
@@ -139,7 +159,7 @@ export default function Kiosk() {
           Exit Kiosk
         </Button>
         <div className="flex items-center gap-2">
-          <img src={logoIconPath} alt="Logo" className="h-6 w-6" />
+          <img src={logoSrc || logoIconPath} alt="Logo" className="h-6 w-6" />
           <span className="text-sm text-gray-500">Kiosk Mode</span>
         </div>
       </div>
@@ -147,12 +167,16 @@ export default function Kiosk() {
       <div className="flex-1 flex flex-col items-center justify-center px-8 pb-16">
         <div className="w-full max-w-2xl text-center">
           <div className="mb-12">
-            <UserCheck className="w-16 h-16 text-teal-600 mx-auto mb-6" />
+            {logoSrc ? (
+              <img src={logoSrc} alt="Clinic Logo" className="max-h-24 max-w-[300px] object-contain mx-auto mb-6" />
+            ) : (
+              <UserCheck className="w-16 h-16 text-teal-600 mx-auto mb-6" />
+            )}
             <h1 className="text-5xl font-bold text-gray-800 mb-4">
-              Patient Check-In
+              {settings?.kioskWelcomeText || "Patient Check-In"}
             </h1>
             <p className="text-xl text-gray-500">
-              Enter your name below to check in for your appointment
+              {settings?.kioskInstructions || "Enter your name below to check in for your appointment"}
             </p>
           </div>
 

@@ -1,18 +1,19 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye } from "lucide-react";
+import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
-import type { TrainingPair, Physician, ReportTemplate } from "@shared/schema";
+import type { TrainingPair, Physician, ReportTemplate, Clinic } from "@shared/schema";
 
 export default function AdminPanel() {
   const { toast } = useToast();
@@ -65,6 +66,93 @@ export default function AdminPanel() {
   });
 
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Kiosk settings state
+  const kioskLogoInputRef = useRef<HTMLInputElement>(null);
+  const [kioskUploadingLogo, setKioskUploadingLogo] = useState(false);
+  const [kioskWelcomeText, setKioskWelcomeText] = useState("");
+  const [kioskInstructions, setKioskInstructions] = useState("");
+  const [kioskSuccessMessage, setKioskSuccessMessage] = useState("");
+  const [kioskBackgroundColor, setKioskBackgroundColor] = useState("");
+  const [kioskSettingsLoaded, setKioskSettingsLoaded] = useState(false);
+
+  const { data: clinic } = useQuery<Clinic>({
+    queryKey: ["/api/clinic"],
+  });
+
+  useEffect(() => {
+    if (clinic && !kioskSettingsLoaded) {
+      setKioskWelcomeText(clinic.kioskWelcomeText || "");
+      setKioskInstructions(clinic.kioskInstructions || "");
+      setKioskSuccessMessage(clinic.kioskSuccessMessage || "");
+      setKioskBackgroundColor(clinic.kioskBackgroundColor || "");
+      setKioskSettingsLoaded(true);
+    }
+  }, [clinic, kioskSettingsLoaded]);
+
+  const handleKioskLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Invalid File Type",
+        description: "Please select an image file (JPG, PNG, GIF, WebP, or SVG)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File Too Large",
+        description: "Please select an image smaller than 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setKioskUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('logo', file);
+      const response = await fetch('/api/upload-kiosk-logo', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Upload failed');
+      
+      toast({ title: "Logo Uploaded", description: "Kiosk logo has been updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kiosk/settings"] });
+    } catch (error) {
+      toast({ title: "Upload Failed", description: "Failed to upload logo", variant: "destructive" });
+    } finally {
+      setKioskUploadingLogo(false);
+      if (kioskLogoInputRef.current) kioskLogoInputRef.current.value = '';
+    }
+  };
+
+  const saveKioskSettingsMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("/api/kiosk/settings", "PUT", {
+        kioskWelcomeText,
+        kioskInstructions,
+        kioskSuccessMessage,
+        kioskBackgroundColor,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Settings Saved", description: "Kiosk settings have been updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kiosk/settings"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Save Failed", description: error.message, variant: "destructive" });
+    },
+  });
 
   const handleDownloadBackup = async (type: 'all' | 'changes') => {
     setIsDownloading(true);
@@ -420,12 +508,13 @@ export default function AdminPanel() {
       </div>
 
       <Tabs defaultValue="monitoring" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
           <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
           <TabsTrigger value="costs">Cost Projection</TabsTrigger>
           <TabsTrigger value="training">🌍 Global AI Training</TabsTrigger>
           <TabsTrigger value="templates">📝 Report Templates</TabsTrigger>
+          <TabsTrigger value="kiosk">🖥️ Kiosk</TabsTrigger>
           <TabsTrigger value="backup">💾 Backup</TabsTrigger>
         </TabsList>
 
@@ -981,6 +1070,188 @@ export default function AdminPanel() {
                   </Button>
                 </Link>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="kiosk" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Image className="h-5 w-5" />
+                  Kiosk Logo
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Upload a logo to display on the patient check-in kiosk screen</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {clinic?.kioskLogoUrl ? (
+                  <div className="border rounded-lg p-4 bg-gray-50 flex flex-col items-center gap-4">
+                    <img
+                      src={clinic.kioskLogoUrl}
+                      alt="Kiosk Logo"
+                      className="max-h-32 max-w-full object-contain"
+                    />
+                    <p className="text-sm text-muted-foreground">Current kiosk logo</p>
+                  </div>
+                ) : clinic?.logoUrl ? (
+                  <div className="border rounded-lg p-4 bg-gray-50 flex flex-col items-center gap-4">
+                    <img
+                      src={clinic.logoUrl}
+                      alt="Clinic Logo (fallback)"
+                      className="max-h-32 max-w-full object-contain"
+                    />
+                    <p className="text-sm text-muted-foreground">Using clinic logo as fallback. Upload a specific kiosk logo below.</p>
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed rounded-lg p-8 text-center text-muted-foreground">
+                    <Monitor className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No kiosk logo uploaded yet</p>
+                    <p className="text-xs mt-1">Upload an image to display on the kiosk</p>
+                  </div>
+                )}
+
+                <div>
+                  <input
+                    ref={kioskLogoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleKioskLogoUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    onClick={() => kioskLogoInputRef.current?.click()}
+                    disabled={kioskUploadingLogo}
+                    className="w-full"
+                  >
+                    {kioskUploadingLogo ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4 mr-2" />
+                    )}
+                    {kioskUploadingLogo ? "Uploading..." : clinic?.kioskLogoUrl ? "Change Logo" : "Upload Logo"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Eye className="h-5 w-5" />
+                  Live Preview
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Preview how the kiosk will look to patients</p>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className="rounded-lg p-6 text-center border shadow-inner min-h-[280px] flex flex-col items-center justify-center"
+                  style={{ background: kioskBackgroundColor || 'linear-gradient(to bottom right, #f0fdfa, #eff6ff)' }}
+                >
+                  {(clinic?.kioskLogoUrl || clinic?.logoUrl) && (
+                    <img
+                      src={clinic.kioskLogoUrl || clinic.logoUrl || ''}
+                      alt="Logo Preview"
+                      className="max-h-16 max-w-[200px] object-contain mb-4"
+                    />
+                  )}
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">
+                    {kioskWelcomeText || "Patient Check-In"}
+                  </h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    {kioskInstructions || "Enter your name below to check in for your appointment"}
+                  </p>
+                  <div className="bg-white rounded-xl p-3 w-full max-w-xs border shadow-sm">
+                    <span className="text-gray-400 text-sm">Type your name here...</span>
+                  </div>
+                </div>
+                <div className="mt-3 text-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/kiosk', '_blank')}
+                  >
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    Open Kiosk in New Tab
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="h-5 w-5" />
+                Kiosk Text & Appearance
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">Customize the text and colors shown on the kiosk screen</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="kioskWelcomeText">Welcome Heading</Label>
+                  <Input
+                    id="kioskWelcomeText"
+                    value={kioskWelcomeText}
+                    onChange={(e) => setKioskWelcomeText(e.target.value)}
+                    placeholder="Patient Check-In"
+                  />
+                  <p className="text-xs text-muted-foreground">The main heading patients see on the kiosk</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="kioskBackgroundColor">Background Color</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="kioskBackgroundColor"
+                      value={kioskBackgroundColor}
+                      onChange={(e) => setKioskBackgroundColor(e.target.value)}
+                      placeholder="e.g. #f0fdfa or linear-gradient(...)"
+                    />
+                    <input
+                      type="color"
+                      value={kioskBackgroundColor.startsWith('#') ? kioskBackgroundColor : '#f0fdfa'}
+                      onChange={(e) => setKioskBackgroundColor(e.target.value)}
+                      className="w-10 h-10 rounded border cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">CSS color or gradient for the kiosk background</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="kioskInstructions">Instructions Text</Label>
+                <Textarea
+                  id="kioskInstructions"
+                  value={kioskInstructions}
+                  onChange={(e) => setKioskInstructions(e.target.value)}
+                  placeholder="Enter your name below to check in for your appointment"
+                  rows={2}
+                />
+                <p className="text-xs text-muted-foreground">Instructions shown below the heading</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="kioskSuccessMessage">Success Message</Label>
+                <Textarea
+                  id="kioskSuccessMessage"
+                  value={kioskSuccessMessage}
+                  onChange={(e) => setKioskSuccessMessage(e.target.value)}
+                  placeholder="Please take a seat. We will call you shortly."
+                  rows={2}
+                />
+                <p className="text-xs text-muted-foreground">Message shown after a patient successfully checks in</p>
+              </div>
+
+              <Button
+                onClick={() => saveKioskSettingsMutation.mutate()}
+                disabled={saveKioskSettingsMutation.isPending}
+                className="w-full"
+                size="lg"
+              >
+                {saveKioskSettingsMutation.isPending ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : null}
+                Save Kiosk Settings
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

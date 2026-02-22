@@ -40,6 +40,7 @@ const upload = multer({
       'image/jpeg',
       'image/jpg', 
       'image/png',
+      'image/svg+xml',
       'image/gif',
       'image/webp',
       'application/pdf',
@@ -64,6 +65,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Public routes (no authentication required)
   // Login and callback routes are handled in setupAuth()
+
+  // Public kiosk settings endpoint - returns kiosk customization for display
+  app.get("/api/kiosk/settings", async (req, res) => {
+    try {
+      const { clinicId } = req.query;
+      let clinic = null;
+
+      if (clinicId && typeof clinicId === 'string') {
+        const id = parseInt(clinicId);
+        if (!isNaN(id)) {
+          clinic = await storage.getClinic(id);
+        }
+      }
+
+      if (!clinic) {
+        const clinics = await storage.getAllClinics();
+        clinic = clinics[0] || null;
+      }
+
+      const defaults = {
+        clinicName: "",
+        clinicId: null as number | null,
+        kioskLogoUrl: null as string | null,
+        kioskWelcomeText: "Patient Check-In",
+        kioskInstructions: "Enter your name below to check in for your appointment",
+        kioskSuccessMessage: "Please take a seat. We will call you shortly.",
+        kioskBackgroundColor: null as string | null,
+      };
+
+      if (!clinic) {
+        return res.json(defaults);
+      }
+
+      res.json({
+        clinicName: clinic.name,
+        clinicId: clinic.id,
+        kioskLogoUrl: clinic.kioskLogoUrl || clinic.logoUrl || null,
+        kioskWelcomeText: clinic.kioskWelcomeText || defaults.kioskWelcomeText,
+        kioskInstructions: clinic.kioskInstructions || defaults.kioskInstructions,
+        kioskSuccessMessage: clinic.kioskSuccessMessage || defaults.kioskSuccessMessage,
+        kioskBackgroundColor: clinic.kioskBackgroundColor || null,
+      });
+    } catch (error) {
+      console.error("Kiosk settings error:", error);
+      res.status(500).json({ error: "Failed to fetch kiosk settings" });
+    }
+  });
 
   // Kiosk endpoints - no authentication required for patient self-check-in
   app.get("/api/kiosk/appointments/today", async (req, res) => {
@@ -1731,6 +1779,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Training data upload error:", error);
       res.status(500).json({ error: "Failed to upload training data" });
+    }
+  });
+
+  // Kiosk logo upload endpoint
+  app.post("/api/upload-kiosk-logo", isAuthenticated, upload.single('logo'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No logo file uploaded" });
+      }
+
+      const logoUrl = `/uploads/${req.file.filename}`;
+      const user = await storage.getUser((req as any).user.claims.sub);
+      if (user?.clinicId) {
+        await storage.updateClinic(user.clinicId, { kioskLogoUrl: logoUrl } as any);
+      }
+      
+      res.json({ url: logoUrl });
+    } catch (error) {
+      console.error("Kiosk logo upload error:", error);
+      res.status(500).json({ error: "Failed to upload kiosk logo" });
+    }
+  });
+
+  // Save kiosk settings
+  app.put("/api/kiosk/settings", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser((req as any).user.claims.sub);
+      if (!user?.clinicId) {
+        return res.status(400).json({ error: "No clinic associated" });
+      }
+
+      const { kioskWelcomeText, kioskInstructions, kioskSuccessMessage, kioskBackgroundColor } = req.body;
+      await storage.updateClinic(user.clinicId, {
+        kioskWelcomeText: kioskWelcomeText || null,
+        kioskInstructions: kioskInstructions || null,
+        kioskSuccessMessage: kioskSuccessMessage || null,
+        kioskBackgroundColor: kioskBackgroundColor || null,
+      } as any);
+
+      const clinic = await storage.getClinic(user.clinicId);
+      res.json(clinic);
+    } catch (error) {
+      console.error("Save kiosk settings error:", error);
+      res.status(500).json({ error: "Failed to save kiosk settings" });
     }
   });
 

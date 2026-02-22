@@ -38,6 +38,11 @@ export const clinics = pgTable("clinics", {
   fax: varchar("fax", { length: 50 }),
   website: varchar("website", { length: 255 }),
   logoUrl: varchar("logo_url", { length: 500 }),
+  kioskLogoUrl: varchar("kiosk_logo_url", { length: 500 }),
+  kioskWelcomeText: text("kiosk_welcome_text"),
+  kioskInstructions: text("kiosk_instructions"),
+  kioskSuccessMessage: text("kiosk_success_message"),
+  kioskBackgroundColor: varchar("kiosk_background_color", { length: 50 }),
   subscription: varchar("subscription", { length: 50 }).notNull().default('basic'), // 'basic', 'premium', 'enterprise'
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
