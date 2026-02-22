@@ -123,14 +123,20 @@ export default function Calendar() {
     }
   };
   
-  const HOURS = Array.from({ length: 12 }, (_, i) => i + 7);
+  const START_HOUR = 7;
+  const SLOT_COUNT = 24;
+  const SLOT_HEIGHT = 40;
+  const SLOTS = Array.from({ length: SLOT_COUNT }, (_, i) => ({
+    hour: START_HOUR + Math.floor(i / 2),
+    minute: (i % 2) * 30,
+  }));
   
   const getAppointmentPosition = (apt: Appointment) => {
     const aptDate = new Date(apt.appointmentDate);
     const hours = getHours(aptDate);
     const minutes = getMinutes(aptDate);
-    const top = ((hours - 7) * 60 + minutes) * (60 / 60);
-    const height = apt.duration * (60 / 60);
+    const top = ((hours - START_HOUR) * 2 + minutes / 30) * SLOT_HEIGHT;
+    const height = (apt.duration / 30) * SLOT_HEIGHT;
     return { top, height };
   };
 
@@ -294,12 +300,12 @@ export default function Calendar() {
     e.dataTransfer.dropEffect = "move";
   };
 
-  const handleDrop = (e: React.DragEvent, targetDate: Date, targetHour: number) => {
+  const handleDrop = (e: React.DragEvent, targetDate: Date, targetHour: number, targetMinute: number = 0) => {
     e.preventDefault();
     if (!draggingAppointment) return;
 
     const newDateTime = new Date(targetDate);
-    newDateTime.setHours(targetHour, 0, 0, 0);
+    newDateTime.setHours(targetHour, targetMinute, 0, 0);
 
     updateMutation.mutate({
       id: draggingAppointment.id,
@@ -607,22 +613,23 @@ export default function Calendar() {
                 </div>
                 <div className="flex border border-gray-200">
                   <div className="w-20 flex-shrink-0 bg-gray-50">
-                    {HOURS.map((hour) => (
-                      <div key={hour} className="h-[60px] border-b border-gray-200 pr-2 text-right text-sm text-gray-500 pt-1">
-                        {format(new Date().setHours(hour, 0), "h a")}
+                    {SLOTS.map((slot, i) => (
+                      <div key={i} className={`border-b ${slot.minute === 0 ? 'border-gray-200' : 'border-gray-100'} pr-2 text-right text-sm text-gray-500 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
+                        {slot.minute === 0 ? format(new Date().setHours(slot.hour, 0), "h a") : ""}
                       </div>
                     ))}
                   </div>
                   <div className="flex-1 relative">
-                    {HOURS.map((hour) => (
+                    {SLOTS.map((slot, i) => (
                       <div 
-                        key={hour} 
-                        className={`h-[60px] border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors ${
+                        key={i} 
+                        className={`border-b ${slot.minute === 0 ? 'border-gray-200' : 'border-gray-100 border-dashed'} hover:bg-gray-50 cursor-pointer transition-colors ${
                           draggingAppointment ? "hover:bg-blue-100" : ""
                         }`}
+                        style={{ height: `${SLOT_HEIGHT}px` }}
                         onClick={() => {
                           const clickedDate = new Date(currentDate);
-                          clickedDate.setHours(hour, 0, 0, 0);
+                          clickedDate.setHours(slot.hour, slot.minute, 0, 0);
                           setFormData(prev => ({
                             ...prev,
                             appointmentDate: format(currentDate, "yyyy-MM-dd"),
@@ -632,7 +639,7 @@ export default function Calendar() {
                           setIsBookingDialogOpen(true);
                         }}
                         onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, currentDate, hour)}
+                        onDrop={(e) => handleDrop(e, currentDate, slot.hour, slot.minute)}
                       />
                     ))}
                     {getAppointmentsForDate(currentDate).map((apt) => {
@@ -690,9 +697,9 @@ export default function Calendar() {
                 </div>
                 <div className="flex">
                   <div className="w-16 flex-shrink-0">
-                    {HOURS.map((hour) => (
-                      <div key={hour} className="h-[60px] border-b border-gray-200 text-xs text-gray-500 text-right pr-2 pt-1">
-                        {format(new Date().setHours(hour, 0), "h a")}
+                    {SLOTS.map((slot, i) => (
+                      <div key={i} className={`border-b ${slot.minute === 0 ? 'border-gray-200' : 'border-gray-100'} text-xs text-gray-500 text-right pr-2 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
+                        {slot.minute === 0 ? format(new Date().setHours(slot.hour, 0), "h a") : ""}
                       </div>
                     ))}
                   </div>
@@ -707,15 +714,16 @@ export default function Calendar() {
                             isSameDay(weekDay, new Date()) ? "bg-blue-50/30" : ""
                           }`}
                         >
-                          {HOURS.map((hour) => (
+                          {SLOTS.map((slot, i) => (
                             <div
-                              key={hour}
-                              className={`h-[60px] border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
+                              key={i}
+                              className={`border-b ${slot.minute === 0 ? 'border-gray-100' : 'border-gray-100 border-dashed'} cursor-pointer hover:bg-gray-50 transition-colors ${
                                 draggingAppointment ? "hover:bg-blue-100" : ""
                               }`}
+                              style={{ height: `${SLOT_HEIGHT}px` }}
                               onClick={() => {
                                 const clickedDate = new Date(weekDay);
-                                clickedDate.setHours(hour, 0, 0, 0);
+                                clickedDate.setHours(slot.hour, slot.minute, 0, 0);
                                 setSelectedDate(clickedDate);
                                 setFormData(prev => ({
                                   ...prev,
@@ -726,12 +734,12 @@ export default function Calendar() {
                                 setIsBookingDialogOpen(true);
                               }}
                               onDragOver={handleDragOver}
-                              onDrop={(e) => handleDrop(e, weekDay, hour)}
+                              onDrop={(e) => handleDrop(e, weekDay, slot.hour, slot.minute)}
                             />
                           ))}
                           {dayAppointments.map((apt) => {
                             const { top, height } = getAppointmentPosition(apt);
-                            if (top < 0 || top > HOURS.length * 60) return null;
+                            if (top < 0 || top > SLOT_COUNT * SLOT_HEIGHT) return null;
                             return (
                               <div
                                 key={apt.id}
