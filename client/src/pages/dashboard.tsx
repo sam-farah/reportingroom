@@ -39,6 +39,13 @@ export default function Dashboard() {
             <div className="flex items-center flex-1 justify-end gap-2 overflow-x-auto">
               <div className="flex space-x-1 flex-shrink-0">
                 <Button
+                  variant="ghost"
+                  onClick={() => window.open('/kiosk', '_blank')}
+                >
+                  <Monitor className="w-4 h-4 mr-2" />
+                  Kiosk
+                </Button>
+                <Button
                   variant={activePanel === "calendar" ? "default" : "ghost"}
                   className={activePanel === "calendar" ? "medical-btn-secondary" : ""}
                   onClick={() => setActivePanel("calendar")}
@@ -85,13 +92,6 @@ export default function Dashboard() {
                 >
                   <UserCircle className="w-4 h-4 mr-2" />
                   Patients
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => window.open('/kiosk', '_blank')}
-                >
-                  <Monitor className="w-4 h-4 mr-2" />
-                  Kiosk
                 </Button>
 
                 {/* Admin Panel - Only visible to webmaster */}
