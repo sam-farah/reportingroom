@@ -31,6 +31,7 @@ const SCAN_TYPES = [
 const STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-100 text-blue-800 border-blue-200",
   confirmed: "bg-green-100 text-green-800 border-green-200",
+  checked_in: "bg-green-200 text-green-900 border-green-400",
   in_progress: "bg-yellow-100 text-yellow-800 border-yellow-200",
   completed: "bg-gray-100 text-gray-800 border-gray-200",
   cancelled: "bg-red-100 text-red-800 border-red-200",
