@@ -13,8 +13,34 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Mail, Clock, CheckCircle, XCircle, Trash2, Users, Copy, Link2 } from "lucide-react";
+import { Plus, Mail, Clock, CheckCircle, XCircle, Trash2, Users, Copy, Link2, Check } from "lucide-react";
 import { z } from "zod";
+
+function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => fallbackCopy(text));
+  }
+  return Promise.resolve(fallbackCopy(text));
+}
+
+function fallbackCopy(text: string): boolean {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    const success = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return success;
+  } catch {
+    document.body.removeChild(textarea);
+    return false;
+  }
+}
 
 const inviteSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -234,7 +260,12 @@ export default function StaffManagement() {
                 <Link2 className="h-5 w-5 text-green-600 flex-shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-green-800">Invitation link created! Share it with your team member:</p>
-                  <p className="text-xs text-green-700 truncate font-mono mt-1">{lastInviteLink}</p>
+                  <input 
+                    readOnly 
+                    value={lastInviteLink} 
+                    className="text-xs text-green-700 font-mono mt-1 w-full bg-transparent border-none outline-none cursor-text select-all p-0"
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
                 </div>
               </div>
               <div className="flex gap-2 flex-shrink-0">
@@ -242,9 +273,13 @@ export default function StaffManagement() {
                   size="sm"
                   variant="outline"
                   className="border-green-300 text-green-700 hover:bg-green-100"
-                  onClick={() => {
-                    navigator.clipboard.writeText(lastInviteLink);
-                    toast({ title: "Copied!", description: "Invitation link copied to clipboard." });
+                  onClick={async () => {
+                    const success = await copyToClipboard(lastInviteLink);
+                    if (success) {
+                      toast({ title: "Copied!", description: "Invitation link copied to clipboard." });
+                    } else {
+                      toast({ title: "Copy failed", description: "Please select and copy the link manually.", variant: "destructive" });
+                    }
                   }}
                 >
                   <Copy className="h-4 w-4 mr-1" />
@@ -374,10 +409,14 @@ export default function StaffManagement() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
+                        onClick={async () => {
                           const link = `${window.location.origin}/invite/${invitation.token}`;
-                          navigator.clipboard.writeText(link);
-                          toast({ title: "Copied!", description: "Invitation link copied to clipboard." });
+                          const success = await copyToClipboard(link);
+                          if (success) {
+                            toast({ title: "Copied!", description: "Invitation link copied to clipboard." });
+                          } else {
+                            toast({ title: "Copy failed", description: "Please copy this link manually: " + link, variant: "destructive" });
+                          }
                         }}
                         className="text-blue-600 hover:text-blue-800"
                         title="Copy invitation link"
