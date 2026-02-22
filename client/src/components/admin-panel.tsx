@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
+import ClinicPage from "@/pages/physicians";
 import type { TrainingPair, Physician, ReportTemplate, Clinic } from "@shared/schema";
 
 export default function AdminPanel() {
@@ -508,7 +509,8 @@ export default function AdminPanel() {
       </div>
 
       <Tabs defaultValue="monitoring" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
+          <TabsTrigger value="clinic-settings">🏥 Clinic</TabsTrigger>
           <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
           <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
           <TabsTrigger value="costs">Cost Projection</TabsTrigger>
@@ -517,6 +519,10 @@ export default function AdminPanel() {
           <TabsTrigger value="kiosk">🖥️ Kiosk</TabsTrigger>
           <TabsTrigger value="backup">💾 Backup</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="clinic-settings">
+          <ClinicPage />
+        </TabsContent>
 
         <TabsContent value="monitoring" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

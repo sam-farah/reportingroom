@@ -79,14 +79,6 @@ export default function Dashboard() {
                   Reports
                 </Button>
                 <Button
-                  variant={activePanel === "physicians" ? "default" : "ghost"}
-                  className={activePanel === "physicians" ? "medical-btn-secondary" : ""}
-                  onClick={() => setActivePanel("physicians")}
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  Clinic
-                </Button>
-                <Button
                   variant={activePanel === "patients" ? "default" : "ghost"}
                   className={activePanel === "patients" ? "medical-btn-secondary" : ""}
                   onClick={() => setActivePanel("patients")}
