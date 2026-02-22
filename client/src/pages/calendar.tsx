@@ -1084,6 +1084,23 @@ export default function Calendar() {
                 )}
 
                 <div className="flex justify-end gap-2 pt-4 border-t">
+                  {viewingAppointment.status !== "checked_in" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                      onClick={() => {
+                        updateMutation.mutate({
+                          id: viewingAppointment.id,
+                          data: { status: "checked_in" },
+                        });
+                        setViewingAppointment({ ...viewingAppointment, status: "checked_in" });
+                      }}
+                    >
+                      <UserCheck className="w-4 h-4 mr-1" />
+                      Check In
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => handleEditAppointment(viewingAppointment)}>
                     <Edit className="w-4 h-4 mr-1" />
                     Edit
