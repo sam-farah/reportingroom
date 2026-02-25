@@ -191,6 +191,7 @@ export default function Calendar() {
       if (!response.ok) throw new Error("Failed to fetch appointments");
       return response.json();
     },
+    refetchInterval: 30000,
   });
 
   const { data: physicians = [] } = useQuery<Physician[]>({
