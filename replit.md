@@ -6,6 +6,9 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Pending Features
+- **SMS Appointment Reminders**: Planned via Twilio (connector available: `connector:ccfg_twilio_01K69QJTED9YTJFE2SJ7E4SY08`). When ready, connect Twilio account and build a background scheduler that sends reminders 24h and 1h before appointments. Track `reminderSent` on appointment records to avoid duplicates. User deferred this feature.
+
 ## System Architecture
 
 ### Frontend Architecture
