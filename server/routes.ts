@@ -5,6 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
+import { sendInvitationEmail } from "./email";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -2448,18 +2449,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const invitation = await storage.createUserInvitation(invitationData);
       
-      // Create invitation URL for manual sharing
-      const invitationUrl = `${req.protocol}://${req.get('host')}/invite/${invitation.token}`;
-      
-      console.log(`Invitation created for ${invitation.email}`);
-      console.log(`Invitation URL: ${invitationUrl}`);
-      console.log(`Share this link with ${invitation.email} to join your clinic`);
-      
-      // Return the invitation with the shareable URL
+      // Build invitation URL
+      const host = req.get('host');
+      const invitationUrl = host?.includes('replit') 
+        ? `https://reportingroom.net/invite/${invitation.token}`
+        : `${req.protocol}://${host}/invite/${invitation.token}`;
+
+      // Fetch clinic name and inviter name for the email
+      const clinic = user.clinicId ? await storage.getClinic(user.clinicId) : null;
+      const clinicName = clinic?.name || "your clinic";
+      const invitedByName = user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`
+        : user.email || "A clinic admin";
+
+      // Send invitation email
+      try {
+        await sendInvitationEmail({
+          toEmail: invitation.email,
+          invitationUrl,
+          clinicName,
+          role: invitation.role,
+          invitedByName,
+        });
+        console.log(`Invitation email sent to ${invitation.email}`);
+      } catch (emailError) {
+        console.error("Failed to send invitation email:", emailError);
+      }
+
       res.status(201).json({
         ...invitation,
         invitationUrl,
-        message: `Share this link with ${invitation.email}: ${invitationUrl}`
+        message: `Invitation email sent to ${invitation.email}`,
       });
     } catch (error) {
       console.error("Invitation creation error:", error);
