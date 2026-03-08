@@ -47,10 +47,15 @@ export async function sendInvitationEmail(params: {
     </div>
   `;
 
-  await sgMail.send({
-    to: params.toEmail,
-    from: { email: FROM_EMAIL, name: FROM_NAME },
-    subject: `You've been invited to join ${params.clinicName} on Reporting Room`,
-    html,
-  });
+  try {
+    await sgMail.send({
+      to: params.toEmail,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
+      subject: `You've been invited to join ${params.clinicName} on Reporting Room`,
+      html,
+    });
+  } catch (err: any) {
+    console.error("SendGrid error details:", JSON.stringify(err?.response?.body?.errors ?? err?.message, null, 2));
+    throw err;
+  }
 }
