@@ -30,7 +30,7 @@ export default function PatientPortalLogin() {
 
   const loginMutation = useMutation({
     mutationFn: async (values: z.infer<typeof loginSchema>) => {
-      const res = await apiRequest("POST", "/api/portal/login", values);
+      const res = await apiRequest("/api/portal/login", "POST", values);
       return res.json();
     },
     onSuccess: () => {

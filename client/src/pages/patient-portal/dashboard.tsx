@@ -48,7 +48,7 @@ export default function PatientPortalDashboard() {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/portal/logout");
+      await apiRequest("/api/portal/logout", "POST");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/portal/me"] });

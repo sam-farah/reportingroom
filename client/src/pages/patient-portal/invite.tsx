@@ -61,7 +61,7 @@ export default function PatientPortalInvite() {
 
   const registerMutation = useMutation({
     mutationFn: async (values: z.infer<typeof registerSchema>) => {
-      const res = await apiRequest("POST", "/api/portal/register", {
+      const res = await apiRequest("/api/portal/register", "POST", {
         token: params?.token,
         password: values.password,
       });
@@ -86,7 +86,7 @@ export default function PatientPortalInvite() {
 
   const loginMutation = useMutation({
     mutationFn: async (values: z.infer<typeof loginSchema>) => {
-      const res = await apiRequest("POST", "/api/portal/login", {
+      const res = await apiRequest("/api/portal/login", "POST", {
         email: invite?.invitation.email,
         password: values.password,
       });
