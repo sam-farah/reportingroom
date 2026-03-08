@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -57,7 +58,13 @@ export default function PatientPortalDashboard() {
     },
   });
 
-  if (isLoadingMe) {
+  useEffect(() => {
+    if (!isLoadingMe && (authError || !me)) {
+      setLocation("/patient-portal/login");
+    }
+  }, [isLoadingMe, authError, me, setLocation]);
+
+  if (isLoadingMe || (!me && !authError)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -65,8 +72,7 @@ export default function PatientPortalDashboard() {
     );
   }
 
-  if (authError || !me) {
-    setLocation("/patient-portal/login");
+  if (!me) {
     return null;
   }
 

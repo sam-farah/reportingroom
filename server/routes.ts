@@ -3033,8 +3033,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.acceptPatientPortalInvitation(token);
 
       (req.session as any).portalUserId = account.id;
-      
-      res.json({ success: true, account: { id: account.id, email: account.email } });
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ error: "Session error" });
+        }
+        res.json({ success: true, account: { id: account.id, email: account.email } });
+      });
     } catch (error) {
       console.error("Portal register error:", error);
       res.status(500).json({ error: "Registration failed" });
@@ -3051,7 +3056,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       (req.session as any).portalUserId = account.id;
-      res.json({ success: true, account: { id: account.id, email: account.email } });
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ error: "Session error" });
+        }
+        res.json({ success: true, account: { id: account.id, email: account.email } });
+      });
     } catch (error) {
       res.status(500).json({ error: "Login failed" });
     }
