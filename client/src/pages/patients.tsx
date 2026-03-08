@@ -187,14 +187,14 @@ export default function Patients() {
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
       return await apiRequest(`/api/patients/${id}`, "PUT", data);
     },
-    onSuccess: () => {
+    onSuccess: (updatedPatient: Patient) => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
       toast({ title: "Success", description: "Patient updated successfully" });
       resetForm();
       setEditingPatient(null);
       setIsDialogOpen(false);
-      if (selectedPatient) {
-        setSelectedPatient(null);
+      if (selectedPatient && updatedPatient) {
+        setSelectedPatient(updatedPatient);
       }
     },
     onError: (error: any) => {
