@@ -2050,7 +2050,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Digital worksheet routes
   app.post("/api/digital-worksheets", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.session?.userId;
       
       const worksheetData = {
         ...req.body,
