@@ -261,34 +261,87 @@ export default function PatientPortalDashboard() {
               </div>
             ) : worksheets && worksheets.length > 0 ? (
               <div className="space-y-3">
-                {worksheets.map((worksheet) => (
-                  <Card key={worksheet.id} className="shadow-sm border-slate-200">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-blue-50 p-2 rounded-lg">
-                          <ImageIcon className="w-5 h-5 text-blue-600" />
+                {worksheets.map((worksheet) => {
+                  const ws = worksheet as any;
+                  const title = ws.originalName || ws.studyType || 'Worksheet';
+                  const dateStr = (() => {
+                    const d = ws.uploadedAt || ws.createdAt;
+                    return d ? format(new Date(d), 'MMM d, yyyy') : null;
+                  })();
+                  const isDigital = ws.type === 'digital';
+                  const isPdf = !isDigital && ws.fileUrl?.toLowerCase().includes('.pdf');
+
+                  return (
+                    <Dialog key={worksheet.id}>
+                      <DialogTrigger asChild>
+                        <Card className="hover:border-blue-300 transition-colors cursor-pointer group shadow-sm border-slate-200">
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-blue-50 p-2 rounded-lg">
+                                <ImageIcon className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-900">{title}</p>
+                                {dateStr && (
+                                  <p className="text-sm text-slate-500">Date: {dateStr}</p>
+                                )}
+                              </div>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                          </CardContent>
+                        </Card>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0">
+                        <DialogHeader className="p-6 pb-3 border-b flex-shrink-0">
+                          <DialogTitle className="text-xl font-bold text-slate-900 flex justify-between items-center">
+                            <span>{title}</span>
+                            {dateStr && (
+                              <span className="text-sm font-normal text-slate-500">{dateStr}</span>
+                            )}
+                          </DialogTitle>
+                          {ws.studyType && ws.originalName && (
+                            <p className="text-sm text-slate-500 mt-1">{ws.studyType}</p>
+                          )}
+                        </DialogHeader>
+                        <div className="flex-grow overflow-auto p-4">
+                          {isDigital && ws.drawingData ? (
+                            <img
+                              src={ws.drawingData}
+                              alt={title}
+                              className="w-full h-auto rounded-lg border border-slate-200"
+                            />
+                          ) : isPdf ? (
+                            <iframe
+                              src={ws.fileUrl}
+                              title={title}
+                              className="w-full h-[60vh] rounded-lg border border-slate-200"
+                            />
+                          ) : ws.fileUrl ? (
+                            <img
+                              src={ws.fileUrl}
+                              alt={title}
+                              className="w-full h-auto rounded-lg border border-slate-200"
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-40 text-slate-400">
+                              No preview available
+                            </div>
+                          )}
                         </div>
-                        <div>
-                          <p className="font-bold text-slate-900">
-                            {(worksheet as any).originalName || (worksheet as any).studyType || 'Worksheet'}
-                          </p>
-                          <p className="text-sm text-slate-500">
-                            {(() => {
-                              const d = (worksheet as any).uploadedAt || (worksheet as any).createdAt;
-                              return d ? `Uploaded: ${format(new Date(d), 'MMM d, yyyy')}` : '';
-                            })()}
-                          </p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm" asChild>
-                        <a href={worksheet.fileUrl} target="_blank" rel="noopener noreferrer">
-                          <Download className="w-4 h-4 mr-2" />
-                          View
-                        </a>
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
+                        {!isDigital && ws.fileUrl && (
+                          <div className="p-4 border-t flex-shrink-0">
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={ws.fileUrl} target="_blank" rel="noopener noreferrer">
+                                <Download className="w-4 h-4 mr-2" />
+                                Download Original
+                              </a>
+                            </Button>
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
+                  );
+                })}
               </div>
             ) : (
               <Card className="border-dashed bg-transparent border-slate-300">
