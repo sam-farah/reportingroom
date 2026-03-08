@@ -57,6 +57,12 @@ import {
   type ScanDurationSetting,
   type InsertScanDurationSetting,
   CANONICAL_SCAN_TYPES,
+  referringDoctors,
+  type ReferringDoctor,
+  type InsertReferringDoctor,
+  scanRequests,
+  type ScanRequest,
+  type InsertScanRequest,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql } from "drizzle-orm";
@@ -200,6 +206,21 @@ export interface IStorage {
   getPatientPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined>;
   getScanDurationSettings(clinicId: number): Promise<ScanDurationSetting[]>;
   upsertScanDurationSettings(clinicId: number, settings: Omit<InsertScanDurationSetting, 'clinicId'>[]): Promise<ScanDurationSetting[]>;
+
+  // Referring doctor operations
+  getReferringDoctors(clinicId: number): Promise<ReferringDoctor[]>;
+  getReferringDoctor(id: number): Promise<ReferringDoctor | undefined>;
+  searchReferringDoctors(clinicId: number, query: string): Promise<ReferringDoctor[]>;
+  createReferringDoctor(doctor: InsertReferringDoctor): Promise<ReferringDoctor>;
+  updateReferringDoctor(id: number, doctor: Partial<InsertReferringDoctor>): Promise<ReferringDoctor | undefined>;
+  deleteReferringDoctor(id: number): Promise<void>;
+
+  // Scan request operations
+  getScanRequests(clinicId: number): Promise<ScanRequest[]>;
+  getScanRequest(id: number): Promise<ScanRequest | undefined>;
+  createScanRequest(request: InsertScanRequest): Promise<ScanRequest>;
+  updateScanRequest(id: number, request: Partial<InsertScanRequest>): Promise<ScanRequest | undefined>;
+  deleteScanRequest(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1095,6 +1116,67 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return result;
+  }
+
+  // Referring doctor operations
+  async getReferringDoctors(clinicId: number): Promise<ReferringDoctor[]> {
+    return db.select().from(referringDoctors).where(eq(referringDoctors.clinicId, clinicId)).orderBy(referringDoctors.name);
+  }
+
+  async getReferringDoctor(id: number): Promise<ReferringDoctor | undefined> {
+    const [doctor] = await db.select().from(referringDoctors).where(eq(referringDoctors.id, id));
+    return doctor;
+  }
+
+  async searchReferringDoctors(clinicId: number, query: string): Promise<ReferringDoctor[]> {
+    return db.select().from(referringDoctors).where(
+      and(
+        eq(referringDoctors.clinicId, clinicId),
+        or(
+          ilike(referringDoctors.name, `%${query}%`),
+          ilike(referringDoctors.providerNumber, `%${query}%`),
+          ilike(referringDoctors.practiceName, `%${query}%`)
+        )
+      )
+    ).orderBy(referringDoctors.name);
+  }
+
+  async createReferringDoctor(doctor: InsertReferringDoctor): Promise<ReferringDoctor> {
+    const [created] = await db.insert(referringDoctors).values(doctor).returning();
+    return created;
+  }
+
+  async updateReferringDoctor(id: number, doctor: Partial<InsertReferringDoctor>): Promise<ReferringDoctor | undefined> {
+    const [updated] = await db.update(referringDoctors).set(doctor).where(eq(referringDoctors.id, id)).returning();
+    return updated;
+  }
+
+  async deleteReferringDoctor(id: number): Promise<void> {
+    await db.delete(referringDoctors).where(eq(referringDoctors.id, id));
+  }
+
+  // Scan request operations
+  async getScanRequests(clinicId: number): Promise<ScanRequest[]> {
+    return db.select().from(scanRequests).where(eq(scanRequests.clinicId, clinicId)).orderBy(desc(scanRequests.createdAt));
+  }
+
+  async getScanRequest(id: number): Promise<ScanRequest | undefined> {
+    const [request] = await db.select().from(scanRequests).where(eq(scanRequests.id, id));
+    return request;
+  }
+
+  async createScanRequest(request: InsertScanRequest): Promise<ScanRequest> {
+    const [created] = await db.insert(scanRequests).values(request).returning();
+    return created;
+  }
+
+  async updateScanRequest(id: number, request: Partial<InsertScanRequest>): Promise<ScanRequest | undefined> {
+    const [updated] = await db.update(scanRequests).set(request).where(eq(scanRequests.id, id)).returning();
+    return updated;
+  }
+
+  async deleteScanRequest(id: number): Promise<void> {
+    await db.delete(scanRequests).where(eq(scanRequests.id, id));
   }
 }
 

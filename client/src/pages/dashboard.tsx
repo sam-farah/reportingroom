@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool, Calendar as CalendarIcon, UserCircle, Monitor } from "lucide-react";
+import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,12 @@ import StaffManagement from "./staff-management";
 import Draw from "./draw";
 import Calendar from "./calendar";
 import Patients from "./patients";
+import Requests from "./requests";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates" | "reporting-room" | "physicians" | "staff" | "draw" | "calendar" | "patients">("user");
+  const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates" | "reporting-room" | "physicians" | "staff" | "draw" | "calendar" | "patients" | "requests">("user");
 
   const handleLogout = async () => {
     try {
@@ -106,6 +107,14 @@ export default function Dashboard() {
                   <UserCircle className="w-4 h-4 mr-2" />
                   Patients
                 </Button>
+                <Button
+                  variant={activePanel === "requests" ? "default" : "ghost"}
+                  className={activePanel === "requests" ? "medical-btn-secondary" : ""}
+                  onClick={() => setActivePanel("requests")}
+                >
+                  <ClipboardList className="w-4 h-4 mr-2" />
+                  Requests
+                </Button>
 
                 {isOwnerOrAdmin && (
                   <>
@@ -169,6 +178,8 @@ export default function Dashboard() {
         <Calendar />
       ) : activePanel === "patients" ? (
         <Patients />
+      ) : activePanel === "requests" ? (
+        <Requests />
       ) : activePanel === "admin" && isOwnerOrAdmin ? (
         <AdminPanel />
       ) : (

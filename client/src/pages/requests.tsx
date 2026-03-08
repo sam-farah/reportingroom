@@ -1,0 +1,752 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Plus, Search, Edit, Trash2, User, Phone, Mail, Stethoscope,
+  ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
+  MapPin, Hash, Building2, ChevronRight, X
+} from "lucide-react";
+import { format } from "date-fns";
+import type { ScanRequest, ReferringDoctor, Patient } from "@shared/schema";
+import { CANONICAL_SCAN_TYPES } from "@shared/schema";
+
+const URGENCY_CONFIG: Record<string, { label: string; color: string }> = {
+  routine: { label: "Routine", color: "bg-slate-100 text-slate-700" },
+  urgent: { label: "Urgent", color: "bg-amber-100 text-amber-700" },
+  asap: { label: "ASAP", color: "bg-orange-100 text-orange-700" },
+  stat: { label: "STAT", color: "bg-red-100 text-red-700" },
+};
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
+  pending: { label: "Pending", color: "bg-blue-100 text-blue-700", icon: Clock },
+  scheduled: { label: "Scheduled", color: "bg-purple-100 text-purple-700", icon: ClipboardList },
+  completed: { label: "Completed", color: "bg-green-100 text-green-700", icon: CheckCircle },
+  cancelled: { label: "Cancelled", color: "bg-slate-100 text-slate-500", icon: XCircle },
+};
+
+type RequestFormData = {
+  patientId: number | null;
+  referringDoctorId: number | null;
+  patientName: string;
+  patientDob: string;
+  patientPhone: string;
+  patientEmail: string;
+  referringDoctorName: string;
+  referringDoctorProviderNumber: string;
+  scanTypes: string[];
+  urgency: string;
+  clinicalIndication: string;
+  clinicalHistory: string;
+  status: string;
+  notes: string;
+  requestDate: string;
+};
+
+type DoctorFormData = {
+  name: string;
+  practiceName: string;
+  providerNumber: string;
+  phone: string;
+  fax: string;
+  email: string;
+  address: string;
+  notes: string;
+};
+
+const blankRequest = (): RequestFormData => ({
+  patientId: null,
+  referringDoctorId: null,
+  patientName: "",
+  patientDob: "",
+  patientPhone: "",
+  patientEmail: "",
+  referringDoctorName: "",
+  referringDoctorProviderNumber: "",
+  scanTypes: [],
+  urgency: "routine",
+  clinicalIndication: "",
+  clinicalHistory: "",
+  status: "pending",
+  notes: "",
+  requestDate: format(new Date(), "yyyy-MM-dd"),
+});
+
+const blankDoctor = (): DoctorFormData => ({
+  name: "",
+  practiceName: "",
+  providerNumber: "",
+  phone: "",
+  fax: "",
+  email: "",
+  address: "",
+  notes: "",
+});
+
+export default function Requests() {
+  const { toast } = useToast();
+
+  // ── Requests state ────────────────────────────────────────────────
+  const [requestSearch, setRequestSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [isRequestOpen, setIsRequestOpen] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<ScanRequest | null>(null);
+  const [viewingRequest, setViewingRequest] = useState<ScanRequest | null>(null);
+  const [requestForm, setRequestForm] = useState<RequestFormData>(blankRequest());
+
+  // Patient search within request form
+  const [patientSearchQuery, setPatientSearchQuery] = useState("");
+  const [showPatientResults, setShowPatientResults] = useState(false);
+
+  // Referring doctor search within request form
+  const [doctorSearchQuery, setDoctorSearchQuery] = useState("");
+  const [showDoctorResults, setShowDoctorResults] = useState(false);
+
+  // ── Referring doctors state ───────────────────────────────────────
+  const [doctorSearch, setDoctorSearch] = useState("");
+  const [isDoctorOpen, setIsDoctorOpen] = useState(false);
+  const [editingDoctor, setEditingDoctor] = useState<ReferringDoctor | null>(null);
+  const [doctorForm, setDoctorForm] = useState<DoctorFormData>(blankDoctor());
+
+  // ── Queries ───────────────────────────────────────────────────────
+  const { data: requests = [], isLoading: reqLoading } = useQuery<ScanRequest[]>({
+    queryKey: ["/api/scan-requests"],
+  });
+
+  const { data: referringDoctors = [], isLoading: docLoading } = useQuery<ReferringDoctor[]>({
+    queryKey: ["/api/referring-doctors"],
+  });
+
+  const { data: patientResults = [] } = useQuery<Patient[]>({
+    queryKey: ["/api/patients", "search", patientSearchQuery],
+    queryFn: async () => {
+      if (!patientSearchQuery || patientSearchQuery.length < 2) return [];
+      const r = await fetch(`/api/patients?search=${encodeURIComponent(patientSearchQuery)}`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: patientSearchQuery.length >= 2,
+  });
+
+  const { data: doctorResults = [] } = useQuery<ReferringDoctor[]>({
+    queryKey: ["/api/referring-doctors", "search", doctorSearchQuery],
+    queryFn: async () => {
+      if (!doctorSearchQuery || doctorSearchQuery.length < 2) return [];
+      const r = await fetch(`/api/referring-doctors?search=${encodeURIComponent(doctorSearchQuery)}`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: doctorSearchQuery.length >= 2,
+  });
+
+  // ── Request mutations ─────────────────────────────────────────────
+  const createRequest = useMutation({
+    mutationFn: (data: RequestFormData) => apiRequest("/api/scan-requests", "POST", data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] }); setIsRequestOpen(false); toast({ title: "Request created" }); },
+    onError: () => toast({ title: "Failed to create request", variant: "destructive" }),
+  });
+
+  const updateRequest = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<RequestFormData> }) => apiRequest(`/api/scan-requests/${id}`, "PUT", data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] }); setIsRequestOpen(false); setEditingRequest(null); toast({ title: "Request updated" }); },
+    onError: () => toast({ title: "Failed to update request", variant: "destructive" }),
+  });
+
+  const deleteRequest = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/scan-requests/${id}`, "DELETE"),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] }); toast({ title: "Request deleted" }); },
+    onError: () => toast({ title: "Failed to delete request", variant: "destructive" }),
+  });
+
+  // ── Doctor mutations ──────────────────────────────────────────────
+  const createDoctor = useMutation({
+    mutationFn: (data: DoctorFormData) => apiRequest("/api/referring-doctors", "POST", data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] }); setIsDoctorOpen(false); toast({ title: "Referring doctor saved" }); },
+    onError: () => toast({ title: "Failed to save doctor", variant: "destructive" }),
+  });
+
+  const updateDoctor = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<DoctorFormData> }) => apiRequest(`/api/referring-doctors/${id}`, "PUT", data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] }); setIsDoctorOpen(false); setEditingDoctor(null); toast({ title: "Doctor updated" }); },
+    onError: () => toast({ title: "Failed to update doctor", variant: "destructive" }),
+  });
+
+  const deleteDoctor = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/referring-doctors/${id}`, "DELETE"),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] }); toast({ title: "Doctor deleted" }); },
+    onError: () => toast({ title: "Failed to delete doctor", variant: "destructive" }),
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────
+  const openNewRequest = () => {
+    setEditingRequest(null);
+    setRequestForm(blankRequest());
+    setPatientSearchQuery("");
+    setDoctorSearchQuery("");
+    setIsRequestOpen(true);
+  };
+
+  const openEditRequest = (r: ScanRequest) => {
+    setEditingRequest(r);
+    setRequestForm({
+      patientId: r.patientId ?? null,
+      referringDoctorId: r.referringDoctorId ?? null,
+      patientName: r.patientName,
+      patientDob: r.patientDob ?? "",
+      patientPhone: r.patientPhone ?? "",
+      patientEmail: r.patientEmail ?? "",
+      referringDoctorName: r.referringDoctorName ?? "",
+      referringDoctorProviderNumber: r.referringDoctorProviderNumber ?? "",
+      scanTypes: r.scanTypes ?? [],
+      urgency: r.urgency,
+      clinicalIndication: r.clinicalIndication ?? "",
+      clinicalHistory: r.clinicalHistory ?? "",
+      status: r.status,
+      notes: r.notes ?? "",
+      requestDate: r.requestDate,
+    });
+    setIsRequestOpen(true);
+  };
+
+  const openNewDoctor = () => { setEditingDoctor(null); setDoctorForm(blankDoctor()); setIsDoctorOpen(true); };
+  const openEditDoctor = (d: ReferringDoctor) => {
+    setEditingDoctor(d);
+    setDoctorForm({ name: d.name, practiceName: d.practiceName ?? "", providerNumber: d.providerNumber ?? "", phone: d.phone ?? "", fax: d.fax ?? "", email: d.email ?? "", address: d.address ?? "", notes: d.notes ?? "" });
+    setIsDoctorOpen(true);
+  };
+
+  const handleSubmitRequest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingRequest) updateRequest.mutate({ id: editingRequest.id, data: requestForm });
+    else createRequest.mutate(requestForm);
+  };
+
+  const handleSubmitDoctor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingDoctor) updateDoctor.mutate({ id: editingDoctor.id, data: doctorForm });
+    else createDoctor.mutate(doctorForm);
+  };
+
+  const selectPatient = (p: Patient) => {
+    setRequestForm(prev => ({ ...prev, patientId: p.id, patientName: `${p.firstName} ${p.lastName}`, patientDob: p.dateOfBirth ?? "", patientPhone: p.phone ?? "", patientEmail: p.email ?? "" }));
+    setPatientSearchQuery("");
+    setShowPatientResults(false);
+  };
+
+  const clearPatient = () => {
+    setRequestForm(prev => ({ ...prev, patientId: null, patientName: "", patientDob: "", patientPhone: "", patientEmail: "" }));
+  };
+
+  const selectDoctor = (d: ReferringDoctor) => {
+    setRequestForm(prev => ({ ...prev, referringDoctorId: d.id, referringDoctorName: d.name, referringDoctorProviderNumber: d.providerNumber ?? "" }));
+    setDoctorSearchQuery("");
+    setShowDoctorResults(false);
+  };
+
+  const clearDoctor = () => {
+    setRequestForm(prev => ({ ...prev, referringDoctorId: null, referringDoctorName: "", referringDoctorProviderNumber: "" }));
+  };
+
+  const toggleScanType = (name: string) => {
+    setRequestForm(prev => ({
+      ...prev,
+      scanTypes: prev.scanTypes.includes(name) ? prev.scanTypes.filter(t => t !== name) : [...prev.scanTypes, name],
+    }));
+  };
+
+  // ── Filtered lists ────────────────────────────────────────────────
+  const filteredRequests = requests.filter(r => {
+    const matchSearch = !requestSearch ||
+      r.patientName.toLowerCase().includes(requestSearch.toLowerCase()) ||
+      (r.referringDoctorName ?? "").toLowerCase().includes(requestSearch.toLowerCase()) ||
+      (r.scanTypes ?? []).some(t => t.toLowerCase().includes(requestSearch.toLowerCase()));
+    const matchStatus = statusFilter === "all" || r.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  const filteredDoctors = referringDoctors.filter(d =>
+    !doctorSearch ||
+    d.name.toLowerCase().includes(doctorSearch.toLowerCase()) ||
+    (d.practiceName ?? "").toLowerCase().includes(doctorSearch.toLowerCase()) ||
+    (d.providerNumber ?? "").toLowerCase().includes(doctorSearch.toLowerCase())
+  );
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Scan Requests</h1>
+        <p className="text-gray-500 mt-1">Manage electronic referrals and referring doctors</p>
+      </div>
+
+      <Tabs defaultValue="requests">
+        <TabsList className="mb-6">
+          <TabsTrigger value="requests" className="flex items-center gap-2">
+            <ClipboardList className="w-4 h-4" /> Requests
+            {requests.filter(r => r.status === "pending").length > 0 && (
+              <Badge className="ml-1 bg-blue-600 text-white text-xs">{requests.filter(r => r.status === "pending").length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="doctors" className="flex items-center gap-2">
+            <Stethoscope className="w-4 h-4" /> Referring Doctors
+            <Badge variant="outline" className="ml-1 text-xs">{referringDoctors.length}</Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── REQUESTS TAB ── */}
+        <TabsContent value="requests">
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input className="pl-9" placeholder="Search by patient, doctor, scan type..." value={requestSearch} onChange={e => setRequestSearch(e.target.value)} />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={openNewRequest}>
+              <Plus className="w-4 h-4 mr-2" /> New Request
+            </Button>
+          </div>
+
+          {reqLoading ? (
+            <div className="text-center py-16 text-gray-400">Loading...</div>
+          ) : filteredRequests.length === 0 ? (
+            <div className="text-center py-16">
+              <ClipboardList className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+              <p className="text-gray-500">No scan requests found</p>
+              <Button variant="outline" className="mt-4" onClick={openNewRequest}><Plus className="w-4 h-4 mr-2" /> Create first request</Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredRequests.map(r => {
+                const urgCfg = URGENCY_CONFIG[r.urgency] ?? URGENCY_CONFIG.routine;
+                const stsCfg = STATUS_CONFIG[r.status] ?? STATUS_CONFIG.pending;
+                const StsIcon = stsCfg.icon;
+                return (
+                  <Card key={r.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setViewingRequest(r)}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-semibold text-gray-900">{r.patientName}</span>
+                            {r.patientDob && <span className="text-xs text-gray-400">DOB: {r.patientDob}</span>}
+                            <Badge className={`text-xs ${urgCfg.color}`}>{urgCfg.label}</Badge>
+                            <Badge className={`text-xs flex items-center gap-1 ${stsCfg.color}`}>
+                              <StsIcon className="w-3 h-3" />{stsCfg.label}
+                            </Badge>
+                          </div>
+                          {r.referringDoctorName && (
+                            <p className="text-sm text-gray-600 flex items-center gap-1">
+                              <Stethoscope className="w-3.5 h-3.5 flex-shrink-0" />
+                              {r.referringDoctorName}
+                              {r.referringDoctorProviderNumber && <span className="text-gray-400">· #{r.referringDoctorProviderNumber}</span>}
+                            </p>
+                          )}
+                          {(r.scanTypes ?? []).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {(r.scanTypes ?? []).map(t => (
+                                <span key={t} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{t}</span>
+                              ))}
+                            </div>
+                          )}
+                          {r.clinicalIndication && (
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-1">{r.clinicalIndication}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs text-gray-400">{r.requestDate}</span>
+                          <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); openEditRequest(r); }}>
+                            <Edit className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={e => { e.stopPropagation(); if (confirm("Delete this request?")) deleteRequest.mutate(r.id); }}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── REFERRING DOCTORS TAB ── */}
+        <TabsContent value="doctors">
+          <div className="flex gap-3 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input className="pl-9" placeholder="Search by name, practice, provider number..." value={doctorSearch} onChange={e => setDoctorSearch(e.target.value)} />
+            </div>
+            <Button onClick={openNewDoctor}>
+              <Plus className="w-4 h-4 mr-2" /> Add Doctor
+            </Button>
+          </div>
+
+          {docLoading ? (
+            <div className="text-center py-16 text-gray-400">Loading...</div>
+          ) : filteredDoctors.length === 0 ? (
+            <div className="text-center py-16">
+              <Stethoscope className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+              <p className="text-gray-500">No referring doctors saved yet</p>
+              <Button variant="outline" className="mt-4" onClick={openNewDoctor}><Plus className="w-4 h-4 mr-2" /> Add first doctor</Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredDoctors.map(d => (
+                <Card key={d.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className="font-semibold text-gray-900">{d.name}</p>
+                        {d.practiceName && <p className="text-sm text-gray-500 flex items-center gap-1"><Building2 className="w-3 h-3" />{d.practiceName}</p>}
+                        {d.providerNumber && <p className="text-sm text-blue-600 flex items-center gap-1"><Hash className="w-3 h-3" />Provider: {d.providerNumber}</p>}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => openEditDoctor(d)}><Edit className="w-3.5 h-3.5" /></Button>
+                        <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => { if (confirm("Delete this doctor?")) deleteDoctor.mutate(d.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-xs text-gray-500">
+                      {d.phone && <p className="flex items-center gap-1"><Phone className="w-3 h-3" />{d.phone}</p>}
+                      {d.fax && <p className="flex items-center gap-1"><FileText className="w-3 h-3" />Fax: {d.fax}</p>}
+                      {d.email && <p className="flex items-center gap-1"><Mail className="w-3 h-3" />{d.email}</p>}
+                      {d.address && <p className="flex items-center gap-1"><MapPin className="w-3 h-3" />{d.address}</p>}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* ── REQUEST FORM DIALOG ── */}
+      <Dialog open={isRequestOpen} onOpenChange={v => { if (!v) { setIsRequestOpen(false); setEditingRequest(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingRequest ? "Edit Scan Request" : "New Scan Request"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmitRequest} className="space-y-6">
+            {/* Patient details */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><User className="w-4 h-4" /> Patient Details</h3>
+              {requestForm.patientId ? (
+                <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <User className="w-4 h-4 text-blue-600" />
+                  <div className="flex-1">
+                    <span className="font-medium text-blue-900">{requestForm.patientName}</span>
+                    {requestForm.patientDob && <span className="text-xs text-blue-600 ml-2">DOB: {requestForm.patientDob}</span>}
+                  </div>
+                  <Button type="button" size="sm" variant="ghost" onClick={clearPatient}><X className="w-3.5 h-3.5" /></Button>
+                </div>
+              ) : (
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search existing patients..."
+                    value={patientSearchQuery}
+                    onChange={e => { setPatientSearchQuery(e.target.value); setShowPatientResults(true); }}
+                    onFocus={() => setShowPatientResults(true)}
+                    onBlur={() => setTimeout(() => setShowPatientResults(false), 150)}
+                  />
+                  {showPatientResults && patientResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {patientResults.map(p => (
+                        <button key={p.id} type="button" className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm flex items-center gap-2" onMouseDown={() => selectPatient(p)}>
+                          <User className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="font-medium">{p.firstName} {p.lastName}</span>
+                          {p.dateOfBirth && <span className="text-gray-400 text-xs">{p.dateOfBirth}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <Label>Patient Name *</Label>
+                  <Input value={requestForm.patientName} onChange={e => setRequestForm(p => ({ ...p, patientName: e.target.value }))} required disabled={!!requestForm.patientId} />
+                </div>
+                <div>
+                  <Label>Date of Birth</Label>
+                  <Input type="date" value={requestForm.patientDob} onChange={e => setRequestForm(p => ({ ...p, patientDob: e.target.value }))} disabled={!!requestForm.patientId} />
+                </div>
+                <div>
+                  <Label>Phone</Label>
+                  <Input value={requestForm.patientPhone} onChange={e => setRequestForm(p => ({ ...p, patientPhone: e.target.value }))} disabled={!!requestForm.patientId} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={requestForm.patientEmail} onChange={e => setRequestForm(p => ({ ...p, patientEmail: e.target.value }))} disabled={!!requestForm.patientId} />
+                </div>
+              </div>
+            </div>
+
+            {/* Referring doctor */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Stethoscope className="w-4 h-4" /> Referring Doctor</h3>
+              {requestForm.referringDoctorId ? (
+                <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg border border-green-200">
+                  <Stethoscope className="w-4 h-4 text-green-600" />
+                  <div className="flex-1">
+                    <span className="font-medium text-green-900">{requestForm.referringDoctorName}</span>
+                    {requestForm.referringDoctorProviderNumber && <span className="text-xs text-green-600 ml-2">#{requestForm.referringDoctorProviderNumber}</span>}
+                  </div>
+                  <Button type="button" size="sm" variant="ghost" onClick={clearDoctor}><X className="w-3.5 h-3.5" /></Button>
+                </div>
+              ) : (
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search saved referring doctors..."
+                    value={doctorSearchQuery}
+                    onChange={e => { setDoctorSearchQuery(e.target.value); setShowDoctorResults(true); }}
+                    onFocus={() => setShowDoctorResults(true)}
+                    onBlur={() => setTimeout(() => setShowDoctorResults(false), 150)}
+                  />
+                  {showDoctorResults && doctorResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {doctorResults.map(d => (
+                        <button key={d.id} type="button" className="w-full text-left px-3 py-2 hover:bg-green-50 text-sm flex items-center gap-2" onMouseDown={() => selectDoctor(d)}>
+                          <Stethoscope className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="font-medium">{d.name}</span>
+                          {d.providerNumber && <span className="text-gray-400 text-xs">#{d.providerNumber}</span>}
+                          {d.practiceName && <span className="text-gray-400 text-xs">· {d.practiceName}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Doctor Name</Label>
+                  <Input value={requestForm.referringDoctorName} onChange={e => setRequestForm(p => ({ ...p, referringDoctorName: e.target.value }))} disabled={!!requestForm.referringDoctorId} />
+                </div>
+                <div>
+                  <Label>Provider Number</Label>
+                  <Input value={requestForm.referringDoctorProviderNumber} onChange={e => setRequestForm(p => ({ ...p, referringDoctorProviderNumber: e.target.value }))} disabled={!!requestForm.referringDoctorId} />
+                </div>
+              </div>
+            </div>
+
+            {/* Scan details */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><ClipboardList className="w-4 h-4" /> Scan Details</h3>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <Label>Request Date *</Label>
+                  <Input type="date" value={requestForm.requestDate} onChange={e => setRequestForm(p => ({ ...p, requestDate: e.target.value }))} required />
+                </div>
+                <div>
+                  <Label>Urgency</Label>
+                  <Select value={requestForm.urgency} onValueChange={v => setRequestForm(p => ({ ...p, urgency: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(URGENCY_CONFIG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {editingRequest && (
+                  <div className="col-span-2">
+                    <Label>Status</Label>
+                    <Select value={requestForm.status} onValueChange={v => setRequestForm(p => ({ ...p, status: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(STATUS_CONFIG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              <Label className="mb-2 block">Scan Type(s)</Label>
+              <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg bg-gray-50 max-h-52 overflow-y-auto">
+                {CANONICAL_SCAN_TYPES.map(ct => (
+                  <div key={ct.name} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`req-scan-${ct.name}`}
+                      checked={requestForm.scanTypes.includes(ct.name)}
+                      onCheckedChange={() => toggleScanType(ct.name)}
+                    />
+                    <label htmlFor={`req-scan-${ct.name}`} className="text-sm cursor-pointer leading-tight">{ct.name}</label>
+                  </div>
+                ))}
+              </div>
+              {requestForm.scanTypes.length > 0 && (
+                <p className="text-xs text-blue-600 mt-1">{requestForm.scanTypes.length} selected: {requestForm.scanTypes.join(", ")}</p>
+              )}
+            </div>
+
+            {/* Clinical details */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><FileText className="w-4 h-4" /> Clinical Details</h3>
+              <div className="space-y-3">
+                <div>
+                  <Label>Clinical Indication</Label>
+                  <Textarea value={requestForm.clinicalIndication} onChange={e => setRequestForm(p => ({ ...p, clinicalIndication: e.target.value }))} rows={2} placeholder="Reason for referral..." />
+                </div>
+                <div>
+                  <Label>Relevant Clinical History</Label>
+                  <Textarea value={requestForm.clinicalHistory} onChange={e => setRequestForm(p => ({ ...p, clinicalHistory: e.target.value }))} rows={3} placeholder="Previous diagnoses, medications, relevant findings..." />
+                </div>
+                <div>
+                  <Label>Notes</Label>
+                  <Textarea value={requestForm.notes} onChange={e => setRequestForm(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Any additional notes..." />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <Button type="button" variant="outline" onClick={() => { setIsRequestOpen(false); setEditingRequest(null); }}>Cancel</Button>
+              <Button type="submit" disabled={createRequest.isPending || updateRequest.isPending}>
+                {createRequest.isPending || updateRequest.isPending ? "Saving..." : editingRequest ? "Update Request" : "Create Request"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── REQUEST VIEW DIALOG ── */}
+      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) setViewingRequest(null); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-blue-600" /> Scan Request Details
+            </DialogTitle>
+          </DialogHeader>
+          {viewingRequest && (() => {
+            const urgCfg = URGENCY_CONFIG[viewingRequest.urgency] ?? URGENCY_CONFIG.routine;
+            const stsCfg = STATUS_CONFIG[viewingRequest.status] ?? STATUS_CONFIG.pending;
+            return (
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Badge className={urgCfg.color}>{urgCfg.label}</Badge>
+                  <Badge className={stsCfg.color}>{stsCfg.label}</Badge>
+                  <span className="text-sm text-gray-400 ml-auto">{viewingRequest.requestDate}</span>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Patient</p>
+                  <p className="font-semibold">{viewingRequest.patientName}</p>
+                  {viewingRequest.patientDob && <p className="text-sm text-gray-600">DOB: {viewingRequest.patientDob}</p>}
+                  {viewingRequest.patientPhone && <p className="text-sm text-gray-600 flex items-center gap-1"><Phone className="w-3 h-3" />{viewingRequest.patientPhone}</p>}
+                  {viewingRequest.patientEmail && <p className="text-sm text-gray-600 flex items-center gap-1"><Mail className="w-3 h-3" />{viewingRequest.patientEmail}</p>}
+                </div>
+                {viewingRequest.referringDoctorName && (
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Referring Doctor</p>
+                    <p className="font-semibold">{viewingRequest.referringDoctorName}</p>
+                    {viewingRequest.referringDoctorProviderNumber && <p className="text-sm text-gray-600">Provider #: {viewingRequest.referringDoctorProviderNumber}</p>}
+                  </div>
+                )}
+                {(viewingRequest.scanTypes ?? []).length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Scan Types</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(viewingRequest.scanTypes ?? []).map(t => <span key={t} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">{t}</span>)}
+                    </div>
+                  </div>
+                )}
+                {viewingRequest.clinicalIndication && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Clinical Indication</p>
+                    <p className="text-sm text-gray-700">{viewingRequest.clinicalIndication}</p>
+                  </div>
+                )}
+                {viewingRequest.clinicalHistory && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Clinical History</p>
+                    <p className="text-sm text-gray-700">{viewingRequest.clinicalHistory}</p>
+                  </div>
+                )}
+                {viewingRequest.notes && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Notes</p>
+                    <p className="text-sm text-gray-700">{viewingRequest.notes}</p>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <Button variant="outline" onClick={() => setViewingRequest(null)}>Close</Button>
+                  <Button onClick={() => { setViewingRequest(null); openEditRequest(viewingRequest); }}>
+                    <Edit className="w-4 h-4 mr-2" /> Edit
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── REFERRING DOCTOR FORM DIALOG ── */}
+      <Dialog open={isDoctorOpen} onOpenChange={v => { if (!v) { setIsDoctorOpen(false); setEditingDoctor(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingDoctor ? "Edit Referring Doctor" : "Add Referring Doctor"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmitDoctor} className="space-y-4">
+            <div>
+              <Label>Full Name *</Label>
+              <Input value={doctorForm.name} onChange={e => setDoctorForm(p => ({ ...p, name: e.target.value }))} required placeholder="Dr. John Smith" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Practice / Organisation</Label>
+                <Input value={doctorForm.practiceName} onChange={e => setDoctorForm(p => ({ ...p, practiceName: e.target.value }))} placeholder="City Medical Centre" />
+              </div>
+              <div>
+                <Label>Provider Number</Label>
+                <Input value={doctorForm.providerNumber} onChange={e => setDoctorForm(p => ({ ...p, providerNumber: e.target.value }))} placeholder="2029764K" />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input value={doctorForm.phone} onChange={e => setDoctorForm(p => ({ ...p, phone: e.target.value }))} placeholder="02 9999 0000" />
+              </div>
+              <div>
+                <Label>Fax</Label>
+                <Input value={doctorForm.fax} onChange={e => setDoctorForm(p => ({ ...p, fax: e.target.value }))} placeholder="02 9999 0001" />
+              </div>
+              <div className="col-span-2">
+                <Label>Email</Label>
+                <Input type="email" value={doctorForm.email} onChange={e => setDoctorForm(p => ({ ...p, email: e.target.value }))} />
+              </div>
+              <div className="col-span-2">
+                <Label>Address</Label>
+                <Input value={doctorForm.address} onChange={e => setDoctorForm(p => ({ ...p, address: e.target.value }))} placeholder="123 Main St, Sydney NSW 2000" />
+              </div>
+              <div className="col-span-2">
+                <Label>Notes</Label>
+                <Textarea value={doctorForm.notes} onChange={e => setDoctorForm(p => ({ ...p, notes: e.target.value }))} rows={2} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <Button type="button" variant="outline" onClick={() => { setIsDoctorOpen(false); setEditingDoctor(null); }}>Cancel</Button>
+              <Button type="submit" disabled={createDoctor.isPending || updateDoctor.isPending}>
+                {createDoctor.isPending || updateDoctor.isPending ? "Saving..." : editingDoctor ? "Update" : "Add Doctor"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

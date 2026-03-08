@@ -559,3 +559,48 @@ export const insertScanDurationSettingSchema = createInsertSchema(scanDurationSe
 
 export type ScanDurationSetting = typeof scanDurationSettings.$inferSelect;
 export type InsertScanDurationSetting = z.infer<typeof insertScanDurationSettingSchema>;
+
+// Referring doctors (per clinic)
+export const referringDoctors = pgTable("referring_doctors", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  name: varchar("name", { length: 200 }).notNull(),
+  practiceName: varchar("practice_name", { length: 200 }),
+  providerNumber: varchar("provider_number", { length: 50 }),
+  phone: varchar("phone", { length: 50 }),
+  fax: varchar("fax", { length: 50 }),
+  email: varchar("email", { length: 200 }),
+  address: text("address"),
+  notes: text("notes"),
+});
+
+export const insertReferringDoctorSchema = createInsertSchema(referringDoctors).omit({ id: true });
+export type ReferringDoctor = typeof referringDoctors.$inferSelect;
+export type InsertReferringDoctor = z.infer<typeof insertReferringDoctorSchema>;
+
+// Scan requests
+export const scanRequests = pgTable("scan_requests", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  patientId: integer("patient_id").references(() => patients.id),
+  referringDoctorId: integer("referring_doctor_id").references(() => referringDoctors.id),
+  patientName: varchar("patient_name", { length: 200 }).notNull(),
+  patientDob: varchar("patient_dob", { length: 20 }),
+  patientPhone: varchar("patient_phone", { length: 50 }),
+  patientEmail: varchar("patient_email", { length: 200 }),
+  referringDoctorName: varchar("referring_doctor_name", { length: 200 }),
+  referringDoctorProviderNumber: varchar("referring_doctor_provider_number", { length: 50 }),
+  scanTypes: text("scan_types").array().notNull().default([]),
+  urgency: varchar("urgency", { length: 20 }).notNull().default("routine"),
+  clinicalIndication: text("clinical_indication"),
+  clinicalHistory: text("clinical_history"),
+  status: varchar("status", { length: 30 }).notNull().default("pending"),
+  notes: text("notes"),
+  requestDate: varchar("request_date", { length: 20 }).notNull(),
+  scheduledAppointmentId: integer("scheduled_appointment_id").references(() => appointments.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertScanRequestSchema = createInsertSchema(scanRequests).omit({ id: true, createdAt: true });
+export type ScanRequest = typeof scanRequests.$inferSelect;
+export type InsertScanRequest = z.infer<typeof insertScanRequestSchema>;

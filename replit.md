@@ -69,6 +69,10 @@ Preferred communication style: Simple, everyday language.
 - **Sonographer Management System**: Complete CRUD operations for sonographer profiles with initials matching integration
 - **Clinic Information Management**: Comprehensive clinic settings form (name, address, phone, fax, email)
 
+#### Referring Doctors & Scan Requests
+- **Referring Doctors**: Clinic-scoped directory of referring GPs/specialists — name, practice, provider number, phone, fax, email, address. Searchable and reusable across requests.
+- **Scan Requests**: Electronic referral form capturing patient details (linked to existing patients or free-text), referring doctor (linked or free-text), scan types (from canonical list), urgency (Routine/Urgent/ASAP/STAT), clinical indication, clinical history, notes, and status (Pending/Scheduled/Completed/Cancelled). Accessible from the "Requests" nav item.
+
 #### Data Models
 - **Users**: Authentication and profile management
 - **Physicians**: Doctor profiles with signatures and credentials

@@ -3173,6 +3173,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Referring Doctors ──────────────────────────────────────────────
+  app.get("/api/referring-doctors", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      const { search } = req.query;
+      const doctors = search
+        ? await storage.searchReferringDoctors(clinicId, String(search))
+        : await storage.getReferringDoctors(clinicId);
+      res.json(doctors);
+    } catch { res.status(500).json({ error: "Failed to fetch referring doctors" }); }
+  });
+
+  app.post("/api/referring-doctors", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      const doctor = await storage.createReferringDoctor({ ...req.body, clinicId });
+      res.status(201).json(doctor);
+    } catch { res.status(500).json({ error: "Failed to create referring doctor" }); }
+  });
+
+  app.put("/api/referring-doctors/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const id = parseInt(req.params.id);
+      const doctor = await storage.getReferringDoctor(id);
+      if (!doctor || doctor.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+      const updated = await storage.updateReferringDoctor(id, req.body);
+      res.json(updated);
+    } catch { res.status(500).json({ error: "Failed to update referring doctor" }); }
+  });
+
+  app.delete("/api/referring-doctors/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const id = parseInt(req.params.id);
+      const doctor = await storage.getReferringDoctor(id);
+      if (!doctor || doctor.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+      await storage.deleteReferringDoctor(id);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Failed to delete referring doctor" }); }
+  });
+
+  // ── Scan Requests ──────────────────────────────────────────────────
+  app.get("/api/scan-requests", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      const requests = await storage.getScanRequests(clinicId);
+      res.json(requests);
+    } catch { res.status(500).json({ error: "Failed to fetch scan requests" }); }
+  });
+
+  app.get("/api/scan-requests/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const id = parseInt(req.params.id);
+      const request = await storage.getScanRequest(id);
+      if (!request || request.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+      res.json(request);
+    } catch { res.status(500).json({ error: "Failed to fetch scan request" }); }
+  });
+
+  app.post("/api/scan-requests", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      const request = await storage.createScanRequest({ ...req.body, clinicId });
+      res.status(201).json(request);
+    } catch { res.status(500).json({ error: "Failed to create scan request" }); }
+  });
+
+  app.put("/api/scan-requests/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getScanRequest(id);
+      if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+      const updated = await storage.updateScanRequest(id, req.body);
+      res.json(updated);
+    } catch { res.status(500).json({ error: "Failed to update scan request" }); }
+  });
+
+  app.delete("/api/scan-requests/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getScanRequest(id);
+      if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+      await storage.deleteScanRequest(id);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Failed to delete scan request" }); }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
