@@ -25,6 +25,7 @@ interface PortalMe {
   patientName: string;
   patientFirstName: string;
   clinicName: string;
+  clinicLogoUrl: string | null;
 }
 
 export default function PatientPortalDashboard() {
@@ -74,18 +75,28 @@ export default function PatientPortalDashboard() {
       {/* Header */}
       <header className="bg-white border-b border-slate-200 py-4 sticky top-0 z-10">
         <div className="container mx-auto px-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-2 rounded-lg">
-              <ShieldCheck className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">
-                Patient Portal
-              </h1>
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
-                Secure Access
-              </p>
-            </div>
+          <div className="flex items-center gap-3">
+            {me.clinicLogoUrl ? (
+              <img
+                src={me.clinicLogoUrl}
+                alt={me.clinicName}
+                className="h-10 max-w-[140px] object-contain"
+              />
+            ) : (
+              <div className="bg-blue-600 p-2 rounded-lg">
+                <ShieldCheck className="w-6 h-6 text-white" />
+              </div>
+            )}
+            {!me.clinicLogoUrl && (
+              <div>
+                <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">
+                  Patient Portal
+                </h1>
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+                  Secure Access
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <div className="hidden md:block text-right">

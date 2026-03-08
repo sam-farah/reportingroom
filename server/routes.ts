@@ -3001,6 +3001,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         invitation,
         patientFirstName: patient?.firstName,
         clinicName: clinic?.name,
+        clinicLogoUrl: clinic?.logoUrl || null,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch invitation" });
@@ -3009,18 +3010,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/portal/register", async (req, res) => {
     try {
-      const { token, password, email } = req.body;
+      const { token, password } = req.body;
       const invitation = await storage.getPatientPortalInvitationByToken(token);
       
       if (!invitation || !invitation.isActive || new Date(invitation.expiresAt) < new Date()) {
         return res.status(400).json({ error: "Invalid or expired invitation" });
       }
 
-      if (invitation.email !== email) {
-        return res.status(400).json({ error: "Email does not match invitation" });
-      }
-
-      const existingAccount = await storage.getPatientPortalAccountByEmail(email);
+      const existingAccount = await storage.getPatientPortalAccountByEmail(invitation.email);
       if (existingAccount) {
         return res.status(400).json({ error: "Account already exists for this email" });
       }
@@ -3029,7 +3026,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const account = await storage.createPatientPortalAccount({
         patientId: invitation.patientId,
         clinicId: invitation.clinicId,
-        email,
+        email: invitation.email,
         passwordHash,
       });
 
@@ -3080,6 +3077,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         account,
         patientName: patient ? `${patient.firstName} ${patient.lastName}` : "Unknown",
         clinicName: clinic?.name,
+        clinicLogoUrl: clinic?.logoUrl || null,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch user info" });

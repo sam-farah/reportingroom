@@ -31,6 +31,7 @@ interface InviteData {
   };
   patientFirstName: string;
   clinicName: string;
+  clinicLogoUrl: string | null;
 }
 
 export default function PatientPortalInvite() {
@@ -140,9 +141,17 @@ export default function PatientPortalInvite() {
       <Card className="max-w-md w-full shadow-lg border-blue-100">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="bg-blue-100 p-3 rounded-full">
-              <CheckCircle2 className="w-8 h-8 text-blue-600" />
-            </div>
+            {invite.clinicLogoUrl ? (
+              <img
+                src={invite.clinicLogoUrl}
+                alt={invite.clinicName}
+                className="h-16 max-w-[200px] object-contain"
+              />
+            ) : (
+              <div className="bg-blue-100 p-3 rounded-full">
+                <CheckCircle2 className="w-8 h-8 text-blue-600" />
+              </div>
+            )}
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight text-slate-900">
             Welcome, {invite.patientFirstName}
