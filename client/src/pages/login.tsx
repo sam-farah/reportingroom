@@ -109,11 +109,8 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
-          <div className="mt-6 text-center text-sm text-gray-600">
-            Don't have an account?{" "}
-            <Link href="/register" className="text-blue-600 hover:underline font-medium">
-              Create one
-            </Link>
+          <div className="mt-6 text-center text-sm text-gray-500">
+            Access is by invitation only. Contact your clinic administrator for access.
           </div>
         </CardContent>
       </Card>

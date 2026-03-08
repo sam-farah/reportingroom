@@ -1,14 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
-import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Building2, Mail, LogOut } from "lucide-react";
+import { Mail, LogOut } from "lucide-react";
 
 export default function OnboardingPage() {
   const { user } = useAuth();
-  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
   const handleLogout = async () => {
@@ -27,52 +25,34 @@ export default function OnboardingPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Welcome to Reporting Room</h1>
           <p className="text-gray-600 mt-2">
-            Hi {user?.firstName || user?.email}, let's get you set up.
+            Hi {user?.firstName || user?.email}, your account isn't linked to a clinic yet.
           </p>
         </div>
 
-        <div className="space-y-4">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-blue-300" onClick={() => setLocation("/register-clinic")}>
-            <CardHeader>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Building2 className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">Register a New Clinic</CardTitle>
-                  <CardDescription>
-                    Set up your own clinic and become the owner. You can then invite your team members.
-                  </CardDescription>
-                </div>
+        <Card className="border-2">
+          <CardHeader>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <Mail className="h-6 w-6 text-green-600" />
               </div>
-            </CardHeader>
-          </Card>
-
-          <Card className="border-2">
-            <CardHeader>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Mail className="h-6 w-6 text-green-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">Join an Existing Clinic</CardTitle>
-                  <CardDescription>
-                    If your clinic owner has sent you an invitation link, click that link to join their clinic.
-                  </CardDescription>
-                </div>
+              <div>
+                <CardTitle className="text-lg">Waiting for an Invitation</CardTitle>
+                <CardDescription>
+                  Access to Reporting Room is by invitation only.
+                </CardDescription>
               </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-500">
-                Ask your clinic administrator to send you an invitation link. Once you receive it, click the link to accept and join the clinic.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-500">
+              Ask your clinic administrator to send you an invitation link. Once you receive it, click the link to join your clinic and get full access.
+            </p>
+          </CardContent>
+        </Card>
 
         <div className="mt-8 text-center">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             className="text-gray-500"
             onClick={handleLogout}
           >
