@@ -2,7 +2,7 @@ import sgMail from "@sendgrid/mail";
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 
-const FROM_EMAIL = "noreply@reportingroom.net";
+const FROM_EMAIL = "contact@samfarah.com";
 const FROM_NAME = "Reporting Room";
 
 export async function sendInvitationEmail(params: {
