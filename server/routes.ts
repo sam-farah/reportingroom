@@ -19,7 +19,9 @@ import {
   insertSonographerSchema,
   insertClinicSchema,
   insertUserInvitationSchema,
-  insertTextShortcutSchema
+  insertTextShortcutSchema,
+  insertPatientPortalAccountSchema,
+  insertPatientPortalInvitationSchema
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
@@ -27,6 +29,9 @@ import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./servic
 import { createBackupArchive, getBackupInfo } from "./services/backup";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
+import { sendPatientPortalInvitationEmail } from "./email";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -2918,6 +2923,215 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!res.headersSent) {
         res.status(500).json({ error: "Backup failed", details: error.message });
       }
+    }
+  });
+
+  // Patient Portal Auth & API Routes
+  app.post("/api/patients/:id/portal-invite", isAuthenticated, async (req, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
+
+      const patient = await storage.getPatient(patientId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      if (!patient.email) return res.status(400).json({ error: "Patient does not have an email address" });
+
+      const token = crypto.randomBytes(18).toString('hex');
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      const clinic = patient.clinicId ? await storage.getClinic(patient.clinicId) : null;
+      const clinicName = clinic?.name || "Reporting Room";
+
+      const invitation = await storage.createPatientPortalInvitation({
+        patientId,
+        clinicId: patient.clinicId || 1, // Fallback to 1 if not set
+        email: patient.email,
+        token,
+        expiresAt,
+        isActive: true,
+      });
+
+      try {
+        await sendPatientPortalInvitationEmail({
+          toEmail: patient.email,
+          token,
+          patientFirstName: patient.firstName,
+          clinicName,
+        });
+      } catch (emailError) {
+        console.error("Failed to send portal invitation email:", emailError);
+      }
+
+      res.json(invitation);
+    } catch (error) {
+      console.error("Portal invite error:", error);
+      res.status(500).json({ error: "Failed to create portal invitation" });
+    }
+  });
+
+  app.get("/api/patients/:id/portal-status", isAuthenticated, async (req, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
+
+      const account = await storage.getPatientPortalAccountByPatientId(patientId);
+      const invitation = await storage.getPatientPortalInvitationByPatientId(patientId);
+
+      res.json({
+        hasPortalAccess: !!account,
+        invitePending: !!invitation && invitation.isActive && new Date(invitation.expiresAt) > new Date(),
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch portal status" });
+    }
+  });
+
+  app.get("/api/portal/invite/:token", async (req, res) => {
+    try {
+      const invitation = await storage.getPatientPortalInvitationByToken(req.params.token);
+      if (!invitation || !invitation.isActive || new Date(invitation.expiresAt) < new Date()) {
+        return res.status(404).json({ error: "Invitation not found or expired" });
+      }
+
+      const patient = await storage.getPatient(invitation.patientId);
+      const clinic = await storage.getClinic(invitation.clinicId);
+
+      res.json({
+        invitation,
+        patientFirstName: patient?.firstName,
+        clinicName: clinic?.name,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch invitation" });
+    }
+  });
+
+  app.post("/api/portal/register", async (req, res) => {
+    try {
+      const { token, password, email } = req.body;
+      const invitation = await storage.getPatientPortalInvitationByToken(token);
+      
+      if (!invitation || !invitation.isActive || new Date(invitation.expiresAt) < new Date()) {
+        return res.status(400).json({ error: "Invalid or expired invitation" });
+      }
+
+      if (invitation.email !== email) {
+        return res.status(400).json({ error: "Email does not match invitation" });
+      }
+
+      const existingAccount = await storage.getPatientPortalAccountByEmail(email);
+      if (existingAccount) {
+        return res.status(400).json({ error: "Account already exists for this email" });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      const account = await storage.createPatientPortalAccount({
+        patientId: invitation.patientId,
+        clinicId: invitation.clinicId,
+        email,
+        passwordHash,
+      });
+
+      await storage.acceptPatientPortalInvitation(token);
+
+      (req.session as any).portalUserId = account.id;
+      
+      res.json({ success: true, account: { id: account.id, email: account.email } });
+    } catch (error) {
+      console.error("Portal register error:", error);
+      res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/portal/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const account = await storage.getPatientPortalAccountByEmail(email);
+      
+      if (!account || !(await bcrypt.compare(password, account.passwordHash))) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      (req.session as any).portalUserId = account.id;
+      res.json({ success: true, account: { id: account.id, email: account.email } });
+    } catch (error) {
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.post("/api/portal/logout", (req, res) => {
+    (req.session as any).portalUserId = null;
+    res.json({ success: true });
+  });
+
+  app.get("/api/portal/me", async (req, res) => {
+    const portalUserId = (req.session as any).portalUserId;
+    if (!portalUserId) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const account = await storage.getPatientPortalAccountById(portalUserId);
+      if (!account) return res.status(404).json({ error: "Account not found" });
+
+      const patient = await storage.getPatient(account.patientId);
+      const clinic = await storage.getClinic(account.clinicId);
+
+      res.json({
+        account,
+        patientName: patient ? `${patient.firstName} ${patient.lastName}` : "Unknown",
+        clinicName: clinic?.name,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch user info" });
+    }
+  });
+
+  app.get("/api/portal/reports", async (req, res) => {
+    const portalUserId = (req.session as any).portalUserId;
+    if (!portalUserId) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const account = await storage.getPatientPortalAccountById(portalUserId);
+      if (!account) return res.status(404).json({ error: "Account not found" });
+
+      const allReports = await storage.getPatientReports(account.patientId);
+      const finalizedReports = allReports
+        .filter(r => r.isFinalized)
+        .sort((a, b) => {
+          const dateA = a.generatedAt ? new Date(a.generatedAt).getTime() : 0;
+          const dateB = b.generatedAt ? new Date(b.generatedAt).getTime() : 0;
+          return dateB - dateA;
+        });
+
+      res.json(finalizedReports);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch reports" });
+    }
+  });
+
+  app.get("/api/portal/worksheets", async (req, res) => {
+    const portalUserId = (req.session as any).portalUserId;
+    if (!portalUserId) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      const account = await storage.getPatientPortalAccountById(portalUserId);
+      if (!account) return res.status(404).json({ error: "Account not found" });
+
+      const standard = await storage.getPatientWorksheets(account.patientId);
+      const digital = await storage.getPatientDigitalWorksheets(account.patientId);
+
+      const allWorksheets = [
+        ...standard.map(w => ({ ...w, type: 'standard' })),
+        ...digital.map(w => ({ ...w, type: 'digital' }))
+      ].sort((a, b) => {
+        const dateA = (a as any).createdAt ? new Date((a as any).createdAt).getTime() : ((a as any).uploadedAt ? new Date((a as any).uploadedAt).getTime() : 0);
+        const dateB = (b as any).createdAt ? new Date((b as any).createdAt).getTime() : ((b as any).uploadedAt ? new Date((b as any).uploadedAt).getTime() : 0);
+        return dateB - dateA;
+      });
+
+      res.json(allWorksheets);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch worksheets" });
     }
   });
 

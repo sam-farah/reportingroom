@@ -12,6 +12,9 @@ import ClinicRegistration from "@/pages/clinic-registration";
 import InvitationPage from "@/pages/invitation";
 import Kiosk from "@/pages/kiosk";
 import OnboardingPage from "@/pages/onboarding";
+import PatientPortalInvite from "@/pages/patient-portal/invite";
+import PatientPortalLogin from "@/pages/patient-portal/login";
+import PatientPortalDashboard from "@/pages/patient-portal/dashboard";
 import { Loader2 } from "lucide-react";
 
 function Router() {
@@ -31,6 +34,12 @@ function Router() {
     <Switch>
       <Route path="/kiosk" component={Kiosk} />
       <Route path="/invite/:token" component={InvitationPage} />
+      
+      {/* Patient Portal Routes */}
+      <Route path="/patient-portal/invite/:token" component={PatientPortalInvite} />
+      <Route path="/patient-portal/login" component={PatientPortalLogin} />
+      <Route path="/patient-portal" component={PatientPortalDashboard} />
+
       {!isAuthenticated ? (
         <>
           <Route path="/login" component={LoginPage} />

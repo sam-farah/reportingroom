@@ -59,3 +59,61 @@ export async function sendInvitationEmail(params: {
     throw err;
   }
 }
+
+export async function sendPatientPortalInvitationEmail(params: {
+  toEmail: string;
+  token: string;
+  patientFirstName: string;
+  clinicName: string;
+}): Promise<void> {
+  const portalUrl = `https://reportingroom.net/patient-portal/invite/${params.token}`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1a1a2e;">
+      <div style="text-align: center; margin-bottom: 32px;">
+        <h1 style="font-size: 24px; color: #1a1a2e; margin: 0;">Reporting Room</h1>
+        <p style="color: #666; margin: 4px 0 0;">Patient Portal</p>
+      </div>
+
+      <div style="background: #f0f9ff; border-radius: 8px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #0ea5e9;">
+        <h2 style="font-size: 20px; margin: 0 0 12px; color: #0c4a6e;">Hi ${params.patientFirstName},</h2>
+        <p style="margin: 0; color: #444; line-height: 1.6;">
+          Your medical reports from <strong>${params.clinicName}</strong> are now available to view securely online through our Patient Portal.
+        </p>
+      </div>
+
+      <p style="color: #555; line-height: 1.6; margin-bottom: 24px;">
+        You can access your worksheets and reports at any time — all in one secure place. Simply click the button below to set up your account and get started.
+      </p>
+
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${portalUrl}"
+           style="background: #0ea5e9; color: #ffffff; padding: 16px 40px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold; display: inline-block;">
+          Access Your Reports
+        </a>
+      </div>
+
+      <p style="color: #888; font-size: 13px; text-align: center;">
+        This link expires in 7 days. If you have any questions, please contact ${params.clinicName} directly.
+      </p>
+
+      <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+
+      <p style="color: #aaa; font-size: 12px; text-align: center; margin: 0;">
+        Reporting Room &mdash; <a href="https://reportingroom.net" style="color: #aaa;">reportingroom.net</a>
+      </p>
+    </div>
+  `;
+
+  try {
+    await sgMail.send({
+      to: params.toEmail,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
+      subject: `Your medical reports are ready to view — ${params.clinicName}`,
+      html,
+    });
+  } catch (err: any) {
+    console.error("SendGrid error details:", JSON.stringify(err?.response?.body?.errors ?? err?.message, null, 2));
+    throw err;
+  }
+}

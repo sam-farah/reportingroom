@@ -10,6 +10,12 @@ import {
   sonographers,
   patients,
   patientDocuments,
+  patientPortalInvitations,
+  patientPortalAccounts,
+  type PatientPortalInvitation,
+  type InsertPatientPortalInvitation,
+  type PatientPortalAccount,
+  type InsertPatientPortalAccount,
   type User,
   type UpsertUser,
   type Clinic,
@@ -178,6 +184,16 @@ export interface IStorage {
   getPatientDocuments(patientId: number): Promise<PatientDocument[]>;
   createPatientDocument(document: InsertPatientDocument): Promise<PatientDocument>;
   deletePatientDocument(id: number): Promise<void>;
+
+  // Patient portal operations
+  createPatientPortalInvitation(data: InsertPatientPortalInvitation): Promise<PatientPortalInvitation>;
+  getPatientPortalInvitationByToken(token: string): Promise<PatientPortalInvitation | undefined>;
+  getPatientPortalInvitationByPatientId(patientId: number): Promise<PatientPortalInvitation | undefined>;
+  acceptPatientPortalInvitation(token: string): Promise<void>;
+  createPatientPortalAccount(data: InsertPatientPortalAccount): Promise<PatientPortalAccount>;
+  getPatientPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined>;
+  getPatientPortalAccountById(id: number): Promise<PatientPortalAccount | undefined>;
+  getPatientPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -944,6 +960,75 @@ export class DatabaseStorage implements IStorage {
 
   async deletePatientDocument(id: number): Promise<void> {
     await db.delete(patientDocuments).where(eq(patientDocuments.id, id));
+  }
+
+  // Patient portal operations
+  async createPatientPortalInvitation(data: InsertPatientPortalInvitation): Promise<PatientPortalInvitation> {
+    const [invitation] = await db
+      .insert(patientPortalInvitations)
+      .values(data)
+      .returning();
+    return invitation;
+  }
+
+  async getPatientPortalInvitationByToken(token: string): Promise<PatientPortalInvitation | undefined> {
+    const [invitation] = await db
+      .select()
+      .from(patientPortalInvitations)
+      .where(eq(patientPortalInvitations.token, token));
+    return invitation;
+  }
+
+  async getPatientPortalInvitationByPatientId(patientId: number): Promise<PatientPortalInvitation | undefined> {
+    const [invitation] = await db
+      .select()
+      .from(patientPortalInvitations)
+      .where(and(eq(patientPortalInvitations.patientId, patientId), eq(patientPortalInvitations.isActive, true)))
+      .orderBy(desc(patientPortalInvitations.createdAt))
+      .limit(1);
+    return invitation;
+  }
+
+  async acceptPatientPortalInvitation(token: string): Promise<void> {
+    await db
+      .update(patientPortalInvitations)
+      .set({
+        isActive: false,
+        acceptedAt: new Date(),
+      })
+      .where(eq(patientPortalInvitations.token, token));
+  }
+
+  async createPatientPortalAccount(data: InsertPatientPortalAccount): Promise<PatientPortalAccount> {
+    const [account] = await db
+      .insert(patientPortalAccounts)
+      .values(data)
+      .returning();
+    return account;
+  }
+
+  async getPatientPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined> {
+    const [account] = await db
+      .select()
+      .from(patientPortalAccounts)
+      .where(eq(patientPortalAccounts.email, email));
+    return account;
+  }
+
+  async getPatientPortalAccountById(id: number): Promise<PatientPortalAccount | undefined> {
+    const [account] = await db
+      .select()
+      .from(patientPortalAccounts)
+      .where(eq(patientPortalAccounts.id, id));
+    return account;
+  }
+
+  async getPatientPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined> {
+    const [account] = await db
+      .select()
+      .from(patientPortalAccounts)
+      .where(eq(patientPortalAccounts.patientId, patientId));
+    return account;
   }
 }
 

@@ -476,3 +476,42 @@ export const insertAppointmentSchema = createInsertSchema(appointments).omit({
 
 export type Appointment = typeof appointments.$inferSelect;
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+
+// Patient Portal Invitations
+export const patientPortalInvitations = pgTable("patient_portal_invitations", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  email: varchar("email", { length: 255 }).notNull(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  acceptedAt: timestamp("accepted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPatientPortalInvitationSchema = createInsertSchema(patientPortalInvitations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PatientPortalInvitation = typeof patientPortalInvitations.$inferSelect;
+export type InsertPatientPortalInvitation = z.infer<typeof insertPatientPortalInvitationSchema>;
+
+// Patient Portal Accounts
+export const patientPortalAccounts = pgTable("patient_portal_accounts", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().unique().references(() => patients.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPatientPortalAccountSchema = createInsertSchema(patientPortalAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PatientPortalAccount = typeof patientPortalAccounts.$inferSelect;
+export type InsertPatientPortalAccount = z.infer<typeof insertPatientPortalAccountSchema>;

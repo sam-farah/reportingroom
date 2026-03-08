@@ -114,6 +114,31 @@ export default function Patients() {
   const [uploadDate, setUploadDate] = useState(new Date().toISOString().split('T')[0]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
+  const { data: portalStatus } = useQuery<{ hasPortalAccess: boolean; invitePending: boolean }>({
+    queryKey: ["/api/patients", selectedPatient?.id, "portal-status"],
+    queryFn: async () => {
+      if (!selectedPatient) return { hasPortalAccess: false, invitePending: false };
+      const response = await fetch(`/api/patients/${selectedPatient.id}/portal-status`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch portal status");
+      return response.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const invitePortalMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedPatient) return;
+      return await apiRequest(`/api/patients/${selectedPatient.id}/portal-invite`, "POST");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, "portal-status"] });
+      toast({ title: "Success", description: `Invitation sent to ${selectedPatient?.email}` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to send invitation", variant: "destructive" });
+    },
+  });
+
   const uploadDocumentMutation = useMutation({
     mutationFn: async ({ file, title, documentDate }: { file: File; title: string; documentDate: string }) => {
       const formData = new FormData();
@@ -718,9 +743,29 @@ export default function Patients() {
                   </div>
                 )}
                 {selectedPatient.email && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Mail className="w-4 h-4" />
-                    <span>{selectedPatient.email}</span>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Mail className="w-4 h-4" />
+                      <span>{selectedPatient.email}</span>
+                    </div>
+                    {portalStatus?.hasPortalAccess ? (
+                      <Badge variant="outline" className="w-fit bg-green-50 text-green-700 border-green-200 gap-1">
+                        <CheckCircle className="w-3 h-3" />
+                        Portal Access Active
+                      </Badge>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="w-fit h-7 text-xs gap-1.5"
+                        onClick={() => invitePortalMutation.mutate()}
+                        disabled={invitePortalMutation.isPending}
+                      >
+                        <Mail className="w-3 h-3" />
+                        {portalStatus?.invitePending ? "Resend Portal Invitation" : "Invite to Patient Portal"}
+                        {invitePortalMutation.isPending && <Clock className="w-3 h-3 animate-spin" />}
+                      </Button>
+                    )}
                   </div>
                 )}
                 {(selectedPatient.address || selectedPatient.city) && (
