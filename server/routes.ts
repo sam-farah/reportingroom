@@ -1867,6 +1867,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Scan duration settings
+  app.get("/api/scan-durations", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const settings = await storage.getScanDurationSettings(user.clinicId);
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch scan duration settings" });
+    }
+  });
+
+  app.put("/api/scan-durations", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const { settings } = req.body;
+      if (!Array.isArray(settings)) return res.status(400).json({ error: "Invalid settings" });
+      const result = await storage.upsertScanDurationSettings(user.clinicId, settings);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save scan duration settings" });
+    }
+  });
+
   // Update clinic info
   app.put("/api/clinic/:id", isAuthenticated, async (req, res) => {
     try {

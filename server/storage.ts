@@ -52,7 +52,11 @@ import {
   type InsertTextShortcut,
   appointments,
   type Appointment,
-  type InsertAppointment
+  type InsertAppointment,
+  scanDurationSettings,
+  type ScanDurationSetting,
+  type InsertScanDurationSetting,
+  CANONICAL_SCAN_TYPES,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql } from "drizzle-orm";
@@ -194,6 +198,8 @@ export interface IStorage {
   getPatientPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined>;
   getPatientPortalAccountById(id: number): Promise<PatientPortalAccount | undefined>;
   getPatientPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined>;
+  getScanDurationSettings(clinicId: number): Promise<ScanDurationSetting[]>;
+  upsertScanDurationSettings(clinicId: number, settings: Omit<InsertScanDurationSetting, 'clinicId'>[]): Promise<ScanDurationSetting[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1029,6 +1035,66 @@ export class DatabaseStorage implements IStorage {
       .from(patientPortalAccounts)
       .where(eq(patientPortalAccounts.patientId, patientId));
     return account;
+  }
+
+  async getScanDurationSettings(clinicId: number): Promise<ScanDurationSetting[]> {
+    const existing = await db
+      .select()
+      .from(scanDurationSettings)
+      .where(eq(scanDurationSettings.clinicId, clinicId));
+
+    // Return defaults for any scan types not yet configured
+    const existingTypes = new Set(existing.map(s => s.scanType));
+    const defaults: ScanDurationSetting[] = CANONICAL_SCAN_TYPES
+      .filter(ct => !existingTypes.has(ct.name))
+      .map((ct, idx) => ({
+        id: -(idx + 1),
+        clinicId,
+        scanType: ct.name,
+        isEnabled: true,
+        hasLaterality: ct.hasLaterality,
+        unilateralDuration: ct.hasLaterality ? 30 : null,
+        bilateralDuration: 45,
+      }));
+
+    const all = [...existing, ...defaults];
+    // Sort by canonical order
+    const order = CANONICAL_SCAN_TYPES.map(ct => ct.name);
+    return all.sort((a, b) => order.indexOf(a.scanType) - order.indexOf(b.scanType));
+  }
+
+  async upsertScanDurationSettings(clinicId: number, settings: Omit<InsertScanDurationSetting, 'clinicId'>[]): Promise<ScanDurationSetting[]> {
+    const result: ScanDurationSetting[] = [];
+    for (const setting of settings) {
+      const [existing] = await db
+        .select()
+        .from(scanDurationSettings)
+        .where(and(
+          eq(scanDurationSettings.clinicId, clinicId),
+          eq(scanDurationSettings.scanType, setting.scanType)
+        ));
+
+      if (existing) {
+        const [updated] = await db
+          .update(scanDurationSettings)
+          .set({
+            isEnabled: setting.isEnabled,
+            hasLaterality: setting.hasLaterality,
+            unilateralDuration: setting.unilateralDuration,
+            bilateralDuration: setting.bilateralDuration,
+          })
+          .where(eq(scanDurationSettings.id, existing.id))
+          .returning();
+        result.push(updated);
+      } else {
+        const [created] = await db
+          .insert(scanDurationSettings)
+          .values({ ...setting, clinicId })
+          .returning();
+        result.push(created);
+      }
+    }
+    return result;
   }
 }
 

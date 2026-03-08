@@ -515,3 +515,47 @@ export const insertPatientPortalAccountSchema = createInsertSchema(patientPortal
 
 export type PatientPortalAccount = typeof patientPortalAccounts.$inferSelect;
 export type InsertPatientPortalAccount = z.infer<typeof insertPatientPortalAccountSchema>;
+
+// Canonical scan types for the clinic
+export const CANONICAL_SCAN_TYPES: { name: string; hasLaterality: boolean }[] = [
+  { name: "Carotid and vertebral", hasLaterality: false },
+  { name: "Upper limb arteries", hasLaterality: true },
+  { name: "Aortoiliac", hasLaterality: false },
+  { name: "Mesenteric (visceral) arteries", hasLaterality: false },
+  { name: "Renal arteries", hasLaterality: false },
+  { name: "Lower limb arteries (including aorto iliac)", hasLaterality: true },
+  { name: "Lower limb DVT", hasLaterality: true },
+  { name: "Upper limb DVT", hasLaterality: true },
+  { name: "Ovarian/pelvic veins", hasLaterality: false },
+  { name: "IVC/Iliac veins", hasLaterality: false },
+  { name: "Varicose veins/chronic venous insufficiency", hasLaterality: true },
+  { name: "AV Fistula", hasLaterality: true },
+  { name: "Pre-AV Fistula Mapping", hasLaterality: true },
+  { name: "Bypass conduit mapping (leg veins)", hasLaterality: true },
+  { name: "Bypass conduit mapping (arm veins)", hasLaterality: true },
+  { name: "Thoracic outlet syndrome", hasLaterality: true },
+  { name: "Palmar and digital arteries", hasLaterality: true },
+  { name: "Pedal Acceleration Time", hasLaterality: true },
+  { name: "Temporal arteries", hasLaterality: false },
+  { name: "Resting ABI", hasLaterality: false },
+  { name: "Exercise ABI", hasLaterality: false },
+  { name: "Finger brachial indices", hasLaterality: false },
+];
+
+// Scan duration settings per clinic
+export const scanDurationSettings = pgTable("scan_duration_settings", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  scanType: varchar("scan_type", { length: 200 }).notNull(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  hasLaterality: boolean("has_laterality").notNull().default(false),
+  unilateralDuration: integer("unilateral_duration"),
+  bilateralDuration: integer("bilateral_duration"),
+});
+
+export const insertScanDurationSettingSchema = createInsertSchema(scanDurationSettings).omit({
+  id: true,
+});
+
+export type ScanDurationSetting = typeof scanDurationSettings.$inferSelect;
+export type InsertScanDurationSetting = z.infer<typeof insertScanDurationSettingSchema>;

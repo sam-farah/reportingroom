@@ -13,20 +13,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes } from "date-fns";
-import type { Appointment, Physician, Sonographer, Patient } from "@shared/schema";
-
-const SCAN_TYPES = [
-  "Lower Limb Venous",
-  "Carotid Duplex", 
-  "Abdominal Aorta",
-  "Upper Limb Venous",
-  "Upper Limb Arterial",
-  "Lower Limb Arterial",
-  "Renal Duplex",
-  "Mesenteric Duplex",
-  "Post Endovenous Intervention",
-  "Other"
-];
+import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting } from "@shared/schema";
+import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-100 text-blue-800 border-blue-200",
@@ -61,11 +49,16 @@ export default function Calendar() {
     appointmentTime: "09:00",
     duration: "30",
     scanTypes: [] as string[],
+    laterality: {} as Record<string, "unilateral" | "bilateral">,
     physicianId: "",
     sonographerId: "",
     notes: "",
     status: "scheduled",
     patientId: null as number | null,
+  });
+
+  const { data: scanDurations = [] } = useQuery<ScanDurationSetting[]>({
+    queryKey: ["/api/scan-durations"],
   });
 
   const [patientSearch, setPatientSearch] = useState("");
@@ -257,6 +250,7 @@ export default function Calendar() {
       appointmentTime: "09:00",
       duration: "30",
       scanTypes: [],
+      laterality: {},
       physicianId: "",
       sonographerId: "",
       notes: "",
@@ -267,13 +261,49 @@ export default function Calendar() {
     setPatientSearch("");
   };
 
+  const calcDuration = (scanTypes: string[], laterality: Record<string, "unilateral" | "bilateral">): string => {
+    if (scanTypes.length === 0 || scanDurations.length === 0) return "30";
+    let total = 0;
+    for (const st of scanTypes) {
+      const setting = scanDurations.find(s => s.scanType === st && s.isEnabled);
+      if (!setting) { total += 30; continue; }
+      if (setting.hasLaterality) {
+        const lat = laterality[st] ?? "bilateral";
+        total += lat === "unilateral"
+          ? (setting.unilateralDuration ?? 30)
+          : (setting.bilateralDuration ?? 45);
+      } else {
+        total += setting.bilateralDuration ?? 30;
+      }
+    }
+    return String(total);
+  };
+
   const handleScanTypeToggle = (scanType: string) => {
-    setFormData(prev => ({
-      ...prev,
-      scanTypes: prev.scanTypes.includes(scanType)
+    setFormData(prev => {
+      const nextTypes = prev.scanTypes.includes(scanType)
         ? prev.scanTypes.filter(t => t !== scanType)
-        : [...prev.scanTypes, scanType]
-    }));
+        : [...prev.scanTypes, scanType];
+      const nextLaterality = { ...prev.laterality };
+      if (!nextTypes.includes(scanType)) delete nextLaterality[scanType];
+      return {
+        ...prev,
+        scanTypes: nextTypes,
+        laterality: nextLaterality,
+        duration: calcDuration(nextTypes, nextLaterality),
+      };
+    });
+  };
+
+  const handleLateralityChange = (scanType: string, lat: "unilateral" | "bilateral") => {
+    setFormData(prev => {
+      const nextLaterality = { ...prev.laterality, [scanType]: lat };
+      return {
+        ...prev,
+        laterality: nextLaterality,
+        duration: calcDuration(prev.scanTypes, nextLaterality),
+      };
+    });
   };
 
   const handleDateClick = (date: Date) => {
@@ -426,6 +456,7 @@ export default function Calendar() {
       appointmentTime: format(appointmentDate, "HH:mm"),
       duration: String(appointment.duration),
       scanTypes: scanTypesArray,
+      laterality: {},
       physicianId: appointment.physicianId ? String(appointment.physicianId) : "",
       sonographerId: appointment.sonographerId ? String(appointment.sonographerId) : "",
       notes: appointment.notes || "",
@@ -918,45 +949,68 @@ export default function Calendar() {
                     required
                   />
                 </div>
-                <div>
-                  <Label htmlFor="duration">Duration (minutes)</Label>
-                  <Select value={formData.duration} onValueChange={(value) => setFormData(prev => ({ ...prev, duration: value }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15">15 minutes</SelectItem>
-                      <SelectItem value="30">30 minutes</SelectItem>
-                      <SelectItem value="45">45 minutes</SelectItem>
-                      <SelectItem value="60">60 minutes</SelectItem>
-                      <SelectItem value="90">90 minutes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="col-span-2">
                   <Label>Scan Type(s)</Label>
-                  <div className="grid grid-cols-2 gap-2 mt-2 p-3 border rounded-lg bg-gray-50">
-                    {SCAN_TYPES.map((type) => (
-                      <div key={type} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`scan-${type}`}
-                          checked={formData.scanTypes.includes(type)}
-                          onCheckedChange={() => handleScanTypeToggle(type)}
-                        />
-                        <label
-                          htmlFor={`scan-${type}`}
-                          className="text-sm cursor-pointer"
-                        >
-                          {type}
-                        </label>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-2 gap-2 mt-2 p-3 border rounded-lg bg-gray-50 max-h-60 overflow-y-auto">
+                    {CANONICAL_SCAN_TYPES.filter(ct => {
+                      const setting = scanDurations.find(s => s.scanType === ct.name);
+                      return setting ? setting.isEnabled : true;
+                    }).map((ct) => {
+                      const isChecked = formData.scanTypes.includes(ct.name);
+                      const scanSetting = scanDurations.find(s => s.scanType === ct.name);
+                      const showLaterality = isChecked && (scanSetting?.hasLaterality ?? ct.hasLaterality);
+                      return (
+                        <div key={ct.name} className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`scan-${ct.name}`}
+                              checked={isChecked}
+                              onCheckedChange={() => handleScanTypeToggle(ct.name)}
+                            />
+                            <label htmlFor={`scan-${ct.name}`} className="text-sm cursor-pointer leading-tight">
+                              {ct.name}
+                            </label>
+                          </div>
+                          {showLaterality && (
+                            <div className="ml-6 flex gap-2">
+                              {(["unilateral", "bilateral"] as const).map(lat => (
+                                <button
+                                  key={lat}
+                                  type="button"
+                                  onClick={() => handleLateralityChange(ct.name, lat)}
+                                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                                    (formData.laterality[ct.name] ?? "bilateral") === lat
+                                      ? "bg-blue-600 text-white border-blue-600"
+                                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  {lat.charAt(0).toUpperCase() + lat.slice(1)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  {formData.scanTypes.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Selected: {formData.scanTypes.join(", ")}
-                    </p>
-                  )}
+                </div>
+                <div>
+                  <Label htmlFor="duration">Duration (minutes)</Label>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      id="duration"
+                      type="number"
+                      min={5}
+                      max={480}
+                      value={formData.duration}
+                      onChange={(e) => setFormData(prev => ({ ...prev, duration: e.target.value }))}
+                      className="w-24"
+                    />
+                    <span className="text-sm text-gray-500">min</span>
+                    {formData.scanTypes.length > 0 && (
+                      <span className="text-xs text-blue-600 ml-1">auto-calculated</span>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="physicianId">Physician</Label>

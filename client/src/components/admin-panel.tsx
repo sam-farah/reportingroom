@@ -15,6 +15,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import ClinicPage from "@/pages/physicians";
 import type { TrainingPair, Physician, ReportTemplate, Clinic } from "@shared/schema";
+import ScanDurationsTab from "./scan-durations-tab";
 
 export default function AdminPanel() {
   const { toast } = useToast();
@@ -509,8 +510,9 @@ export default function AdminPanel() {
       </div>
 
       <Tabs defaultValue="monitoring" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="clinic-settings">🏥 Clinic</TabsTrigger>
+          <TabsTrigger value="scan-durations">⏱️ Scan Durations</TabsTrigger>
           <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
           <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
           <TabsTrigger value="costs">Cost Projection</TabsTrigger>
@@ -522,6 +524,10 @@ export default function AdminPanel() {
 
         <TabsContent value="clinic-settings">
           <ClinicPage />
+        </TabsContent>
+
+        <TabsContent value="scan-durations">
+          <ScanDurationsTab />
         </TabsContent>
 
         <TabsContent value="monitoring" className="space-y-6">
