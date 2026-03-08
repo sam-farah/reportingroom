@@ -165,7 +165,7 @@ export default function PatientPortalDashboard() {
                               )}
                             </div>
                             <p className="text-sm text-slate-500">
-                              Date: {format(new Date(report.examDate), 'MMMM d, yyyy')}
+                              Date: {report.examDate ? format(new Date(report.examDate), 'MMMM d, yyyy') : 'N/A'}
                             </p>
                           </div>
                           <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
@@ -194,7 +194,7 @@ export default function PatientPortalDashboard() {
                             </div>
                             <div>
                               <p className="text-slate-500 uppercase text-[10px] font-bold tracking-wider">Study Date</p>
-                              <p className="font-semibold text-slate-900">{format(new Date(report.examDate), 'MMM d, yyyy')}</p>
+                              <p className="font-semibold text-slate-900">{report.examDate ? format(new Date(report.examDate), 'MMM d, yyyy') : 'N/A'}</p>
                             </div>
                             <div>
                               <p className="text-slate-500 uppercase text-[10px] font-bold tracking-wider">Indication</p>
@@ -269,9 +269,14 @@ export default function PatientPortalDashboard() {
                           <ImageIcon className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900">{worksheet.originalName}</p>
+                          <p className="font-bold text-slate-900">
+                            {(worksheet as any).originalName || (worksheet as any).studyType || 'Worksheet'}
+                          </p>
                           <p className="text-sm text-slate-500">
-                            Uploaded: {format(new Date(worksheet.uploadedAt), 'MMM d, yyyy')}
+                            {(() => {
+                              const d = (worksheet as any).uploadedAt || (worksheet as any).createdAt;
+                              return d ? `Uploaded: ${format(new Date(d), 'MMM d, yyyy')}` : '';
+                            })()}
                           </p>
                         </div>
                       </div>

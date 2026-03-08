@@ -3085,8 +3085,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clinic = await storage.getClinic(account.clinicId);
 
       res.json({
-        account,
+        id: account.id,
+        patientId: account.patientId,
+        clinicId: account.clinicId,
+        email: account.email,
         patientName: patient ? `${patient.firstName} ${patient.lastName}` : "Unknown",
+        patientFirstName: patient?.firstName || "Patient",
         clinicName: clinic?.name,
         clinicLogoUrl: clinic?.logoUrl || null,
       });
