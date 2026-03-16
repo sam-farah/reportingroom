@@ -463,6 +463,7 @@ export const appointments = pgTable("appointments", {
   sonographerId: integer("sonographer_id").references(() => sonographers.id),
   notes: text("notes"),
   status: varchar("status", { length: 50 }).notNull().default('scheduled'), // 'scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'
+  isInvoiced: boolean("is_invoiced").notNull().default(false),
   clinicId: integer("clinic_id").references(() => clinics.id),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),

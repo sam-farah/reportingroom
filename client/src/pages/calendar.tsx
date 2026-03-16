@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes } from "date-fns";
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
@@ -54,6 +54,7 @@ export default function Calendar() {
     sonographerId: "",
     notes: "",
     status: "scheduled",
+    isInvoiced: false,
     patientId: null as number | null,
   });
 
@@ -255,6 +256,7 @@ export default function Calendar() {
       sonographerId: "",
       notes: "",
       status: "scheduled",
+      isInvoiced: false,
       patientId: null,
     });
     setSelectedPatient(null);
@@ -461,6 +463,7 @@ export default function Calendar() {
       sonographerId: appointment.sonographerId ? String(appointment.sonographerId) : "",
       notes: appointment.notes || "",
       status: appointment.status,
+      isInvoiced: appointment.isInvoiced ?? false,
       patientId: appointment.patientId || null,
     });
     setSelectedPatient(null);
@@ -487,6 +490,7 @@ export default function Calendar() {
       sonographerId: formData.sonographerId ? parseInt(formData.sonographerId) : null,
       notes: formData.notes || null,
       status: formData.status,
+      isInvoiced: formData.isInvoiced,
     };
 
     if (editingAppointment) {
@@ -580,7 +584,7 @@ export default function Calendar() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-4 py-4">
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Appointment Calendar</h1>
@@ -639,14 +643,14 @@ export default function Calendar() {
           </CardHeader>
           <CardContent>
             {viewMode === "day" && (
-              <div className="min-h-[500px]">
+              <div className="min-h-[700px]">
                 <div className="text-center font-semibold text-gray-600 bg-gray-100 p-2 border border-gray-200 mb-2">
                   {format(currentDate, "EEEE, MMMM d")}
                 </div>
                 <div className="flex border border-gray-200">
                   <div className="w-20 flex-shrink-0 bg-gray-50">
                     {SLOTS.map((slot, i) => (
-                      <div key={i} className={`border-b ${slot.minute === 0 ? 'border-gray-200' : 'border-gray-100'} pr-2 text-right text-sm text-gray-500 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
+                      <div key={i} className={`border-b ${slot.minute === 0 ? 'border-gray-400' : 'border-gray-100'} pr-2 text-right text-sm text-gray-500 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
                         {slot.minute === 0 ? format(new Date().setHours(slot.hour, 0), "h a") : ""}
                       </div>
                     ))}
@@ -655,7 +659,7 @@ export default function Calendar() {
                     {SLOTS.map((slot, i) => (
                       <div 
                         key={i} 
-                        className={`border-b ${slot.minute === 0 ? 'border-gray-200' : 'border-gray-100 border-dashed'} hover:bg-gray-50 cursor-pointer transition-colors ${
+                        className={`border-b ${slot.minute === 0 ? 'border-gray-400' : 'border-gray-100 border-dashed'} hover:bg-gray-50 cursor-pointer transition-colors ${
                           draggingAppointment ? "hover:bg-blue-100" : ""
                         }`}
                         style={{ height: `${SLOT_HEIGHT}px` }}
@@ -693,10 +697,15 @@ export default function Calendar() {
                             onMouseDown={(e) => handleResizeStart(e, apt, "top")}
                             onClick={(e) => e.stopPropagation()}
                           />
-                          <div className="p-2 pt-2">
+                          <div className="p-2 pt-2 pr-6">
                             <div className="text-sm font-medium truncate">{apt.patientName}</div>
                             <div className="text-xs truncate">{format(new Date(apt.appointmentDate), "h:mm a")} - {apt.scanType}</div>
                           </div>
+                          {apt.isInvoiced && (
+                            <div className="absolute top-1 right-1 z-10">
+                              <DollarSign className="w-3.5 h-3.5 text-emerald-700" />
+                            </div>
+                          )}
                           <div
                             className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
                             onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
@@ -710,7 +719,7 @@ export default function Calendar() {
               </div>
             )}
             {viewMode === "week" && (
-              <div className="min-h-[500px] overflow-x-auto">
+              <div className="min-h-[700px] overflow-x-auto">
                 <div className="flex">
                   <div className="w-16 flex-shrink-0"></div>
                   <div className="flex-1 grid grid-cols-7">
@@ -730,7 +739,7 @@ export default function Calendar() {
                 <div className="flex">
                   <div className="w-16 flex-shrink-0">
                     {SLOTS.map((slot, i) => (
-                      <div key={i} className={`border-b ${slot.minute === 0 ? 'border-gray-200' : 'border-gray-100'} text-xs text-gray-500 text-right pr-2 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
+                      <div key={i} className={`border-b ${slot.minute === 0 ? 'border-gray-400' : 'border-gray-100'} text-xs text-gray-500 text-right pr-2 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
                         {slot.minute === 0 ? format(new Date().setHours(slot.hour, 0), "h a") : ""}
                       </div>
                     ))}
@@ -749,7 +758,7 @@ export default function Calendar() {
                           {SLOTS.map((slot, i) => (
                             <div
                               key={i}
-                              className={`border-b ${slot.minute === 0 ? 'border-gray-100' : 'border-gray-100 border-dashed'} cursor-pointer hover:bg-gray-50 transition-colors ${
+                              className={`border-b ${slot.minute === 0 ? 'border-gray-400' : 'border-gray-100 border-dashed'} cursor-pointer hover:bg-gray-50 transition-colors ${
                                 draggingAppointment ? "hover:bg-blue-100" : ""
                               }`}
                               style={{ height: `${SLOT_HEIGHT}px` }}
@@ -795,10 +804,15 @@ export default function Calendar() {
                                   onMouseDown={(e) => handleResizeStart(e, apt, "top")}
                                   onClick={(e) => e.stopPropagation()}
                                 />
-                                <div className="p-1 pt-1.5">
+                                <div className="p-1 pt-1.5 pr-4">
                                   <div className="font-medium truncate">{apt.patientName}</div>
                                   <div className="text-[10px] truncate">{format(new Date(apt.appointmentDate), "h:mm a")}</div>
                                 </div>
+                                {apt.isInvoiced && (
+                                  <div className="absolute top-0.5 right-0.5 z-10">
+                                    <DollarSign className="w-3 h-3 text-emerald-700" />
+                                  </div>
+                                )}
                                 <div
                                   className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
                                   onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
@@ -1067,6 +1081,21 @@ export default function Calendar() {
                     onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                     rows={3}
                   />
+                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50">
+                    <Checkbox
+                      id="isInvoiced"
+                      checked={formData.isInvoiced}
+                      onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isInvoiced: !!checked }))}
+                    />
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-emerald-600" />
+                      <Label htmlFor="isInvoiced" className="cursor-pointer font-medium">
+                        Invoice sent / Billing complete
+                      </Label>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
