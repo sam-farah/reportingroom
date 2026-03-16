@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HeartPulse, User, Settings, LogOut, FolderOpen, Users, PenTool, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList } from "lucide-react";
+import { HeartPulse, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import AdminPanel from "@/components/admin-panel";
 import ReportingRoom from "./reporting-room";
 import Physicians from "./physicians";
 import StaffManagement from "./staff-management";
-import Draw from "./draw";
 import Calendar from "./calendar";
 import Patients from "./patients";
 import Requests from "./requests";
@@ -20,7 +19,7 @@ import Requests from "./requests";
 export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activePanel, setActivePanel] = useState<"user" | "admin" | "reporting-room" | "physicians" | "staff" | "draw" | "calendar" | "patients" | "requests">("user");
+  const [activePanel, setActivePanel] = useState<"user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests">("user");
 
   const handleLogout = async () => {
     try {
@@ -73,14 +72,6 @@ export default function Dashboard() {
                 >
                   <User className="w-4 h-4 mr-2" />
                   Upload
-                </Button>
-                <Button
-                  variant={activePanel === "draw" ? "default" : "ghost"}
-                  className={activePanel === "draw" ? "medical-btn-secondary" : ""}
-                  onClick={() => setActivePanel("draw")}
-                >
-                  <PenTool className="w-4 h-4 mr-2" />
-                  Draw
                 </Button>
                 <Button
                   variant={activePanel === "reporting-room" ? "default" : "ghost"}
@@ -155,8 +146,6 @@ export default function Dashboard() {
 
       {activePanel === "user" ? (
         <UserPanel />
-      ) : activePanel === "draw" ? (
-        <Draw />
       ) : activePanel === "reporting-room" ? (
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
