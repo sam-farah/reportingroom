@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FileText, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
 
 interface WorksheetViewerProps {
   worksheetId: number;
@@ -9,47 +9,96 @@ interface WorksheetViewerProps {
 }
 
 export function WorksheetViewer({ worksheetId, alt = "Worksheet", className = "", containerClassName = "" }: WorksheetViewerProps) {
-  const [renderMode, setRenderMode] = useState<'image' | 'pdf' | 'error'>('image');
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [state, setState] = useState<'loading' | 'image' | 'pdf' | 'error'>('loading');
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const url = `/api/worksheets/${worksheetId}/image`;
+  const apiUrl = `/api/worksheets/${worksheetId}/image`;
 
-  if (renderMode === 'error') {
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    setState('loading');
+    setBlobUrl(null);
+    setErrorMsg('');
+
+    fetch(apiUrl, { credentials: 'include' })
+      .then((res) => {
+        if (!res.ok) throw new Error(`File not found (${res.status})`);
+        const ct = res.headers.get('content-type') || '';
+        const isPdf = ct.includes('pdf');
+        return res.blob().then((blob) => ({ blob, isPdf }));
+      })
+      .then(({ blob, isPdf }) => {
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+        setState(isPdf ? 'pdf' : 'image');
+      })
+      .catch((err) => {
+        setErrorMsg(err.message || 'Could not load worksheet');
+        setState('error');
+      });
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [worksheetId]);
+
+  if (state === 'loading') {
     return (
-      <div className={`flex flex-col items-center justify-center text-gray-500 ${containerClassName}`}>
-        <FileText className="w-16 h-16 mb-2 text-gray-300" />
-        <p>Failed to load worksheet</p>
+      <div className={`flex flex-col items-center justify-center min-h-[200px] text-gray-500 ${containerClassName}`}>
+        <Loader2 className="w-8 h-8 animate-spin text-blue-400 mb-2" />
+        <p className="text-sm">Loading worksheet...</p>
       </div>
     );
   }
 
-  if (renderMode === 'pdf') {
+  if (state === 'error') {
     return (
-      <div className={`w-full h-full ${containerClassName}`}>
+      <div className={`flex flex-col items-center justify-center min-h-[200px] gap-3 px-4 text-center ${containerClassName}`}>
+        <AlertTriangle className="w-12 h-12 text-amber-400" />
+        <p className="font-medium text-gray-700">Worksheet unavailable</p>
+        <p className="text-sm text-gray-500 max-w-xs">{errorMsg}</p>
+        <p className="text-xs text-gray-400 max-w-xs">
+          The original file may have been removed. The report content is intact and can still be edited.
+        </p>
+      </div>
+    );
+  }
+
+  if (state === 'pdf' && blobUrl) {
+    return (
+      <div className={`w-full h-full flex flex-col ${containerClassName}`}>
+        <div className="flex justify-end px-1 pt-1 shrink-0">
+          <a
+            href={blobUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Open in new tab
+          </a>
+        </div>
         <iframe
-          src={url}
+          src={blobUrl}
           title={alt}
-          className={`w-full h-full border-0 rounded-lg ${className}`}
-          style={{ minHeight: '500px' }}
-          onError={() => setRenderMode('error')}
+          className={`flex-1 border-0 rounded-lg min-h-0 ${className}`}
         />
       </div>
     );
   }
 
-  return (
-    <div className={`w-full h-full flex items-center justify-center ${containerClassName}`}>
-      {!imageLoaded && (
-        <Loader2 className="w-8 h-8 animate-spin text-gray-400 absolute" />
-      )}
-      <img
-        src={url}
-        alt={alt}
-        className={`max-w-full max-h-full object-contain border border-gray-300 rounded-lg ${className}`}
-        style={!imageLoaded ? { opacity: 0, position: 'absolute' } : {}}
-        onLoad={() => setImageLoaded(true)}
-        onError={() => setRenderMode('pdf')}
-      />
-    </div>
-  );
+  if (state === 'image' && blobUrl) {
+    return (
+      <div className={`w-full h-full flex items-center justify-center ${containerClassName}`}>
+        <img
+          src={blobUrl}
+          alt={alt}
+          className={`max-w-full max-h-full object-contain border border-gray-300 rounded-lg ${className}`}
+        />
+      </div>
+    );
+  }
+
+  return null;
 }
