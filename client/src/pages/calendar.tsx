@@ -650,7 +650,7 @@ export default function Calendar() {
                 <div className="flex border border-gray-200">
                   <div className="w-20 flex-shrink-0 bg-gray-50">
                     {SLOTS.map((slot, i) => (
-                      <div key={i} className={`border-b ${slot.minute === 0 ? 'border-gray-400' : 'border-gray-100'} pr-2 text-right text-sm text-gray-500 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
+                      <div key={i} className={`border-b ${slot.minute !== 0 ? 'border-gray-400' : 'border-gray-100'} pr-2 text-right text-sm text-gray-500 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
                         {slot.minute === 0 ? format(new Date().setHours(slot.hour, 0), "h a") : ""}
                       </div>
                     ))}
@@ -659,7 +659,7 @@ export default function Calendar() {
                     {SLOTS.map((slot, i) => (
                       <div 
                         key={i} 
-                        className={`border-b ${slot.minute === 0 ? 'border-gray-400' : 'border-gray-100 border-dashed'} hover:bg-gray-50 cursor-pointer transition-colors ${
+                        className={`border-b ${slot.minute !== 0 ? 'border-gray-400' : 'border-gray-100 border-dashed'} hover:bg-gray-50 cursor-pointer transition-colors ${
                           draggingAppointment ? "hover:bg-blue-100" : ""
                         }`}
                         style={{ height: `${SLOT_HEIGHT}px` }}
@@ -739,7 +739,7 @@ export default function Calendar() {
                 <div className="flex">
                   <div className="w-16 flex-shrink-0">
                     {SLOTS.map((slot, i) => (
-                      <div key={i} className={`border-b ${slot.minute === 0 ? 'border-gray-400' : 'border-gray-100'} text-xs text-gray-500 text-right pr-2 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
+                      <div key={i} className={`border-b ${slot.minute !== 0 ? 'border-gray-400' : 'border-gray-100'} text-xs text-gray-500 text-right pr-2 pt-1`} style={{ height: `${SLOT_HEIGHT}px` }}>
                         {slot.minute === 0 ? format(new Date().setHours(slot.hour, 0), "h a") : ""}
                       </div>
                     ))}
@@ -758,7 +758,7 @@ export default function Calendar() {
                           {SLOTS.map((slot, i) => (
                             <div
                               key={i}
-                              className={`border-b ${slot.minute === 0 ? 'border-gray-400' : 'border-gray-100 border-dashed'} cursor-pointer hover:bg-gray-50 transition-colors ${
+                              className={`border-b ${slot.minute !== 0 ? 'border-gray-400' : 'border-gray-100 border-dashed'} cursor-pointer hover:bg-gray-50 transition-colors ${
                                 draggingAppointment ? "hover:bg-blue-100" : ""
                               }`}
                               style={{ height: `${SLOT_HEIGHT}px` }}
