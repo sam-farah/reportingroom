@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes } from "date-fns";
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
@@ -28,7 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 type ViewMode = "day" | "week" | "month";
 
-export default function Calendar() {
+export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId: number) => void }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -1178,7 +1178,21 @@ export default function Calendar() {
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-4 border-t">
+                <div className="flex justify-end gap-2 pt-4 border-t flex-wrap">
+                  {viewingAppointment.patientId && onOpenPatient && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 mr-auto"
+                      onClick={() => {
+                        setViewingAppointment(null);
+                        onOpenPatient(viewingAppointment.patientId!);
+                      }}
+                    >
+                      <FolderOpen className="w-4 h-4 mr-1" />
+                      Open Patient File
+                    </Button>
+                  )}
                   {viewingAppointment.status !== "checked_in" && (
                     <Button
                       variant="outline"

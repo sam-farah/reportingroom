@@ -117,7 +117,7 @@ function PdfViewer({ url, title }: { url: string; title: string }) {
   );
 }
 
-export default function Patients() {
+export default function Patients({ initialPatientId, onPatientOpened }: { initialPatientId?: number; onPatientOpened?: () => void } = {}) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -155,6 +155,16 @@ export default function Patients() {
       return response.json();
     },
   });
+
+  useEffect(() => {
+    if (initialPatientId && patients.length > 0) {
+      const match = patients.find(p => p.id === initialPatientId);
+      if (match) {
+        setSelectedPatient(match);
+        onPatientOpened?.();
+      }
+    }
+  }, [patients, initialPatientId]);
 
   const { data: patientWorksheets = [] } = useQuery<Worksheet[]>({
     queryKey: ["/api/patients", selectedPatient?.id, "worksheets"],

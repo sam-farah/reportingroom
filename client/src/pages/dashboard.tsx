@@ -20,6 +20,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activePanel, setActivePanel] = useState<"user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests">("user");
+  const [openPatientId, setOpenPatientId] = useState<number | null>(null);
 
   const handleLogout = async () => {
     try {
@@ -153,9 +154,9 @@ export default function Dashboard() {
       ) : activePanel === "staff" && isOwnerOrAdmin ? (
         <StaffManagement />
       ) : activePanel === "calendar" ? (
-        <Calendar />
+        <Calendar onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }} />
       ) : activePanel === "patients" ? (
-        <Patients />
+        <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
       ) : activePanel === "requests" ? (
         <Requests />
       ) : activePanel === "admin" && isOwnerOrAdmin ? (
