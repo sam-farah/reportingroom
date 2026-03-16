@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HeartPulse, User, Settings, LogOut, FileText, FolderOpen, Users, PenTool, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList } from "lucide-react";
+import { HeartPulse, User, Settings, LogOut, FolderOpen, Users, PenTool, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import UserPanel from "@/components/user-panel";
 import AdminPanel from "@/components/admin-panel";
-import Templates from "./templates";
 import ReportingRoom from "./reporting-room";
 import Physicians from "./physicians";
 import StaffManagement from "./staff-management";
@@ -21,7 +20,7 @@ import Requests from "./requests";
 export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activePanel, setActivePanel] = useState<"user" | "admin" | "templates" | "reporting-room" | "physicians" | "staff" | "draw" | "calendar" | "patients" | "requests">("user");
+  const [activePanel, setActivePanel] = useState<"user" | "admin" | "reporting-room" | "physicians" | "staff" | "draw" | "calendar" | "patients" | "requests">("user");
 
   const handleLogout = async () => {
     try {
@@ -82,14 +81,6 @@ export default function Dashboard() {
                 >
                   <PenTool className="w-4 h-4 mr-2" />
                   Draw
-                </Button>
-                <Button
-                  variant={activePanel === "templates" ? "default" : "ghost"}
-                  className={activePanel === "templates" ? "medical-btn-secondary" : ""}
-                  onClick={() => setActivePanel("templates")}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Templates
                 </Button>
                 <Button
                   variant={activePanel === "reporting-room" ? "default" : "ghost"}
@@ -166,8 +157,6 @@ export default function Dashboard() {
         <UserPanel />
       ) : activePanel === "draw" ? (
         <Draw />
-      ) : activePanel === "templates" ? (
-        <Templates />
       ) : activePanel === "reporting-room" ? (
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
