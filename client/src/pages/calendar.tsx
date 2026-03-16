@@ -11,7 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus } from "lucide-react";
+import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes } from "date-fns";
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
@@ -65,6 +66,8 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
   const [patientSearch, setPatientSearch] = useState("");
   const [showPatientResults, setShowPatientResults] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [isCreatingPatient, setIsCreatingPatient] = useState(false);
+  const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", phone: "" });
 
   const { data: searchedPatients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients", "search", patientSearch],
@@ -241,6 +244,23 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
     },
   });
 
+  const createPatientMutation = useMutation({
+    mutationFn: async (data: any): Promise<Patient> => {
+      const res = await apiRequest("/api/patients", "POST", data);
+      return res.json();
+    },
+    onSuccess: (patient: Patient) => {
+      handleSelectPatient(patient);
+      setIsCreatingPatient(false);
+      setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "" });
+      queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+      toast({ title: "Patient file created", description: `${patient.firstName} ${patient.lastName} has been registered.` });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create patient file.", variant: "destructive" });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       patientName: "",
@@ -261,6 +281,8 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
     });
     setSelectedPatient(null);
     setPatientSearch("");
+    setIsCreatingPatient(false);
+    setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "" });
   };
 
   const calcDuration = (scanTypes: string[], laterality: Record<string, "unilateral" | "bilateral">): string => {
@@ -466,7 +488,25 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
       isInvoiced: appointment.isInvoiced ?? false,
       patientId: appointment.patientId || null,
     });
-    setSelectedPatient(null);
+    // Populate the patient card from appointment data so it displays correctly when editing
+    if (appointment.patientName) {
+      const parts = appointment.patientName.trim().split(/\s+/);
+      setSelectedPatient({
+        id: appointment.patientId ?? 0,
+        firstName: parts[0] || appointment.patientName,
+        lastName: parts.slice(1).join(" "),
+        dateOfBirth: appointment.patientDob || "",
+        phone: appointment.patientPhone || null,
+        email: appointment.patientEmail || null,
+        urNumber: null,
+        clinicId: null, gender: null, address: null, city: null,
+        state: null, zipCode: null, insuranceProvider: null, insuranceId: null,
+        referringPhysician: null, medicalHistory: null, allergies: null,
+        notes: null, createdAt: null,
+      } as Patient);
+    } else {
+      setSelectedPatient(null);
+    }
     setEditingAppointment(appointment);
     setViewingAppointment(null);
     setIsBookingDialogOpen(true);
@@ -849,7 +889,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <Label>Search Existing Patient</Label>
+                  <Label>Patient <span className="text-red-500">*</span></Label>
                   {selectedPatient ? (
                     <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg mt-1">
                       <UserCheck className="w-5 h-5 text-green-600" />
@@ -861,7 +901,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                           )}
                         </div>
                         <div className="text-sm text-green-600">
-                          DOB: {selectedPatient.dateOfBirth}
+                          {selectedPatient.dateOfBirth && `DOB: ${selectedPatient.dateOfBirth}`}
                           {selectedPatient.phone && ` | ${selectedPatient.phone}`}
                         </div>
                       </div>
@@ -870,81 +910,131 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                       </Button>
                     </div>
                   ) : (
-                    <div className="relative mt-1">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <Input
-                        placeholder="Type patient name to search..."
-                        value={patientSearch}
-                        onChange={(e) => {
-                          setPatientSearch(e.target.value);
-                          setShowPatientResults(true);
-                        }}
-                        onFocus={() => setShowPatientResults(true)}
-                        className="pl-10"
-                      />
-                      {showPatientResults && patientSearch.length >= 2 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                          {searchedPatients.length === 0 ? (
-                            <div className="p-3 text-sm text-gray-500">No patients found</div>
-                          ) : (
-                            searchedPatients.map((patient) => (
+                    <div className="space-y-2 mt-1">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                        <Input
+                          placeholder="Search by name..."
+                          value={patientSearch}
+                          onChange={(e) => { setPatientSearch(e.target.value); setShowPatientResults(true); setIsCreatingPatient(false); }}
+                          onFocus={() => setShowPatientResults(true)}
+                          className="pl-10"
+                        />
+                        {showPatientResults && patientSearch.length >= 2 && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {searchedPatients.length === 0 ? (
                               <div
-                                key={patient.id}
-                                className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
-                                onClick={() => handleSelectPatient(patient)}
+                                className="p-3 flex items-center gap-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer"
+                                onClick={() => { setNewPatientForm(prev => ({ ...prev, firstName: patientSearch.split(" ")[0] || "", lastName: patientSearch.split(" ").slice(1).join(" ") || "" })); setIsCreatingPatient(true); setShowPatientResults(false); }}
                               >
-                                <div className="font-medium">{patient.firstName} {patient.lastName}</div>
-                                <div className="text-sm text-gray-500">
-                                  DOB: {patient.dateOfBirth}
-                                  {patient.phone && ` | ${patient.phone}`}
-                                </div>
+                                <UserPlus className="w-4 h-4" />
+                                No match — create new patient file for &ldquo;{patientSearch}&rdquo;
                               </div>
-                            ))
-                          )}
+                            ) : (
+                              <>
+                                {searchedPatients.map((patient) => (
+                                  <div
+                                    key={patient.id}
+                                    className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                                    onClick={() => handleSelectPatient(patient)}
+                                  >
+                                    <div className="font-medium">{patient.firstName} {patient.lastName}</div>
+                                    <div className="text-sm text-gray-500">
+                                      {patient.dateOfBirth && `DOB: ${patient.dateOfBirth}`}
+                                      {patient.phone && ` | ${patient.phone}`}
+                                    </div>
+                                  </div>
+                                ))}
+                                <div
+                                  className="p-3 flex items-center gap-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer border-t"
+                                  onClick={() => { setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "" }); setIsCreatingPatient(true); setShowPatientResults(false); }}
+                                >
+                                  <UserPlus className="w-4 h-4" />
+                                  Create new patient file
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {!isCreatingPatient && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                          onClick={() => { setIsCreatingPatient(true); setShowPatientResults(false); }}
+                        >
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          Create new patient file
+                        </Button>
+                      )}
+                      {isCreatingPatient && (
+                        <div className="border border-blue-200 rounded-lg p-4 bg-blue-50 space-y-3">
+                          <p className="text-sm font-medium text-blue-800">New Patient File</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label htmlFor="npFirstName" className="text-xs">First Name *</Label>
+                              <Input
+                                id="npFirstName"
+                                value={newPatientForm.firstName}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, firstName: capitalizeWords(e.target.value) }))}
+                                autoCapitalize="words"
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="npLastName" className="text-xs">Last Name *</Label>
+                              <Input
+                                id="npLastName"
+                                value={newPatientForm.lastName}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, lastName: capitalizeWords(e.target.value) }))}
+                                autoCapitalize="words"
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="npDob" className="text-xs">Date of Birth</Label>
+                              <Input
+                                id="npDob"
+                                type="date"
+                                value={newPatientForm.dateOfBirth}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="npPhone" className="text-xs">Phone</Label>
+                              <Input
+                                id="npPhone"
+                                value={newPatientForm.phone}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, phone: e.target.value }))}
+                                className="mt-1"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={!newPatientForm.firstName || !newPatientForm.lastName || createPatientMutation.isPending}
+                              onClick={() => createPatientMutation.mutate({
+                                firstName: newPatientForm.firstName,
+                                lastName: newPatientForm.lastName,
+                                dateOfBirth: newPatientForm.dateOfBirth || null,
+                                phone: newPatientForm.phone || null,
+                              })}
+                            >
+                              {createPatientMutation.isPending ? "Creating..." : "Create & Select"}
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setIsCreatingPatient(false)}>
+                              Cancel
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">Search for existing patient or enter details manually below</p>
-                </div>
-                <div className="col-span-2">
-                  <Label htmlFor="patientName">Patient Name *</Label>
-                  <Input
-                    id="patientName"
-                    value={formData.patientName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value, patientId: null }))}
-                    required
-                    disabled={!!selectedPatient}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="patientDob">Date of Birth</Label>
-                  <Input
-                    id="patientDob"
-                    type="date"
-                    value={formData.patientDob}
-                    onChange={(e) => setFormData(prev => ({ ...prev, patientDob: e.target.value }))}
-                    disabled={!!selectedPatient}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="patientPhone">Phone</Label>
-                  <Input
-                    id="patientPhone"
-                    value={formData.patientPhone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, patientPhone: e.target.value }))}
-                    disabled={!!selectedPatient}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label htmlFor="patientEmail">Email</Label>
-                  <Input
-                    id="patientEmail"
-                    type="email"
-                    value={formData.patientEmail}
-                    onChange={(e) => setFormData(prev => ({ ...prev, patientEmail: e.target.value }))}
-                    disabled={!!selectedPatient}
-                  />
                 </div>
                 <div>
                   <Label htmlFor="appointmentDate">Appointment Date *</Label>
@@ -1102,7 +1192,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                 <Button type="button" variant="outline" onClick={() => { setIsBookingDialogOpen(false); resetForm(); setEditingAppointment(null); }}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending || !selectedPatient}>
                   {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingAppointment ? "Update" : "Create Booking"}
                 </Button>
               </div>
