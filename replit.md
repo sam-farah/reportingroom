@@ -40,19 +40,20 @@ Preferred communication style: Simple, everyday language.
 **Rationale**: Drizzle ORM provides excellent TypeScript integration and performance. PostgreSQL offers robust data integrity and querying capabilities for medical data.
 
 ### Authentication and Authorization
-- **Authentication System**: Replit OpenID Connect integration
-- **Session Management**: PostgreSQL-backed sessions with connect-pg-simple
-- **Security**: Full authentication required for all API endpoints
-- **User Management**: Automatic user creation/updates via OpenID claims (preserves existing role/clinicId on login)
+- **Authentication System**: Email/password with bcryptjs hashing (replaced Replit OIDC)
+- **Auth Routes**: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/user`, `POST /api/auth/logout` — all in `server/auth.ts`
+- **Session Management**: PostgreSQL-backed sessions with connect-pg-simple (`req.session.userId`)
+- **Security**: Full authentication required for all API endpoints via `isAuthenticated` middleware
+- **User Management**: Users created via email/password registration or invitation acceptance
 - **Role-Based Access Control**: Three roles - `clinic_owner`, `admin`, `sonographer`
   - `clinic_owner`: Full access including Team management, Admin Panel, and invitations
   - `admin`: Same access as clinic_owner (can manage staff/invitations)
   - `sonographer`: Standard user access (upload, reports, templates, calendar, patients)
 - **Multi-Tenant**: Each clinic is a separate tenant with its own staff, patients, and data
 - **User Onboarding Flow**: New users without a clinic see onboarding page (register clinic or accept invitation)
-- **Invitation System**: Owners/admins create invitation links that new users can accept to join the clinic
+- **Invitation System**: Owners/admins create invitation links; invitation page (`/invite/:token`) has tabs for "Create Account" or "Sign In" to accept
 
-**Rationale**: Session-based authentication is appropriate for this medical application where security and audit trails are critical. Role-based access ensures proper data isolation between clinics.
+**Rationale**: Session-based email/password authentication for this medical application with full audit trails. Role-based access ensures proper data isolation between clinics.
 
 ### Key Components
 
@@ -74,11 +75,13 @@ Preferred communication style: Simple, everyday language.
 - **Scan Requests**: Electronic referral form capturing patient details (linked to existing patients or free-text), referring doctor (linked or free-text), scan types (from canonical list), urgency (Routine/Urgent/ASAP/STAT), clinical indication, clinical history, notes, and status (Pending/Scheduled/Completed/Cancelled). Accessible from the "Requests" nav item.
 
 #### Data Models
-- **Users**: Authentication and profile management
+- **Users**: Authentication and profile management (email/password with `passwordHash` bcrypt field)
 - **Physicians**: Doctor profiles with signatures and credentials
 - **Worksheets**: Uploaded ultrasound images/PDFs with OCR-extracted metadata
-- **Reports**: Generated medical reports with structured findings and impressions, including amendment fields (`isAmended`, `amendedAt`, `amendedBy`, `amendmentReason`) and finalization fields (`isFinalized`, `finalizedAt`, `finalizedBy`)
+- **Reports**: Generated medical reports with structured findings and impressions, including `patientUrNumber` (optional), amendment fields (`isAmended`, `amendedAt`, `amendedBy`, `amendmentReason`) and finalization fields (`isFinalized`, `finalizedAt`, `finalizedBy`)
 - **Training Pairs**: Worksheet-report pairs for AI model training, including OCR text extraction for exact medical language replication.
+- **Patients**: `urNumber` varchar(20) — auto-assigned sequential 6-digit numbers (starting from 100001) via `generateNextUrNumber(clinicId)`. Displayed throughout as `UR XXXXXX` badge in blue. Editable in the patient form.
+- **Scan Requests**: Includes `patientUrNumber` varchar(20) — captured from the linked patient when selected, stored persistently, shown in the request list, form, viewing dialog, and printed PDF.
 
 #### Data Flow
 1. **Worksheet Upload**: User uploads ultrasound worksheet.

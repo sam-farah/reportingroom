@@ -26,6 +26,7 @@ export default function Patients() {
   const [showPatientInfo, setShowPatientInfo] = useState(false);
 
   const [formData, setFormData] = useState({
+    urNumber: "",
     firstName: "",
     lastName: "",
     dateOfBirth: "",
@@ -218,6 +219,7 @@ export default function Patients() {
 
   const resetForm = () => {
     setFormData({
+      urNumber: "",
       firstName: "",
       lastName: "",
       dateOfBirth: "",
@@ -239,6 +241,7 @@ export default function Patients() {
 
   const handleEdit = (patient: Patient) => {
     setFormData({
+      urNumber: patient.urNumber || "",
       firstName: patient.firstName,
       lastName: patient.lastName,
       dateOfBirth: patient.dateOfBirth,
@@ -604,7 +607,12 @@ export default function Patients() {
                   <User className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold">{selectedPatient.firstName} {selectedPatient.lastName}</h1>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg font-bold">{selectedPatient.firstName} {selectedPatient.lastName}</h1>
+                    {selectedPatient.urNumber && (
+                      <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded text-xs">UR {selectedPatient.urNumber}</span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-3 text-sm text-gray-600">
                     <span>DOB: {selectedPatient.dateOfBirth}</span>
                     {selectedPatient.phone && <span>{selectedPatient.phone}</span>}
@@ -720,9 +728,12 @@ export default function Patients() {
             <div className="space-y-4">
               <div>
                 <h3 className="text-xl font-semibold">{selectedPatient.firstName} {selectedPatient.lastName}</h3>
-                {!selectedPatient.isActive && (
-                  <Badge variant="secondary" className="mt-1">Inactive</Badge>
-                )}
+                <div className="flex items-center gap-2 mt-1">
+                  {selectedPatient.urNumber && (
+                    <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded text-sm">UR {selectedPatient.urNumber}</span>
+                  )}
+                  {!selectedPatient.isActive && <Badge variant="secondary">Inactive</Badge>}
+                </div>
               </div>
               
               <div className="space-y-2 text-sm">
@@ -939,9 +950,12 @@ export default function Patients() {
                       </div>
                       <div>
                         <div className="font-medium text-lg">{patient.firstName} {patient.lastName}</div>
-                        <div className="text-sm text-gray-600">
-                          DOB: {patient.dateOfBirth}
-                          {patient.phone && ` | ${patient.phone}`}
+                        <div className="text-sm text-gray-600 flex items-center gap-2">
+                          {patient.urNumber && (
+                            <span className="font-mono font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded text-xs">UR {patient.urNumber}</span>
+                          )}
+                          <span>DOB: {patient.dateOfBirth}</span>
+                          {patient.phone && <span>{patient.phone}</span>}
                         </div>
                       </div>
                     </div>
@@ -970,6 +984,25 @@ export default function Patients() {
               <DialogTitle>{editingPatient ? "Edit Patient" : "Add New Patient"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* UR Number */}
+              <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex-1">
+                  <Label htmlFor="urNumber" className="text-blue-800 font-semibold">UR Number</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      id="urNumber"
+                      className="font-mono font-bold text-blue-700 border-blue-300 bg-white w-40"
+                      placeholder={editingPatient ? "—" : "Auto-generated"}
+                      value={formData.urNumber}
+                      onChange={(e) => setFormData(prev => ({ ...prev, urNumber: e.target.value }))}
+                    />
+                    {!editingPatient && (
+                      <span className="text-xs text-blue-600">Leave blank to auto-assign</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="firstName">First Name *</Label>

@@ -65,7 +65,7 @@ import {
   type InsertScanRequest,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, gte, lte, and, or, ilike, sql } from "drizzle-orm";
+import { eq, desc, gte, lte, and, or, ilike, sql, max } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Interface for storage operations
@@ -942,8 +942,26 @@ export class DatabaseStorage implements IStorage {
     ).orderBy(patients.lastName, patients.firstName);
   }
 
+  async generateNextUrNumber(clinicId?: number | null): Promise<string> {
+    // Find the highest existing UR number for this clinic (or globally if no clinic)
+    const query = clinicId
+      ? db.select({ maxUr: max(patients.urNumber) }).from(patients).where(eq(patients.clinicId, clinicId))
+      : db.select({ maxUr: max(patients.urNumber) }).from(patients);
+    const [result] = await query;
+    const maxUr = result?.maxUr;
+    // Parse numeric part (strip any non-digit prefix like "NVI-") and increment
+    const numeric = maxUr ? parseInt(maxUr.replace(/\D/g, ''), 10) : 0;
+    const next = isNaN(numeric) || numeric < 100000 ? 100001 : numeric + 1;
+    return String(next).padStart(6, '0');
+  }
+
   async createPatient(patient: InsertPatientData): Promise<Patient> {
-    const [created] = await db.insert(patients).values(patient).returning();
+    // Auto-assign UR number if not provided
+    let urNumber = (patient as any).urNumber;
+    if (!urNumber) {
+      urNumber = await this.generateNextUrNumber((patient as any).clinicId);
+    }
+    const [created] = await db.insert(patients).values({ ...patient, urNumber }).returning();
     return created;
   }
 

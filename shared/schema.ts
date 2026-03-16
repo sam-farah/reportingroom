@@ -108,6 +108,7 @@ export const reports = pgTable("reports", {
   worksheetId: integer("worksheet_id").references(() => worksheets.id),
   digitalWorksheetId: integer("digital_worksheet_id").references(() => digitalWorksheets.id),
   patientName: text("patient_name").notNull(),
+  patientUrNumber: varchar("patient_ur_number", { length: 20 }),
   patientDob: text("patient_dob").notNull(),
   examDate: text("exam_date").notNull(),
   studyType: text("study_type").notNull(),
@@ -271,6 +272,7 @@ export type InsertSonographer = typeof sonographers.$inferInsert;
 // Patients table - Central patient records
 export const patients = pgTable("patients", {
   id: serial("id").primaryKey(),
+  urNumber: varchar("ur_number", { length: 20 }),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }).notNull(),
   dateOfBirth: varchar("date_of_birth", { length: 20 }).notNull(),
@@ -585,6 +587,7 @@ export const scanRequests = pgTable("scan_requests", {
   patientId: integer("patient_id").references(() => patients.id),
   referringDoctorId: integer("referring_doctor_id").references(() => referringDoctors.id),
   patientName: varchar("patient_name", { length: 200 }).notNull(),
+  patientUrNumber: varchar("patient_ur_number", { length: 20 }),
   patientDob: varchar("patient_dob", { length: 20 }),
   patientPhone: varchar("patient_phone", { length: 50 }),
   patientEmail: varchar("patient_email", { length: 200 }),

@@ -840,8 +840,11 @@ export default function Calendar() {
                     <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg mt-1">
                       <UserCheck className="w-5 h-5 text-green-600" />
                       <div className="flex-1">
-                        <div className="font-medium text-green-800">
+                        <div className="flex items-center gap-2 font-medium text-green-800">
                           {selectedPatient.firstName} {selectedPatient.lastName}
+                          {selectedPatient.urNumber && (
+                            <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {selectedPatient.urNumber}</span>
+                          )}
                         </div>
                         <div className="text-sm text-green-600">
                           DOB: {selectedPatient.dateOfBirth}

@@ -39,6 +39,7 @@ type RequestFormData = {
   patientId: number | null;
   referringDoctorId: number | null;
   patientName: string;
+  patientUrNumber: string;
   patientDob: string;
   patientPhone: string;
   patientEmail: string;
@@ -68,6 +69,7 @@ const blankRequest = (): RequestFormData => ({
   patientId: null,
   referringDoctorId: null,
   patientName: "",
+  patientUrNumber: "",
   patientDob: "",
   patientPhone: "",
   patientEmail: "",
@@ -206,6 +208,7 @@ export default function Requests() {
       patientId: r.patientId ?? null,
       referringDoctorId: r.referringDoctorId ?? null,
       patientName: r.patientName,
+      patientUrNumber: r.patientUrNumber ?? "",
       patientDob: r.patientDob ?? "",
       patientPhone: r.patientPhone ?? "",
       patientEmail: r.patientEmail ?? "",
@@ -242,13 +245,13 @@ export default function Requests() {
   };
 
   const selectPatient = (p: Patient) => {
-    setRequestForm(prev => ({ ...prev, patientId: p.id, patientName: `${p.firstName} ${p.lastName}`, patientDob: p.dateOfBirth ?? "", patientPhone: p.phone ?? "", patientEmail: p.email ?? "" }));
+    setRequestForm(prev => ({ ...prev, patientId: p.id, patientName: `${p.firstName} ${p.lastName}`, patientUrNumber: p.urNumber ?? "", patientDob: p.dateOfBirth ?? "", patientPhone: p.phone ?? "", patientEmail: p.email ?? "" }));
     setPatientSearchQuery("");
     setShowPatientResults(false);
   };
 
   const clearPatient = () => {
-    setRequestForm(prev => ({ ...prev, patientId: null, patientName: "", patientDob: "", patientPhone: "", patientEmail: "" }));
+    setRequestForm(prev => ({ ...prev, patientId: null, patientName: "", patientUrNumber: "", patientDob: "", patientPhone: "", patientEmail: "" }));
   };
 
   const selectDoctor = (d: ReferringDoctor) => {
@@ -462,6 +465,7 @@ export default function Requests() {
       <div class="section-head">Patient Information</div>
       <div class="section-body">
         <div class="field-row"><span class="field-label">Name:</span><span class="field-value"><strong>${r.patientName}</strong></span></div>
+        ${r.patientUrNumber ? `<div class="field-row"><span class="field-label">UR Number:</span><span class="field-value"><strong style="color:#1d4ed8;font-family:monospace">${r.patientUrNumber}</strong></span></div>` : ''}
         ${r.patientDob ? `<div class="field-row"><span class="field-label">Date of Birth:</span><span class="field-value">${r.patientDob}</span></div>` : ''}
         ${r.patientPhone ? `<div class="field-row"><span class="field-label">Phone:</span><span class="field-value">${r.patientPhone}</span></div>` : ''}
         ${r.patientEmail ? `<div class="field-row"><span class="field-label">Email:</span><span class="field-value">${r.patientEmail}</span></div>` : ''}
@@ -626,6 +630,7 @@ export default function Requests() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span className="font-semibold text-gray-900">{r.patientName}</span>
+                            {r.patientUrNumber && <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {r.patientUrNumber}</span>}
                             {r.patientDob && <span className="text-xs text-gray-400">DOB: {r.patientDob}</span>}
                             <Badge className={`text-xs ${urgCfg.color}`}>{urgCfg.label}</Badge>
                             <Badge className={`text-xs flex items-center gap-1 ${stsCfg.color}`}>
@@ -732,8 +737,13 @@ export default function Requests() {
                 <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <User className="w-4 h-4 text-blue-600" />
                   <div className="flex-1">
-                    <span className="font-medium text-blue-900">{requestForm.patientName}</span>
-                    {requestForm.patientDob && <span className="text-xs text-blue-600 ml-2">DOB: {requestForm.patientDob}</span>}
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-blue-900">{requestForm.patientName}</span>
+                      {requestForm.patientUrNumber && (
+                        <span className="font-mono font-bold text-blue-700 bg-white border border-blue-300 px-1.5 py-0.5 rounded text-xs">UR {requestForm.patientUrNumber}</span>
+                      )}
+                    </div>
+                    {requestForm.patientDob && <span className="text-xs text-blue-600">DOB: {requestForm.patientDob}</span>}
                   </div>
                   <Button type="button" size="sm" variant="ghost" onClick={clearPatient}><X className="w-3.5 h-3.5" /></Button>
                 </div>
@@ -927,7 +937,12 @@ export default function Requests() {
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3 space-y-1">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Patient</p>
-                  <p className="font-semibold">{viewingRequest.patientName}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold">{viewingRequest.patientName}</p>
+                    {viewingRequest.patientUrNumber && (
+                      <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {viewingRequest.patientUrNumber}</span>
+                    )}
+                  </div>
                   {viewingRequest.patientDob && <p className="text-sm text-gray-600">DOB: {viewingRequest.patientDob}</p>}
                   {viewingRequest.patientPhone && <p className="text-sm text-gray-600 flex items-center gap-1"><Phone className="w-3 h-3" />{viewingRequest.patientPhone}</p>}
                   {viewingRequest.patientEmail && <p className="text-sm text-gray-600 flex items-center gap-1"><Mail className="w-3 h-3" />{viewingRequest.patientEmail}</p>}

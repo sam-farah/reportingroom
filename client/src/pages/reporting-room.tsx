@@ -420,6 +420,7 @@ export default function ReportingRoom() {
             <div class="info-item">
               <span class="info-label">Patient Name:</span> ${report.patientName}
             </div>
+            ${report.patientUrNumber ? `<div class="info-item"><span class="info-label">UR Number:</span> <strong style="color:#1d4ed8;font-family:monospace">${report.patientUrNumber}</strong></div>` : ''}
             <div class="info-item">
               <span class="info-label">Date of Birth:</span> ${report.patientDob}
             </div>
@@ -627,9 +628,12 @@ export default function ReportingRoom() {
           <Card key={report.id} className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center">
-                  <FileText className="w-5 h-5 mr-2 text-blue-600" />
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-600 shrink-0" />
                   {report.patientName}
+                  {(report as any).patientUrNumber && (
+                    <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs normal-case">UR {(report as any).patientUrNumber}</span>
+                  )}
                 </CardTitle>
                 <div className="text-xs text-gray-500">
                   #{report.id}
@@ -936,6 +940,16 @@ export default function ReportingRoom() {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="fullscreen-patientUrNumber" className="text-blue-700 font-semibold">UR Number</Label>
+                    <Input
+                      id="fullscreen-patientUrNumber"
+                      className="font-mono font-bold text-blue-700"
+                      placeholder="e.g. 100001"
+                      value={(editingReport as any).patientUrNumber || ""}
+                      onChange={(e) => updateEditingReport('patientUrNumber', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="fullscreen-patientDob">Date of Birth</Label>
                     <Input
                       id="fullscreen-patientDob"
@@ -1230,13 +1244,23 @@ export default function ReportingRoom() {
                 </div>
 
                 {/* Patient Information */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="patientName">Patient Name</Label>
                     <Input
                       id="patientName"
                       value={editingReport.patientName}
                       onChange={(e) => updateEditingReport('patientName', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="patientUrNumber" className="text-blue-700 font-semibold">UR Number</Label>
+                    <Input
+                      id="patientUrNumber"
+                      className="font-mono font-bold text-blue-700"
+                      placeholder="e.g. 100001"
+                      value={(editingReport as any).patientUrNumber || ""}
+                      onChange={(e) => updateEditingReport('patientUrNumber', e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
