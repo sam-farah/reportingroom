@@ -24,7 +24,8 @@ export const securityMiddleware = {
     // HIPAA/Medical data security headers
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
+    // Allow same-origin framing so blob: PDF previews work inside the app
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     
@@ -34,6 +35,7 @@ export const securityMiddleware = {
     res.setHeader('Expires', '0');
     
     // Content Security Policy for medical applications
+    // blob: allowed in frame-src and object-src so fetched PDF blobs can render inline
     res.setHeader('Content-Security-Policy', 
       "default-src 'self'; " +
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
@@ -42,8 +44,8 @@ export const securityMiddleware = {
       "font-src 'self'; " +
       "connect-src 'self'; " +
       "media-src 'none'; " +
-      "object-src 'none'; " +
-      "frame-src 'none';"
+      "object-src blob:; " +
+      "frame-src 'self' blob:;"
     );
     
     next();

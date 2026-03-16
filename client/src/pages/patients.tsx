@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,106 @@ import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edi
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
+import { Download, ExternalLink } from "lucide-react";
+
+function PdfViewer({ url, title }: { url: string; title: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    setLoading(true);
+    setError(null);
+    setBlobUrl(null);
+
+    fetch(url, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to load file (${res.status})`);
+        return res.blob();
+      })
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      })
+      .catch((err) => {
+        setError(err.message || "Could not load PDF");
+      })
+      .finally(() => setLoading(false));
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-[650px] flex items-center justify-center bg-gray-50 rounded-lg border">
+        <div className="text-center text-gray-500">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p>Loading PDF...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !blobUrl) {
+    return (
+      <div className="w-full h-[300px] flex flex-col items-center justify-center bg-gray-50 rounded-lg border gap-4">
+        <FileText className="w-12 h-12 text-gray-400" />
+        <p className="text-gray-600 text-sm">{error || "Unable to preview this PDF"}</p>
+        <div className="flex gap-3">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Open in new tab
+          </a>
+          <a
+            href={url}
+            download
+            className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"
+          >
+            <Download className="w-4 h-4" />
+            Download
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-end gap-2">
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Open in new tab
+        </a>
+        <a
+          href={url}
+          download
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Download
+        </a>
+      </div>
+      <iframe
+        src={blobUrl}
+        className="w-full h-[650px] rounded-lg border bg-white"
+        title={title}
+      />
+    </div>
+  );
+}
 
 export default function Patients() {
   const { toast } = useToast();
@@ -555,11 +655,7 @@ export default function Patients() {
                 />
               )}
               {isPdf && (
-                <iframe
-                  src={patientDoc.fileUrl}
-                  className="w-full h-[600px] rounded-lg border"
-                  title={patientDoc.title}
-                />
+                <PdfViewer url={patientDoc.fileUrl} title={patientDoc.title} />
               )}
               {!isImage && !isPdf && (
                 <div className="text-center py-8">
