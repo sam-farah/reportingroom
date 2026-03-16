@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { capitalizeWords } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -774,7 +775,7 @@ export default function Requests() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <Label>Patient Name *</Label>
-                  <Input value={requestForm.patientName} onChange={e => setRequestForm(p => ({ ...p, patientName: e.target.value }))} required disabled={!!requestForm.patientId} />
+                  <Input value={requestForm.patientName} autoCapitalize="words" onChange={e => setRequestForm(p => ({ ...p, patientName: capitalizeWords(e.target.value) }))} required disabled={!!requestForm.patientId} />
                 </div>
                 <div>
                   <Label>Date of Birth</Label>
@@ -831,7 +832,7 @@ export default function Requests() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Doctor Name</Label>
-                  <Input value={requestForm.referringDoctorName} onChange={e => setRequestForm(p => ({ ...p, referringDoctorName: e.target.value }))} disabled={!!requestForm.referringDoctorId} />
+                  <Input value={requestForm.referringDoctorName} autoCapitalize="words" onChange={e => setRequestForm(p => ({ ...p, referringDoctorName: capitalizeWords(e.target.value) }))} disabled={!!requestForm.referringDoctorId} />
                 </div>
                 <div>
                   <Label>Provider Number</Label>

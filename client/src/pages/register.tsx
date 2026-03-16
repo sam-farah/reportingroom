@@ -1,6 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { capitalizeWords } from "@/lib/utils";
 import { useLocation, Link } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -85,7 +86,7 @@ export default function RegisterPage() {
                     <FormItem>
                       <FormLabel>First Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="John" {...field} />
+                        <Input placeholder="John" {...field} autoCapitalize="words" onChange={(e) => field.onChange(capitalizeWords(e.target.value))} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -98,7 +99,7 @@ export default function RegisterPage() {
                     <FormItem>
                       <FormLabel>Last Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="Doe" {...field} />
+                        <Input placeholder="Doe" {...field} autoCapitalize="words" onChange={(e) => field.onChange(capitalizeWords(e.target.value))} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

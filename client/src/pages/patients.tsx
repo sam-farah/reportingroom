@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { capitalizeWords } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1105,7 +1106,8 @@ export default function Patients() {
                   <Input
                     id="firstName"
                     value={formData.firstName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                    autoCapitalize="words"
+                    onChange={(e) => setFormData(prev => ({ ...prev, firstName: capitalizeWords(e.target.value) }))}
                     required
                   />
                 </div>
@@ -1114,7 +1116,8 @@ export default function Patients() {
                   <Input
                     id="lastName"
                     value={formData.lastName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                    autoCapitalize="words"
+                    onChange={(e) => setFormData(prev => ({ ...prev, lastName: capitalizeWords(e.target.value) }))}
                     required
                   />
                 </div>

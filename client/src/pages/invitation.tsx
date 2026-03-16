@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
+import { capitalizeWords } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -291,7 +292,7 @@ export default function InvitationPage() {
                         <FormItem>
                           <FormLabel>First Name</FormLabel>
                           <FormControl>
-                            <Input placeholder="John" {...field} />
+                            <Input placeholder="John" {...field} autoCapitalize="words" onChange={(e) => field.onChange(capitalizeWords(e.target.value))} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -304,7 +305,7 @@ export default function InvitationPage() {
                         <FormItem>
                           <FormLabel>Last Name</FormLabel>
                           <FormControl>
-                            <Input placeholder="Doe" {...field} />
+                            <Input placeholder="Doe" {...field} autoCapitalize="words" onChange={(e) => field.onChange(capitalizeWords(e.target.value))} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>

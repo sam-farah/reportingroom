@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { capitalizeWords } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -881,7 +882,8 @@ export default function Clinic() {
                     id="name"
                     placeholder="Dr. John Smith"
                     value={newPhysician.name}
-                    onChange={(e) => setNewPhysician(prev => ({...prev, name: e.target.value}))}
+                    autoCapitalize="words"
+                    onChange={(e) => setNewPhysician(prev => ({...prev, name: capitalizeWords(e.target.value)}))}
                   />
                 </div>
                 <div>
@@ -1056,7 +1058,8 @@ export default function Clinic() {
                         id="sonographer-name"
                         placeholder="Enter full name"
                         value={newSonographer.name}
-                        onChange={(e) => setNewSonographer({ ...newSonographer, name: e.target.value })}
+                        autoCapitalize="words"
+                        onChange={(e) => setNewSonographer({ ...newSonographer, name: capitalizeWords(e.target.value) })}
                       />
                     </div>
                     <div>
@@ -1206,7 +1209,8 @@ export default function Clinic() {
                         id="edit-name"
                         placeholder="Enter full name"
                         value={editingSonographer.name}
-                        onChange={(e) => setEditingSonographer({ ...editingSonographer, name: e.target.value })}
+                        autoCapitalize="words"
+                        onChange={(e) => setEditingSonographer({ ...editingSonographer, name: capitalizeWords(e.target.value) })}
                       />
                     </div>
                     <div>
@@ -1610,8 +1614,9 @@ export default function Clinic() {
                     id="edit-name"
                     placeholder="Dr. John Smith"
                     value={editingPhysician.name}
+                    autoCapitalize="words"
                     onChange={(e) => setEditingPhysician(prev => 
-                      prev ? {...prev, name: e.target.value} : null
+                      prev ? {...prev, name: capitalizeWords(e.target.value)} : null
                     )}
                   />
                 </div>
@@ -1760,8 +1765,9 @@ export default function Clinic() {
                     id="edit-name"
                     placeholder="Dr. John Smith"
                     value={editingPhysician.name}
+                    autoCapitalize="words"
                     onChange={(e) => setEditingPhysician(prev => 
-                      prev ? {...prev, name: e.target.value} : null
+                      prev ? {...prev, name: capitalizeWords(e.target.value)} : null
                     )}
                   />
                 </div>
