@@ -263,10 +263,6 @@ export default function Dashboard() {
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} />
       )}
 
-      {/* ── Watermark ── */}
-      <div className="fixed bottom-4 right-4 z-10 pointer-events-none">
-        <img src={logoWithTextPath} alt="Reporting Room" className="h-12 w-auto opacity-60" />
-      </div>
     </div>
   );
 }
