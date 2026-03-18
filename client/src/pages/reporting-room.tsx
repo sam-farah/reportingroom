@@ -51,6 +51,12 @@ export default function ReportingRoom() {
     retry: false,
   });
 
+  // Fetch clinic details for exports
+  const { data: clinicSettings } = useQuery<{ clinicName: string; address?: string; phone?: string; kioskLogoUrl?: string }>({
+    queryKey: ["/api/kiosk/settings"],
+    retry: false,
+  });
+
   // Update report mutation
   const updateReportMutation = useMutation({
     mutationFn: async (reportData: Partial<Report>) => {
@@ -415,10 +421,10 @@ export default function ReportingRoom() {
         <body>
           ${template?.showHeader !== false ? `
             <div class="header">
-              <h1>${template?.clinicName || 'Reporting Room Medical'}</h1>
+              <h1>${clinicSettings?.clinicName || template?.clinicName || 'Medical Clinic'}</h1>
               <div class="subtitle">Medical Examination Report</div>
-              ${template?.clinicAddress ? `<div class="clinic-info">${template.clinicAddress}</div>` : ''}
-              ${template?.clinicPhone ? `<div class="clinic-info">${template.clinicPhone}</div>` : ''}
+              ${(clinicSettings?.address || template?.clinicAddress) ? `<div class="clinic-info">${clinicSettings?.address || template?.clinicAddress}</div>` : ''}
+              ${(clinicSettings?.phone || template?.clinicPhone) ? `<div class="clinic-info">${clinicSettings?.phone || template?.clinicPhone}</div>` : ''}
             </div>
           ` : ''}
           
