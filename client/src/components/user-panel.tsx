@@ -1,18 +1,19 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, FileText, Download, Printer, Image, CheckCircle, Loader2, FileDown, Camera } from "lucide-react";
+import { Upload, FileText, Download, Printer, Image, CheckCircle, Loader2, FileDown, Camera, Search, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import ReportPreview from "./report-preview";
-import type { Worksheet, Physician, Report } from "@shared/schema";
+import type { Worksheet, Physician, Report, Patient } from "@shared/schema";
 
 export default function UserPanel() {
   const { toast } = useToast();
@@ -24,6 +25,9 @@ export default function UserPanel() {
   const [patientDob, setPatientDob] = useState("");
   const [examDate, setExamDate] = useState(new Date().toISOString().split('T')[0]);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'uploaded' | 'processing' | 'completed'>('idle');
+  const [linkedPatient, setLinkedPatient] = useState<Patient | null>(null);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
 
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
@@ -34,6 +38,22 @@ export default function UserPanel() {
       return failureCount < 3;
     },
   });
+
+  const { data: allPatients = [] } = useQuery<Patient[]>({
+    queryKey: ["/api/patients"],
+    queryFn: async () => {
+      const res = await fetch("/api/patients", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const filteredPatients = patientSearch.trim().length > 0
+    ? allPatients.filter(p => {
+        const full = `${p.firstName} ${p.lastName} ${p.urNumber || ""}`.toLowerCase();
+        return full.includes(patientSearch.toLowerCase());
+      })
+    : allPatients.slice(0, 8);
 
   // Handle authentication errors
   useEffect(() => {
@@ -243,6 +263,8 @@ export default function UserPanel() {
     setPatientDob("");
     setExamDate("");
     setGeneratedReport(null);
+    setLinkedPatient(null);
+    setPatientSearch("");
     
     // Brief delay to show upload success, then start OCR processing
     setTimeout(() => {
@@ -362,6 +384,15 @@ export default function UserPanel() {
       return;
     }
 
+    if (!linkedPatient) {
+      toast({
+        title: "No Patient Selected",
+        description: "Please select a patient from the patient list before generating a report",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!selectedPhysician) {
       toast({
         title: "No Physician Selected",
@@ -441,6 +472,75 @@ export default function UserPanel() {
                       <div className="flex items-center text-xs text-green-600">
                         <CheckCircle className="w-3 h-3 mr-1" />
                         OCR Extracted
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Patient record link — required */}
+                  <div className="mb-4">
+                    <Label>
+                      Link to Patient Record <span className="text-red-500">*</span>
+                    </Label>
+                    {linkedPatient ? (
+                      <div className="flex items-center justify-between mt-1 p-2.5 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-green-600" />
+                          <div>
+                            <div className="text-sm font-medium text-green-800">
+                              {linkedPatient.firstName} {linkedPatient.lastName}
+                            </div>
+                            {linkedPatient.urNumber && (
+                              <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200 mt-0.5">
+                                UR {linkedPatient.urNumber}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setLinkedPatient(null); setPatientSearch(""); }}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative mt-1">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+                          <Input
+                            placeholder="Search by name or UR number..."
+                            value={patientSearch}
+                            onChange={(e) => { setPatientSearch(e.target.value); setShowPatientDropdown(true); }}
+                            onFocus={() => setShowPatientDropdown(true)}
+                            className="pl-8 border-orange-300 focus:border-orange-400"
+                          />
+                        </div>
+                        {showPatientDropdown && filteredPatients.length > 0 && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {filteredPatients.map(p => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center gap-2 border-b border-gray-50 last:border-0"
+                                onMouseDown={() => {
+                                  setLinkedPatient(p);
+                                  setPatientSearch("");
+                                  setShowPatientDropdown(false);
+                                  if (!patientName) setPatientName(`${p.firstName} ${p.lastName}`);
+                                  if (!patientDob && p.dateOfBirth) setPatientDob(p.dateOfBirth);
+                                }}
+                              >
+                                <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                <div>
+                                  <div className="text-sm font-medium">{p.firstName} {p.lastName}</div>
+                                  {p.urNumber && <div className="text-xs text-blue-600">UR {p.urNumber}</div>}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-xs text-orange-600 mt-1">A patient must be selected to generate a report</p>
                       </div>
                     )}
                   </div>
