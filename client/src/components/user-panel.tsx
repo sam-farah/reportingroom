@@ -15,7 +15,7 @@ import FileUpload from "./file-upload";
 import ReportPreview from "./report-preview";
 import type { Worksheet, Physician, Report, Patient } from "@shared/schema";
 
-export default function UserPanel() {
+export default function UserPanel({ preLinkedPatientId, onPreLinkedPatientConsumed }: { preLinkedPatientId?: number | null; onPreLinkedPatientConsumed?: () => void } = {}) {
   const { toast } = useToast();
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
   const [selectedPhysician, setSelectedPhysician] = useState<string>("");
@@ -54,6 +54,20 @@ export default function UserPanel() {
         return full.includes(patientSearch.toLowerCase());
       })
     : allPatients.slice(0, 8);
+
+  // Auto-link patient when arriving from calendar "Begin Study"
+  useEffect(() => {
+    if (preLinkedPatientId && allPatients.length > 0) {
+      const found = allPatients.find(p => p.id === preLinkedPatientId);
+      if (found) {
+        setLinkedPatient(found);
+        if (!patientName) setPatientName(`${found.firstName} ${found.lastName}`);
+        if (!patientDob && found.dateOfBirth) setPatientDob(found.dateOfBirth);
+        onPreLinkedPatientConsumed?.();
+        toast({ title: "Patient linked", description: `${found.firstName} ${found.lastName} is ready for report generation` });
+      }
+    }
+  }, [preLinkedPatientId, allPatients]);
 
   // Handle authentication errors
   useEffect(() => {

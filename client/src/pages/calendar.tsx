@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft } from "lucide-react";
 import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent } from "@shared/schema";
@@ -38,7 +38,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 type ViewMode = "day" | "week" | "month";
 
-export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId: number) => void }) {
+export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number) => void }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -47,6 +47,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
+  const [showBeginStudy, setShowBeginStudy] = useState(false);
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
   const [resizingAppointment, setResizingAppointment] = useState<{ apt: Appointment; edge: "top" | "bottom" } | null>(null);
 
@@ -1452,13 +1453,70 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
           </DialogContent>
         </Dialog>
 
-        <Dialog open={!!viewingAppointment} onOpenChange={(open) => !open && setViewingAppointment(null)}>
+        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); } }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Appointment Details</DialogTitle>
+              <DialogTitle>
+                {showBeginStudy ? (
+                  <button
+                    className="flex items-center gap-1.5 text-base font-semibold text-gray-700 hover:text-gray-900"
+                    onClick={() => setShowBeginStudy(false)}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Begin Study / Report
+                  </button>
+                ) : "Appointment Details"}
+              </DialogTitle>
             </DialogHeader>
             {viewingAppointment && (
               <div className="space-y-4">
+
+                {/* Begin Study sub-panel */}
+                {showBeginStudy && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-500">
+                      Choose how you'd like to start the study for <span className="font-medium text-gray-800">{viewingAppointment.patientName}</span>:
+                    </p>
+                    <button
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-colors text-left group"
+                      onClick={() => {
+                        if (viewingAppointment.patientId && onBeginStudy) {
+                          setViewingAppointment(null);
+                          setShowBeginStudy(false);
+                          onBeginStudy(viewingAppointment.patientId);
+                        } else {
+                          toast({ title: "No patient linked", description: "This appointment has no linked patient record. Please edit the appointment and link a patient first.", variant: "destructive" });
+                        }
+                      }}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-700 transition-colors">
+                        <FileUp className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-blue-900">Upload PDF Worksheet</div>
+                        <div className="text-sm text-blue-600">Upload a scanned or digital worksheet to generate a report</div>
+                      </div>
+                    </button>
+                    <button
+                      disabled
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-gray-200 bg-gray-50 text-left opacity-60 cursor-not-allowed"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center shrink-0">
+                        <PenLine className="w-5 h-5 text-gray-500" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-gray-500">Draw Worksheet</span>
+                          <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-500 rounded-full">Coming Soon</span>
+                        </div>
+                        <div className="text-sm text-gray-400">Draw directly in Reporting Room using templates</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+
+                {/* Normal appointment detail view */}
+                {!showBeginStudy && (<>
                 <div className="flex items-center gap-2">
                   <User className="w-5 h-5 text-gray-500" />
                   <span className="font-semibold">{viewingAppointment.patientName}</span>
@@ -1579,6 +1637,18 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                     Delete
                   </Button>
                 </div>
+
+                {/* Begin Study primary CTA */}
+                {viewingAppointment.status !== "cancelled" && (
+                  <Button
+                    className="w-full medical-btn-primary gap-2 mt-2"
+                    onClick={() => setShowBeginStudy(true)}
+                  >
+                    <PlayCircle className="w-4 h-4" />
+                    Begin Study / Report
+                  </Button>
+                )}
+                </>)}
               </div>
             )}
           </DialogContent>

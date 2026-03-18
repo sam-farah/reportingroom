@@ -21,6 +21,7 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const [activePanel, setActivePanel] = useState<"user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests">("user");
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
+  const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
 
   const handleLogout = async () => {
     try {
@@ -146,7 +147,7 @@ export default function Dashboard() {
       </nav>
 
       {activePanel === "user" ? (
-        <UserPanel />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} onPreLinkedPatientConsumed={() => setPreLinkedPatientId(null)} />
       ) : activePanel === "reporting-room" ? (
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
@@ -154,7 +155,10 @@ export default function Dashboard() {
       ) : activePanel === "staff" && isOwnerOrAdmin ? (
         <StaffManagement />
       ) : activePanel === "calendar" ? (
-        <Calendar onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }} />
+        <Calendar
+          onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}
+          onBeginStudy={(patientId) => { setPreLinkedPatientId(patientId); setActivePanel("user"); }}
+        />
       ) : activePanel === "patients" ? (
         <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
       ) : activePanel === "requests" ? (
@@ -162,7 +166,7 @@ export default function Dashboard() {
       ) : activePanel === "admin" && isOwnerOrAdmin ? (
         <AdminPanel />
       ) : (
-        <UserPanel />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} onPreLinkedPatientConsumed={() => setPreLinkedPatientId(null)} />
       )}
 
       <div className="fixed bottom-4 right-4 z-10">
