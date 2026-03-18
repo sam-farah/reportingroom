@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [activePanel, setActivePanel] = useState<"user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests">("user");
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
+  const [preLinkedPatientName, setPreLinkedPatientName] = useState<string>("");
 
   const handleLogout = async () => {
     try {
@@ -147,7 +148,7 @@ export default function Dashboard() {
       </nav>
 
       {activePanel === "user" ? (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} onPreLinkedPatientConsumed={() => setPreLinkedPatientId(null)} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} />
       ) : activePanel === "reporting-room" ? (
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
@@ -157,7 +158,7 @@ export default function Dashboard() {
       ) : activePanel === "calendar" ? (
         <Calendar
           onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}
-          onBeginStudy={(patientId) => { setPreLinkedPatientId(patientId); setActivePanel("user"); }}
+          onBeginStudy={(patientId, patientName) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setActivePanel("user"); }}
         />
       ) : activePanel === "patients" ? (
         <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
@@ -166,7 +167,7 @@ export default function Dashboard() {
       ) : activePanel === "admin" && isOwnerOrAdmin ? (
         <AdminPanel />
       ) : (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} onPreLinkedPatientConsumed={() => setPreLinkedPatientId(null)} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} />
       )}
 
       <div className="fixed bottom-4 right-4 z-10">

@@ -38,7 +38,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 type ViewMode = "day" | "week" | "month";
 
-export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number) => void }) {
+export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string) => void }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -1480,12 +1480,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     <button
                       className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-colors text-left group"
                       onClick={() => {
-                        if (viewingAppointment.patientId && onBeginStudy) {
+                        if (onBeginStudy) {
                           setViewingAppointment(null);
                           setShowBeginStudy(false);
-                          onBeginStudy(viewingAppointment.patientId);
-                        } else {
-                          toast({ title: "No patient linked", description: "This appointment has no linked patient record. Please edit the appointment and link a patient first.", variant: "destructive" });
+                          onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "");
                         }
                       }}
                     >
