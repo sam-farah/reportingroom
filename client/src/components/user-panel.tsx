@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, FileText, Download, Printer, Image, CheckCircle, Loader2, FileDown, Camera, Search, User, X } from "lucide-react";
+import { FileText, Image, CheckCircle, Loader2, Camera, Search, User, X, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,15 +13,15 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
-import ReportPreview from "./report-preview";
 import type { Worksheet, Physician, Report, Patient } from "@shared/schema";
 
 export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; onPreLinkedPatientConsumed?: () => void } = {}) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
   const [selectedPhysician, setSelectedPhysician] = useState<string>("");
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
 
-  const [generatedReport, setGeneratedReport] = useState<Report | null>(null);
   const [patientName, setPatientName] = useState("");
   const [patientDob, setPatientDob] = useState("");
   const [examDate, setExamDate] = useState(new Date().toISOString().split('T')[0]);
@@ -259,12 +260,12 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
       return response.json();
     },
     onSuccess: (report) => {
-      setGeneratedReport(report);
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
       toast({
         title: "Report Generated",
-        description: "Your ultrasound report has been successfully generated",
+        description: "Opening report editor…",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      navigate(`/reporting-room?openReport=${report.id}`);
     },
     onError: (error: Error) => {
       console.error('Report generation error:', error);
@@ -297,7 +298,6 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
     setPatientName("");
     setPatientDob("");
     setExamDate("");
-    setGeneratedReport(null);
     setLinkedPatient(null);
     setPatientSearch("");
     
@@ -345,70 +345,6 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
     }
   };
 
-
-
-  const handleDownloadPdf = () => {
-    if (!generatedReport) {
-      toast({
-        title: "No Report Available",
-        description: "Please generate a report first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Open the printable report page in a new tab
-    const url = `/api/reports/${generatedReport.id}/pdf`;
-    window.open(url, '_blank');
-
-    toast({
-      title: "Print Page Opened",
-      description: "Use the print button or Ctrl+P to save as PDF",
-    });
-  };
-
-  const handleDownloadDocx = async () => {
-    if (!generatedReport) {
-      toast({
-        title: "No Report Available",
-        description: "Please generate a report first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/reports/${generatedReport.id}/docx`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate DOCX');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `${generatedReport.patientName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${generatedReport.examDate}.docx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast({
-        title: "DOCX Downloaded",
-        description: "Report downloaded successfully",
-      });
-    } catch (error) {
-      console.error('DOCX download error:', error);
-      toast({
-        title: "Download Failed",
-        description: "Failed to download DOCX file",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleGenerateReport = () => {
     if (!selectedWorksheet) {
       toast({
@@ -441,15 +377,15 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Report Generation</h1>
-        <p className="text-gray-600">Upload an ultrasound worksheet to generate professional reports</p>
+        <p className="text-gray-600">Upload an ultrasound worksheet to generate a professional report</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div>
         {/* Worksheet Input Section */}
-        <div className="lg:col-span-1">
+        <div>
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
@@ -672,57 +608,32 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
                   </Select>
                 </div>
 
+                {/* Template Selection */}
+                <div className="mb-6">
+                  <Label className="flex items-center gap-1.5">
+                    <LayoutTemplate className="w-3.5 h-3.5 text-gray-500" />
+                    Template
+                  </Label>
+                  <Select value={selectedTemplate} onValueChange={setSelectedTemplate} disabled>
+                    <SelectTrigger className="mt-1 text-gray-400">
+                      <SelectValue placeholder="No template (coming soon)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" disabled>Templates coming soon</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-400 mt-1">Custom report templates will be available here</p>
+                </div>
+
                 <Button
                   onClick={handleGenerateReport}
                   disabled={generateReportMutation.isPending}
                   className="w-full medical-btn-primary"
                 >
                   <FileText className="w-4 h-4 mr-2" />
-                  {generateReportMutation.isPending ? "Generating..." : "Generate Report"}
+                  {generateReportMutation.isPending ? "Generating report…" : "Generate Report"}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Report Preview */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  <FileText className="medical-text-primary mr-2 inline" />
-                  Report Preview
-                </h2>
-                {generatedReport && (
-                  <div className="flex space-x-2">
-                    <Button 
-                      onClick={handleDownloadPdf}
-                      className="bg-[var(--medical-success)] hover:bg-[var(--medical-success)]/80 text-white"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      PDF
-                    </Button>
-                    <Button 
-                      onClick={handleDownloadDocx}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                      <FileDown className="w-4 h-4 mr-2" />
-                      DOCX
-                    </Button>
-                    <Button variant="secondary">
-                      <Printer className="w-4 h-4 mr-2" />
-                      Print
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              <ReportPreview
-                report={generatedReport}
-                physician={physicians.find(p => p.id.toString() === selectedPhysician)}
-                onReportUpdate={setGeneratedReport}
-              />
             </CardContent>
           </Card>
         </div>

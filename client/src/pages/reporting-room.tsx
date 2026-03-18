@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
@@ -224,21 +224,28 @@ export default function ReportingRoom() {
   });
 
   const handleEditReport = (report: Report) => {
-    console.log('Opening report editor for:', report.patientName);
     setEditingReport({ ...report });
     setIsFullscreenMode(true);
     setIsEditDialogOpen(true);
-    
-    console.log('Fullscreen mode set to:', true);
-    
-    // Try to enter browser fullscreen for better experience
     setTimeout(() => {
-      document.documentElement.requestFullscreen?.().catch((err) => {
-        console.log('Browser fullscreen not available:', err);
-        // Continue with app fullscreen UI
-      });
+      document.documentElement.requestFullscreen?.().catch(() => {});
     }, 100);
   };
+
+  // Auto-open report when arriving from Upload page via ?openReport=ID
+  useEffect(() => {
+    if (reports.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const openId = params.get("openReport");
+    if (!openId) return;
+    const target = reports.find(r => r.id === parseInt(openId));
+    if (target) {
+      handleEditReport(target);
+      // Clean the query param from the URL without reloading
+      const clean = window.location.pathname;
+      window.history.replaceState(null, "", clean);
+    }
+  }, [reports]);
 
   // Navigation between reports in edit dialog
   const getCurrentReportIndex = () => {
