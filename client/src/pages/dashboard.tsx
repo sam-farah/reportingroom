@@ -92,6 +92,15 @@ export default function Dashboard() {
 
             {/* Clinic details */}
             <div className="flex items-center gap-2.5 flex-1 min-w-0">
+              {kioskSettings?.kioskLogoUrl ? (
+                <img
+                  src={kioskSettings.kioskLogoUrl}
+                  alt={kioskSettings.clinicName || "Clinic logo"}
+                  className="h-8 w-auto max-w-[120px] object-contain flex-shrink-0"
+                />
+              ) : (
+                <img src={logoIconPath} alt="Reporting Room" className="h-7 w-7 flex-shrink-0" />
+              )}
               <div className="min-w-0">
                 <div className="font-bold text-gray-900 text-sm leading-tight truncate">
                   {kioskSettings?.clinicName || "Reporting Room"}
