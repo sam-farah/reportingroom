@@ -42,7 +42,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center h-16 gap-4">
+          <div className="flex items-center h-16 gap-3">
             <div className="flex-shrink-0">
               <img 
                 src={logoIconPath} 
@@ -50,89 +50,76 @@ export default function Dashboard() {
                 className="h-8 w-8"
               />
             </div>
-            
+
+            {/* Nav buttons — centred, scrollable if viewport is narrow */}
             <div className="flex flex-1 items-center justify-center overflow-x-auto min-w-0">
-              <div className="flex space-x-1 flex-shrink-0">
-                <Button
-                  variant="ghost"
-                  onClick={() => window.open('/kiosk', '_blank')}
-                >
-                  <Monitor className="w-4 h-4 mr-2" />
-                  Kiosk
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                <Button size="sm" variant="ghost" onClick={() => window.open('/kiosk', '_blank')}>
+                  <Monitor className="w-4 h-4 mr-1.5" />Kiosk
                 </Button>
-                <Button
+                <Button size="sm"
                   variant={activePanel === "calendar" ? "default" : "ghost"}
                   className={activePanel === "calendar" ? "medical-btn-secondary" : ""}
                   onClick={() => setActivePanel("calendar")}
                 >
-                  <CalendarIcon className="w-4 h-4 mr-2" />
-                  Calendar
+                  <CalendarIcon className="w-4 h-4 mr-1.5" />Calendar
                 </Button>
-                <Button
+                <Button size="sm"
                   variant={activePanel === "user" ? "default" : "ghost"}
                   className={activePanel === "user" ? "medical-btn-secondary" : ""}
                   onClick={() => setActivePanel("user")}
                 >
-                  <User className="w-4 h-4 mr-2" />
-                  Upload
+                  <User className="w-4 h-4 mr-1.5" />Upload
                 </Button>
-                <Button
+                <Button size="sm"
                   variant={activePanel === "reporting-room" ? "default" : "ghost"}
                   className={activePanel === "reporting-room" ? "medical-btn-secondary" : ""}
                   onClick={() => setActivePanel("reporting-room")}
                 >
-                  <FolderOpen className="w-4 h-4 mr-2" />
-                  Reports
+                  <FolderOpen className="w-4 h-4 mr-1.5" />Reports
                 </Button>
-                <Button
+                <Button size="sm"
                   variant={activePanel === "patients" ? "default" : "ghost"}
                   className={activePanel === "patients" ? "medical-btn-secondary" : ""}
                   onClick={() => setActivePanel("patients")}
                 >
-                  <UserCircle className="w-4 h-4 mr-2" />
-                  Patients
+                  <UserCircle className="w-4 h-4 mr-1.5" />Patients
                 </Button>
-                <Button
+                <Button size="sm"
                   variant={activePanel === "requests" ? "default" : "ghost"}
                   className={activePanel === "requests" ? "medical-btn-secondary" : ""}
                   onClick={() => setActivePanel("requests")}
                 >
-                  <ClipboardList className="w-4 h-4 mr-2" />
-                  Requests
+                  <ClipboardList className="w-4 h-4 mr-1.5" />Requests
                 </Button>
-
                 {isOwnerOrAdmin && (
                   <>
-                    <Button
+                    <Button size="sm"
                       variant={activePanel === "staff" ? "default" : "ghost"}
                       className={activePanel === "staff" ? "medical-btn-secondary" : ""}
                       onClick={() => setActivePanel("staff")}
                     >
-                      <Users className="w-4 h-4 mr-2" />
-                      Team
+                      <Users className="w-4 h-4 mr-1.5" />Team
                     </Button>
-                    <Button
+                    <Button size="sm"
                       variant={activePanel === "admin" ? "default" : "ghost"}
                       className={activePanel === "admin" ? "medical-btn-secondary" : ""}
                       onClick={() => setActivePanel("admin")}
                     >
-                      <Settings className="w-4 h-4 mr-2" />
-                      Admin
+                      <Settings className="w-4 h-4 mr-1.5" />Admin
                     </Button>
                   </>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center space-x-3 flex-shrink-0">
-              <div className="text-sm text-gray-700">
-                <div className="flex items-center gap-2">
-                  <span>{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}</span>
+            {/* User info — always anchored right */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="text-sm text-gray-700 text-right">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}</span>
                   <Badge variant="outline" className="text-xs">{roleLabel}</Badge>
                 </div>
-                {user?.email && user?.firstName && (
-                  <div className="text-xs text-gray-500">{user.email}</div>
-                )}
               </div>
               <Button 
                 variant="ghost" 
