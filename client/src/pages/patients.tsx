@@ -1078,13 +1078,14 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
             <DialogHeader>
               <DialogTitle>{editingPatient ? "Edit Patient" : "Add New Patient"}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
               <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex-1">
                   <Label htmlFor="urNumber2" className="text-blue-800 font-semibold">UR Number</Label>
                   <div className="flex items-center gap-2 mt-1">
                     <Input
                       id="urNumber2"
+                      autoComplete="off"
                       className="font-mono font-bold text-blue-700 border-blue-300 bg-white w-40"
                       placeholder={editingPatient ? "—" : "Auto-generated"}
                       value={formData.urNumber}
@@ -1099,15 +1100,15 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>First Name *</Label>
-                  <Input value={formData.firstName} autoCapitalize="words" onChange={(e) => setFormData(prev => ({ ...prev, firstName: capitalizeWords(e.target.value) }))} required />
+                  <Input value={formData.firstName} autoComplete="off" autoCapitalize="words" onChange={(e) => setFormData(prev => ({ ...prev, firstName: capitalizeWords(e.target.value) }))} required />
                 </div>
                 <div>
                   <Label>Last Name *</Label>
-                  <Input value={formData.lastName} autoCapitalize="words" onChange={(e) => setFormData(prev => ({ ...prev, lastName: capitalizeWords(e.target.value) }))} required />
+                  <Input value={formData.lastName} autoComplete="off" autoCapitalize="words" onChange={(e) => setFormData(prev => ({ ...prev, lastName: capitalizeWords(e.target.value) }))} required />
                 </div>
                 <div>
                   <Label>Date of Birth *</Label>
-                  <Input type="date" value={formData.dateOfBirth} onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))} required />
+                  <Input type="date" autoComplete="off" value={formData.dateOfBirth} onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))} required />
                 </div>
                 <div>
                   <Label>Gender</Label>
@@ -1122,27 +1123,27 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 </div>
                 <div>
                   <Label>Phone</Label>
-                  <Input value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} />
+                  <Input autoComplete="off" value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} />
                 </div>
                 <div>
                   <Label>Email</Label>
-                  <Input type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                  <Input type="email" autoComplete="off" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} />
                 </div>
                 <div className="col-span-2">
                   <Label>Address</Label>
-                  <Input value={formData.address} onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))} />
+                  <Input autoComplete="off" value={formData.address} onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))} />
                 </div>
                 <div>
                   <Label>City</Label>
-                  <Input value={formData.city} onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))} />
+                  <Input autoComplete="off" value={formData.city} onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))} />
                 </div>
                 <div>
                   <Label>State</Label>
-                  <Input value={formData.state} onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))} />
+                  <Input autoComplete="off" value={formData.state} onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))} />
                 </div>
                 <div>
                   <Label>Zip Code</Label>
-                  <Input value={formData.zipCode} onChange={(e) => setFormData(prev => ({ ...prev, zipCode: e.target.value }))} />
+                  <Input autoComplete="off" value={formData.zipCode} onChange={(e) => setFormData(prev => ({ ...prev, zipCode: e.target.value }))} />
                 </div>
                 <div className="col-span-2">
                   <div className="flex items-center gap-2 mb-2 mt-1">
@@ -1152,25 +1153,25 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <div className="grid grid-cols-3 gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
                     <div>
                       <Label>Medicare Number *</Label>
-                      <Input value={formData.medicareNumber} onChange={(e) => setFormData(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="1234567890" maxLength={10} required />
+                      <Input autoComplete="off" value={formData.medicareNumber} onChange={(e) => setFormData(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="1234567890" maxLength={10} required />
                     </div>
                     <div>
                       <Label>IRN *</Label>
-                      <Input value={formData.medicareIrn} onChange={(e) => setFormData(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "").slice(0, 1) }))} placeholder="1" maxLength={1} required />
+                      <Input autoComplete="off" value={formData.medicareIrn} onChange={(e) => setFormData(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "").slice(0, 1) }))} placeholder="1" maxLength={1} required />
                     </div>
                     <div>
                       <Label>Expiry (MM/YYYY) *</Label>
-                      <Input value={formData.medicareExpiry} onChange={(e) => { let v = e.target.value.replace(/[^\d/]/g, ""); if (v.length === 2 && !v.includes("/")) v = v + "/"; setFormData(prev => ({ ...prev, medicareExpiry: v.slice(0, 7) })); }} placeholder="01/2028" maxLength={7} required />
+                      <Input autoComplete="off" value={formData.medicareExpiry} onChange={(e) => { let v = e.target.value.replace(/[^\d/]/g, ""); if (v.length === 2 && !v.includes("/")) v = v + "/"; setFormData(prev => ({ ...prev, medicareExpiry: v.slice(0, 7) })); }} placeholder="01/2028" maxLength={7} required />
                     </div>
                   </div>
                 </div>
                 <div>
                   <Label>Referring Physician *</Label>
-                  <Input value={formData.referringPhysician} onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))} required />
+                  <Input autoComplete="off" value={formData.referringPhysician} onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))} required />
                 </div>
                 <div className="col-span-2">
                   <Label>Allergies</Label>
-                  <Input value={formData.allergies} onChange={(e) => setFormData(prev => ({ ...prev, allergies: e.target.value }))} placeholder="List any known allergies" />
+                  <Input autoComplete="off" value={formData.allergies} onChange={(e) => setFormData(prev => ({ ...prev, allergies: e.target.value }))} placeholder="List any known allergies" />
                 </div>
                 <div className="col-span-2">
                   <Label>Medical History</Label>
@@ -1283,7 +1284,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
             <DialogHeader>
               <DialogTitle>{editingPatient ? "Edit Patient" : "Add New Patient"}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
               {/* UR Number */}
               <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex-1">
@@ -1291,6 +1292,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <div className="flex items-center gap-2 mt-1">
                     <Input
                       id="urNumber"
+                      autoComplete="off"
                       className="font-mono font-bold text-blue-700 border-blue-300 bg-white w-40"
                       placeholder={editingPatient ? "—" : "Auto-generated"}
                       value={formData.urNumber}
@@ -1308,6 +1310,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="firstName">First Name *</Label>
                   <Input
                     id="firstName"
+                    autoComplete="off"
                     value={formData.firstName}
                     autoCapitalize="words"
                     onChange={(e) => setFormData(prev => ({ ...prev, firstName: capitalizeWords(e.target.value) }))}
@@ -1318,6 +1321,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="lastName">Last Name *</Label>
                   <Input
                     id="lastName"
+                    autoComplete="off"
                     value={formData.lastName}
                     autoCapitalize="words"
                     onChange={(e) => setFormData(prev => ({ ...prev, lastName: capitalizeWords(e.target.value) }))}
@@ -1329,6 +1333,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Input
                     id="dateOfBirth"
                     type="date"
+                    autoComplete="off"
                     value={formData.dateOfBirth}
                     onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))}
                     required
@@ -1351,6 +1356,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="phone">Phone</Label>
                   <Input
                     id="phone"
+                    autoComplete="off"
                     value={formData.phone}
                     onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                   />
@@ -1360,6 +1366,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Input
                     id="email"
                     type="email"
+                    autoComplete="off"
                     value={formData.email}
                     onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                   />
@@ -1368,6 +1375,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="address">Address</Label>
                   <Input
                     id="address"
+                    autoComplete="off"
                     value={formData.address}
                     onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
                   />
@@ -1376,6 +1384,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="city">City</Label>
                   <Input
                     id="city"
+                    autoComplete="off"
                     value={formData.city}
                     onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
                   />
@@ -1384,6 +1393,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="state">State</Label>
                   <Input
                     id="state"
+                    autoComplete="off"
                     value={formData.state}
                     onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
                   />
@@ -1392,6 +1402,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="zipCode">Zip Code</Label>
                   <Input
                     id="zipCode"
+                    autoComplete="off"
                     value={formData.zipCode}
                     onChange={(e) => setFormData(prev => ({ ...prev, zipCode: e.target.value }))}
                   />
@@ -1406,6 +1417,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                       <Label htmlFor="medicareNumber">Medicare Number *</Label>
                       <Input
                         id="medicareNumber"
+                        autoComplete="off"
                         value={formData.medicareNumber}
                         onChange={(e) => setFormData(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
                         placeholder="1234567890"
@@ -1417,6 +1429,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                       <Label htmlFor="medicareIrn">IRN *</Label>
                       <Input
                         id="medicareIrn"
+                        autoComplete="off"
                         value={formData.medicareIrn}
                         onChange={(e) => setFormData(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "").slice(0, 1) }))}
                         placeholder="1"
@@ -1428,6 +1441,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                       <Label htmlFor="medicareExpiry">Expiry (MM/YYYY) *</Label>
                       <Input
                         id="medicareExpiry"
+                        autoComplete="off"
                         value={formData.medicareExpiry}
                         onChange={(e) => {
                           let v = e.target.value.replace(/[^\d/]/g, "");
@@ -1445,6 +1459,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="referringPhysician">Referring Physician *</Label>
                   <Input
                     id="referringPhysician"
+                    autoComplete="off"
                     value={formData.referringPhysician}
                     onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
                     required
@@ -1454,6 +1469,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label htmlFor="allergies">Allergies</Label>
                   <Input
                     id="allergies"
+                    autoComplete="off"
                     value={formData.allergies}
                     onChange={(e) => setFormData(prev => ({ ...prev, allergies: e.target.value }))}
                     placeholder="List any known allergies"
