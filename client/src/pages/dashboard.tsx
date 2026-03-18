@@ -25,7 +25,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "patients",       label: "Patients",      icon: UserCircle },
   { id: "requests",       label: "Requests",      icon: ClipboardList },
   { id: "staff",          label: "Team",          icon: Users,    adminOnly: true },
-  { id: "admin",          label: "Admin Panel",   icon: Settings, adminOnly: true },
+  { id: "admin",          label: "Admin Panel",   icon: Settings },
 ];
 
 const PAGE_TITLES: Record<Panel, string> = {
@@ -257,7 +257,7 @@ export default function Dashboard() {
         <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
       ) : activePanel === "requests" ? (
         <Requests />
-      ) : activePanel === "admin" && isOwnerOrAdmin ? (
+      ) : activePanel === "admin" ? (
         <AdminPanel />
       ) : (
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} />
