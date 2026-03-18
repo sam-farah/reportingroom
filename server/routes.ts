@@ -663,6 +663,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/patients/:id/verify-medicare", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { action } = req.body; // 'verify' | 'unverify'
+      const patient = await storage.getPatient(id);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      if (!patient.medicareNumber) return res.status(400).json({ error: "No Medicare number on file" });
+      const updates =
+        action === "unverify"
+          ? { medicareVerifiedStatus: "unverified", medicareVerifiedAt: null }
+          : { medicareVerifiedStatus: "verified", medicareVerifiedAt: new Date() };
+      const updated = await storage.updatePatient(id, updates);
+      res.json({ patient: updated, note: "Manual verification recorded. Live verification requires Services Australia PRODA API access." });
+    } catch (error) {
+      console.error("Error verifying Medicare:", error);
+      res.status(500).json({ error: "Failed to update Medicare status" });
+    }
+  });
+
   app.delete("/api/patients/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);

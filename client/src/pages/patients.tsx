@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert } from "lucide-react";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
@@ -140,6 +140,9 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     zipCode: "",
     insuranceProvider: "",
     insuranceId: "",
+    medicareNumber: "",
+    medicareIrn: "",
+    medicareExpiry: "",
     referringPhysician: "",
     medicalHistory: "",
     allergies: "",
@@ -328,6 +331,21 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     },
   });
 
+  const verifyMedicareMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: number; action: "verify" | "unverify" }) => {
+      const res = await apiRequest(`/api/patients/${id}/verify-medicare`, "POST", { action });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+      if (data?.patient) setSelectedPatient(data.patient);
+      toast({ title: "Medicare status updated", description: data?.note || "Status saved." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update Medicare status", variant: "destructive" });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       urNumber: "",
@@ -343,6 +361,9 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       zipCode: "",
       insuranceProvider: "",
       insuranceId: "",
+      medicareNumber: "",
+      medicareIrn: "",
+      medicareExpiry: "",
       referringPhysician: "",
       medicalHistory: "",
       allergies: "",
@@ -365,6 +386,9 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       zipCode: patient.zipCode || "",
       insuranceProvider: patient.insuranceProvider || "",
       insuranceId: patient.insuranceId || "",
+      medicareNumber: patient.medicareNumber || "",
+      medicareIrn: patient.medicareIrn || "",
+      medicareExpiry: patient.medicareExpiry || "",
       referringPhysician: patient.referringPhysician || "",
       medicalHistory: patient.medicalHistory || "",
       allergies: patient.allergies || "",
@@ -907,6 +931,56 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 </div>
               )}
 
+              {selectedPatient.medicareNumber && (
+                <div className="pt-2 border-t">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-sm font-medium">Medicare</span>
+                    </div>
+                    {selectedPatient.medicareVerifiedStatus === "verified" ? (
+                      <div className="flex items-center gap-1">
+                        <Badge className="bg-green-100 text-green-700 border-green-200 text-xs gap-1">
+                          <ShieldCheck className="w-3 h-3" /> Verified
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-xs text-gray-400 px-1"
+                          onClick={() => verifyMedicareMutation.mutate({ id: selectedPatient.id, action: "unverify" })}
+                          disabled={verifyMedicareMutation.isPending}
+                        >
+                          Unverify
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+                        onClick={() => verifyMedicareMutation.mutate({ id: selectedPatient.id, action: "verify" })}
+                        disabled={verifyMedicareMutation.isPending}
+                      >
+                        <ShieldAlert className="w-3 h-3" />
+                        Mark Verified
+                      </Button>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-600 font-mono tracking-wider">
+                    {selectedPatient.medicareNumber}
+                    {selectedPatient.medicareIrn && <span className="ml-2 text-gray-400">/{selectedPatient.medicareIrn}</span>}
+                  </div>
+                  {selectedPatient.medicareExpiry && (
+                    <div className="text-xs text-gray-400 mt-0.5">Expires {selectedPatient.medicareExpiry}</div>
+                  )}
+                  {selectedPatient.medicareVerifiedAt && (
+                    <div className="text-xs text-green-600 mt-0.5">
+                      Verified {format(new Date(selectedPatient.medicareVerifiedAt), "d MMM yyyy")}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {selectedPatient.referringPhysician && (
                 <div className="pt-2 border-t">
                   <div className="text-sm font-medium">Referring Physician</div>
@@ -1218,6 +1292,48 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                     value={formData.insuranceId}
                     onChange={(e) => setFormData(prev => ({ ...prev, insuranceId: e.target.value }))}
                   />
+                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 mb-2 mt-1">
+                    <CreditCard className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-semibold text-gray-700">Medicare Details</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <div>
+                      <Label htmlFor="medicareNumber">Medicare Number</Label>
+                      <Input
+                        id="medicareNumber"
+                        value={formData.medicareNumber}
+                        onChange={(e) => setFormData(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                        placeholder="1234567890"
+                        maxLength={10}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="medicareIrn">IRN</Label>
+                      <Input
+                        id="medicareIrn"
+                        value={formData.medicareIrn}
+                        onChange={(e) => setFormData(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "").slice(0, 1) }))}
+                        placeholder="1"
+                        maxLength={1}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="medicareExpiry">Expiry (MM/YYYY)</Label>
+                      <Input
+                        id="medicareExpiry"
+                        value={formData.medicareExpiry}
+                        onChange={(e) => {
+                          let v = e.target.value.replace(/[^\d/]/g, "");
+                          if (v.length === 2 && !v.includes("/")) v = v + "/";
+                          setFormData(prev => ({ ...prev, medicareExpiry: v.slice(0, 7) }));
+                        }}
+                        placeholder="01/2028"
+                        maxLength={7}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="referringPhysician">Referring Physician</Label>
