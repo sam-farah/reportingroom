@@ -510,16 +510,16 @@ export default function AdminPanel() {
       </div>
 
       <Tabs defaultValue="monitoring" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-9">
-          <TabsTrigger value="clinic-settings">🏥 Clinic</TabsTrigger>
-          <TabsTrigger value="scan-durations">⏱️ Scan Durations</TabsTrigger>
-          <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
-          <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
-          <TabsTrigger value="costs">Cost Projection</TabsTrigger>
-          <TabsTrigger value="training">🌍 Global AI Training</TabsTrigger>
-          <TabsTrigger value="templates">📝 Report Templates</TabsTrigger>
-          <TabsTrigger value="kiosk">🖥️ Kiosk</TabsTrigger>
-          <TabsTrigger value="backup">💾 Backup</TabsTrigger>
+        <TabsList className="flex flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="clinic-settings" className="flex-shrink-0">🏥 Clinic</TabsTrigger>
+          <TabsTrigger value="scan-durations" className="flex-shrink-0">⏱️ Scan Durations</TabsTrigger>
+          <TabsTrigger value="monitoring" className="flex-shrink-0">System Monitoring</TabsTrigger>
+          <TabsTrigger value="clinics" className="flex-shrink-0">Clinic Analytics</TabsTrigger>
+          <TabsTrigger value="costs" className="flex-shrink-0">Cost Projection</TabsTrigger>
+          <TabsTrigger value="training" className="flex-shrink-0">🌍 Global AI Training</TabsTrigger>
+          <TabsTrigger value="templates" className="flex-shrink-0">📝 Report Templates</TabsTrigger>
+          <TabsTrigger value="kiosk" className="flex-shrink-0">🖥️ Kiosk</TabsTrigger>
+          <TabsTrigger value="backup" className="flex-shrink-0">💾 Backup</TabsTrigger>
         </TabsList>
 
         <TabsContent value="clinic-settings">
