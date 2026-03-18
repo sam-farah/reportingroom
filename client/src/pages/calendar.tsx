@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,11 +11,20 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock } from "lucide-react";
 import { capitalizeWords } from "@/lib/utils";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes } from "date-fns";
-import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting } from "@shared/schema";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
+import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
+
+const EVENT_COLORS: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  purple: { bg: "bg-purple-100", text: "text-purple-900", border: "border-purple-300", dot: "bg-purple-400" },
+  teal:   { bg: "bg-teal-100",   text: "text-teal-900",   border: "border-teal-300",   dot: "bg-teal-400" },
+  orange: { bg: "bg-orange-100", text: "text-orange-900", border: "border-orange-300", dot: "bg-orange-400" },
+  rose:   { bg: "bg-rose-100",   text: "text-rose-900",   border: "border-rose-300",   dot: "bg-rose-400" },
+  indigo: { bg: "bg-indigo-100", text: "text-indigo-900", border: "border-indigo-300", dot: "bg-indigo-400" },
+  amber:  { bg: "bg-amber-100",  text: "text-amber-900",  border: "border-amber-300",  dot: "bg-amber-400" },
+};
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-100 text-blue-800 border-blue-200",
@@ -68,6 +77,24 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
   const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", phone: "" });
+
+  // Calendar events state
+  const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [viewingEvent, setViewingEvent] = useState<CalendarEvent | null>(null);
+  const [eventForm, setEventForm] = useState({
+    title: "",
+    date: "",
+    startTime: "09:00",
+    endTime: "17:00",
+    color: "purple",
+    recurrence: "none",
+    recurrenceEndDate: "",
+    notes: "",
+  });
+
+  // Hover tooltip state
+  const [tooltip, setTooltip] = useState<{ apt: Appointment; x: number; y: number } | null>(null);
 
   const { data: searchedPatients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients", "search", patientSearch],
@@ -199,6 +226,20 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
     queryKey: ["/api/sonographers"],
   });
 
+  // Fetch events over a wide rolling window so recurrences are visible
+  const eventsStart = subDays(startDate, 365);
+  const eventsEnd = addMonths(endDate, 12);
+  const { data: rawCalendarEvents = [] } = useQuery<CalendarEvent[]>({
+    queryKey: ["/api/calendar-events", eventsStart.toISOString(), eventsEnd.toISOString()],
+    queryFn: async () => {
+      const response = await fetch(`/api/calendar-events?startDate=${eventsStart.toISOString()}&endDate=${eventsEnd.toISOString()}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch calendar events");
+      return response.json();
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       return await apiRequest("/api/appointments", "POST", data);
@@ -259,6 +300,44 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
     onError: () => {
       toast({ title: "Error", description: "Failed to create patient file.", variant: "destructive" });
     },
+  });
+
+  // Calendar event CRUD mutations
+  const createEventMutation = useMutation({
+    mutationFn: async (data: any): Promise<CalendarEvent> => {
+      const res = await apiRequest("/api/calendar-events", "POST", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
+      setIsEventDialogOpen(false);
+      toast({ title: "Event created" });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to create event", variant: "destructive" }),
+  });
+
+  const updateEventMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }): Promise<CalendarEvent> => {
+      const res = await apiRequest(`/api/calendar-events/${id}`, "PUT", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
+      setIsEventDialogOpen(false);
+      setEditingEvent(null);
+      toast({ title: "Event updated" });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to update event", variant: "destructive" }),
+  });
+
+  const deleteEventMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest(`/api/calendar-events/${id}`, "DELETE"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
+      setViewingEvent(null);
+      toast({ title: "Event deleted" });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to delete event", variant: "destructive" }),
   });
 
   const resetForm = () => {
@@ -541,9 +620,107 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
   };
 
   const getAppointmentsForDate = (date: Date) => {
-    return appointments.filter(apt => 
-      isSameDay(new Date(apt.appointmentDate), date)
+    return appointments.filter(apt =>
+      isSameDay(new Date(apt.appointmentDate), date) && apt.status !== "cancelled"
     );
+  };
+
+  // Expand recurring events into instances visible within [rangeStart, rangeEnd]
+  const expandEvents = (events: CalendarEvent[], rangeStart: Date, rangeEnd: Date) => {
+    const result: Array<CalendarEvent & { instanceStart: Date; instanceEnd: Date }> = [];
+    for (const event of events) {
+      const eventStart = new Date(event.startTime);
+      const eventEnd = new Date(event.endTime);
+      const duration = eventEnd.getTime() - eventStart.getTime();
+      const recEndLimit = event.recurrenceEndDate ? new Date(event.recurrenceEndDate) : addMonths(rangeEnd, 0);
+
+      if (event.recurrence === "none") {
+        if (eventStart <= rangeEnd && eventEnd >= rangeStart) {
+          result.push({ ...event, instanceStart: eventStart, instanceEnd: eventEnd });
+        }
+      } else {
+        let current = new Date(eventStart);
+        while (current <= rangeEnd && current <= recEndLimit) {
+          const instanceEnd = new Date(current.getTime() + duration);
+          if (instanceEnd >= rangeStart) {
+            result.push({ ...event, instanceStart: new Date(current), instanceEnd });
+          }
+          if (event.recurrence === "weekly") current = addWeeks(current, 1);
+          else if (event.recurrence === "monthly") current = addMonths(current, 1);
+          else break;
+        }
+      }
+    }
+    return result;
+  };
+
+  const expandedEvents = useMemo(
+    () => expandEvents(rawCalendarEvents, startDate, addMonths(endDate, 0)),
+    [rawCalendarEvents, startDate, endDate]
+  );
+
+  const getEventsForDate = (date: Date) =>
+    expandedEvents.filter(ev => isSameDay(ev.instanceStart, date));
+
+  const getEventPosition = (startTime: Date, endTime: Date) => {
+    const sh = getHours(startTime), sm = getMinutes(startTime);
+    const eh = getHours(endTime),   em = getMinutes(endTime);
+    const top = ((sh - START_HOUR) * 2 + sm / 30) * SLOT_HEIGHT;
+    const endTop = ((eh - START_HOUR) * 2 + em / 30) * SLOT_HEIGHT;
+    return { top, height: Math.max(endTop - top, SLOT_HEIGHT) };
+  };
+
+  const openNewEventDialog = (date?: Date) => {
+    setEditingEvent(null);
+    setEventForm({
+      title: "",
+      date: date ? format(date, "yyyy-MM-dd") : format(currentDate, "yyyy-MM-dd"),
+      startTime: "09:00",
+      endTime: "17:00",
+      color: "purple",
+      recurrence: "none",
+      recurrenceEndDate: "",
+      notes: "",
+    });
+    setIsEventDialogOpen(true);
+  };
+
+  const openEditEventDialog = (event: CalendarEvent) => {
+    setEditingEvent(event);
+    const start = new Date(event.startTime);
+    const end = new Date(event.endTime);
+    setEventForm({
+      title: event.title,
+      date: format(start, "yyyy-MM-dd"),
+      startTime: format(start, "HH:mm"),
+      endTime: format(end, "HH:mm"),
+      color: event.color,
+      recurrence: event.recurrence,
+      recurrenceEndDate: event.recurrenceEndDate ? format(new Date(event.recurrenceEndDate), "yyyy-MM-dd") : "",
+      notes: event.notes || "",
+    });
+    setViewingEvent(null);
+    setIsEventDialogOpen(true);
+  };
+
+  const handleEventSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const startTime = new Date(`${eventForm.date}T${eventForm.startTime}:00`);
+    const endTime = new Date(`${eventForm.date}T${eventForm.endTime}:00`);
+    const payload = {
+      title: eventForm.title,
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      color: eventForm.color,
+      recurrence: eventForm.recurrence,
+      recurrenceEndDate: eventForm.recurrenceEndDate ? new Date(`${eventForm.recurrenceEndDate}T23:59:00`).toISOString() : null,
+      notes: eventForm.notes || null,
+    };
+    if (editingEvent) {
+      updateEventMutation.mutate({ id: editingEvent.id, data: payload });
+    } else {
+      createEventMutation.mutate(payload);
+    }
   };
 
   const renderCalendarDays = () => {
@@ -553,6 +730,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
     while (day <= endDate) {
       const currentDay = day;
       const dayAppointments = getAppointmentsForDate(currentDay);
+      const dayEvents = getEventsForDate(currentDay);
       const isCurrentMonth = isSameMonth(currentDay, currentDate);
       const isToday = isSameDay(currentDay, new Date());
 
@@ -568,6 +746,19 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
             {format(currentDay, "d")}
           </div>
           <div className="space-y-1">
+            {dayEvents.map((ev) => {
+              const colors = EVENT_COLORS[ev.color] || EVENT_COLORS.purple;
+              return (
+                <div
+                  key={`ev-${ev.id}-${ev.instanceStart.toISOString()}`}
+                  className={`text-xs p-1 rounded truncate cursor-pointer border flex items-center gap-1 ${colors.bg} ${colors.border} ${colors.text}`}
+                  onClick={(e) => { e.stopPropagation(); setViewingEvent(ev); }}
+                >
+                  {ev.recurrence !== "none" && <Repeat className="w-2.5 h-2.5 flex-shrink-0" />}
+                  <span className="truncate">{ev.title}</span>
+                </div>
+              );
+            })}
             {dayAppointments.slice(0, 3).map((apt) => (
               <div
                 key={apt.id}
@@ -630,10 +821,16 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Appointment Calendar</h1>
             <p className="text-gray-600 dark:text-gray-400">Manage patient bookings and appointments</p>
           </div>
-          <Button onClick={() => { resetForm(); setEditingAppointment(null); setIsBookingDialogOpen(true); }}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Booking
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => openNewEventDialog()}>
+              <CalendarX2 className="w-4 h-4 mr-2" />
+              Add Event
+            </Button>
+            <Button onClick={() => { resetForm(); setEditingAppointment(null); setIsBookingDialogOpen(true); }}>
+              <Plus className="w-4 h-4 mr-2" />
+              New Booking
+            </Button>
+          </div>
         </div>
 
         <Card>
@@ -718,6 +915,24 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                         onDrop={(e) => handleDrop(e, currentDate, slot.hour, slot.minute)}
                       />
                     ))}
+                    {/* Calendar events layer (behind appointments) */}
+                    {getEventsForDate(currentDate).map((ev) => {
+                      const { top, height } = getEventPosition(ev.instanceStart, ev.instanceEnd);
+                      const colors = EVENT_COLORS[ev.color] || EVENT_COLORS.purple;
+                      return (
+                        <div
+                          key={`ev-${ev.id}-${ev.instanceStart.toISOString()}`}
+                          className={`absolute left-1 right-1 rounded border opacity-80 cursor-pointer z-0 ${colors.bg} ${colors.border}`}
+                          style={{ top: `${Math.max(top, 0)}px`, height: `${height}px` }}
+                          onClick={() => setViewingEvent(ev)}
+                        >
+                          <div className={`p-2 text-xs font-medium ${colors.text} flex items-center gap-1`}>
+                            {ev.recurrence !== "none" && <Repeat className="w-3 h-3 flex-shrink-0" />}
+                            <span className="truncate">{ev.title}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                     {getAppointmentsForDate(currentDate).map((apt) => {
                       const { top, height } = getAppointmentPosition(apt);
                       return (
@@ -726,11 +941,16 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                           draggable
                           onDragStart={(e) => handleDragStart(e, apt)}
                           onDragEnd={handleDragEnd}
-                          className={`absolute left-1 right-1 rounded cursor-grab active:cursor-grabbing border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
+                          className={`absolute left-1 right-1 rounded cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
                             draggingAppointment?.id === apt.id ? "opacity-50" : ""
                           }`}
                           style={{ top: `${top}px`, height: `${Math.max(height, 30)}px` }}
                           onClick={() => setViewingAppointment(apt)}
+                          onMouseEnter={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setTooltip({ apt, x: rect.right + 8, y: rect.top });
+                          }}
+                          onMouseLeave={() => setTooltip(null)}
                         >
                           <div
                             className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
@@ -818,6 +1038,24 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                               onDrop={(e) => handleDrop(e, weekDay, slot.hour, slot.minute)}
                             />
                           ))}
+                          {/* Calendar events behind appointments */}
+                          {getEventsForDate(weekDay).map((ev) => {
+                            const { top, height } = getEventPosition(ev.instanceStart, ev.instanceEnd);
+                            const colors = EVENT_COLORS[ev.color] || EVENT_COLORS.purple;
+                            return (
+                              <div
+                                key={`ev-${ev.id}-${ev.instanceStart.toISOString()}`}
+                                className={`absolute left-0 right-0 mx-0.5 rounded border opacity-80 cursor-pointer z-0 ${colors.bg} ${colors.border}`}
+                                style={{ top: `${Math.max(top, 0)}px`, height: `${height}px` }}
+                                onClick={(e) => { e.stopPropagation(); setViewingEvent(ev); }}
+                              >
+                                <div className={`p-1 text-[10px] font-medium ${colors.text} flex items-center gap-0.5`}>
+                                  {ev.recurrence !== "none" && <Repeat className="w-2.5 h-2.5 flex-shrink-0" />}
+                                  <span className="truncate">{ev.title}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
                           {dayAppointments.map((apt) => {
                             const { top, height } = getAppointmentPosition(apt);
                             if (top < 0 || top > SLOT_COUNT * SLOT_HEIGHT) return null;
@@ -827,7 +1065,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, apt)}
                                 onDragEnd={handleDragEnd}
-                                className={`absolute left-0 right-0 mx-0.5 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
+                                className={`absolute left-0 right-0 mx-0.5 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
                                   draggingAppointment?.id === apt.id ? "opacity-50" : ""
                                 }`}
                                 style={{
@@ -838,6 +1076,11 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                                   e.stopPropagation();
                                   setViewingAppointment(apt);
                                 }}
+                                onMouseEnter={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setTooltip({ apt, x: rect.right + 8, y: rect.top });
+                                }}
+                                onMouseLeave={() => setTooltip(null)}
                               >
                                 <div
                                   className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
@@ -1300,6 +1543,15 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                       Check In
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50"
+                    onClick={() => handleEditAppointment(viewingAppointment)}
+                  >
+                    <CalendarClock className="w-4 h-4 mr-1" />
+                    Reschedule
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handleEditAppointment(viewingAppointment)}>
                     <Edit className="w-4 h-4 mr-1" />
                     Edit
@@ -1322,6 +1574,200 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Event Creation / Edit Dialog */}
+        <Dialog open={isEventDialogOpen} onOpenChange={(open) => { if (!open) { setIsEventDialogOpen(false); setEditingEvent(null); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editingEvent ? "Edit Event" : "New Event"}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleEventSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="eventTitle">Title *</Label>
+                <Input
+                  id="eventTitle"
+                  placeholder="e.g. Sam in Theatre, Amy Unavailable"
+                  value={eventForm.title}
+                  onChange={(e) => setEventForm(prev => ({ ...prev, title: e.target.value }))}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="eventDate">Date *</Label>
+                <Input
+                  id="eventDate"
+                  type="date"
+                  value={eventForm.date}
+                  onChange={(e) => setEventForm(prev => ({ ...prev, date: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="eventStartTime">Start Time *</Label>
+                  <Input
+                    id="eventStartTime"
+                    type="time"
+                    value={eventForm.startTime}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, startTime: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="eventEndTime">End Time *</Label>
+                  <Input
+                    id="eventEndTime"
+                    type="time"
+                    value={eventForm.endTime}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, endTime: e.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Colour</Label>
+                <div className="flex gap-2 mt-2">
+                  {Object.entries(EVENT_COLORS).map(([key, colors]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setEventForm(prev => ({ ...prev, color: key }))}
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${colors.dot} ${
+                        eventForm.color === key ? "border-gray-800 scale-110" : "border-transparent"
+                      }`}
+                      title={key.charAt(0).toUpperCase() + key.slice(1)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="eventRecurrence">Repeat</Label>
+                <Select value={eventForm.recurrence} onValueChange={(v) => setEventForm(prev => ({ ...prev, recurrence: v }))}>
+                  <SelectTrigger id="eventRecurrence">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Does not repeat</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {eventForm.recurrence !== "none" && (
+                <div>
+                  <Label htmlFor="eventRecurrenceEnd">Repeat Until (optional)</Label>
+                  <Input
+                    id="eventRecurrenceEnd"
+                    type="date"
+                    value={eventForm.recurrenceEndDate}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, recurrenceEndDate: e.target.value }))}
+                  />
+                </div>
+              )}
+              <div>
+                <Label htmlFor="eventNotes">Notes</Label>
+                <Textarea
+                  id="eventNotes"
+                  value={eventForm.notes}
+                  onChange={(e) => setEventForm(prev => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsEventDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={createEventMutation.isPending || updateEventMutation.isPending}>
+                  {editingEvent ? "Save Changes" : "Create Event"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Event Viewing Dialog */}
+        <Dialog open={!!viewingEvent} onOpenChange={(open) => !open && setViewingEvent(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Event Details</DialogTitle>
+            </DialogHeader>
+            {viewingEvent && (() => {
+              const colors = EVENT_COLORS[viewingEvent.color] || EVENT_COLORS.purple;
+              return (
+                <div className="space-y-4">
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${colors.bg} ${colors.border} border`}>
+                    <div className={`w-3 h-3 rounded-full flex-shrink-0 ${colors.dot}`} />
+                    <span className={`font-semibold ${colors.text}`}>{viewingEvent.title}</span>
+                    {viewingEvent.recurrence !== "none" && (
+                      <span className={`ml-auto text-xs flex items-center gap-1 ${colors.text}`}>
+                        <Repeat className="w-3 h-3" />
+                        {viewingEvent.recurrence === "weekly" ? "Weekly" : "Monthly"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="w-4 h-4 text-gray-500" />
+                      <span>{format(new Date(viewingEvent.startTime), "PPP")}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-gray-500" />
+                      <span>{format(new Date(viewingEvent.startTime), "p")} – {format(new Date(viewingEvent.endTime), "p")}</span>
+                    </div>
+                  </div>
+                  {viewingEvent.recurrenceEndDate && (
+                    <div className="text-sm text-gray-600">
+                      Repeats until {format(new Date(viewingEvent.recurrenceEndDate), "PPP")}
+                    </div>
+                  )}
+                  {viewingEvent.notes && (
+                    <div className="text-sm">
+                      <span className="font-medium">Notes:</span>
+                      <p className="text-gray-600 mt-1">{viewingEvent.notes}</p>
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2 pt-4 border-t">
+                    <Button variant="outline" size="sm" onClick={() => openEditEventDialog(viewingEvent)}>
+                      <Edit className="w-4 h-4 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={() => {
+                        if (confirm("Delete this event? All recurring instances will be removed.")) {
+                          deleteEventMutation.mutate(viewingEvent.id);
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
+
+        {/* Hover tooltip */}
+        {tooltip && (
+          <div
+            className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm max-w-xs pointer-events-none"
+            style={{ left: Math.min(tooltip.x, window.innerWidth - 240), top: Math.max(tooltip.y, 8) }}
+          >
+            <div className="font-semibold text-gray-900 mb-1">{tooltip.apt.patientName}</div>
+            <div className="text-gray-600 text-xs space-y-0.5">
+              <div>{format(new Date(tooltip.apt.appointmentDate), "EEEE d MMM, h:mm a")} ({tooltip.apt.duration} min)</div>
+              {tooltip.apt.scanType && <div>{tooltip.apt.scanType}</div>}
+              {tooltip.apt.patientPhone && <div>{tooltip.apt.patientPhone}</div>}
+              {tooltip.apt.notes && (
+                <div className="mt-1 pt-1 border-t border-gray-100 text-gray-700 italic">
+                  {tooltip.apt.notes}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

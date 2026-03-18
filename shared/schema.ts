@@ -608,3 +608,21 @@ export const scanRequests = pgTable("scan_requests", {
 export const insertScanRequestSchema = createInsertSchema(scanRequests).omit({ id: true, createdAt: true });
 export type ScanRequest = typeof scanRequests.$inferSelect;
 export type InsertScanRequest = z.infer<typeof insertScanRequestSchema>;
+
+// Calendar events (block-outs, theatre days, recurring non-patient events)
+export const calendarEvents = pgTable("calendar_events", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time").notNull(),
+  color: varchar("color", { length: 50 }).notNull().default("purple"),
+  recurrence: varchar("recurrence", { length: 50 }).notNull().default("none"),
+  recurrenceEndDate: timestamp("recurrence_end_date"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true, createdAt: true });
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
+export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;

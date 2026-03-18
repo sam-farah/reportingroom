@@ -70,6 +70,17 @@ Preferred communication style: Simple, everyday language.
 - **Sonographer Management System**: Complete CRUD operations for sonographer profiles with initials matching integration
 - **Clinic Information Management**: Comprehensive clinic settings form (name, address, phone, fax, email)
 
+#### Calendar Events (Block-out / Recurring Events)
+- **Events** are separate from appointments — used for blocking out theatre days, unavailability periods, etc.
+- **Data model**: `calendar_events` table with `title`, `startTime`, `endTime`, `color` (purple/teal/orange/rose/indigo/amber), `recurrence` (none/weekly/monthly), `recurrenceEndDate`, `notes`, `clinicId`
+- **Recurrence**: events are expanded client-side using `expandEvents()` for the visible date range — no server-side fan-out needed
+- **Calendar display**: events render as colored semi-transparent blocks behind appointments in day/week views; colored pills in month view; clicking opens a detail/edit dialog
+- **"Add Event" button** in the calendar header opens the event creation dialog
+- **Cancelled appointments** are hidden from day/week/month grid views (only visible via the appointments query for history)
+- **Hover tooltip** on appointment cards shows patient name, time, scan type, phone, and notes
+- **Reschedule button** in the appointment viewing dialog opens the edit form (same as Edit but labeled for rescheduling)
+- API: `GET/POST /api/calendar-events`, `PUT/DELETE /api/calendar-events/:id`
+
 #### Referring Doctors & Scan Requests
 - **Referring Doctors**: Clinic-scoped directory of referring GPs/specialists — name, practice, provider number, phone, fax, email, address. Searchable and reusable across requests.
 - **Scan Requests**: Electronic referral form capturing patient details (linked to existing patients or free-text), referring doctor (linked or free-text), scan types (from canonical list), urgency (Routine/Urgent/ASAP/STAT), clinical indication, clinical history, notes, and status (Pending/Scheduled/Completed/Cancelled). Accessible from the "Requests" nav item.
