@@ -51,7 +51,7 @@ export default function Dashboard() {
               />
             </div>
             
-            <div className="flex items-center flex-1 justify-end gap-2 overflow-x-auto">
+            <div className="flex flex-1 items-center justify-center overflow-x-auto min-w-0">
               <div className="flex space-x-1 flex-shrink-0">
                 <Button
                   variant="ghost"
@@ -122,26 +122,26 @@ export default function Dashboard() {
                   </>
                 )}
               </div>
-              
-              <div className="flex items-center space-x-3">
-                <div className="text-sm text-gray-700">
-                  <div className="flex items-center gap-2">
-                    <span>{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}</span>
-                    <Badge variant="outline" className="text-xs">{roleLabel}</Badge>
-                  </div>
-                  {user?.email && user?.firstName && (
-                    <div className="text-xs text-gray-500">{user.email}</div>
-                  )}
+            </div>
+
+            <div className="flex items-center space-x-3 flex-shrink-0">
+              <div className="text-sm text-gray-700">
+                <div className="flex items-center gap-2">
+                  <span>{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}</span>
+                  <Badge variant="outline" className="text-xs">{roleLabel}</Badge>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={handleLogout}
-                  className="text-gray-600 hover:text-gray-900"
-                >
-                  <LogOut className="w-4 h-4" />
-                </Button>
+                {user?.email && user?.firstName && (
+                  <div className="text-xs text-gray-500">{user.email}</div>
+                )}
               </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleLogout}
+                className="text-gray-600 hover:text-gray-900"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         </div>
