@@ -1071,6 +1071,133 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Patient Dialog — available in the detail view */}
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { resetForm(); setEditingPatient(null); } }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingPatient ? "Edit Patient" : "Add New Patient"}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex-1">
+                  <Label htmlFor="urNumber2" className="text-blue-800 font-semibold">UR Number</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      id="urNumber2"
+                      className="font-mono font-bold text-blue-700 border-blue-300 bg-white w-40"
+                      placeholder={editingPatient ? "—" : "Auto-generated"}
+                      value={formData.urNumber}
+                      onChange={(e) => setFormData(prev => ({ ...prev, urNumber: e.target.value }))}
+                    />
+                    {!editingPatient && (
+                      <span className="text-xs text-blue-600">Leave blank to auto-assign</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>First Name *</Label>
+                  <Input value={formData.firstName} autoCapitalize="words" onChange={(e) => setFormData(prev => ({ ...prev, firstName: capitalizeWords(e.target.value) }))} required />
+                </div>
+                <div>
+                  <Label>Last Name *</Label>
+                  <Input value={formData.lastName} autoCapitalize="words" onChange={(e) => setFormData(prev => ({ ...prev, lastName: capitalizeWords(e.target.value) }))} required />
+                </div>
+                <div>
+                  <Label>Date of Birth *</Label>
+                  <Input type="date" value={formData.dateOfBirth} onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))} required />
+                </div>
+                <div>
+                  <Label>Gender</Label>
+                  <Select value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
+                    <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Phone</Label>
+                  <Input value={formData.phone} onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <Input type="email" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Address</Label>
+                  <Input value={formData.address} onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>City</Label>
+                  <Input value={formData.city} onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>State</Label>
+                  <Input value={formData.state} onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Zip Code</Label>
+                  <Input value={formData.zipCode} onChange={(e) => setFormData(prev => ({ ...prev, zipCode: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Insurance Provider</Label>
+                  <Input value={formData.insuranceProvider} onChange={(e) => setFormData(prev => ({ ...prev, insuranceProvider: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Insurance ID</Label>
+                  <Input value={formData.insuranceId} onChange={(e) => setFormData(prev => ({ ...prev, insuranceId: e.target.value }))} />
+                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 mb-2 mt-1">
+                    <CreditCard className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-semibold text-gray-700">Medicare Details</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <div>
+                      <Label>Medicare Number</Label>
+                      <Input value={formData.medicareNumber} onChange={(e) => setFormData(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="1234567890" maxLength={10} />
+                    </div>
+                    <div>
+                      <Label>IRN</Label>
+                      <Input value={formData.medicareIrn} onChange={(e) => setFormData(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "").slice(0, 1) }))} placeholder="1" maxLength={1} />
+                    </div>
+                    <div>
+                      <Label>Expiry (MM/YYYY)</Label>
+                      <Input value={formData.medicareExpiry} onChange={(e) => { let v = e.target.value.replace(/[^\d/]/g, ""); if (v.length === 2 && !v.includes("/")) v = v + "/"; setFormData(prev => ({ ...prev, medicareExpiry: v.slice(0, 7) })); }} placeholder="01/2028" maxLength={7} />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <Label>Referring Physician</Label>
+                  <Input value={formData.referringPhysician} onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Allergies</Label>
+                  <Input value={formData.allergies} onChange={(e) => setFormData(prev => ({ ...prev, allergies: e.target.value }))} placeholder="List any known allergies" />
+                </div>
+                <div className="col-span-2">
+                  <Label>Medical History</Label>
+                  <Textarea value={formData.medicalHistory} onChange={(e) => setFormData(prev => ({ ...prev, medicalHistory: e.target.value }))} rows={3} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Notes</Label>
+                  <Textarea value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} rows={2} />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>Cancel</Button>
+                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                  {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingPatient ? "Update" : "Add Patient"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
