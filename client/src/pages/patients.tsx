@@ -1144,37 +1144,29 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Label>Zip Code</Label>
                   <Input value={formData.zipCode} onChange={(e) => setFormData(prev => ({ ...prev, zipCode: e.target.value }))} />
                 </div>
-                <div>
-                  <Label>Insurance Provider</Label>
-                  <Input value={formData.insuranceProvider} onChange={(e) => setFormData(prev => ({ ...prev, insuranceProvider: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>Insurance ID</Label>
-                  <Input value={formData.insuranceId} onChange={(e) => setFormData(prev => ({ ...prev, insuranceId: e.target.value }))} />
-                </div>
                 <div className="col-span-2">
                   <div className="flex items-center gap-2 mb-2 mt-1">
                     <CreditCard className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-semibold text-gray-700">Medicare Details</span>
+                    <span className="text-sm font-semibold text-gray-700">Medicare Details *</span>
                   </div>
                   <div className="grid grid-cols-3 gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
                     <div>
-                      <Label>Medicare Number</Label>
-                      <Input value={formData.medicareNumber} onChange={(e) => setFormData(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="1234567890" maxLength={10} />
+                      <Label>Medicare Number *</Label>
+                      <Input value={formData.medicareNumber} onChange={(e) => setFormData(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder="1234567890" maxLength={10} required />
                     </div>
                     <div>
-                      <Label>IRN</Label>
-                      <Input value={formData.medicareIrn} onChange={(e) => setFormData(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "").slice(0, 1) }))} placeholder="1" maxLength={1} />
+                      <Label>IRN *</Label>
+                      <Input value={formData.medicareIrn} onChange={(e) => setFormData(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "").slice(0, 1) }))} placeholder="1" maxLength={1} required />
                     </div>
                     <div>
-                      <Label>Expiry (MM/YYYY)</Label>
-                      <Input value={formData.medicareExpiry} onChange={(e) => { let v = e.target.value.replace(/[^\d/]/g, ""); if (v.length === 2 && !v.includes("/")) v = v + "/"; setFormData(prev => ({ ...prev, medicareExpiry: v.slice(0, 7) })); }} placeholder="01/2028" maxLength={7} />
+                      <Label>Expiry (MM/YYYY) *</Label>
+                      <Input value={formData.medicareExpiry} onChange={(e) => { let v = e.target.value.replace(/[^\d/]/g, ""); if (v.length === 2 && !v.includes("/")) v = v + "/"; setFormData(prev => ({ ...prev, medicareExpiry: v.slice(0, 7) })); }} placeholder="01/2028" maxLength={7} required />
                     </div>
                   </div>
                 </div>
                 <div>
-                  <Label>Referring Physician</Label>
-                  <Input value={formData.referringPhysician} onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))} />
+                  <Label>Referring Physician *</Label>
+                  <Input value={formData.referringPhysician} onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))} required />
                 </div>
                 <div className="col-span-2">
                   <Label>Allergies</Label>
@@ -1404,50 +1396,36 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                     onChange={(e) => setFormData(prev => ({ ...prev, zipCode: e.target.value }))}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="insuranceProvider">Insurance Provider</Label>
-                  <Input
-                    id="insuranceProvider"
-                    value={formData.insuranceProvider}
-                    onChange={(e) => setFormData(prev => ({ ...prev, insuranceProvider: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="insuranceId">Insurance ID</Label>
-                  <Input
-                    id="insuranceId"
-                    value={formData.insuranceId}
-                    onChange={(e) => setFormData(prev => ({ ...prev, insuranceId: e.target.value }))}
-                  />
-                </div>
                 <div className="col-span-2">
                   <div className="flex items-center gap-2 mb-2 mt-1">
                     <CreditCard className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-semibold text-gray-700">Medicare Details</span>
+                    <span className="text-sm font-semibold text-gray-700">Medicare Details *</span>
                   </div>
                   <div className="grid grid-cols-3 gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
                     <div>
-                      <Label htmlFor="medicareNumber">Medicare Number</Label>
+                      <Label htmlFor="medicareNumber">Medicare Number *</Label>
                       <Input
                         id="medicareNumber"
                         value={formData.medicareNumber}
                         onChange={(e) => setFormData(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
                         placeholder="1234567890"
                         maxLength={10}
+                        required
                       />
                     </div>
                     <div>
-                      <Label htmlFor="medicareIrn">IRN</Label>
+                      <Label htmlFor="medicareIrn">IRN *</Label>
                       <Input
                         id="medicareIrn"
                         value={formData.medicareIrn}
                         onChange={(e) => setFormData(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "").slice(0, 1) }))}
                         placeholder="1"
                         maxLength={1}
+                        required
                       />
                     </div>
                     <div>
-                      <Label htmlFor="medicareExpiry">Expiry (MM/YYYY)</Label>
+                      <Label htmlFor="medicareExpiry">Expiry (MM/YYYY) *</Label>
                       <Input
                         id="medicareExpiry"
                         value={formData.medicareExpiry}
@@ -1458,16 +1436,18 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                         }}
                         placeholder="01/2028"
                         maxLength={7}
+                        required
                       />
                     </div>
                   </div>
                 </div>
                 <div>
-                  <Label htmlFor="referringPhysician">Referring Physician</Label>
+                  <Label htmlFor="referringPhysician">Referring Physician *</Label>
                   <Input
                     id="referringPhysician"
                     value={formData.referringPhysician}
                     onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
+                    required
                   />
                 </div>
                 <div className="col-span-2">
