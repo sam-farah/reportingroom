@@ -498,25 +498,12 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
                 )}
               </div>
 
-              {/* Patient Information */}
-              {selectedWorksheet && (
-                <div className="mt-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-md font-medium text-gray-900">Patient Information</h3>
-                    {uploadStatus === 'completed' && (patientName || patientDob || examDate) && (
-                      <div className="flex items-center text-xs text-green-600">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        OCR Extracted
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Patient record link — required */}
-                  <div className="mb-4">
-                    <Label>
-                      Link to Patient Record <span className="text-red-500">*</span>
-                    </Label>
-                    {linkedPatient ? (
+              {/* Patient record link — always visible */}
+              <div className="mt-6">
+                <Label>
+                  Link to Patient Record <span className="text-red-500">*</span>
+                </Label>
+                {linkedPatient ? (
                       <div className="mt-1 bg-green-50 border border-green-200 rounded-xl overflow-hidden">
                         {/* Verified header */}
                         <div className="flex items-center justify-between px-3 py-2 bg-green-100 border-b border-green-200">
@@ -601,57 +588,66 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
                         <p className="text-xs text-orange-600 mt-1">A patient must be selected to generate a report</p>
                       </div>
                     )}
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <div>
-                      <Label htmlFor="patientName">Patient Name</Label>
-                      <Input
-                        id="patientName"
-                        value={patientName}
-                        onChange={(e) => setPatientName(e.target.value)}
-                        placeholder={uploadStatus === 'processing' ? "Extracting..." : "Enter patient name"}
-                        className={patientName ? "bg-green-50 border-green-200" : ""}
-                      />
-                      {patientName && uploadStatus === 'completed' && (
-                        <p className="text-xs text-green-600 mt-1">✓ Extracted from document</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="patientDob">Date of Birth</Label>
-                      <Input
-                        id="patientDob"
-                        type="date"
-                        value={patientDob}
-                        onChange={(e) => setPatientDob(e.target.value)}
-                        className={patientDob ? "bg-green-50 border-green-200" : ""}
-                      />
-                      {patientDob && uploadStatus === 'completed' && (
-                        <p className="text-xs text-green-600 mt-1">✓ Extracted from document</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="examDate">Exam Date</Label>
-                      <Input
-                        id="examDate"
-                        type="date"
-                        value={examDate}
-                        onChange={(e) => setExamDate(e.target.value)}
-                        className={examDate && examDate !== new Date().toISOString().split('T')[0] ? "bg-green-50 border-green-200" : ""}
-                      />
-                      {examDate && examDate !== new Date().toISOString().split('T')[0] && uploadStatus === 'completed' && (
-                        <p className="text-xs text-green-600 mt-1">✓ Extracted from document</p>
-                      )}
-                    </div>
-                    
-                    {uploadStatus === 'completed' && !patientName && !patientDob && !examDate && (
-                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-yellow-800">
-                          OCR couldn't extract patient information. Please enter details manually.
-                        </p>
+                </div>
+
+              {/* OCR-extracted patient fields — only shown after worksheet upload */}
+              {selectedWorksheet && (
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-gray-700">Extracted Patient Details</h3>
+                    {uploadStatus === 'completed' && (patientName || patientDob || examDate) && (
+                      <div className="flex items-center text-xs text-green-600">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        OCR Extracted
                       </div>
                     )}
                   </div>
+                  <div>
+                    <Label htmlFor="patientName">Patient Name</Label>
+                    <Input
+                      id="patientName"
+                      value={patientName}
+                      onChange={(e) => setPatientName(e.target.value)}
+                      placeholder={uploadStatus === 'processing' ? "Extracting..." : "Enter patient name"}
+                      className={patientName ? "bg-green-50 border-green-200" : ""}
+                    />
+                    {patientName && uploadStatus === 'completed' && (
+                      <p className="text-xs text-green-600 mt-1">✓ Extracted from document</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="patientDob">Date of Birth</Label>
+                    <Input
+                      id="patientDob"
+                      type="date"
+                      value={patientDob}
+                      onChange={(e) => setPatientDob(e.target.value)}
+                      className={patientDob ? "bg-green-50 border-green-200" : ""}
+                    />
+                    {patientDob && uploadStatus === 'completed' && (
+                      <p className="text-xs text-green-600 mt-1">✓ Extracted from document</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="examDate">Exam Date</Label>
+                    <Input
+                      id="examDate"
+                      type="date"
+                      value={examDate}
+                      onChange={(e) => setExamDate(e.target.value)}
+                      className={examDate && examDate !== new Date().toISOString().split('T')[0] ? "bg-green-50 border-green-200" : ""}
+                    />
+                    {examDate && examDate !== new Date().toISOString().split('T')[0] && uploadStatus === 'completed' && (
+                      <p className="text-xs text-green-600 mt-1">✓ Extracted from document</p>
+                    )}
+                  </div>
+                  {uploadStatus === 'completed' && !patientName && !patientDob && !examDate && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">
+                        OCR couldn't extract patient information. Please enter details manually.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
