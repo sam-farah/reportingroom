@@ -72,7 +72,7 @@ export const securityMiddleware = {
   rateLimiter: (() => {
     const requests = new Map<string, { count: number; resetTime: number }>();
     const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-    const MAX_REQUESTS = 100; // per window
+    const MAX_REQUESTS = 1000; // per window per IP/user
     
     return (req: Request, res: Response, next: NextFunction) => {
       const key = `${req.ip}:${(req as any).user?.claims?.sub || 'anonymous'}`;
