@@ -621,7 +621,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
 
   const getAppointmentsForDate = (date: Date) => {
     return appointments.filter(apt =>
-      isSameDay(new Date(apt.appointmentDate), date) && apt.status !== "cancelled"
+      isSameDay(new Date(apt.appointmentDate), date)
     );
   };
 
@@ -941,9 +941,11 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                           draggable
                           onDragStart={(e) => handleDragStart(e, apt)}
                           onDragEnd={handleDragEnd}
-                          className={`absolute left-1 right-1 rounded cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
-                            draggingAppointment?.id === apt.id ? "opacity-50" : ""
-                          }`}
+                          className={`absolute left-1 right-1 rounded cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
+                            apt.status === "cancelled"
+                              ? "bg-gray-50 text-gray-400 border-gray-200 border-l-4 border-l-red-500 opacity-75"
+                              : STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled
+                          } ${draggingAppointment?.id === apt.id ? "opacity-50" : ""}`}
                           style={{ top: `${top}px`, height: `${Math.max(height, 30)}px` }}
                           onClick={() => setViewingAppointment(apt)}
                           onMouseEnter={(e) => {
@@ -958,7 +960,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                             onClick={(e) => e.stopPropagation()}
                           />
                           <div className="p-2 pt-2 pr-6">
-                            <div className="text-sm font-medium truncate">{apt.patientName}</div>
+                            <div className={`text-sm font-medium truncate ${apt.status === "cancelled" ? "line-through" : ""}`}>{apt.patientName}</div>
                             <div className="text-xs truncate">{format(new Date(apt.appointmentDate), "h:mm a")} - {apt.scanType}</div>
                           </div>
                           {apt.isInvoiced && (
@@ -1065,9 +1067,11 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, apt)}
                                 onDragEnd={handleDragEnd}
-                                className={`absolute left-0 right-0 mx-0.5 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled} ${
-                                  draggingAppointment?.id === apt.id ? "opacity-50" : ""
-                                }`}
+                                className={`absolute left-0 right-0 mx-0.5 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
+                                  apt.status === "cancelled"
+                                    ? "bg-gray-50 text-gray-400 border-gray-200 border-l-4 border-l-red-500 opacity-75"
+                                    : STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled
+                                } ${draggingAppointment?.id === apt.id ? "opacity-50" : ""}`}
                                 style={{
                                   top: `${top}px`,
                                   height: `${Math.max(height, 20)}px`,
@@ -1088,7 +1092,7 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                                   onClick={(e) => e.stopPropagation()}
                                 />
                                 <div className="p-1 pt-1.5 pr-4">
-                                  <div className="font-medium truncate">{apt.patientName}</div>
+                                  <div className={`font-medium truncate ${apt.status === "cancelled" ? "line-through" : ""}`}>{apt.patientName}</div>
                                   <div className="text-[10px] truncate">{format(new Date(apt.appointmentDate), "h:mm a")}</div>
                                 </div>
                                 {apt.isInvoiced && (
