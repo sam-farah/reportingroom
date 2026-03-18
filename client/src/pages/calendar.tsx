@@ -941,12 +941,16 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                           draggable
                           onDragStart={(e) => handleDragStart(e, apt)}
                           onDragEnd={handleDragEnd}
-                          className={`absolute left-1 right-1 rounded cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
+                          className={`absolute left-1 rounded cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
                             apt.status === "cancelled"
                               ? "bg-gray-50 text-gray-400 border-gray-200 border-l-4 border-l-red-500 opacity-75"
-                              : STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled
+                              : `right-1 ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`
                           } ${draggingAppointment?.id === apt.id ? "opacity-50" : ""}`}
-                          style={{ top: `${top}px`, height: `${Math.max(height, 30)}px` }}
+                          style={{
+                            top: `${top}px`,
+                            height: `${Math.max(height, 30)}px`,
+                            ...(apt.status === "cancelled" ? { width: "42%" } : {}),
+                          }}
                           onClick={() => setViewingAppointment(apt)}
                           onMouseEnter={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -1067,14 +1071,15 @@ export default function Calendar({ onOpenPatient }: { onOpenPatient?: (patientId
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, apt)}
                                 onDragEnd={handleDragEnd}
-                                className={`absolute left-0 right-0 mx-0.5 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
+                                className={`absolute left-0 rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
                                   apt.status === "cancelled"
                                     ? "bg-gray-50 text-gray-400 border-gray-200 border-l-4 border-l-red-500 opacity-75"
-                                    : STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled
+                                    : `right-0 mx-0.5 ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`
                                 } ${draggingAppointment?.id === apt.id ? "opacity-50" : ""}`}
                                 style={{
                                   top: `${top}px`,
                                   height: `${Math.max(height, 20)}px`,
+                                  ...(apt.status === "cancelled" ? { width: "45%", marginLeft: "2px" } : {}),
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
