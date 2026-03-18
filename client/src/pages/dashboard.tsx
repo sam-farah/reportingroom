@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Menu, X, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, FileText } from "lucide-react";
+import { Menu, X, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, FileText, MapPin, Phone } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import UserPanel from "@/components/user-panel";
 import AdminPanel from "@/components/admin-panel";
@@ -61,6 +61,11 @@ export default function Dashboard() {
   const isOwnerOrAdmin = user?.role === 'clinic_owner' || user?.role === 'admin';
   const roleLabel = user?.role === 'clinic_owner' ? 'Owner' : user?.role === 'admin' ? 'Admin' : 'Staff';
 
+  const { data: kioskSettings } = useQuery<{ clinicName: string; address?: string; phone?: string }>({
+    queryKey: ["/api/kiosk/settings"],
+    retry: false,
+  });
+
   const navigate = (panel: Panel) => {
     setActivePanel(panel);
     setDrawerOpen(false);
@@ -85,10 +90,19 @@ export default function Dashboard() {
               <Menu className="w-5 h-5" />
             </Button>
 
-            {/* Logo + page title */}
+            {/* Clinic details */}
             <div className="flex items-center gap-2.5 flex-1 min-w-0">
-              <img src={logoIconPath} alt="Reporting Room" className="h-7 w-7 flex-shrink-0" />
-              <span className="font-semibold text-gray-800 truncate">{PAGE_TITLES[activePanel]}</span>
+              <div className="min-w-0">
+                <div className="font-bold text-gray-900 text-sm leading-tight truncate">
+                  {kioskSettings?.clinicName || "Reporting Room"}
+                </div>
+                {kioskSettings?.address && (
+                  <div className="text-xs text-gray-500 truncate flex items-center gap-1">
+                    <MapPin className="w-3 h-3 flex-shrink-0" />
+                    {kioskSettings.address}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Kiosk shortcut + user + logout */}

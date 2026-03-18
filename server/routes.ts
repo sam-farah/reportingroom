@@ -110,6 +110,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         clinicName: clinic.name,
         clinicId: clinic.id,
+        address: clinic.address || null,
+        phone: clinic.phone || null,
         kioskLogoUrl: clinic.kioskLogoUrl || clinic.logoUrl || null,
         kioskWelcomeText: clinic.kioskWelcomeText || defaults.kioskWelcomeText,
         kioskInstructions: clinic.kioskInstructions || defaults.kioskInstructions,

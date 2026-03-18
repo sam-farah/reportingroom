@@ -509,20 +509,22 @@ export default function AdminPanel() {
         <p className="text-gray-600">System monitoring, cost analysis, and AI training management</p>
       </div>
 
-      <Tabs defaultValue="monitoring" className="space-y-6">
-        <div className="w-full overflow-x-auto rounded-md bg-muted p-1">
-          <TabsList className="flex w-max gap-1" style={{ height: 'auto', background: 'transparent' }}>
-            <TabsTrigger value="clinic-settings">🏥 Clinic</TabsTrigger>
-            <TabsTrigger value="scan-durations">⏱️ Scan Durations</TabsTrigger>
-            <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
-            <TabsTrigger value="clinics">Clinic Analytics</TabsTrigger>
-            <TabsTrigger value="costs">Cost Projection</TabsTrigger>
-            <TabsTrigger value="training">🌍 Global AI Training</TabsTrigger>
-            <TabsTrigger value="templates">📝 Report Templates</TabsTrigger>
-            <TabsTrigger value="kiosk">🖥️ Kiosk</TabsTrigger>
-            <TabsTrigger value="backup">💾 Backup</TabsTrigger>
-          </TabsList>
-        </div>
+      <Tabs defaultValue="monitoring" orientation="vertical" className="flex gap-6 items-start">
+        {/* Left sidebar nav */}
+        <TabsList className="flex flex-col w-52 flex-shrink-0 h-auto bg-muted rounded-xl p-2 gap-0.5" style={{ height: 'auto' }}>
+          <TabsTrigger value="clinic-settings" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏥 Clinic Settings</TabsTrigger>
+          <TabsTrigger value="scan-durations" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">⏱️ Scan Durations</TabsTrigger>
+          <TabsTrigger value="monitoring" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📊 System Monitoring</TabsTrigger>
+          <TabsTrigger value="clinics" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏢 Clinic Analytics</TabsTrigger>
+          <TabsTrigger value="costs" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💰 Cost Projection</TabsTrigger>
+          <TabsTrigger value="training" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🌍 Global AI Training</TabsTrigger>
+          <TabsTrigger value="templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📝 Report Templates</TabsTrigger>
+          <TabsTrigger value="kiosk" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🖥️ Kiosk</TabsTrigger>
+          <TabsTrigger value="backup" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💾 Backup</TabsTrigger>
+        </TabsList>
+
+        {/* Right content area */}
+        <div className="flex-1 min-w-0">
 
         <TabsContent value="clinic-settings">
           <ClinicPage />
@@ -1362,6 +1364,7 @@ export default function AdminPanel() {
             </CardContent>
           </Card>
         </TabsContent>
+        </div>
       </Tabs>
     </div>
   );
