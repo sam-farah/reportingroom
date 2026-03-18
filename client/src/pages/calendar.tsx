@@ -48,6 +48,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
   const [showBeginStudy, setShowBeginStudy] = useState(false);
+  const [showIdCheck, setShowIdCheck] = useState(false);
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
   const [resizingAppointment, setResizingAppointment] = useState<{ apt: Appointment; edge: "top" | "bottom" } | null>(null);
 
@@ -96,6 +97,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
 
   // Hover tooltip state
   const [tooltip, setTooltip] = useState<{ apt: Appointment; x: number; y: number } | null>(null);
+
+  const { data: allCalendarPatients = [] } = useQuery<Patient[]>({
+    queryKey: ["/api/patients"],
+  });
 
   const { data: searchedPatients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients", "search", patientSearch],
@@ -1453,11 +1458,19 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
           </DialogContent>
         </Dialog>
 
-        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); } }}>
+        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); setShowIdCheck(false); } }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {showBeginStudy ? (
+                {showIdCheck ? (
+                  <button
+                    className="flex items-center gap-1.5 text-base font-semibold text-gray-700 hover:text-gray-900"
+                    onClick={() => setShowIdCheck(false)}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Patient ID Check
+                  </button>
+                ) : showBeginStudy ? (
                   <button
                     className="flex items-center gap-1.5 text-base font-semibold text-gray-700 hover:text-gray-900"
                     onClick={() => setShowBeginStudy(false)}
@@ -1471,21 +1484,98 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
             {viewingAppointment && (
               <div className="space-y-4">
 
+                {/* Patient ID Check panel */}
+                {showIdCheck && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-500">
+                      Confirm the patient's identity before proceeding. Verify all three points match the patient in front of you.
+                    </p>
+                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">3-Point Patient ID Check</span>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        <div className="flex items-center gap-4 px-4 py-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-bold text-blue-700">1</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Full Name</div>
+                            <div className="font-semibold text-gray-900 text-base">{viewingAppointment.patientName || <span className="text-gray-400 italic">Not recorded</span>}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 px-4 py-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-bold text-blue-700">2</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Date of Birth</div>
+                            <div className="font-semibold text-gray-900 text-base">
+                              {viewingAppointment.patientDob
+                                ? (() => {
+                                    try {
+                                      const [y, m, d] = viewingAppointment.patientDob.split("-");
+                                      if (y && m && d) return `${d}/${m}/${y}`;
+                                      return viewingAppointment.patientDob;
+                                    } catch { return viewingAppointment.patientDob; }
+                                  })()
+                                : <span className="text-gray-400 italic">Not recorded</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 px-4 py-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-bold text-blue-700">3</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">UR Number</div>
+                            <div className="font-semibold text-gray-900 text-base">
+                              {(() => {
+                                const p = viewingAppointment.patientId
+                                  ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
+                                  : null;
+                                return p?.urNumber
+                                  ? <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-sm font-mono">UR {p.urNumber}</span>
+                                  : <span className="text-gray-400 italic">Not assigned</span>;
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        className="flex-1 py-2.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                        onClick={() => setShowIdCheck(false)}
+                      >
+                        ID Doesn't Match
+                      </button>
+                      <button
+                        className="flex-1 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+                        onClick={() => {
+                          if (onBeginStudy) {
+                            setViewingAppointment(null);
+                            setShowBeginStudy(false);
+                            setShowIdCheck(false);
+                            onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "");
+                          }
+                        }}
+                      >
+                        Confirmed — Continue
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Begin Study sub-panel */}
-                {showBeginStudy && (
+                {showBeginStudy && !showIdCheck && (
                   <div className="space-y-3">
                     <p className="text-sm text-gray-500">
                       Choose how you'd like to start the study for <span className="font-medium text-gray-800">{viewingAppointment.patientName}</span>:
                     </p>
                     <button
                       className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-colors text-left group"
-                      onClick={() => {
-                        if (onBeginStudy) {
-                          setViewingAppointment(null);
-                          setShowBeginStudy(false);
-                          onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "");
-                        }
-                      }}
+                      onClick={() => setShowIdCheck(true)}
                     >
                       <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-700 transition-colors">
                         <FileUp className="w-5 h-5 text-white" />
