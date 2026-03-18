@@ -1485,7 +1485,24 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
               <div className="space-y-4">
 
                 {/* Patient ID Check panel */}
-                {showIdCheck && (
+                {showIdCheck && (() => {
+                  // Resolve patient record: prefer by ID, fall back to name match
+                  const idCheckPatient = viewingAppointment.patientId
+                    ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
+                    : allCalendarPatients.find(pt =>
+                        `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
+                      );
+                  const dobRaw = idCheckPatient?.dateOfBirth || viewingAppointment.patientDob;
+                  const dobDisplay = dobRaw
+                    ? (() => {
+                        try {
+                          const [y, m, d] = dobRaw.split("-");
+                          if (y && m && d) return `${d}/${m}/${y}`;
+                          return dobRaw;
+                        } catch { return dobRaw; }
+                      })()
+                    : null;
+                  return (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-500">
                       Confirm the patient's identity before proceeding. Verify all three points match the patient in front of you.
@@ -1501,7 +1518,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Full Name</div>
-                            <div className="font-semibold text-gray-900 text-base">{viewingAppointment.patientName || <span className="text-gray-400 italic">Not recorded</span>}</div>
+                            <div className="font-semibold text-gray-900 text-base">
+                              {idCheckPatient
+                                ? `${idCheckPatient.firstName} ${idCheckPatient.lastName}`
+                                : viewingAppointment.patientName || <span className="text-gray-400 italic">Not recorded</span>}
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-4 px-4 py-3">
@@ -1511,15 +1532,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           <div className="flex-1 min-w-0">
                             <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Date of Birth</div>
                             <div className="font-semibold text-gray-900 text-base">
-                              {viewingAppointment.patientDob
-                                ? (() => {
-                                    try {
-                                      const [y, m, d] = viewingAppointment.patientDob.split("-");
-                                      if (y && m && d) return `${d}/${m}/${y}`;
-                                      return viewingAppointment.patientDob;
-                                    } catch { return viewingAppointment.patientDob; }
-                                  })()
-                                : <span className="text-gray-400 italic">Not recorded</span>}
+                              {dobDisplay || <span className="text-gray-400 italic">Not recorded</span>}
                             </div>
                           </div>
                         </div>
@@ -1530,14 +1543,9 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           <div className="flex-1 min-w-0">
                             <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">UR Number</div>
                             <div className="font-semibold text-gray-900 text-base">
-                              {(() => {
-                                const p = viewingAppointment.patientId
-                                  ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
-                                  : null;
-                                return p?.urNumber
-                                  ? <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-sm font-mono">UR {p.urNumber}</span>
-                                  : <span className="text-gray-400 italic">Not assigned</span>;
-                              })()}
+                              {idCheckPatient?.urNumber
+                                ? <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-sm font-mono">UR {idCheckPatient.urNumber}</span>
+                                : <span className="text-gray-400 italic">Not assigned</span>}
                             </div>
                           </div>
                         </div>
@@ -1565,7 +1573,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                       </button>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Begin Study sub-panel */}
                 {showBeginStudy && !showIdCheck && (
