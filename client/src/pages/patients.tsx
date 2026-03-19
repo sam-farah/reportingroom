@@ -121,6 +121,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment' | 'document'; id: number } | null>(null);
@@ -725,8 +726,44 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     return (
       <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
         {/* Patient Header Bar */}
-        <div className="bg-white dark:bg-gray-800 border-b shadow-sm px-4 py-3">
-          <div className="flex items-center justify-between">
+        <div className="bg-white dark:bg-gray-800 border-b shadow-sm px-3 py-2 md:px-4 md:py-3">
+          {/* Mobile header */}
+          <div className="flex md:hidden items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Button variant="ghost" size="sm" className="shrink-0 px-2"
+                onClick={() => {
+                  if (mobileShowDetail) {
+                    setMobileShowDetail(false);
+                  } else {
+                    setSelectedPatient(null);
+                    setSelectedDocument(null);
+                  }
+                }}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                {mobileShowDetail ? "Docs" : "Back"}
+              </Button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-base truncate">{selectedPatient.firstName} {selectedPatient.lastName}</span>
+                  {selectedPatient.urNumber && (
+                    <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0 rounded text-xs shrink-0">UR {selectedPatient.urNumber}</span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500">DOB: {selectedPatient.dateOfBirth}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="sm" className="px-2" onClick={() => setShowPatientInfo(true)}>
+                <User className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="px-2" onClick={() => handleEdit(selectedPatient)}>
+                <Edit className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          {/* Desktop header */}
+          <div className="hidden md:flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="sm" onClick={() => { setSelectedPatient(null); setSelectedDocument(null); }}>
                 <ChevronLeft className="w-4 h-4 mr-1" />
@@ -769,8 +806,8 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
 
         {/* Main Content - EMR Style Split View */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left Panel - Document List */}
-          <div className="w-80 bg-white dark:bg-gray-800 border-r flex flex-col">
+          {/* Left Panel - Document List (hidden on mobile when detail is showing) */}
+          <div className={`${mobileShowDetail ? 'hidden' : 'flex'} md:flex w-full md:w-80 bg-white dark:bg-gray-800 border-r flex-col`}>
             <div className="p-3 border-b bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documents ({allDocuments.length})</h2>
               <Button 
@@ -799,7 +836,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                           ? 'bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500'
                           : ''
                       }`}
-                      onClick={() => setSelectedDocument({ type: doc.type, id: doc.id })}
+                      onClick={() => { setSelectedDocument({ type: doc.type, id: doc.id }); setMobileShowDetail(true); }}
                     >
                       <div className="flex items-start gap-3">
                         <div className={`p-2 rounded ${
@@ -841,9 +878,11 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
             </div>
           </div>
 
-          {/* Right Panel - Document Preview */}
-          <div className="flex-1 p-4 overflow-hidden bg-gray-50 dark:bg-gray-900">
-            {renderDocumentPreview()}
+          {/* Right Panel - Document Preview (hidden on mobile when list is showing) */}
+          <div className={`${mobileShowDetail ? 'flex' : 'hidden'} md:flex flex-1 flex-col overflow-hidden bg-gray-50 dark:bg-gray-900`}>
+            <div className="flex-1 p-3 md:p-4 overflow-auto">
+              {renderDocumentPreview()}
+            </div>
           </div>
         </div>
 
@@ -1243,35 +1282,31 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 className="cursor-pointer hover:shadow-md transition-shadow"
                 onClick={() => setSelectedPatient(patient)}
               >
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                        <User className="w-6 h-6 text-blue-600" />
+                <CardContent className="p-3 md:p-4">
+                  <div className="flex justify-between items-center gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                        <User className="w-5 h-5 md:w-6 md:h-6 text-blue-600" />
                       </div>
-                      <div>
-                        <div className="font-medium text-lg">{patient.firstName} {patient.lastName}</div>
-                        <div className="text-sm text-gray-600 flex items-center gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-base md:text-lg truncate">{patient.firstName} {patient.lastName}</div>
+                        <div className="text-sm text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                           {patient.urNumber && (
-                            <span className="font-mono font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded text-xs">UR {patient.urNumber}</span>
+                            <span className="font-mono font-semibold text-blue-700 bg-blue-50 px-1.5 py-0 rounded text-xs">UR {patient.urNumber}</span>
                           )}
                           <span>DOB: {patient.dateOfBirth}</span>
-                          {patient.phone && <span>{patient.phone}</span>}
+                          {patient.phone && <span className="hidden sm:inline">{patient.phone}</span>}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right text-sm text-gray-500">
-                        {patient.insuranceProvider && <div>{patient.insuranceProvider}</div>}
-                      </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={(e) => { e.stopPropagation(); handleEdit(patient); }}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      className="shrink-0"
+                      onClick={(e) => { e.stopPropagation(); handleEdit(patient); }}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
