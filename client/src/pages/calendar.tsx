@@ -1738,65 +1738,76 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-4 border-t flex-wrap">
-                  {viewingAppointment.patientId && onOpenPatient && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200 mr-auto"
-                      onClick={() => {
-                        setViewingAppointment(null);
-                        onOpenPatient(viewingAppointment.patientId!);
-                      }}
-                    >
-                      <FolderOpen className="w-4 h-4 mr-1" />
-                      Open Patient File
-                    </Button>
-                  )}
-                  {viewingAppointment.status !== "checked_in" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
-                      onClick={() => {
-                        updateMutation.mutate({
-                          id: viewingAppointment.id,
-                          data: { status: "checked_in" },
-                        });
-                        setViewingAppointment({ ...viewingAppointment, status: "checked_in" });
-                      }}
-                    >
-                      <UserCheck className="w-4 h-4 mr-1" />
-                      Check In
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50"
-                    onClick={() => handleEditAppointment(viewingAppointment)}
-                  >
-                    <CalendarClock className="w-4 h-4 mr-1" />
-                    Reschedule
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleEditAppointment(viewingAppointment)}>
-                    <Edit className="w-4 h-4 mr-1" />
-                    Edit
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-red-600 hover:text-red-700"
-                    onClick={() => {
-                      if (confirm("Are you sure you want to delete this appointment?")) {
-                        deleteMutation.mutate(viewingAppointment.id);
-                      }
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4 mr-1" />
-                    Delete
-                  </Button>
-                </div>
+                {/* Action buttons */}
+                {(() => {
+                  const resolvedPatientId = viewingAppointment.patientId
+                    ?? allCalendarPatients.find(pt =>
+                        `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
+                      )?.id ?? null;
+                  return (
+                    <div className="pt-4 border-t space-y-2">
+                      {/* Top row: status actions */}
+                      <div className="flex gap-2 flex-wrap">
+                        {viewingAppointment.status !== "checked_in" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                            onClick={() => {
+                              updateMutation.mutate({ id: viewingAppointment.id, data: { status: "checked_in" } });
+                              setViewingAppointment({ ...viewingAppointment, status: "checked_in" });
+                            }}
+                          >
+                            <UserCheck className="w-4 h-4 mr-1" />
+                            Check In
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50"
+                          onClick={() => handleEditAppointment(viewingAppointment)}
+                        >
+                          <CalendarClock className="w-4 h-4 mr-1" />
+                          Reschedule
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleEditAppointment(viewingAppointment)}>
+                          <Edit className="w-4 h-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700 ml-auto"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this appointment?")) {
+                              deleteMutation.mutate(viewingAppointment.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+
+                      {/* Open patient file button */}
+                      {resolvedPatientId && onOpenPatient && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border-indigo-200"
+                          onClick={() => {
+                            setViewingAppointment(null);
+                            onOpenPatient(resolvedPatientId);
+                          }}
+                        >
+                          <FolderOpen className="w-4 h-4 mr-2" />
+                          Open Patient File
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Begin Study primary CTA */}
                 {viewingAppointment.status !== "cancelled" && (
