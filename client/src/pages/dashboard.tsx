@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Menu, X, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, FileText, MapPin, Phone } from "lucide-react";
+import { Menu, X, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, FileText, MapPin, Phone, PenLine } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,12 @@ import Calendar from "./calendar";
 import Patients from "./patients";
 import Requests from "./requests";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw";
 
 const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean }[] = [
   { id: "calendar",       label: "Calendar",     icon: CalendarIcon },
   { id: "user",           label: "Upload",        icon: Upload },
+  { id: "draw",           label: "Draw",          icon: PenLine },
   { id: "reporting-room", label: "Reports",       icon: FolderOpen },
   { id: "patients",       label: "Patients",      icon: UserCircle },
   { id: "requests",       label: "Requests",      icon: ClipboardList },
@@ -31,6 +32,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
 const PAGE_TITLES: Record<Panel, string> = {
   "calendar":       "Calendar",
   "user":           "Report Generation",
+  "draw":           "Draw Worksheet",
   "reporting-room": "Reports",
   "physicians":     "Physicians",
   "staff":          "Team",
@@ -241,7 +243,9 @@ export default function Dashboard() {
 
       {/* ── Page content ── */}
       {activePanel === "user" ? (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} defaultTab="upload" />
+      ) : activePanel === "draw" ? (
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} defaultTab="draw" />
       ) : activePanel === "reporting-room" ? (
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
@@ -251,7 +255,7 @@ export default function Dashboard() {
       ) : activePanel === "calendar" ? (
         <Calendar
           onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}
-          onBeginStudy={(patientId, patientName) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setActivePanel("user"); }}
+          onBeginStudy={(patientId, patientName, tab) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setPreLinkedTab(tab ?? "upload"); setActivePanel(tab === "draw" ? "draw" : "user"); }}
         />
       ) : activePanel === "patients" ? (
         <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
