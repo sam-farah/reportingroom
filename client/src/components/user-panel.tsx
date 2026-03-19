@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FileText, Image, CheckCircle, Loader2, Camera, Search, User, X, LayoutTemplate, Pencil, Upload as UploadIcon } from "lucide-react";
+import { FileText, Image, CheckCircle, Loader2, Camera, Search, User, X, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -390,19 +389,12 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
         <div>
           <Card>
             <CardContent className="p-6">
-              <Tabs defaultValue={defaultTab ?? "upload"} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-4">
-                  <TabsTrigger value="upload" className="flex items-center gap-2">
-                    <UploadIcon className="w-4 h-4" />
-                    Upload
-                  </TabsTrigger>
-                  <TabsTrigger value="draw" className="flex items-center gap-2">
-                    <Pencil className="w-4 h-4" />
-                    Draw
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="upload">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                {defaultTab === "draw" ? "Draw Worksheet" : "Upload Worksheet"}
+              </h2>
+              {defaultTab === "draw" ? (
+                <DrawingCanvas onWorksheetCreated={handleWorksheetCreated} />
+              ) : (
               <div className="w-full">
                 <FileUpload
                   onFileUploaded={handleWorksheetUploaded}
@@ -444,12 +436,7 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
                   </div>
                 )}
               </div>
-                </TabsContent>
-
-                <TabsContent value="draw">
-                  <DrawingCanvas onWorksheetCreated={handleWorksheetCreated} />
-                </TabsContent>
-              </Tabs>
+              )}
 
               {/* Patient record link — always visible */}
               <div className="mt-6">
