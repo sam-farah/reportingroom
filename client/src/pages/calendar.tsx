@@ -38,7 +38,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 type ViewMode = "day" | "week" | "month";
 
-export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string) => void }) {
+export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string, tab?: "upload" | "draw") => void }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -49,6 +49,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
   const [showBeginStudy, setShowBeginStudy] = useState(false);
   const [showIdCheck, setShowIdCheck] = useState(false);
+  const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
   const [resizingAppointment, setResizingAppointment] = useState<{ apt: Appointment; edge: "top" | "bottom" } | null>(null);
 
@@ -1565,7 +1566,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                             setViewingAppointment(null);
                             setShowBeginStudy(false);
                             setShowIdCheck(false);
-                            onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "");
+                            onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "", studyMode);
                           }
                         }}
                       >
@@ -1584,7 +1585,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </p>
                     <button
                       className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-colors text-left group"
-                      onClick={() => setShowIdCheck(true)}
+                      onClick={() => { setStudyMode("upload"); setShowIdCheck(true); }}
                     >
                       <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-700 transition-colors">
                         <FileUp className="w-5 h-5 text-white" />
@@ -1595,18 +1596,15 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                       </div>
                     </button>
                     <button
-                      disabled
-                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-gray-200 bg-gray-50 text-left opacity-60 cursor-not-allowed"
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-purple-300 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 transition-colors text-left group"
+                      onClick={() => { setStudyMode("draw"); setShowIdCheck(true); }}
                     >
-                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center shrink-0">
-                        <PenLine className="w-5 h-5 text-gray-500" />
+                      <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center shrink-0 group-hover:bg-purple-700 transition-colors">
+                        <PenLine className="w-5 h-5 text-white" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-gray-500">Draw Worksheet</span>
-                          <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-500 rounded-full">Coming Soon</span>
-                        </div>
-                        <div className="text-sm text-gray-400">Draw directly in Reporting Room using templates</div>
+                        <div className="font-semibold text-purple-900">Draw Worksheet</div>
+                        <div className="text-sm text-purple-600">Draw directly in Reporting Room using templates</div>
                       </div>
                     </button>
                   </div>

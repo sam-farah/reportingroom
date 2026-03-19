@@ -47,6 +47,7 @@ export default function Dashboard() {
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
   const [preLinkedPatientName, setPreLinkedPatientName] = useState<string>("");
+  const [preLinkedTab, setPreLinkedTab] = useState<"upload" | "draw">("upload");
 
   const handleLogout = async () => {
     try {
@@ -241,7 +242,7 @@ export default function Dashboard() {
 
       {/* ── Page content ── */}
       {activePanel === "user" ? (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} defaultTab={preLinkedTab} />
       ) : activePanel === "reporting-room" ? (
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
@@ -251,7 +252,7 @@ export default function Dashboard() {
       ) : activePanel === "calendar" ? (
         <Calendar
           onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}
-          onBeginStudy={(patientId, patientName) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setActivePanel("user"); }}
+          onBeginStudy={(patientId, patientName, tab) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setPreLinkedTab(tab ?? "upload"); setActivePanel("user"); }}
         />
       ) : activePanel === "patients" ? (
         <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />

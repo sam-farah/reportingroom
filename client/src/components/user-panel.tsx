@@ -17,7 +17,7 @@ import FileUpload from "./file-upload";
 import DrawingCanvas from "./drawing-canvas";
 import type { Worksheet, Physician, Report, Patient } from "@shared/schema";
 
-export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; onPreLinkedPatientConsumed?: () => void } = {}) {
+export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed, defaultTab }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw" } = {}) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
@@ -390,7 +390,7 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
         <div>
           <Card>
             <CardContent className="p-6">
-              <Tabs defaultValue="upload" className="w-full">
+              <Tabs defaultValue={defaultTab ?? "upload"} className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-4">
                   <TabsTrigger value="upload" className="flex items-center gap-2">
                     <UploadIcon className="w-4 h-4" />
