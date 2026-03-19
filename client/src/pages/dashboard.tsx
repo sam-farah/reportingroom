@@ -15,6 +15,7 @@ import StaffManagement from "./staff-management";
 import Calendar from "./calendar";
 import Patients from "./patients";
 import Requests from "./requests";
+import Draw from "./draw";
 
 type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw";
 
@@ -245,7 +246,7 @@ export default function Dashboard() {
       {activePanel === "user" ? (
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} defaultTab="upload" />
       ) : activePanel === "draw" ? (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} defaultTab="draw" />
+        <Draw />
       ) : activePanel === "reporting-room" ? (
         <ReportingRoom />
       ) : activePanel === "physicians" ? (
