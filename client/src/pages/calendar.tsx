@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent } from "@shared/schema";
@@ -50,6 +52,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [showBeginStudy, setShowBeginStudy] = useState(false);
   const [showIdCheck, setShowIdCheck] = useState(false);
   const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      setViewMode("day");
+    }
+  }, []);
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
   const [resizingAppointment, setResizingAppointment] = useState<{ apt: Appointment; edge: "top" | "bottom" } | null>(null);
 
@@ -823,7 +832,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="w-full px-4 py-4">
-        <div className="flex justify-between items-center mb-6">
+        {/* Desktop header */}
+        <div className="hidden md:flex justify-between items-center mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Appointment Calendar</h1>
             <p className="text-gray-600 dark:text-gray-400">Manage patient bookings and appointments</p>
@@ -840,9 +850,24 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
           </div>
         </div>
 
+        {/* Mobile header */}
+        <div className="flex md:hidden justify-between items-center mb-3">
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Calendar</h1>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => openNewEventDialog()}>
+              <CalendarX2 className="w-4 h-4" />
+            </Button>
+            <Button size="sm" onClick={() => { resetForm(); setEditingAppointment(null); setIsBookingDialogOpen(true); }}>
+              <Plus className="w-4 h-4 mr-1" />
+              Book
+            </Button>
+          </div>
+        </div>
+
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
+            {/* Desktop card header */}
+            <div className="hidden md:flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={navigatePrevious}>
                   <ChevronLeft className="w-4 h-4" />
@@ -883,6 +908,46 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   Month
                 </Button>
               </div>
+            </div>
+
+            {/* Mobile card header */}
+            <div className="flex md:hidden items-center justify-between gap-2">
+              <Button variant="outline" size="sm" onClick={navigatePrevious}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-1 justify-center gap-2 font-semibold">
+                    <CalendarDays className="w-4 h-4 shrink-0" />
+                    {format(currentDate, "EEE, MMM d")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="center">
+                  <CalendarPicker
+                    mode="single"
+                    selected={currentDate}
+                    onSelect={(date) => {
+                      if (date) { setCurrentDate(date); setDatePickerOpen(false); }
+                    }}
+                    initialFocus
+                  />
+                  <div className="p-2 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => { setCurrentDate(new Date()); setDatePickerOpen(false); }}
+                    >
+                      Today
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Button variant="outline" size="sm" onClick={navigateNext}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
