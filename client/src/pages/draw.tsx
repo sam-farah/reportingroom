@@ -859,6 +859,23 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                   >
                     <Type className="w-4 h-4" />
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={undoLastAction}
+                    disabled={drawingHistory.length <= 1}
+                    title="Undo last action"
+                  >
+                    <Undo className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={clearCanvas}
+                    title="Clear all drawing"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
 
