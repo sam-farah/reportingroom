@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
-import type { ReportTemplate, InsertReportTemplate, LegendEntry, InsertLegendEntryData } from "@shared/schema";
+import type { ReportTemplate, InsertReportTemplate, LegendEntry, InsertLegendEntryData, Clinic } from "@shared/schema";
 import TextShortcuts from "@/components/text-shortcuts";
 
 interface TemplateFormData {
@@ -26,9 +26,6 @@ interface TemplateFormData {
   
   // Header configuration
   showHeader: boolean;
-  clinicName: string;
-  clinicAddress: string;
-  clinicPhone: string;
   showLogo: boolean;
   
   // Patient info configuration
@@ -64,9 +61,6 @@ const defaultFormData: TemplateFormData = {
   description: "",
   templateType: 'both',
   showHeader: true,
-  clinicName: "",
-  clinicAddress: "",
-  clinicPhone: "",
   showLogo: true,
   patientInfoLayout: 'grid',
   showPatientId: false,
@@ -121,6 +115,12 @@ export default function Templates() {
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   
   const [, setLocation] = useLocation();
+
+  // Fetch clinic settings
+  const { data: clinic } = useQuery<Clinic>({
+    queryKey: ["/api/clinic"],
+    retry: false,
+  });
 
   // Fetch all templates
   const { data: templates = [], isLoading } = useQuery({
@@ -450,9 +450,6 @@ export default function Templates() {
       description: template.description || "",
       templateType: template.templateType as 'pdf' | 'docx' | 'both',
       showHeader: template.showHeader,
-      clinicName: template.clinicName || "",
-      clinicAddress: template.clinicAddress || "",
-      clinicPhone: template.clinicPhone || "",
       showLogo: template.showLogo,
       patientInfoLayout: template.patientInfoLayout as 'grid' | 'list' | 'compact',
       showPatientId: template.showPatientId,
@@ -496,9 +493,9 @@ export default function Templates() {
       description: formData.description.trim() || undefined,
       templateType: formData.templateType,
       showHeader: formData.showHeader,
-      clinicName: formData.clinicName.trim() || undefined,
-      clinicAddress: formData.clinicAddress.trim() || undefined,
-      clinicPhone: formData.clinicPhone.trim() || undefined,
+      clinicName: clinic?.name || undefined,
+      clinicAddress: clinic?.address || undefined,
+      clinicPhone: clinic?.phone || undefined,
       showLogo: formData.showLogo,
       patientInfoLayout: formData.patientInfoLayout,
       showPatientId: formData.showPatientId,
@@ -1062,35 +1059,15 @@ export default function Templates() {
 
               {formData.showHeader && (
                 <div className="space-y-3 pl-4 border-l-2 border-gray-200">
-                  <div className="space-y-2">
-                    <Label htmlFor="clinicName">Clinic Name</Label>
-                    <Input
-                      id="clinicName"
-                      value={formData.clinicName}
-                      onChange={(e) => updateFormData('clinicName', e.target.value)}
-                      placeholder="Your Clinic Name"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="clinicAddress">Clinic Address</Label>
-                    <Textarea
-                      id="clinicAddress"
-                      value={formData.clinicAddress}
-                      onChange={(e) => updateFormData('clinicAddress', e.target.value)}
-                      placeholder="123 Medical Center Drive..."
-                      rows={2}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="clinicPhone">Phone Number</Label>
-                    <Input
-                      id="clinicPhone"
-                      value={formData.clinicPhone}
-                      onChange={(e) => updateFormData('clinicPhone', e.target.value)}
-                      placeholder="(555) 123-4567"
-                    />
+                  <div className="rounded-md bg-blue-50 border border-blue-200 p-3 space-y-1">
+                    <p className="text-xs font-medium text-blue-700 mb-2">Clinic details auto-populated from Clinic Settings</p>
+                    <p className="text-sm font-semibold text-gray-800">{clinic?.name || <span className="text-gray-400 italic">No clinic name set</span>}</p>
+                    {clinic?.address && <p className="text-xs text-gray-600">{clinic.address}</p>}
+                    {clinic?.phone && <p className="text-xs text-gray-600">Phone: {clinic.phone}</p>}
+                    {clinic?.fax && <p className="text-xs text-gray-600">Fax: {clinic.fax}</p>}
+                    {!clinic?.name && !clinic?.address && !clinic?.phone && (
+                      <p className="text-xs text-gray-400 italic">Update your clinic details in Admin Panel → Clinic Settings</p>
+                    )}
                   </div>
 
                   <div className="flex items-center space-x-2">
@@ -1641,14 +1618,11 @@ export default function Templates() {
                       )}
                       <div>
                         <h2 className="text-xl font-bold" style={{ color: previewTemplate.primaryColor }}>
-                          {previewTemplate.clinicName || 'Sample Medical Clinic'}
+                          {clinic?.name || 'Sample Medical Clinic'}
                         </h2>
-                        <p className="text-sm text-gray-600">
-                          {previewTemplate.clinicAddress || '123 Medical Center Drive, Suite 100'}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {previewTemplate.clinicPhone || 'Phone: (555) 123-4567'}
-                        </p>
+                        {clinic?.address && <p className="text-sm text-gray-600">{clinic.address}</p>}
+                        {clinic?.phone && <p className="text-sm text-gray-600">Phone: {clinic.phone}</p>}
+                        {clinic?.fax && <p className="text-sm text-gray-600">Fax: {clinic.fax}</p>}
                       </div>
                     </div>
                     <div className="text-right">
