@@ -54,6 +54,7 @@ export default function Dashboard() {
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
   const [preLinkedPatientName, setPreLinkedPatientName] = useState<string>("");
   const [preLinkedTab, setPreLinkedTab] = useState<"upload" | "draw">("upload");
+  const [openReportId, setOpenReportId] = useState<number | null>(null);
 
   const handleLogout = async () => {
     try {
@@ -248,11 +249,11 @@ export default function Dashboard() {
 
       {/* ── Page content ── */}
       {activePanel === "user" ? (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} defaultTab={preLinkedTab} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} defaultTab={preLinkedTab} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       ) : activePanel === "draw" ? (
         <Draw />
       ) : activePanel === "reporting-room" ? (
-        <ReportingRoom />
+        <ReportingRoom initialOpenReportId={openReportId} onReportOpened={() => setOpenReportId(null)} />
       ) : activePanel === "physicians" ? (
         <Physicians />
       ) : activePanel === "staff" && isOwnerOrAdmin ? (
@@ -271,7 +272,7 @@ export default function Dashboard() {
       ) : activePanel === "admin" ? (
         <AdminPanel onNavigateToTemplates={() => setActivePanel("templates")} />
       ) : (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       )}
 
     </div>

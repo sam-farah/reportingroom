@@ -16,7 +16,7 @@ import FileUpload from "./file-upload";
 import DrawingCanvas from "./drawing-canvas";
 import type { Worksheet, Physician, Report, Patient } from "@shared/schema";
 
-export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed, defaultTab }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw" } = {}) {
+export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed, defaultTab, onReportGenerated }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw"; onReportGenerated?: (reportId: number) => void } = {}) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
@@ -266,7 +266,11 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
         title: "Report Generated",
         description: "Opening report editor…",
       });
-      navigate(`/reporting-room?openReport=${report.id}`);
+      if (onReportGenerated) {
+        onReportGenerated(report.id);
+      } else {
+        navigate(`/?openReport=${report.id}`);
+      }
     },
     onError: (error: Error) => {
       console.error('Report generation error:', error);

@@ -22,7 +22,7 @@ interface EditableReport extends Report {
   templateId?: number;
 }
 
-export default function ReportingRoom() {
+export default function ReportingRoom({ initialOpenReportId, onReportOpened }: { initialOpenReportId?: number | null; onReportOpened?: () => void } = {}) {
   const { toast } = useToast();
   const [editingReport, setEditingReport] = useState<EditableReport | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -242,20 +242,15 @@ export default function ReportingRoom() {
     }, 100);
   };
 
-  // Auto-open report when arriving from Upload page via ?openReport=ID
+  // Auto-open report when passed directly via prop (from dashboard after generation)
   useEffect(() => {
-    if (reports.length === 0) return;
-    const params = new URLSearchParams(window.location.search);
-    const openId = params.get("openReport");
-    if (!openId) return;
-    const target = reports.find(r => r.id === parseInt(openId));
+    if (!initialOpenReportId || reports.length === 0) return;
+    const target = reports.find(r => r.id === initialOpenReportId);
     if (target) {
       handleEditReport(target);
-      // Clean the query param from the URL without reloading
-      const clean = window.location.pathname;
-      window.history.replaceState(null, "", clean);
+      onReportOpened?.();
     }
-  }, [reports]);
+  }, [initialOpenReportId, reports]);
 
   // Navigation between reports in edit dialog
   const getCurrentReportIndex = () => {
