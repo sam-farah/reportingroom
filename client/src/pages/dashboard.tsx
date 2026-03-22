@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Menu, X, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, FileText, MapPin, Phone, PenLine, HelpCircle } from "lucide-react";
+import { Menu, X, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, Phone, PenLine, HelpCircle } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,6 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "reporting-room", label: "Reports",       icon: FolderOpen },
   { id: "patients",       label: "Patients",      icon: UserCircle },
   { id: "requests",       label: "Requests",      icon: ClipboardList },
-  { id: "templates",      label: "Templates",     icon: FileText },
   { id: "staff",          label: "Team",          icon: Users,    adminOnly: true },
   { id: "admin",          label: "Admin Panel",   icon: Settings },
   { id: "help",           label: "Help Centre",   icon: HelpCircle, comingSoon: true },
