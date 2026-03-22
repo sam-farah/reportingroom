@@ -44,7 +44,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<ViewMode>("week");
+  const [viewMode, setViewMode] = useState<ViewMode>(() => window.innerWidth < 768 ? "day" : "week");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
