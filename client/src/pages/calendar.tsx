@@ -1797,21 +1797,6 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                         </Button>
                       </div>
 
-                      {/* Open patient file button */}
-                      {resolvedPatientId && onOpenPatient && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border-indigo-200"
-                          onClick={() => {
-                            setViewingAppointment(null);
-                            onOpenPatient(resolvedPatientId);
-                          }}
-                        >
-                          <FolderOpen className="w-4 h-4 mr-2" />
-                          Open Patient File
-                        </Button>
-                      )}
                     </div>
                   );
                 })()}
@@ -1826,6 +1811,27 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     Begin Study / Report
                   </Button>
                 )}
+
+                {/* Open Patient File CTA — same size, below Begin Study */}
+                {(() => {
+                  const resolvedPatientId = viewingAppointment.patientId
+                    ?? allCalendarPatients.find(pt =>
+                        `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
+                      )?.id ?? null;
+                  return resolvedPatientId && onOpenPatient ? (
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border-indigo-300"
+                      onClick={() => {
+                        setViewingAppointment(null);
+                        onOpenPatient(resolvedPatientId);
+                      }}
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                      Open Patient File
+                    </Button>
+                  ) : null;
+                })()}
                 </>)}
               </div>
             )}
