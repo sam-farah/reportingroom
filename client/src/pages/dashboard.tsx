@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Menu, X, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, FileText, MapPin, Phone, PenLine } from "lucide-react";
+import { Menu, X, User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, FileText, MapPin, Phone, PenLine, HelpCircle } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import logoWithTextPath from "@assets/Screenshot 2025-07-26 201206_1753524822283.png";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,11 @@ import Patients from "./patients";
 import Requests from "./requests";
 import Draw from "./draw";
 import Templates from "./templates";
+import HelpCentre from "./help-centre";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw" | "templates";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw" | "templates" | "help";
 
-const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean }[] = [
+const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",     icon: CalendarIcon },
   { id: "user",           label: "Upload",        icon: Upload },
   { id: "draw",           label: "Draw",          icon: PenLine },
@@ -30,6 +31,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "templates",      label: "Templates",     icon: FileText },
   { id: "staff",          label: "Team",          icon: Users,    adminOnly: true },
   { id: "admin",          label: "Admin Panel",   icon: Settings },
+  { id: "help",           label: "Help Centre",   icon: HelpCircle, comingSoon: true },
 ];
 
 const PAGE_TITLES: Record<Panel, string> = {
@@ -43,6 +45,7 @@ const PAGE_TITLES: Record<Panel, string> = {
   "requests":       "Scan Requests",
   "templates":      "Templates",
   "admin":          "Admin Panel",
+  "help":           "Help Centre",
 };
 
 export default function Dashboard() {
@@ -208,14 +211,19 @@ export default function Dashboard() {
                   key={item.id}
                   onClick={() => navigate(item.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-sm font-medium ${
-                    isActive
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-gray-700 hover:bg-gray-100"
+                    item.comingSoon
+                      ? "text-gray-400 hover:bg-gray-50"
+                      : isActive
+                        ? "bg-blue-50 text-blue-700"
+                        : "text-gray-700 hover:bg-gray-100"
                   }`}
                 >
-                  <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? "text-blue-600" : "text-gray-500"}`} />
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${item.comingSoon ? "text-gray-300" : isActive ? "text-blue-600" : "text-gray-500"}`} />
                   {item.label}
-                  {isActive && (
+                  {item.comingSoon && (
+                    <span className="ml-auto text-[10px] font-normal text-gray-300 bg-gray-100 rounded px-1.5 py-0.5">Soon</span>
+                  )}
+                  {!item.comingSoon && isActive && (
                     <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600" />
                   )}
                 </button>
@@ -271,6 +279,8 @@ export default function Dashboard() {
         <Templates />
       ) : activePanel === "admin" ? (
         <AdminPanel onNavigateToTemplates={() => setActivePanel("templates")} />
+      ) : activePanel === "help" ? (
+        <HelpCentre />
       ) : (
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       )}
