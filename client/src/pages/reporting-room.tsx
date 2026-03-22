@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { Report, ReportTemplate, Physician, ReferringDoctor } from "@shared/schema";
+import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution } from "@shared/schema";
 import { format } from "date-fns";
 import TextShortcuts from "@/components/text-shortcuts";
 
@@ -44,6 +44,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [emailSubject, setEmailSubject] = useState("");
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [markSentName, setMarkSentName] = useState("");
+  const [markSentEmail, setMarkSentEmail] = useState("");
+  const [markSentNotes, setMarkSentNotes] = useState("");
+  const [markSentLogging, setMarkSentLogging] = useState(false);
+  const [showMarkSent, setShowMarkSent] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -75,6 +80,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   // Fetch referring doctors for distribute email dropdown
   const { data: referringDoctors = [] } = useQuery<ReferringDoctor[]>({
     queryKey: ["/api/referring-doctors"],
+    retry: false,
+  });
+
+  // Fetch distribution history for the currently-open distribute dialog
+  const { data: distributions = [], refetch: refetchDistributions } = useQuery<ReportDistribution[]>({
+    queryKey: ["/api/reports", distributeReport?.id, "distributions"],
+    enabled: !!distributeReport,
     retry: false,
   });
 
@@ -557,6 +569,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setEmailTo("");
     setEmailToName("");
     setEmailSubject(`Medical Report — ${report.patientName}`);
+    setShowMarkSent(false);
+    setMarkSentName("");
+    setMarkSentEmail("");
+    setMarkSentNotes("");
 
     // Helper to fetch a URL and return a base64 data-URI
     const toBase64 = async (url: string): Promise<string | null> => {
@@ -699,10 +715,39 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     try {
       await navigator.clipboard.writeText(distributeHtml);
       setDistributeCopied(true);
-      toast({ title: "Copied!", description: "HTML copied to clipboard — paste it into your messaging app." });
+      setShowMarkSent(true);
+      toast({ title: "Copied!", description: "HTML copied — paste into your messaging app, then record the distribution below." });
       setTimeout(() => setDistributeCopied(false), 3000);
     } catch {
       toast({ title: "Copy failed", description: "Please select all and copy manually.", variant: "destructive" });
+    }
+  };
+
+  const handleMarkSent = async () => {
+    if (!distributeReport) return;
+    setMarkSentLogging(true);
+    try {
+      await fetch(`/api/reports/${distributeReport.id}/distributions`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: "copy_html",
+          recipientName: markSentName || null,
+          recipientEmail: markSentEmail || null,
+          notes: markSentNotes || null,
+        }),
+      });
+      refetchDistributions();
+      setMarkSentName("");
+      setMarkSentEmail("");
+      setMarkSentNotes("");
+      setShowMarkSent(false);
+      toast({ title: "Distribution Recorded", description: "The copy has been logged in the distribution history." });
+    } catch {
+      toast({ title: "Log Failed", description: "Could not save distribution record.", variant: "destructive" });
+    } finally {
+      setMarkSentLogging(false);
     }
   };
 
@@ -725,6 +770,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       const data = await res.json();
       if (!res.ok) throw new Error(data.details || data.error || "Send failed");
       setEmailSent(true);
+      refetchDistributions();
       toast({ title: "Email Sent", description: `Report sent to ${emailTo}` });
       setTimeout(() => setEmailSent(false), 4000);
     } catch (err: any) {
@@ -1985,25 +2031,25 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
               {/* ── HTML / Preview Section ── */}
               <div className="space-y-3">
                 {/* Preview */}
-                <div className="border rounded-lg overflow-hidden" style={{ height: 320 }}>
+                <div className="border rounded-lg overflow-hidden" style={{ height: 280 }}>
                   <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Report Preview</div>
                   <iframe
                     srcDoc={distributeHtml}
                     title="Report Preview"
                     className="w-full border-0"
-                    style={{ height: 286 }}
+                    style={{ height: 246 }}
                     sandbox="allow-same-origin"
                   />
                 </div>
 
-                {/* Raw HTML */}
+                {/* Raw HTML + copy */}
                 <div className="border rounded-lg overflow-hidden">
                   <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Copy HTML — paste into your messaging app</div>
                   <textarea
                     readOnly
                     value={distributeHtml}
                     className="w-full p-3 text-xs font-mono bg-white resize-none focus:outline-none"
-                    style={{ height: 120 }}
+                    style={{ height: 100 }}
                   />
                 </div>
 
@@ -2013,6 +2059,74 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                     {distributeCopied ? "Copied!" : "Copy HTML"}
                   </Button>
                 </div>
+
+                {/* Mark as Sent — appears after copying */}
+                {showMarkSent && (
+                  <div className="border border-amber-100 rounded-lg bg-amber-50/50 p-4 space-y-3">
+                    <h3 className="font-semibold text-sm text-amber-800 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Record this distribution
+                    </h3>
+                    <p className="text-xs text-amber-700">You copied the HTML — who did you send it to? (optional, but recommended for audit trail)</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-600">Recipient Name</Label>
+                        <Input placeholder="Dr. Smith" value={markSentName} onChange={(e) => setMarkSentName(e.target.value)} className="bg-white text-sm" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-600">Recipient Email</Label>
+                        <Input type="email" placeholder="doctor@practice.com" value={markSentEmail} onChange={(e) => setMarkSentEmail(e.target.value)} className="bg-white text-sm" />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-600">Notes (optional)</Label>
+                      <Input placeholder="e.g. Sent via Helix / Medical Objects" value={markSentNotes} onChange={(e) => setMarkSentNotes(e.target.value)} className="bg-white text-sm" />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => setShowMarkSent(false)}>Skip</Button>
+                      <Button size="sm" onClick={handleMarkSent} disabled={markSentLogging} className="bg-amber-600 hover:bg-amber-700 text-white">
+                        {markSentLogging ? <><div className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full mr-2" />Saving…</> : <><Check className="w-3 h-3 mr-2" />Record Distribution</>}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Distribution History ── */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 border-b px-3 py-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Distribution History</span>
+                  {distributions.length > 0 && (
+                    <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-semibold">{distributions.length} sent</span>
+                  )}
+                </div>
+                {distributions.length === 0 ? (
+                  <p className="text-xs text-gray-400 px-4 py-4 text-center">No distributions recorded yet for this report.</p>
+                ) : (
+                  <ul className="divide-y">
+                    {distributions.map((d) => (
+                      <li key={d.id} className="px-4 py-3 flex items-start gap-3">
+                        <div className={`mt-0.5 rounded-full p-1 flex-shrink-0 ${d.method === "email" ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600"}`}>
+                          {d.method === "email"
+                            ? <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                            : <Copy className="w-3 h-3" />
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-xs font-semibold text-gray-700 capitalize">{d.method === "email" ? "Email" : "Copy HTML"}</span>
+                            <span className="text-xs text-gray-400">{format(new Date(d.sentAt), "d MMM yyyy, h:mm a")}</span>
+                          </div>
+                          {(d.recipientName || d.recipientEmail) && (
+                            <p className="text-xs text-gray-600 truncate">{[d.recipientName, d.recipientEmail].filter(Boolean).join(" — ")}</p>
+                          )}
+                          {d.notes && <p className="text-xs text-gray-400 italic">{d.notes}</p>}
+                          {d.confirmedBy && <p className="text-xs text-gray-400">by {d.confirmedBy}</p>}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           )}

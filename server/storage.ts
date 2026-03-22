@@ -66,6 +66,9 @@ import {
   calendarEvents,
   type CalendarEvent,
   type InsertCalendarEvent,
+  reportDistributions,
+  type ReportDistribution,
+  type InsertReportDistribution,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max } from "drizzle-orm";
@@ -230,6 +233,10 @@ export interface IStorage {
   createScanRequest(request: InsertScanRequest): Promise<ScanRequest>;
   updateScanRequest(id: number, request: Partial<InsertScanRequest>): Promise<ScanRequest | undefined>;
   deleteScanRequest(id: number): Promise<void>;
+
+  // Report distributions
+  getReportDistributions(reportId: number): Promise<ReportDistribution[]>;
+  createReportDistribution(distribution: InsertReportDistribution): Promise<ReportDistribution>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1232,6 +1239,19 @@ export class DatabaseStorage implements IStorage {
 
   async deleteScanRequest(id: number): Promise<void> {
     await db.delete(scanRequests).where(eq(scanRequests.id, id));
+  }
+
+  async getReportDistributions(reportId: number): Promise<ReportDistribution[]> {
+    return db
+      .select()
+      .from(reportDistributions)
+      .where(eq(reportDistributions.reportId, reportId))
+      .orderBy(desc(reportDistributions.sentAt));
+  }
+
+  async createReportDistribution(distribution: InsertReportDistribution): Promise<ReportDistribution> {
+    const [created] = await db.insert(reportDistributions).values(distribution).returning();
+    return created;
   }
 }
 

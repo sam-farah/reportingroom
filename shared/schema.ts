@@ -631,3 +631,21 @@ export const calendarEvents = pgTable("calendar_events", {
 export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true, createdAt: true });
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
+
+// Report distribution log
+export const reportDistributions = pgTable("report_distributions", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => reports.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  method: varchar("method", { length: 20 }).notNull(), // "email" | "copy_html"
+  recipientName: varchar("recipient_name", { length: 200 }),
+  recipientEmail: varchar("recipient_email", { length: 200 }),
+  notes: text("notes"),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  confirmedAt: timestamp("confirmed_at"),
+  confirmedBy: varchar("confirmed_by", { length: 200 }),
+});
+
+export const insertReportDistributionSchema = createInsertSchema(reportDistributions).omit({ id: true, sentAt: true });
+export type ReportDistribution = typeof reportDistributions.$inferSelect;
+export type InsertReportDistribution = z.infer<typeof insertReportDistributionSchema>;

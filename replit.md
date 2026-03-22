@@ -81,6 +81,14 @@ Preferred communication style: Simple, everyday language.
 - **Reschedule button** in the appointment viewing dialog opens the edit form (same as Edit but labeled for rescheduling)
 - API: `GET/POST /api/calendar-events`, `PUT/DELETE /api/calendar-events/:id`
 
+#### Report Distribution Log
+- **Table**: `report_distributions` — tracks every distribution event per report
+- **Fields**: `reportId`, `clinicId`, `method` (`email` | `copy_html`), `recipientName`, `recipientEmail`, `notes`, `sentAt`, `confirmedAt`, `confirmedBy`
+- **Email sends**: auto-logged immediately after SendGrid confirms delivery (no user action needed)
+- **Copy HTML**: after clicking "Copy HTML", a "Record this distribution" amber form slides in asking for recipient name/email/notes; clicking "Record Distribution" posts to `POST /api/reports/:id/distributions`
+- **Distribution History**: shown at the bottom of the Distribute dialog — lists all past sends for that report with method icon, timestamp, recipient, and confirming user
+- **API**: `GET /api/reports/:id/distributions`, `POST /api/reports/:id/distributions`
+
 #### Referring Doctors & Scan Requests
 - **Referring Doctors**: Clinic-scoped directory of referring GPs/specialists — name, practice, provider number, phone, fax, email, address. Searchable and reusable across requests.
 - **Scan Requests**: Electronic referral form capturing patient details (linked to existing patients or free-text), referring doctor (linked or free-text), scan types (from canonical list), urgency (Routine/Urgent/ASAP/STAT), clinical indication, clinical history, notes, and status (Pending/Scheduled/Completed/Cancelled). Accessible from the "Requests" nav item.

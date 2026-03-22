@@ -21,7 +21,8 @@ import {
   insertUserInvitationSchema,
   insertTextShortcutSchema,
   insertPatientPortalAccountSchema,
-  insertPatientPortalInvitationSchema
+  insertPatientPortalInvitationSchema,
+  insertReportDistributionSchema,
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
@@ -942,10 +943,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientName: report.patientName,
       });
 
+      // Auto-log the distribution
+      await storage.createReportDistribution({
+        reportId: id,
+        clinicId: user?.clinicId ?? null,
+        method: "email",
+        recipientName: toName || null,
+        recipientEmail: toEmail,
+        notes: null,
+        confirmedAt: new Date(),
+        confirmedBy: user?.email || null,
+      });
+
       res.json({ success: true, message: `Report sent to ${toEmail}` });
     } catch (error: any) {
       console.error("Send report email error:", error);
       res.status(500).json({ error: "Failed to send email", details: error?.message });
+    }
+  });
+
+  // List distributions for a report
+  app.get("/api/reports/:id/distributions", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      const distributions = await storage.getReportDistributions(id);
+      res.json(distributions);
+    } catch (error) {
+      console.error("Get distributions error:", error);
+      res.status(500).json({ error: "Failed to fetch distributions" });
+    }
+  });
+
+  // Manually log a distribution (e.g. Copy HTML confirmed by user)
+  app.post("/api/reports/:id/distributions", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+
+      const user = await storage.getUser(req.session.userId);
+      const body = insertReportDistributionSchema.parse({
+        ...req.body,
+        reportId: id,
+        clinicId: user?.clinicId ?? null,
+        confirmedAt: new Date(),
+        confirmedBy: user?.email || null,
+      });
+
+      const distribution = await storage.createReportDistribution(body);
+      res.json(distribution);
+    } catch (error) {
+      console.error("Create distribution error:", error);
+      res.status(500).json({ error: "Failed to log distribution" });
     }
   });
 
