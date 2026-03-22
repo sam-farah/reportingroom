@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [activeVoiceDictation, setActiveVoiceDictation] = useState<string>('');
   const [distributeReport, setDistributeReport] = useState<Report | null>(null);
   const [distributeHtml, setDistributeHtml] = useState<string>("");
+  const [distributeHtmlNoWs, setDistributeHtmlNoWs] = useState<string>("");
+  const [distributeHtmlWithWs, setDistributeHtmlWithWs] = useState<string>("");
+  const [distributeIncludeWorksheet, setDistributeIncludeWorksheet] = useState(true);
+  const [distributeHasWorksheet, setDistributeHasWorksheet] = useState(false);
   const [distributeCopied, setDistributeCopied] = useState(false);
   const [distributeLoading, setDistributeLoading] = useState(false);
   const [emailTo, setEmailTo] = useState("");
@@ -523,6 +528,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setDistributeLoading(true);
     setDistributeReport(report);
     setDistributeCopied(false);
+    setDistributeIncludeWorksheet(true);
     setEmailSent(false);
     setEmailSending(false);
     setEmailTo("");
@@ -624,10 +630,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       clinicLogoDataUrl = await toBase64(clinicLogoApiUrl);
     }
 
-    // If showWorksheetInReport is enabled, composite the labelled header strip onto the worksheet image
-    // (same visual as the "Download Labelled Copy" PDF, but at native resolution for HTML embedding)
+    // Always composite the labelled header strip onto the worksheet image for the distribute dialog.
+    // The per-distribution toggle controls whether it is included; it defaults to ON.
     let labelledWorksheetDataUrl: string | null = worksheetDataUrl;
-    if (template?.showWorksheetInReport && worksheetDataUrl) {
+    if (worksheetDataUrl) {
       try {
         const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
           const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = worksheetDataUrl!;
@@ -697,7 +703,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     const clinicFax = clinicData?.fax || '';
     const clinicEmail = clinicData?.email || '';
 
-    const html = `<!DOCTYPE html>
+    const makeHtml = (wsUrl: string | null) => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -756,7 +762,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     <div class="pi"><span class="label">Report Date:</span> ${today}</div>
   </div>
 
-  ${template?.showWorksheetInReport && labelledWorksheetDataUrl ? `<img class="worksheet-img" src="${labelledWorksheetDataUrl}" alt="Labelled Worksheet" />` : ''}
+  ${wsUrl ? `<img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" />` : ''}
 
   ${template?.showStudyType !== false ? `<div class="section"><div class="section-title">Study Type</div><div class="section-content">${report.studyType}</div></div>` : ''}
   ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
@@ -777,7 +783,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
 </body>
 </html>`;
 
-    setDistributeHtml(html);
+    const hasWs = !!labelledWorksheetDataUrl;
+    const htmlWithWs = makeHtml(labelledWorksheetDataUrl);
+    const htmlNoWs = makeHtml(null);
+    setDistributeHasWorksheet(hasWs);
+    setDistributeHtmlWithWs(htmlWithWs);
+    setDistributeHtmlNoWs(htmlNoWs);
+    setDistributeHtml(htmlWithWs); // default: worksheet included
     setDistributeLoading(false);
   };
 
@@ -2260,6 +2272,23 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                   </Button>
                 </div>
               </div>
+
+              {/* ── Worksheet toggle ── */}
+              {distributeHasWorksheet && (
+                <div className="flex items-center gap-3 px-1">
+                  <Switch
+                    id="dist-ws-toggle"
+                    checked={distributeIncludeWorksheet}
+                    onCheckedChange={(checked) => {
+                      setDistributeIncludeWorksheet(checked);
+                      setDistributeHtml(checked ? distributeHtmlWithWs : distributeHtmlNoWs);
+                    }}
+                  />
+                  <Label htmlFor="dist-ws-toggle" className="text-sm cursor-pointer select-none">
+                    Include worksheet image (with clinic logo)
+                  </Label>
+                </div>
+              )}
 
               {/* ── HTML / Preview Section ── */}
               <div className="space-y-3">
