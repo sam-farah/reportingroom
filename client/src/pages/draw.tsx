@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Save, RotateCcw, Download, Eraser, PenTool, Type, FileText, Undo, Highlighter, Minus, Search, UserCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,9 +28,11 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
 } = {}) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<WorksheetTemplate | null>(null);
   const [currentWorksheet, setCurrentWorksheet] = useState<DigitalWorksheet | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [textInput, setTextInput] = useState<{ cssX: number; cssY: number; canvasX: number; canvasY: number } | null>(null);
   const [showPatientDialog, setShowPatientDialog] = useState(false);
   const [showCreateDraftDialog, setShowCreateDraftDialog] = useState(false);
   const [templateImage, setTemplateImage] = useState<HTMLImageElement | null>(null);
@@ -336,9 +338,49 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     }
   }, [selectedTemplate, currentWorksheet, isFullscreen]);
 
+  const commitText = useCallback((text: string) => {
+    if (!text.trim() || !canvasRef.current) { setTextInput(null); return; }
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx || !textInput) { setTextInput(null); return; }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = currentTool.color;
+    ctx.font = `bold ${currentTool.size}px Arial, sans-serif`;
+    ctx.textBaseline = 'top';
+    ctx.fillText(text, textInput.canvasX, textInput.canvasY);
+    setTextInput(null);
+    // Save to history
+    if (currentWorksheet) {
+      const drawingData = canvas.toDataURL('image/jpeg', 0.8);
+      setDrawingHistory(prev => [...prev.slice(-19), drawingData]);
+    }
+  }, [textInput, currentTool, currentWorksheet]);
+
+  // Auto-focus text input when it appears
+  useEffect(() => {
+    if (textInput) {
+      setTimeout(() => textInputRef.current?.focus(), 30);
+    }
+  }, [textInput]);
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
-    if (!canvasRef.current || currentTool.type === 'text') return;
-    
+    if (!canvasRef.current) return;
+
+    // Text tool: place a floating input overlay at click position
+    if (currentTool.type === 'text') {
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const cssX = e.clientX - rect.left;
+      const cssY = e.clientY - rect.top;
+      const canvasX = cssX * scaleX;
+      const canvasY = cssY * scaleY;
+      setTextInput({ cssX, cssY, canvasX, canvasY });
+      return;
+    }
+
     setIsDrawing(true);
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -860,7 +902,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                   <Button
                     size="sm"
                     variant={currentTool.type === 'text' ? 'default' : 'outline'}
-                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'text', opacity: 1.0 }))}
+                    onClick={() => setCurrentTool(prev => ({ ...prev, type: 'text', opacity: 1.0, size: prev.type === 'text' ? prev.size : 24 }))}
                   >
                     <Type className="w-4 h-4" />
                   </Button>
@@ -959,24 +1001,31 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                 </div>
               )}
 
-              {/* Size Selection */}
+              {/* Size / Font Size Selection */}
               {currentTool.type !== 'whiteout' && (
                 <div className="space-y-2">
                   <Label>
-                    Size: {currentTool.size}px
+                    {currentTool.type === 'text' ? `Font Size: ${currentTool.size}px` : `Size: ${currentTool.size}px`}
                     {currentTool.type === 'eraser' && ' (removes drawn content)'}
                   </Label>
                   <Slider
                     value={[currentTool.size]}
                     onValueChange={(value) => setCurrentTool(prev => ({ ...prev, size: value[0] }))}
-                    max={currentTool.type === 'highlighter' ? 15 : currentTool.type === 'eraser' ? 25 : 20}
-                    min={currentTool.type === 'highlighter' ? 5 : currentTool.type === 'eraser' ? 5 : 1}
-                    step={1}
+                    max={currentTool.type === 'text' ? 72 : currentTool.type === 'highlighter' ? 15 : currentTool.type === 'eraser' ? 25 : 20}
+                    min={currentTool.type === 'text' ? 10 : currentTool.type === 'highlighter' ? 5 : currentTool.type === 'eraser' ? 5 : 1}
+                    step={currentTool.type === 'text' ? 2 : 1}
                     className="w-full"
                   />
                 </div>
               )}
               
+              {/* Text tool hint */}
+              {currentTool.type === 'text' && (
+                <div className="space-y-1">
+                  <p className="text-xs text-blue-600 bg-blue-50 rounded p-2">Click anywhere on the canvas to place a text annotation. Press Enter to stamp it, Escape to cancel.</p>
+                </div>
+              )}
+
               {/* Tool Information */}
               {currentTool.type === 'whiteout' && (
                 <div className="space-y-2">
@@ -1005,14 +1054,14 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         <div className={`${isFullscreen ? 'flex-1 flex items-center justify-center bg-white p-4' : ''}`}>
           <Card className={`${isFullscreen ? 'border-0 shadow-none w-full h-full' : 'lg:col-span-3'}`}>
             <CardContent className={`${isFullscreen ? 'p-0 h-full flex items-center justify-center' : 'p-4'}`}>
-              <div className={`border rounded-lg ${isFullscreen ? 'w-full h-full flex items-center justify-center' : 'max-h-[600px] overflow-auto'}`}>
+              <div className={`border rounded-lg relative ${isFullscreen ? 'w-full h-full flex items-center justify-center' : 'max-h-[600px] overflow-auto'}`}>
                 <canvas
                   ref={canvasRef}
-                  className={currentTool.type === 'eraser' ? 'cursor-pointer' : 'cursor-crosshair'}
+                  className={currentTool.type === 'text' ? 'cursor-text' : currentTool.type === 'eraser' ? 'cursor-pointer' : 'cursor-crosshair'}
                   style={{ 
                     maxWidth: isFullscreen ? 'calc(100vw - 320px)' : '100%',
                     maxHeight: isFullscreen ? 'calc(100vh - 140px)' : '600px',
-                    touchAction: 'none', // Enable stylus/touch drawing
+                    touchAction: 'none',
                     objectFit: 'contain'
                   }}
                   onMouseDown={startDrawing}
@@ -1024,6 +1073,30 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                   onPointerUp={stopDrawing}
                   onPointerLeave={stopDrawing}
                 />
+                {/* Floating text annotation input */}
+                {textInput && (
+                  <input
+                    ref={textInputRef}
+                    type="text"
+                    autoFocus
+                    placeholder="Type annotation..."
+                    className="absolute z-10 border-2 border-blue-400 rounded px-1 bg-white/90 outline-none shadow-lg"
+                    style={{
+                      left: textInput.cssX,
+                      top: textInput.cssY,
+                      color: currentTool.color,
+                      fontSize: `${Math.max(12, currentTool.size * 0.6)}px`,
+                      fontWeight: 'bold',
+                      minWidth: 120,
+                      transform: 'translateY(-2px)',
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { commitText(e.currentTarget.value); }
+                      if (e.key === 'Escape') { setTextInput(null); }
+                    }}
+                    onBlur={(e) => commitText(e.currentTarget.value)}
+                  />
+                )}
               </div>
             </CardContent>
           </Card>
