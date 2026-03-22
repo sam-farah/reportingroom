@@ -16,8 +16,9 @@ import Calendar from "./calendar";
 import Patients from "./patients";
 import Requests from "./requests";
 import Draw from "./draw";
+import Templates from "./templates";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw" | "templates";
 
 const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean }[] = [
   { id: "calendar",       label: "Calendar",     icon: CalendarIcon },
@@ -26,6 +27,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "reporting-room", label: "Reports",       icon: FolderOpen },
   { id: "patients",       label: "Patients",      icon: UserCircle },
   { id: "requests",       label: "Requests",      icon: ClipboardList },
+  { id: "templates",      label: "Templates",     icon: FileText },
   { id: "staff",          label: "Team",          icon: Users,    adminOnly: true },
   { id: "admin",          label: "Admin Panel",   icon: Settings },
 ];
@@ -39,6 +41,7 @@ const PAGE_TITLES: Record<Panel, string> = {
   "staff":          "Team",
   "patients":       "Patients",
   "requests":       "Scan Requests",
+  "templates":      "Templates",
   "admin":          "Admin Panel",
 };
 
@@ -50,6 +53,7 @@ export default function Dashboard() {
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
   const [preLinkedPatientName, setPreLinkedPatientName] = useState<string>("");
+  const [preLinkedTab, setPreLinkedTab] = useState<"upload" | "draw">("upload");
 
   const handleLogout = async () => {
     try {
@@ -244,7 +248,7 @@ export default function Dashboard() {
 
       {/* ── Page content ── */}
       {activePanel === "user" ? (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} defaultTab="upload" />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} defaultTab={preLinkedTab} />
       ) : activePanel === "draw" ? (
         <Draw />
       ) : activePanel === "reporting-room" ? (
@@ -262,8 +266,10 @@ export default function Dashboard() {
         <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
       ) : activePanel === "requests" ? (
         <Requests />
+      ) : activePanel === "templates" ? (
+        <Templates />
       ) : activePanel === "admin" ? (
-        <AdminPanel />
+        <AdminPanel onNavigateToTemplates={() => setActivePanel("templates")} />
       ) : (
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} />
       )}

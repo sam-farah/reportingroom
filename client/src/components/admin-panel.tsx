@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image } from "lucide-react";
-import { Link } from "wouter";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import ClinicPage from "@/pages/physicians";
 import type { TrainingPair, Physician, ReportTemplate, Clinic } from "@shared/schema";
 import ScanDurationsTab from "./scan-durations-tab";
 
-export default function AdminPanel() {
+export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemplates?: () => void }) {
   const { toast } = useToast();
   const [worksheetFile, setWorksheetFile] = useState<File | null>(null);
   const [reportFile, setReportFile] = useState<File | null>(null);
@@ -1052,12 +1052,10 @@ export default function AdminPanel() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Link href="/templates">
-                              <Button size="sm" variant="outline">
-                                <Edit className="w-3 h-3 mr-1" />
-                                Edit
-                              </Button>
-                            </Link>
+                            <Button size="sm" variant="outline" onClick={() => onNavigateToTemplates?.()}>
+                              <Edit className="w-3 h-3 mr-1" />
+                              Edit
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -1069,22 +1067,18 @@ export default function AdminPanel() {
                   <Palette className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                   <h3 className="text-lg font-medium text-gray-900 mb-1">No Templates Created</h3>
                   <p className="text-gray-500 mb-4">Create your first report template to customize how reports look</p>
-                  <Link href="/templates">
-                    <Button className="medical-btn-primary">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create First Template
-                    </Button>
-                  </Link>
+                  <Button className="medical-btn-primary" onClick={() => onNavigateToTemplates?.()}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create First Template
+                  </Button>
                 </div>
               )}
 
               <div className="flex justify-end pt-4 border-t">
-                <Link href="/templates">
-                  <Button className="medical-btn-primary">
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Open Full Template Editor
-                  </Button>
-                </Link>
+                <Button className="medical-btn-primary" onClick={() => onNavigateToTemplates?.()}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open Full Template Editor
+                </Button>
               </div>
             </CardContent>
           </Card>
