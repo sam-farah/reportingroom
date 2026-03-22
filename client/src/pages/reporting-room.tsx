@@ -71,6 +71,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     retry: false,
   });
 
+  // Fetch full clinic data (includes logoUrl for report header)
+  const { data: clinicData } = useQuery<{ id: number; name: string; address?: string; phone?: string; fax?: string; email?: string; logoUrl?: string }>({
+    queryKey: ["/api/clinic"],
+    retry: false,
+  });
+
   // Fetch physicians for distribute feature
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
@@ -364,25 +370,29 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
               max-width: 800px;
             }
             .header { 
-              text-align: center; 
+              display: flex;
+              align-items: flex-start;
+              gap: 20px;
               border-bottom: 2px solid ${template?.primaryColor || '#0066cc'}; 
               padding-bottom: 20px; 
               margin-bottom: 30px; 
             }
+            .header-logo img { max-height: 80px; max-width: 200px; object-fit: contain; display: block; }
+            .header-info { flex: 1; }
             .header h1 {
-              margin: 0 0 10px 0;
+              margin: 0 0 6px 0;
               color: ${template?.primaryColor || '#0066cc'};
-              font-size: 24px;
+              font-size: 22px;
               font-weight: bold;
             }
             .header .subtitle {
               color: #666;
-              font-size: 16px;
-              margin: 5px 0;
+              font-size: 14px;
+              margin: 3px 0;
             }
             .clinic-info { 
-              margin: 5px 0;
-              font-size: 14px;
+              margin: 3px 0;
+              font-size: 13px;
               color: #666;
             }
             .patient-info { 
@@ -459,10 +469,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         <body>
           ${template?.showHeader !== false ? `
             <div class="header">
-              <h1>${clinicSettings?.clinicName || template?.clinicName || 'Medical Clinic'}</h1>
-              <div class="subtitle">Medical Examination Report</div>
-              ${(clinicSettings?.address || template?.clinicAddress) ? `<div class="clinic-info">${clinicSettings?.address || template?.clinicAddress}</div>` : ''}
-              ${(clinicSettings?.phone || template?.clinicPhone) ? `<div class="clinic-info">${clinicSettings?.phone || template?.clinicPhone}</div>` : ''}
+              ${clinicData?.logoUrl ? `<div class="header-logo"><img src="${clinicData.logoUrl}" alt="Clinic Logo" /></div>` : ''}
+              <div class="header-info">
+                <h1>${clinicData?.name || clinicSettings?.clinicName || template?.clinicName || 'Medical Clinic'}</h1>
+                <div class="subtitle">Medical Examination Report</div>
+                ${(clinicData?.address || clinicSettings?.address || template?.clinicAddress) ? `<div class="clinic-info">${clinicData?.address || clinicSettings?.address || template?.clinicAddress}</div>` : ''}
+                ${(clinicData?.phone || clinicSettings?.phone || template?.clinicPhone) ? `<div class="clinic-info">Phone: ${clinicData?.phone || clinicSettings?.phone || template?.clinicPhone}</div>` : ''}
+                ${clinicData?.fax ? `<div class="clinic-info">Fax: ${clinicData.fax}</div>` : ''}
+                ${clinicData?.email ? `<div class="clinic-info">${clinicData.email}</div>` : ''}
+              </div>
             </div>
           ` : ''}
           
@@ -626,6 +641,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     const primaryColor = "#0066cc";
     const today = format(new Date(), 'MMMM dd, yyyy');
 
+    // Load clinic logo for report header
+    let clinicLogoDataUrl: string | null = null;
+    if (clinicData?.logoUrl) {
+      clinicLogoDataUrl = await toBase64(clinicData.logoUrl);
+    }
+
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -635,10 +656,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #222; background: #fff; padding: 32px 40px; max-width: 780px; margin: 0 auto; }
-    .header { text-align: center; border-bottom: 3px solid ${primaryColor}; padding-bottom: 18px; margin-bottom: 24px; }
-    .header h1 { font-size: 22px; font-weight: bold; color: ${primaryColor}; margin-bottom: 4px; }
-    .header .sub { font-size: 14px; color: #555; }
-    .header .clinic-info { font-size: 12px; color: #777; margin-top: 3px; }
+    .header { display: flex; align-items: flex-start; gap: 20px; border-bottom: 3px solid ${primaryColor}; padding-bottom: 18px; margin-bottom: 24px; }
+    .header-logo { flex-shrink: 0; }
+    .header-logo img { max-height: 72px; max-width: 180px; object-fit: contain; display: block; }
+    .header-info { flex: 1; }
+    .header-info h1 { font-size: 20px; font-weight: bold; color: ${primaryColor}; margin-bottom: 3px; }
+    .header-info .sub { font-size: 13px; color: #555; }
+    .header-info .clinic-info { font-size: 12px; color: #777; margin-top: 2px; }
     .patient-box { background: #f4f8ff; border: 1px solid #d0e4ff; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
     .patient-box h3 { grid-column: span 2; font-size: 14px; font-weight: bold; color: ${primaryColor}; border-bottom: 1px solid #c0d8ff; padding-bottom: 6px; margin-bottom: 4px; }
     .pi { font-size: 13px; }
@@ -659,10 +683,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
 </head>
 <body>
   <div class="header">
-    <h1>${clinic?.clinicName || 'Medical Clinic'}</h1>
-    <div class="sub">Medical Examination Report</div>
-    ${clinic?.address ? `<div class="clinic-info">${clinic.address}</div>` : ''}
-    ${clinic?.phone ? `<div class="clinic-info">Phone: ${clinic.phone}</div>` : ''}
+    ${clinicLogoDataUrl ? `<div class="header-logo"><img src="${clinicLogoDataUrl}" alt="Clinic Logo" /></div>` : ''}
+    <div class="header-info">
+      <h1>${clinicData?.name || clinic?.clinicName || 'Medical Clinic'}</h1>
+      <div class="sub">Medical Examination Report</div>
+      ${(clinicData?.address || clinic?.address) ? `<div class="clinic-info">${clinicData?.address || clinic?.address}</div>` : ''}
+      ${(clinicData?.phone || clinic?.phone) ? `<div class="clinic-info">Phone: ${clinicData?.phone || clinic?.phone}</div>` : ''}
+      ${clinicData?.fax ? `<div class="clinic-info">Fax: ${clinicData.fax}</div>` : ''}
+      ${clinicData?.email ? `<div class="clinic-info">${clinicData.email}</div>` : ''}
+    </div>
   </div>
 
   ${report.isAmended ? `<div class="amended-note">⚠ This report has been amended. Original findings may have changed.</div>` : ''}
