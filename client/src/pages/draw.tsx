@@ -342,8 +342,10 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     setIsDrawing(true);
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
     
     setLastPointer({x, y});
     
@@ -383,10 +385,12 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
     
-    // Throttle drawing for performance - only every few pixels
+    // Throttle drawing for performance - only every few pixels (in canvas space)
     if (lastPointer && Math.abs(x - lastPointer.x) < 2 && Math.abs(y - lastPointer.y) < 2) {
       return;
     }
