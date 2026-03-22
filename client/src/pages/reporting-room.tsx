@@ -931,6 +931,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                     Signed: {format(new Date(report.finalizedAt), 'MMM dd, yyyy')}
                   </div>
                 )}
+                {(distributionCounts[report.id] ?? 0) > 0 && (
+                  <div className="flex items-center text-xs text-blue-600 mt-1">
+                    <svg className="w-3 h-3 mr-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                    Distributed {distributionCounts[report.id] > 1 ? `×${distributionCounts[report.id]}` : ""}
+                  </div>
+                )}
                 {report.isAmended && report.amendedAt && (
                   <div className="flex items-center text-xs text-orange-600 mt-1">
                     <Edit3 className="w-3 h-3 mr-1" />
