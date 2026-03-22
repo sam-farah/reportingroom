@@ -352,211 +352,145 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   };
 
   const handleExportPDF = (report: Report) => {
-    // Create a new window for PDF export
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const template = templates.find((t: ReportTemplate) => t.id === (editingReport?.templateId || 1)) || templates[0];
-    
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Medical Report - ${report.patientName}</title>
-          <style>
-            body { 
-              font-family: ${template?.fontFamily || 'Arial'}, sans-serif; 
-              font-size: ${template?.fontSize || '12px'};
-              line-height: 1.6;
-              margin: 40px;
-              color: #333;
-              max-width: 800px;
-            }
-            .header { 
-              display: flex;
-              align-items: flex-start;
-              gap: 20px;
-              border-bottom: 2px solid ${template?.primaryColor || '#0066cc'}; 
-              padding-bottom: 20px; 
-              margin-bottom: 30px; 
-            }
-            .header-logo img { max-height: 80px; max-width: 200px; object-fit: contain; display: block; }
-            .header-info { flex: 1; }
-            .header h1 {
-              margin: 0 0 6px 0;
-              color: ${template?.primaryColor || '#0066cc'};
-              font-size: 22px;
-              font-weight: bold;
-            }
-            .header .subtitle {
-              color: #666;
-              font-size: 14px;
-              margin: 3px 0;
-            }
-            .clinic-info { 
-              margin: 3px 0;
-              font-size: 13px;
-              color: #666;
-            }
-            .patient-info { 
-              display: grid; 
-              grid-template-columns: 1fr 1fr; 
-              gap: 20px; 
-              margin-bottom: 30px;
-              padding: 20px;
-              background-color: #f8f9fa;
-              border-radius: 8px;
-            }
-            .patient-info h3 {
-              color: ${template?.primaryColor || '#0066cc'};
-              margin: 0 0 15px 0;
-              font-size: 16px;
-              grid-column: span 2;
-              border-bottom: 1px solid #dee2e6;
-              padding-bottom: 8px;
-            }
-            .info-item {
-              margin-bottom: 10px;
-              font-size: 14px;
-            }
-            .info-label {
-              font-weight: bold;
-              color: #495057;
-            }
-            .section { 
-              margin-bottom: 30px;
-              page-break-inside: avoid;
-            }
-            .section-title { 
-              font-size: 18px;
-              font-weight: bold; 
-              color: ${template?.primaryColor || '#0066cc'}; 
-              border-bottom: 2px solid ${template?.primaryColor || '#0066cc'}; 
-              padding-bottom: 8px; 
-              margin-bottom: 15px; 
-            }
-            .section-content {
-              font-size: 14px;
-              line-height: 1.7;
-              text-align: justify;
-            }
-            .footer { 
-              margin-top: 50px; 
-              padding-top: 20px; 
-              border-top: 1px solid #dee2e6; 
-              text-align: center; 
-              font-size: 11px; 
-              color: #6c757d; 
-            }
-            .signature-area {
-              margin-top: 50px;
-              text-align: ${template?.signaturePosition || 'right'};
-            }
-            .signature-line {
-              border-top: 2px solid #333;
-              width: 250px;
-              margin: 30px auto 10px auto;
-              display: inline-block;
-            }
-            .signature-text {
-              font-size: 12px;
-              color: #495057;
-              margin-top: 5px;
-            }
-            @media print {
-              body { margin: 20px; }
-              .no-print { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          ${template?.showHeader !== false ? `
-            <div class="header">
-              ${clinicLogoApiUrl ? `<div class="header-logo"><img src="${clinicLogoApiUrl}" alt="Clinic Logo" /></div>` : ''}
-              <div class="header-info">
-                <h1>${clinicData?.name || clinicSettings?.clinicName || template?.clinicName || 'Medical Clinic'}</h1>
-                <div class="subtitle">Medical Examination Report</div>
-                ${(clinicData?.address || clinicSettings?.address || template?.clinicAddress) ? `<div class="clinic-info">${clinicData?.address || clinicSettings?.address || template?.clinicAddress}</div>` : ''}
-                ${(clinicData?.phone || clinicSettings?.phone || template?.clinicPhone) ? `<div class="clinic-info">Phone: ${clinicData?.phone || clinicSettings?.phone || template?.clinicPhone}</div>` : ''}
-                ${clinicData?.fax ? `<div class="clinic-info">Fax: ${clinicData.fax}</div>` : ''}
-                ${clinicData?.email ? `<div class="clinic-info">${clinicData.email}</div>` : ''}
-              </div>
-            </div>
-          ` : ''}
-          
-          <div class="patient-info">
-            <h3>Patient Information</h3>
-            <div class="info-item">
-              <span class="info-label">Patient Name:</span> ${report.patientName}
-            </div>
-            ${report.patientUrNumber ? `<div class="info-item"><span class="info-label">UR Number:</span> <strong style="color:#1d4ed8;font-family:monospace">${report.patientUrNumber}</strong></div>` : ''}
-            <div class="info-item">
-              <span class="info-label">Date of Birth:</span> ${report.patientDob}
-            </div>
-            <div class="info-item">
-              <span class="info-label">Exam Date:</span> ${report.examDate}
-            </div>
-            <div class="info-item">
-              <span class="info-label">Report ID:</span> ${report.id}
-            </div>
-          </div>
+    const template = templates.find((t: ReportTemplate) => t.id === (editingReport?.templateId || report.templateId)) || templates[0];
+    const pc = template?.primaryColor || '#0066cc';
+    const ac = template?.accentColor || '#e8f4fd';
+    const ff = template?.fontFamily || 'Arial';
+    const fs = template?.fontSize || '12px';
+    const sigPos = template?.signaturePosition || 'right';
+    const hdrStyle = (template?.headerStyle as string) || 'left-logo';
+    const secStyle = (template?.sectionTitleStyle as string) || 'underline';
+    const boxStyle = (template?.patientBoxStyle as string) || 'card';
 
-          ${template?.showStudyType !== false ? `
-            <div class="section">
-              <div class="section-title">Study Type</div>
-              <div class="section-content">${report.studyType}</div>
-            </div>
-          ` : ''}
+    // Derive a slightly darker border color from the accent
+    const acBorder = ac;
 
-          ${template?.showIndication !== false ? `
-            <div class="section">
-              <div class="section-title">Clinical Indication</div>
-              <div class="section-content">${report.indication}</div>
-            </div>
-          ` : ''}
+    const sectionTitleCSS = secStyle === 'filled'
+      ? `color:#fff; background:${pc}; padding:7px 16px; margin-bottom:14px; margin-left:-16px; margin-right:-16px; font-size:14px; font-weight:700; letter-spacing:0.03em;`
+      : secStyle === 'sidebar'
+      ? `color:#1a1a1a; border-left:4px solid ${pc}; padding-left:10px; margin-bottom:12px; font-size:15px; font-weight:700;`
+      : secStyle === 'pill'
+      ? `color:#fff; background:${pc}; border-radius:30px; padding:4px 16px; display:inline-block; margin-bottom:12px; font-size:13px; font-weight:700;`
+      : secStyle === 'minimal'
+      ? `color:#1a1a1a; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; font-size:12px; margin-bottom:10px;`
+      : /* underline default */ `color:${pc}; border-bottom:2px solid ${pc}; padding-bottom:7px; margin-bottom:14px; font-size:16px; font-weight:700;`;
 
-          ${template?.showFindings !== false ? `
-            <div class="section">
-              <div class="section-title">Findings</div>
-              <div class="section-content">${report.findings.replace(/\n/g, '<br><br>')}</div>
-            </div>
-          ` : ''}
+    const patientBoxCSS = boxStyle === 'banner'
+      ? `background:${pc}; color:#fff; padding:16px 20px; border-radius:0; margin-bottom:28px;`
+      : boxStyle === 'table'
+      ? `border:1px solid #ccc; border-radius:4px; padding:0; margin-bottom:28px; overflow:hidden;`
+      : boxStyle === 'minimal'
+      ? `border-bottom:2px solid ${pc}; padding-bottom:16px; background:none; margin-bottom:28px;`
+      : /* card default */ `background:${ac}; border:1px solid ${acBorder}; border-radius:6px; padding:16px 20px; margin-bottom:28px;`;
 
-          ${template?.showImpression !== false ? `
-            <div class="section">
-              <div class="section-title">Impression</div>
-              <div class="section-content">${report.impression.replace(/\n/g, '<br><br>')}</div>
-            </div>
-          ` : ''}
+    const patientBoxH3CSS = boxStyle === 'banner'
+      ? `color:#fff; border-bottom:1px solid rgba(255,255,255,0.4); padding-bottom:8px; margin-bottom:10px; font-size:14px;`
+      : `color:${pc}; border-bottom:1px solid ${acBorder}; padding-bottom:8px; margin-bottom:10px; font-size:14px;`;
 
-          ${template?.showSignature !== false ? `
-            <div class="signature-area">
-              <div class="signature-line"></div>
-              <div class="signature-text">Physician Signature & Date</div>
-              ${report.isFinalized && report.finalizedAt ? `
-                <div class="finalized-text" style="margin-top: 15px; font-size: 11px; color: #22c55e; font-weight: 600;">
-                  Electronically signed on ${new Date(report.finalizedAt).toLocaleDateString()}
-                </div>
-              ` : ''}
-            </div>
-          ` : ''}
+    const headerCSS = hdrStyle === 'centered'
+      ? `text-align:center; border-bottom:3px solid ${pc}; padding-bottom:18px; margin-bottom:26px;`
+      : hdrStyle === 'compact'
+      ? `display:flex; align-items:center; gap:14px; border-bottom:2px solid ${pc}; padding-bottom:10px; margin-bottom:20px;`
+      : /* left-logo default */ `display:flex; align-items:flex-start; gap:20px; border-bottom:3px solid ${pc}; padding-bottom:18px; margin-bottom:26px;`;
 
-          ${template?.showFooter !== false ? `
-            <div class="footer">
-              ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
-              ${template?.showGenerationDate !== false ? `<div>Report Generated: ${format(new Date(), 'MMMM dd, yyyy')}</div>` : ''}
-              <div>Reporting Room Medical System</div>
-            </div>
-          ` : ''}
-        </body>
-      </html>
-    `);
-    
+    const logoCSS = hdrStyle === 'centered'
+      ? `display:inline-block; margin-bottom:10px;`
+      : hdrStyle === 'compact'
+      ? `flex-shrink:0;`
+      : `flex-shrink:0;`;
+
+    const logoImgCSS = hdrStyle === 'compact' ? `max-height:48px; max-width:120px;` : `max-height:80px; max-width:200px;`;
+    const h1Size = hdrStyle === 'compact' ? '16px' : '22px';
+    const subtitleSize = hdrStyle === 'compact' ? '12px' : '14px';
+
+    const clinicName = clinicData?.name || clinicSettings?.clinicName || 'Medical Clinic';
+    const clinicAddress = clinicData?.address || clinicSettings?.address || '';
+    const clinicPhone = clinicData?.phone || clinicSettings?.phone || '';
+    const clinicFax = clinicData?.fax || '';
+    const clinicEmail = clinicData?.email || '';
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Medical Report – ${report.patientName}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:${ff},sans-serif;font-size:${fs};line-height:1.65;color:#1a1a1a;background:#fff;padding:32px 40px;max-width:820px;}
+    .header{${headerCSS}}
+    .header-logo{${logoCSS}}
+    .header-logo img{object-fit:contain;display:block;${logoImgCSS}}
+    .header-info{flex:1;}
+    .header-info h1{font-size:${h1Size};font-weight:700;color:${pc};margin-bottom:4px;}
+    .header-info .subtitle{font-size:${subtitleSize};color:#555;margin:2px 0;}
+    .clinic-info{font-size:12px;color:#777;margin-top:2px;}
+    .patient-box{${patientBoxCSS}display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;}
+    .patient-box h3{grid-column:span 2;${patientBoxH3CSS}font-weight:700;}
+    .pi{font-size:13px;margin-bottom:2px;}
+    .pi .label{font-weight:bold;color:#444;}
+    .ur{color:#1d4ed8;font-family:monospace;font-weight:bold;}
+    .section{margin-bottom:26px;page-break-inside:avoid;}
+    .section-title{${sectionTitleCSS}}
+    .section-content{font-size:14px;line-height:1.75;white-space:pre-wrap;}
+    .worksheet-img{max-width:100%;border:1px solid #ddd;border-radius:4px;margin-bottom:24px;display:block;}
+    .amended-note{background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:16px;font-size:12px;color:#92400e;}
+    .signature-area{margin-top:40px;padding-top:16px;border-top:1px solid #ddd;text-align:${sigPos};}
+    .sig-line{border-top:1.5px solid #555;width:220px;display:inline-block;margin-bottom:6px;}
+    .sig-name{font-weight:700;font-size:14px;}
+    .sig-creds{font-size:12px;color:#555;}
+    .finalized{margin-top:6px;font-size:11px;color:#16a34a;font-weight:600;}
+    .footer{margin-top:36px;padding-top:12px;border-top:1px solid #eee;font-size:11px;color:#888;text-align:center;}
+    @media print{body{padding:16px;}@page{margin:15mm;}}
+  </style>
+</head>
+<body>
+  ${template?.showHeader !== false ? `<div class="header">
+    ${clinicLogoApiUrl ? `<div class="header-logo"><img src="${clinicLogoApiUrl}" alt="Clinic Logo" /></div>` : ''}
+    <div class="header-info">
+      <h1>${clinicName}</h1>
+      <div class="subtitle">Medical Examination Report</div>
+      ${clinicAddress ? `<div class="clinic-info">${clinicAddress}</div>` : ''}
+      ${clinicPhone ? `<div class="clinic-info">Phone: ${clinicPhone}</div>` : ''}
+      ${clinicFax ? `<div class="clinic-info">Fax: ${clinicFax}</div>` : ''}
+      ${clinicEmail ? `<div class="clinic-info">${clinicEmail}</div>` : ''}
+    </div>
+  </div>` : ''}
+
+  ${report.isAmended ? `<div class="amended-note">&#9888; This report has been amended. Original findings may have changed.</div>` : ''}
+
+  <div class="patient-box">
+    <h3>Patient Information</h3>
+    <div class="pi"><span class="label">Patient Name:</span> ${report.patientName}</div>
+    ${report.patientUrNumber ? `<div class="pi"><span class="label">UR Number:</span> <span class="ur">UR ${report.patientUrNumber}</span></div>` : '<div></div>'}
+    <div class="pi"><span class="label">Date of Birth:</span> ${report.patientDob}</div>
+    <div class="pi"><span class="label">Exam Date:</span> ${report.examDate}</div>
+    <div class="pi"><span class="label">Report ID:</span> ${report.id}</div>
+    <div class="pi"><span class="label">Report Date:</span> ${format(new Date(), 'MMMM dd, yyyy')}</div>
+  </div>
+
+  ${template?.showStudyType !== false ? `<div class="section"><div class="section-title">Study Type</div><div class="section-content">${report.studyType}</div></div>` : ''}
+  ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
+  ${template?.showFindings !== false ? `<div class="section"><div class="section-title">Findings</div><div class="section-content">${report.findings.replace(/\n/g, '<br><br>')}</div></div>` : ''}
+  ${template?.showImpression !== false ? `<div class="section"><div class="section-title">Impression</div><div class="section-content">${report.impression.replace(/\n/g, '<br><br>')}</div></div>` : ''}
+
+  ${template?.showSignature !== false ? `<div class="signature-area">
+    <div class="sig-line"></div>
+    <div class="sig-name">Physician Signature &amp; Date</div>
+    ${report.isFinalized && report.finalizedAt ? `<div class="finalized">Electronically signed on ${new Date(report.finalizedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>` : ''}
+  </div>` : ''}
+
+  ${template?.showFooter !== false ? `<div class="footer">
+    ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
+    ${template?.showGenerationDate !== false ? `<div>Report Generated: ${format(new Date(), 'MMMM dd, yyyy')}</div>` : ''}
+  </div>` : ''}
+</body>
+</html>`);
+
     printWindow.document.close();
     printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+    setTimeout(() => { printWindow.print(); }, 250);
   };
 
   const handleExportDOCX = async (report: Report) => {
@@ -641,14 +575,59 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     }
 
     const clinic = clinicSettings;
-    const primaryColor = "#0066cc";
+    const template = templates.find((t: ReportTemplate) => t.id === (report.templateId)) || templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
+    const pc = template?.primaryColor || '#0066cc';
+    const ac = template?.accentColor || '#e8f4fd';
+    const ff = template?.fontFamily || 'Arial';
+    const fs = template?.fontSize || '13px';
+    const sigPos = template?.signaturePosition || 'right';
+    const hdrStyle = (template?.headerStyle as string) || 'left-logo';
+    const secStyle = (template?.sectionTitleStyle as string) || 'underline';
+    const boxStyle = (template?.patientBoxStyle as string) || 'card';
     const today = format(new Date(), 'MMMM dd, yyyy');
+
+    const sectionTitleCSS = secStyle === 'filled'
+      ? `color:#fff;background:${pc};padding:6px 14px;margin-bottom:12px;font-size:14px;font-weight:700;letter-spacing:0.03em;`
+      : secStyle === 'sidebar'
+      ? `color:#1a1a1a;border-left:4px solid ${pc};padding-left:10px;margin-bottom:10px;font-size:15px;font-weight:700;`
+      : secStyle === 'pill'
+      ? `color:#fff;background:${pc};border-radius:30px;padding:3px 14px;display:inline-block;margin-bottom:10px;font-size:13px;font-weight:700;`
+      : secStyle === 'minimal'
+      ? `color:#1a1a1a;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;font-size:11px;margin-bottom:8px;`
+      : `color:${pc};border-bottom:2px solid ${pc};padding-bottom:5px;margin-bottom:10px;font-size:15px;font-weight:700;`;
+
+    const patientBoxCSS = boxStyle === 'banner'
+      ? `background:${pc};color:#fff;padding:14px 18px;border-radius:0;margin-bottom:22px;`
+      : boxStyle === 'table'
+      ? `border:1px solid #ccc;border-radius:4px;padding:0;margin-bottom:22px;overflow:hidden;`
+      : boxStyle === 'minimal'
+      ? `border-bottom:2px solid ${pc};padding-bottom:14px;background:none;margin-bottom:22px;`
+      : `background:${ac};border:1px solid ${ac};border-radius:6px;padding:14px 18px;margin-bottom:22px;`;
+
+    const patientBoxH3CSS = boxStyle === 'banner'
+      ? `color:#fff;border-bottom:1px solid rgba(255,255,255,0.4);padding-bottom:6px;margin-bottom:8px;font-size:13px;`
+      : `color:${pc};border-bottom:1px solid ${ac};padding-bottom:6px;margin-bottom:8px;font-size:13px;`;
+
+    const headerCSS = hdrStyle === 'centered'
+      ? `text-align:center;border-bottom:3px solid ${pc};padding-bottom:16px;margin-bottom:22px;`
+      : hdrStyle === 'compact'
+      ? `display:flex;align-items:center;gap:12px;border-bottom:2px solid ${pc};padding-bottom:10px;margin-bottom:18px;`
+      : `display:flex;align-items:flex-start;gap:18px;border-bottom:3px solid ${pc};padding-bottom:16px;margin-bottom:22px;`;
+
+    const logoImgCSS = hdrStyle === 'compact' ? `max-height:44px;max-width:110px;` : `max-height:70px;max-width:180px;`;
+    const h1Size = hdrStyle === 'compact' ? '16px' : '20px';
 
     // Load clinic logo for report header
     let clinicLogoDataUrl: string | null = null;
     if (clinicLogoApiUrl) {
       clinicLogoDataUrl = await toBase64(clinicLogoApiUrl);
     }
+
+    const clinicName = clinicData?.name || clinic?.clinicName || 'Medical Clinic';
+    const clinicAddress = clinicData?.address || clinic?.address || '';
+    const clinicPhone = clinicData?.phone || clinic?.phone || '';
+    const clinicFax = clinicData?.fax || '';
+    const clinicEmail = clinicData?.email || '';
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -657,47 +636,47 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Medical Report – ${report.patientName}</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #222; background: #fff; padding: 32px 40px; max-width: 780px; margin: 0 auto; }
-    .header { display: flex; align-items: flex-start; gap: 20px; border-bottom: 3px solid ${primaryColor}; padding-bottom: 18px; margin-bottom: 24px; }
-    .header-logo { flex-shrink: 0; }
-    .header-logo img { max-height: 72px; max-width: 180px; object-fit: contain; display: block; }
-    .header-info { flex: 1; }
-    .header-info h1 { font-size: 20px; font-weight: bold; color: ${primaryColor}; margin-bottom: 3px; }
-    .header-info .sub { font-size: 13px; color: #555; }
-    .header-info .clinic-info { font-size: 12px; color: #777; margin-top: 2px; }
-    .patient-box { background: #f4f8ff; border: 1px solid #d0e4ff; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
-    .patient-box h3 { grid-column: span 2; font-size: 14px; font-weight: bold; color: ${primaryColor}; border-bottom: 1px solid #c0d8ff; padding-bottom: 6px; margin-bottom: 4px; }
-    .pi { font-size: 13px; }
-    .pi .label { font-weight: bold; color: #444; }
-    .ur { color: #1d4ed8; font-family: monospace; font-weight: bold; }
-    .section { margin-bottom: 22px; page-break-inside: avoid; }
-    .section-title { font-size: 15px; font-weight: bold; color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 5px; margin-bottom: 10px; }
-    .section-content { font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
-    .worksheet-img { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 24px; display: block; }
-    .signature-area { margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd; }
-    .sig-img { max-height: 70px; margin-bottom: 4px; }
-    .sig-name { font-weight: bold; font-size: 13px; }
-    .sig-creds { font-size: 12px; color: #555; }
-    .finalized { margin-top: 6px; font-size: 11px; color: #16a34a; font-weight: 600; }
-    .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #eee; font-size: 11px; color: #888; text-align: center; }
-    .amended-note { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px; padding: 8px 12px; margin-bottom: 16px; font-size: 12px; color: #92400e; }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:${ff},Arial,sans-serif;font-size:${fs};color:#222;background:#fff;padding:30px 38px;max-width:780px;margin:0 auto;}
+    .header{${headerCSS}}
+    .header-logo{flex-shrink:0;}
+    .header-logo img{object-fit:contain;display:block;${logoImgCSS}}
+    .header-info{flex:1;}
+    .header-info h1{font-size:${h1Size};font-weight:700;color:${pc};margin-bottom:3px;}
+    .header-info .sub{font-size:13px;color:#555;}
+    .header-info .clinic-info{font-size:12px;color:#777;margin-top:2px;}
+    .patient-box{${patientBoxCSS}display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;}
+    .patient-box h3{grid-column:span 2;${patientBoxH3CSS}font-weight:700;}
+    .pi{font-size:12px;}
+    .pi .label{font-weight:bold;color:#444;}
+    .ur{color:#1d4ed8;font-family:monospace;font-weight:bold;}
+    .section{margin-bottom:20px;page-break-inside:avoid;}
+    .section-title{${sectionTitleCSS}}
+    .section-content{font-size:13px;line-height:1.75;white-space:pre-wrap;}
+    .worksheet-img{max-width:100%;border:1px solid #ddd;border-radius:4px;margin-bottom:22px;display:block;}
+    .sig-area{margin-top:36px;padding-top:14px;border-top:1px solid #ddd;text-align:${sigPos};}
+    .sig-img{max-height:68px;margin-bottom:4px;}
+    .sig-name{font-weight:bold;font-size:13px;}
+    .sig-creds{font-size:12px;color:#555;}
+    .finalized{margin-top:5px;font-size:11px;color:#16a34a;font-weight:600;}
+    .footer{margin-top:30px;padding-top:10px;border-top:1px solid #eee;font-size:11px;color:#888;text-align:center;}
+    .amended-note{background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:#92400e;}
   </style>
 </head>
 <body>
-  <div class="header">
+  ${template?.showHeader !== false ? `<div class="header">
     ${clinicLogoDataUrl ? `<div class="header-logo"><img src="${clinicLogoDataUrl}" alt="Clinic Logo" /></div>` : ''}
     <div class="header-info">
-      <h1>${clinicData?.name || clinic?.clinicName || 'Medical Clinic'}</h1>
+      <h1>${clinicName}</h1>
       <div class="sub">Medical Examination Report</div>
-      ${(clinicData?.address || clinic?.address) ? `<div class="clinic-info">${clinicData?.address || clinic?.address}</div>` : ''}
-      ${(clinicData?.phone || clinic?.phone) ? `<div class="clinic-info">Phone: ${clinicData?.phone || clinic?.phone}</div>` : ''}
-      ${clinicData?.fax ? `<div class="clinic-info">Fax: ${clinicData.fax}</div>` : ''}
-      ${clinicData?.email ? `<div class="clinic-info">${clinicData.email}</div>` : ''}
+      ${clinicAddress ? `<div class="clinic-info">${clinicAddress}</div>` : ''}
+      ${clinicPhone ? `<div class="clinic-info">Phone: ${clinicPhone}</div>` : ''}
+      ${clinicFax ? `<div class="clinic-info">Fax: ${clinicFax}</div>` : ''}
+      ${clinicEmail ? `<div class="clinic-info">${clinicEmail}</div>` : ''}
     </div>
-  </div>
+  </div>` : ''}
 
-  ${report.isAmended ? `<div class="amended-note">⚠ This report has been amended. Original findings may have changed.</div>` : ''}
+  ${report.isAmended ? `<div class="amended-note">&#9888; This report has been amended. Original findings may have changed.</div>` : ''}
 
   <div class="patient-box">
     <h3>Patient Information</h3>
@@ -709,39 +688,24 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     <div class="pi"><span class="label">Report Date:</span> ${today}</div>
   </div>
 
-  ${worksheetDataUrl ? `<img class="worksheet-img" src="${worksheetDataUrl}" alt="Original Worksheet" />` : ''}
+  ${template?.showWorksheetInReport && worksheetDataUrl ? `<img class="worksheet-img" src="${worksheetDataUrl}" alt="Original Worksheet" />` : ''}
 
-  <div class="section">
-    <div class="section-title">Study Type</div>
-    <div class="section-content">${report.studyType}</div>
-  </div>
+  ${template?.showStudyType !== false ? `<div class="section"><div class="section-title">Study Type</div><div class="section-content">${report.studyType}</div></div>` : ''}
+  ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
+  ${template?.showFindings !== false ? `<div class="section"><div class="section-title">Findings</div><div class="section-content">${report.findings}</div></div>` : ''}
+  ${template?.showImpression !== false ? `<div class="section"><div class="section-title">Impression</div><div class="section-content">${report.impression}</div></div>` : ''}
 
-  <div class="section">
-    <div class="section-title">Clinical Indication</div>
-    <div class="section-content">${report.indication}</div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Findings</div>
-    <div class="section-content">${report.findings}</div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Impression</div>
-    <div class="section-content">${report.impression}</div>
-  </div>
-
-  <div class="signature-area">
+  ${template?.showSignature !== false ? `<div class="sig-area">
     ${signatureDataUrl ? `<img class="sig-img" src="${signatureDataUrl}" alt="Physician Signature" />` : ''}
     ${physicianName ? `<div class="sig-name">${physicianTitle ? physicianTitle + ' ' : ''}${physicianName}</div>` : ''}
     ${physicianCredentials ? `<div class="sig-creds">${physicianCredentials}</div>` : ''}
     ${report.isFinalized && report.finalizedAt ? `<div class="finalized">Electronically signed on ${new Date(report.finalizedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>` : ''}
-  </div>
+  </div>` : ''}
 
-  <div class="footer">
-    <div>Report generated: ${today}</div>
-    <div>${clinic?.clinicName || ''}</div>
-  </div>
+  ${template?.showFooter !== false ? `<div class="footer">
+    ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
+    ${template?.showGenerationDate !== false ? `<div>Report generated: ${today}</div>` : ''}
+  </div>` : ''}
 </body>
 </html>`;
 

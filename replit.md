@@ -63,6 +63,7 @@ Preferred communication style: Simple, everyday language.
 - **Report Generation**: AI-powered creation of structured medical reports
 - **Report Preview**: Real-time preview with physician information
 - **Export Options**: PDF and DOCX export with customizable styling
+- **Report Design Templates**: Rich per-template visual customization — `primaryColor`, `accentColor`, `headerStyle` (left-logo/centered/compact), `sectionTitleStyle` (underline/filled/sidebar/pill/minimal), `patientBoxStyle` (card/table/minimal/banner), `fontFamily`, `fontSize`, `signaturePosition`, `showWorksheetInReport`. Styles applied to both PDF export and Distribute HTML output. Template editor uses card-picker UI for visual selection. Template list cards show colour swatches and style badges.
 
 #### Admin Panel
 - **Training Data Management**: Upload and categorize worksheet-report pairs for AI training (scan-specific types like "Lower Limb Venous", "Carotid Duplex", "Abdominal Aorta", "Post Endovenous Intervention")

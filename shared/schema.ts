@@ -174,8 +174,13 @@ export const reportTemplates = pgTable("report_templates", {
   
   // Styling options
   primaryColor: text("primary_color").notNull().default('#0066cc'),
+  accentColor: text("accent_color").default('#e8f4fd'),
   fontFamily: text("font_family").notNull().default('Arial'),
   fontSize: text("font_size").notNull().default('12px'),
+  headerStyle: text("header_style").default('left-logo'), // 'left-logo' | 'centered' | 'compact'
+  sectionTitleStyle: text("section_title_style").default('underline'), // 'underline' | 'filled' | 'sidebar' | 'pill' | 'minimal'
+  patientBoxStyle: text("patient_box_style").default('card'), // 'card' | 'table' | 'minimal' | 'banner'
+  showWorksheetInReport: boolean("show_worksheet_in_report").default(false),
   
   isDefault: boolean("is_default").notNull().default(false),
   userId: text("user_id"), // Optional: for user-specific templates

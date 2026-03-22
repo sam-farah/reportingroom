@@ -50,9 +50,14 @@ interface TemplateFormData {
   
   // Styling options
   primaryColor: string;
+  accentColor: string;
   fontFamily: string;
   fontSize: string;
-  
+  headerStyle: 'left-logo' | 'centered' | 'compact';
+  sectionTitleStyle: 'underline' | 'filled' | 'sidebar' | 'pill' | 'minimal';
+  patientBoxStyle: 'card' | 'table' | 'minimal' | 'banner';
+  showWorksheetInReport: boolean;
+
   isDefault: boolean;
 }
 
@@ -75,8 +80,13 @@ const defaultFormData: TemplateFormData = {
   showSignature: true,
   signaturePosition: 'right',
   primaryColor: '#0066cc',
+  accentColor: '#e8f4fd',
   fontFamily: 'Arial',
   fontSize: '12px',
+  headerStyle: 'left-logo',
+  sectionTitleStyle: 'underline',
+  patientBoxStyle: 'card',
+  showWorksheetInReport: false,
   isDefault: false,
 };
 
@@ -464,8 +474,13 @@ export default function Templates() {
       showSignature: template.showSignature,
       signaturePosition: template.signaturePosition as 'left' | 'right' | 'center',
       primaryColor: template.primaryColor,
+      accentColor: template.accentColor || '#e8f4fd',
       fontFamily: template.fontFamily,
       fontSize: template.fontSize,
+      headerStyle: (template.headerStyle as any) || 'left-logo',
+      sectionTitleStyle: (template.sectionTitleStyle as any) || 'underline',
+      patientBoxStyle: (template.patientBoxStyle as any) || 'card',
+      showWorksheetInReport: template.showWorksheetInReport || false,
       isDefault: template.isDefault,
     });
     setIsDialogOpen(true);
@@ -510,8 +525,13 @@ export default function Templates() {
       showSignature: formData.showSignature,
       signaturePosition: formData.signaturePosition,
       primaryColor: formData.primaryColor,
+      accentColor: formData.accentColor,
       fontFamily: formData.fontFamily,
       fontSize: formData.fontSize,
+      headerStyle: formData.headerStyle,
+      sectionTitleStyle: formData.sectionTitleStyle,
+      patientBoxStyle: formData.patientBoxStyle,
+      showWorksheetInReport: formData.showWorksheetInReport,
       isDefault: formData.isDefault,
     };
 
@@ -771,25 +791,18 @@ export default function Templates() {
               <p className="text-sm text-gray-600 mb-3">
                 {template.description || "No description provided"}
               </p>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-500">Format:</span>
-                  <span className="font-medium uppercase">{template.templateType}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-500">Layout:</span>
-                  <span className="font-medium capitalize">{template.patientInfoLayout}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-500">Color:</span>
-                  <div className="flex items-center">
-                    <div 
-                      className="w-4 h-4 rounded border mr-1" 
-                      style={{ backgroundColor: template.primaryColor }}
-                    ></div>
-                    <span className="font-medium">{template.primaryColor}</span>
-                  </div>
-                </div>
+              {/* Colour swatch row */}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 rounded border shadow-sm" style={{ backgroundColor: template.primaryColor }} title={`Primary: ${template.primaryColor}`} />
+                <div className="w-7 h-7 rounded border shadow-sm" style={{ backgroundColor: template.accentColor || '#e8f4fd' }} title={`Accent: ${template.accentColor || '#e8f4fd'}`} />
+                <span className="text-xs text-muted-foreground ml-1 font-mono">{template.primaryColor}</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-full capitalize">{template.fontFamily || 'Arial'}</span>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-full">{template.fontSize || '12px'}</span>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-full capitalize">{((template.headerStyle as string) || 'left-logo').replace('-', ' ')}</span>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-full capitalize">{(template.sectionTitleStyle as string) || 'underline'}</span>
+                <span className="text-xs bg-muted px-2 py-0.5 rounded-full capitalize">{(template.patientBoxStyle as string) || 'card'} box</span>
               </div>
               </CardContent>
               </Card>
@@ -1143,81 +1156,155 @@ export default function Templates() {
             </div>
 
             {/* Styling Options */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Styling</h3>
-              
-              <div className="space-y-2">
-                <Label htmlFor="primaryColor">Primary Color</Label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="color"
-                    id="primaryColor"
-                    value={formData.primaryColor}
-                    onChange={(e) => updateFormData('primaryColor', e.target.value)}
-                    className="w-12 h-8 rounded border cursor-pointer"
-                  />
-                  <Input
-                    value={formData.primaryColor}
-                    onChange={(e) => updateFormData('primaryColor', e.target.value)}
-                    className="flex-1"
-                  />
+            <div className="space-y-5">
+              <h3 className="text-lg font-semibold">Styling & Design</h3>
+
+              {/* Colors */}
+              <div className="space-y-3">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Colours</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="primaryColor" className="text-sm">Primary colour</Label>
+                    <p className="text-xs text-muted-foreground">Headings, borders, titles</p>
+                    <div className="flex items-center gap-2">
+                      <input type="color" id="primaryColor" value={formData.primaryColor} onChange={(e) => updateFormData('primaryColor', e.target.value)} className="w-10 h-8 rounded border cursor-pointer flex-shrink-0" />
+                      <Input value={formData.primaryColor} onChange={(e) => updateFormData('primaryColor', e.target.value)} className="font-mono text-sm" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="accentColor" className="text-sm">Accent colour</Label>
+                    <p className="text-xs text-muted-foreground">Patient box background, highlights</p>
+                    <div className="flex items-center gap-2">
+                      <input type="color" id="accentColor" value={formData.accentColor} onChange={(e) => updateFormData('accentColor', e.target.value)} className="w-10 h-8 rounded border cursor-pointer flex-shrink-0" />
+                      <Input value={formData.accentColor} onChange={(e) => updateFormData('accentColor', e.target.value)} className="font-mono text-sm" />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="fontFamily">Font Family</Label>
-                  <Select
-                    value={formData.fontFamily}
-                    onValueChange={(value) => updateFormData('fontFamily', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Arial">Arial</SelectItem>
-                      <SelectItem value="Times New Roman">Times New Roman</SelectItem>
-                      <SelectItem value="Helvetica">Helvetica</SelectItem>
-                      <SelectItem value="Calibri">Calibri</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="fontSize">Font Size</Label>
-                  <Select
-                    value={formData.fontSize}
-                    onValueChange={(value) => updateFormData('fontSize', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10px">10px</SelectItem>
-                      <SelectItem value="11px">11px</SelectItem>
-                      <SelectItem value="12px">12px</SelectItem>
-                      <SelectItem value="14px">14px</SelectItem>
-                      <SelectItem value="16px">16px</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {/* Typography */}
+              <div className="space-y-3">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Typography</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Font family</Label>
+                    <Select value={formData.fontFamily} onValueChange={(value) => updateFormData('fontFamily', value)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Arial">Arial</SelectItem>
+                        <SelectItem value="Helvetica">Helvetica</SelectItem>
+                        <SelectItem value="Times New Roman">Times New Roman</SelectItem>
+                        <SelectItem value="Georgia">Georgia</SelectItem>
+                        <SelectItem value="Calibri">Calibri</SelectItem>
+                        <SelectItem value="Garamond">Garamond</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Body font size</Label>
+                    <Select value={formData.fontSize} onValueChange={(value) => updateFormData('fontSize', value)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10px">Small (10px)</SelectItem>
+                        <SelectItem value="11px">11px</SelectItem>
+                        <SelectItem value="12px">Regular (12px)</SelectItem>
+                        <SelectItem value="13px">13px</SelectItem>
+                        <SelectItem value="14px">Large (14px)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
 
+              {/* Header Layout */}
               <div className="space-y-2">
-                <Label htmlFor="signaturePosition">Signature Position</Label>
-                <Select
-                  value={formData.signaturePosition}
-                  onValueChange={(value) => updateFormData('signaturePosition', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Header Layout</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: 'left-logo', label: 'Logo Left', desc: 'Logo + info side by side' },
+                    { value: 'centered', label: 'Centred', desc: 'Everything centred' },
+                    { value: 'compact', label: 'Compact', desc: 'Slim single-line header' },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => updateFormData('headerStyle', opt.value)}
+                      className={`border rounded-lg p-3 text-left transition-colors ${formData.headerStyle === opt.value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}
+                    >
+                      <div className="text-sm font-medium">{opt.label}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section Title Style */}
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Section Title Style</Label>
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+                  {([
+                    { value: 'underline', label: 'Underline', desc: 'Title with coloured underline' },
+                    { value: 'filled', label: 'Filled bar', desc: 'Coloured background band' },
+                    { value: 'sidebar', label: 'Left bar', desc: 'Coloured side accent' },
+                    { value: 'pill', label: 'Pill badge', desc: 'Rounded pill label' },
+                    { value: 'minimal', label: 'Minimal', desc: 'Plain bold text only' },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => updateFormData('sectionTitleStyle', opt.value)}
+                      className={`border rounded-lg p-3 text-left transition-colors ${formData.sectionTitleStyle === opt.value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}
+                    >
+                      <div className="text-sm font-medium">{opt.label}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Patient Box Style */}
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Patient Information Box</Label>
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                  {([
+                    { value: 'card', label: 'Card', desc: 'Shaded card with border' },
+                    { value: 'table', label: 'Table', desc: 'Grid with dividers' },
+                    { value: 'banner', label: 'Banner', desc: 'Full-width coloured bar' },
+                    { value: 'minimal', label: 'Minimal', desc: 'Plain inline text' },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => updateFormData('patientBoxStyle', opt.value)}
+                      className={`border rounded-lg p-3 text-left transition-colors ${formData.patientBoxStyle === opt.value ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/50'}`}
+                    >
+                      <div className="text-sm font-medium">{opt.label}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Signature Position */}
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Signature Position</Label>
+                <Select value={formData.signaturePosition} onValueChange={(value) => updateFormData('signaturePosition', value)}>
+                  <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="left">Left</SelectItem>
-                    <SelectItem value="center">Center</SelectItem>
+                    <SelectItem value="center">Centre</SelectItem>
                     <SelectItem value="right">Right</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Worksheet in report */}
+              <div className="flex items-center justify-between py-3 border-t">
+                <div>
+                  <div className="text-sm font-medium">Include worksheet image in report</div>
+                  <div className="text-xs text-muted-foreground">Embeds a thumbnail of the uploaded worksheet below the header</div>
+                </div>
+                <Switch checked={formData.showWorksheetInReport} onCheckedChange={(v) => updateFormData('showWorksheetInReport', v)} />
               </div>
             </div>
 
