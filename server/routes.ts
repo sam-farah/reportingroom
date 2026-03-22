@@ -1193,9 +1193,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Look up per-scan-type content template for this clinic
+      // If the client passed a specific scan type override, use that; otherwise auto-detect from worksheet
       let contentTemplate = null;
-      if (user?.clinicId && worksheet.studyType) {
-        contentTemplate = await storage.getScanTypeContentTemplate(user.clinicId, worksheet.studyType);
+      const { contentTemplateScanType } = req.body;
+      const effectiveScanType = contentTemplateScanType || worksheet.studyType;
+      if (user?.clinicId && effectiveScanType) {
+        contentTemplate = await storage.getScanTypeContentTemplate(user.clinicId, effectiveScanType);
+        if (contentTemplateScanType) {
+          console.log(`Using client-selected content template for scan type: ${contentTemplateScanType}`);
+        }
       }
 
       const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, isFromPdf, contentTemplate);

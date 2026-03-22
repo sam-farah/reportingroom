@@ -14,7 +14,7 @@ import { queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import DrawingCanvas from "./drawing-canvas";
-import type { Worksheet, Physician, Report, Patient } from "@shared/schema";
+import type { Worksheet, Physician, Report, Patient, ScanTypeContentTemplate } from "@shared/schema";
 
 export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed, defaultTab, onReportGenerated }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw"; onReportGenerated?: (reportId: number) => void } = {}) {
   const { toast } = useToast();
@@ -49,6 +49,15 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
       return res.json();
     },
   });
+
+  const { data: contentTemplates = [] } = useQuery<ScanTypeContentTemplate[]>({
+    queryKey: ["/api/content-templates"],
+  });
+
+  // Only show content templates that have actual content saved (green-dot ones)
+  const populatedContentTemplates = contentTemplates.filter(
+    (t) => (t.findingsTemplate && t.findingsTemplate.trim()) || (t.impressionTemplate && t.impressionTemplate.trim())
+  );
 
   const filteredPatients = patientSearch.trim().length > 0
     ? allPatients.filter(p => {
@@ -258,6 +267,7 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
           worksheetId: selectedWorksheet.id,
           physicianId: parseInt(selectedPhysician),
           logoUrl,
+          contentTemplateScanType: selectedTemplate || undefined,
         }),
       });
 
@@ -628,21 +638,39 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
                   </Select>
                 </div>
 
-                {/* Template Selection */}
+                {/* Content Template Selection */}
                 <div className="mb-6">
                   <Label className="flex items-center gap-1.5">
                     <LayoutTemplate className="w-3.5 h-3.5 text-gray-500" />
-                    Template
+                    Content Template
                   </Label>
-                  <Select value={selectedTemplate} onValueChange={setSelectedTemplate} disabled>
-                    <SelectTrigger className="mt-1 text-gray-400">
-                      <SelectValue placeholder="No template (coming soon)" />
+                  <Select
+                    value={selectedTemplate || "auto"}
+                    onValueChange={(v) => setSelectedTemplate(v === "auto" ? "" : v)}
+                    disabled={populatedContentTemplates.length === 0}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder={populatedContentTemplates.length === 0 ? "No templates saved yet" : "Auto-detect from scan type"} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none" disabled>Templates coming soon</SelectItem>
+                      <SelectItem value="auto">
+                        <span className="text-gray-500">Auto-detect from scan type</span>
+                      </SelectItem>
+                      {populatedContentTemplates.map((t) => (
+                        <SelectItem key={t.scanType} value={t.scanType}>
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-green-500 inline-block flex-shrink-0" />
+                            {t.scanType}
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-gray-400 mt-1">Custom report templates will be available here</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {populatedContentTemplates.length === 0
+                      ? "Save content templates in Admin → Content Templates first"
+                      : "Override which content template the AI uses to structure this report"}
+                  </p>
                 </div>
 
                 <Button
