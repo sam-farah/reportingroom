@@ -750,6 +750,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteWorksheetTemplate(id: number): Promise<void> {
+    // Nullify templateId on any digital worksheets that reference this template
+    // before deleting, to avoid foreign key violation
+    await db.update(digitalWorksheets)
+      .set({ templateId: null })
+      .where(eq(digitalWorksheets.templateId, id));
     await db.delete(worksheetTemplates).where(eq(worksheetTemplates.id, id));
   }
 
