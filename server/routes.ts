@@ -5,7 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
-import { sendInvitationEmail } from "./email";
+import { sendInvitationEmail, sendReportEmail } from "./email";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -912,6 +912,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Amend report error:", error);
       res.status(500).json({ error: "Failed to amend report" });
+    }
+  });
+
+  // Send report via email
+  app.post("/api/reports/:id/send-email", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+
+      const { toEmail, toName, subject, reportHtml } = req.body;
+      if (!toEmail || !reportHtml) {
+        return res.status(400).json({ error: "toEmail and reportHtml are required" });
+      }
+
+      const report = await storage.getReport(id);
+      if (!report) return res.status(404).json({ error: "Report not found" });
+
+      const user = await storage.getUser(req.session.userId);
+      const clinic = user?.clinicId ? await storage.getClinic(user.clinicId) : null;
+      const clinicName = clinic?.name || "Nexus Vascular Imaging";
+
+      await sendReportEmail({
+        toEmail,
+        toName: toName || toEmail,
+        subject: subject || `Medical Report — ${report.patientName}`,
+        reportHtml,
+        clinicName,
+        patientName: report.patientName,
+      });
+
+      res.json({ success: true, message: `Report sent to ${toEmail}` });
+    } catch (error: any) {
+      console.error("Send report email error:", error);
+      res.status(500).json({ error: "Failed to send email", details: error?.message });
     }
   });
 

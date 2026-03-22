@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { Report, ReportTemplate, Physician } from "@shared/schema";
+import type { Report, ReportTemplate, Physician, ReferringDoctor } from "@shared/schema";
 import { format } from "date-fns";
 import TextShortcuts from "@/components/text-shortcuts";
 
@@ -39,6 +39,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [distributeHtml, setDistributeHtml] = useState<string>("");
   const [distributeCopied, setDistributeCopied] = useState(false);
   const [distributeLoading, setDistributeLoading] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailToName, setEmailToName] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -64,6 +69,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   // Fetch physicians for distribute feature
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
+    retry: false,
+  });
+
+  // Fetch referring doctors for distribute email dropdown
+  const { data: referringDoctors = [] } = useQuery<ReferringDoctor[]>({
+    queryKey: ["/api/referring-doctors"],
     retry: false,
   });
 
@@ -541,6 +552,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setDistributeLoading(true);
     setDistributeReport(report);
     setDistributeCopied(false);
+    setEmailSent(false);
+    setEmailSending(false);
+    setEmailTo("");
+    setEmailToName("");
+    setEmailSubject(`Medical Report — ${report.patientName}`);
 
     // Helper to fetch a URL and return a base64 data-URI
     const toBase64 = async (url: string): Promise<string | null> => {
@@ -687,6 +703,34 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       setTimeout(() => setDistributeCopied(false), 3000);
     } catch {
       toast({ title: "Copy failed", description: "Please select all and copy manually.", variant: "destructive" });
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!distributeReport || !emailTo || !distributeHtml) return;
+    setEmailSending(true);
+    setEmailSent(false);
+    try {
+      const res = await fetch(`/api/reports/${distributeReport.id}/send-email`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toEmail: emailTo,
+          toName: emailToName || emailTo,
+          subject: emailSubject || `Medical Report — ${distributeReport.patientName}`,
+          reportHtml: distributeHtml,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.details || data.error || "Send failed");
+      setEmailSent(true);
+      toast({ title: "Email Sent", description: `Report sent to ${emailTo}` });
+      setTimeout(() => setEmailSent(false), 4000);
+    } catch (err: any) {
+      toast({ title: "Send Failed", description: err.message || "Could not send email", variant: "destructive" });
+    } finally {
+      setEmailSending(false);
     }
   };
 
@@ -1850,14 +1894,14 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
 
       {/* ── Distribute Dialog ── */}
       <Dialog open={!!distributeReport} onOpenChange={(open) => { if (!open) setDistributeReport(null); }}>
-        <DialogContent className="max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-5xl w-full max-h-[92vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Share2 className="w-5 h-5 text-blue-600" />
               Distribute Report — {distributeReport?.patientName}
             </DialogTitle>
             <DialogDescription>
-              Copy the HTML below and paste it into your messaging application.
+              Send via email or copy the HTML to paste into your messaging application.
             </DialogDescription>
           </DialogHeader>
 
@@ -1869,35 +1913,127 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col flex-1 min-h-0 gap-3">
-              {/* Preview */}
-              <div className="border rounded-lg overflow-hidden flex-1 min-h-0" style={{ minHeight: 320 }}>
-                <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Preview</div>
-                <iframe
-                  srcDoc={distributeHtml}
-                  title="Report Preview"
-                  className="w-full h-full border-0"
-                  style={{ minHeight: 300 }}
-                  sandbox="allow-same-origin"
-                />
+            <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-y-auto pr-1">
+
+              {/* ── Email Section ── */}
+              <div className="border border-blue-100 rounded-lg bg-blue-50/40 p-4 space-y-3">
+                <h3 className="font-semibold text-sm text-blue-800 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                  Send via Email
+                </h3>
+
+                {/* Referring Doctor dropdown */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-600">Select Referring Doctor</Label>
+                  <Select
+                    value={emailTo ? `${emailTo}||${emailToName}` : ""}
+                    onValueChange={(val) => {
+                      if (val === "__custom") {
+                        setEmailTo("");
+                        setEmailToName("");
+                      } else {
+                        const [email, name] = val.split("||");
+                        setEmailTo(email);
+                        setEmailToName(name || "");
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder={referringDoctors.length === 0 ? "No referring doctors saved yet — enter email below" : "Choose from referring doctors…"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {referringDoctors.filter(d => d.email).map(doc => (
+                        <SelectItem key={doc.id} value={`${doc.email}||${doc.name}`}>
+                          <span className="font-medium">{doc.name}</span>
+                          {doc.practiceName && <span className="text-gray-400 ml-1 text-xs">· {doc.practiceName}</span>}
+                          <span className="text-gray-400 ml-1 text-xs">· {doc.email}</span>
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__custom">Enter email manually…</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Manual email input */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-600">Email Address *</Label>
+                    <Input
+                      type="email"
+                      placeholder="doctor@practice.com"
+                      value={emailTo}
+                      onChange={(e) => setEmailTo(e.target.value)}
+                      className="bg-white text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-600">Recipient Name</Label>
+                    <Input
+                      placeholder="Dr. Smith"
+                      value={emailToName}
+                      onChange={(e) => setEmailToName(e.target.value)}
+                      className="bg-white text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-600">Subject</Label>
+                  <Input
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    className="bg-white text-sm"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSendEmail}
+                    disabled={!emailTo || emailSending}
+                    className={emailSent ? "bg-green-600 hover:bg-green-700 text-white" : "medical-btn-primary"}
+                  >
+                    {emailSending ? (
+                      <><div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />Sending…</>
+                    ) : emailSent ? (
+                      <><Check className="w-4 h-4 mr-2" />Sent!</>
+                    ) : (
+                      <><svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>Send Email</>
+                    )}
+                  </Button>
+                </div>
               </div>
 
-              {/* Raw HTML */}
-              <div className="border rounded-lg overflow-hidden" style={{ maxHeight: 180 }}>
-                <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Raw HTML</div>
-                <textarea
-                  readOnly
-                  value={distributeHtml}
-                  className="w-full p-3 text-xs font-mono bg-white resize-none focus:outline-none"
-                  style={{ height: 140 }}
-                />
-              </div>
+              {/* ── HTML / Preview Section ── */}
+              <div className="space-y-3">
+                {/* Preview */}
+                <div className="border rounded-lg overflow-hidden" style={{ height: 320 }}>
+                  <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Report Preview</div>
+                  <iframe
+                    srcDoc={distributeHtml}
+                    title="Report Preview"
+                    className="w-full border-0"
+                    style={{ height: 286 }}
+                    sandbox="allow-same-origin"
+                  />
+                </div>
 
-              <div className="flex justify-end">
-                <Button onClick={handleCopyHtml} className={distributeCopied ? "bg-green-600 hover:bg-green-700" : "medical-btn-primary"}>
-                  {distributeCopied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
-                  {distributeCopied ? "Copied!" : "Copy HTML"}
-                </Button>
+                {/* Raw HTML */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Copy HTML — paste into your messaging app</div>
+                  <textarea
+                    readOnly
+                    value={distributeHtml}
+                    className="w-full p-3 text-xs font-mono bg-white resize-none focus:outline-none"
+                    style={{ height: 120 }}
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleCopyHtml} variant="outline" className={distributeCopied ? "border-green-400 text-green-700" : ""}>
+                    {distributeCopied ? <Check className="w-4 h-4 mr-2 text-green-600" /> : <Copy className="w-4 h-4 mr-2" />}
+                    {distributeCopied ? "Copied!" : "Copy HTML"}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
