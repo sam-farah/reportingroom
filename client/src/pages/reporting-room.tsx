@@ -858,6 +858,140 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     });
   };
 
+  const handleDownloadLabelledWorksheet = async (report: Report) => {
+    try {
+      // Determine image URL
+      const imageUrl = report.digitalWorksheetId
+        ? `/api/digital-worksheets/${report.digitalWorksheetId}/image`
+        : report.worksheetId
+          ? `/api/worksheets/${report.worksheetId}/image`
+          : null;
+      if (!imageUrl) {
+        toast({ title: "No worksheet", description: "No worksheet image is attached to this report.", variant: "destructive" });
+        return;
+      }
+
+      // Load worksheet image
+      const worksheetRes = await fetch(imageUrl, { credentials: 'include' });
+      if (!worksheetRes.ok) throw new Error("Failed to load worksheet image");
+      const worksheetBlob = await worksheetRes.blob();
+      const worksheetDataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(worksheetBlob);
+      });
+
+      // Load clinic logo if available
+      let logoImg: HTMLImageElement | null = null;
+      if (clinicData?.logoUrl) {
+        try {
+          const logoRes = await fetch(clinicData.logoUrl, { credentials: 'include' });
+          if (logoRes.ok) {
+            const logoBlob = await logoRes.blob();
+            const logoDataUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.readAsDataURL(logoBlob);
+            });
+            logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => resolve(img);
+              img.onerror = reject;
+              img.src = logoDataUrl;
+            });
+          }
+        } catch { /* logo optional */ }
+      }
+
+      // Load worksheet as image element
+      const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = worksheetDataUrl;
+      });
+
+      // Set up canvas
+      const HEADER_HEIGHT = 110;
+      const PADDING = 16;
+      const canvas = document.createElement('canvas');
+      canvas.width = wsImg.width;
+      canvas.height = wsImg.height + HEADER_HEIGHT;
+      const ctx = canvas.getContext('2d')!;
+
+      // White header background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, HEADER_HEIGHT);
+
+      // Bottom border on header
+      ctx.strokeStyle = '#0066cc';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, HEADER_HEIGHT - 1.5);
+      ctx.lineTo(canvas.width, HEADER_HEIGHT - 1.5);
+      ctx.stroke();
+
+      // Draw logo on the left
+      let textStartX = PADDING;
+      if (logoImg) {
+        const logoMaxH = HEADER_HEIGHT - PADDING * 2;
+        const logoMaxW = 180;
+        const scale = Math.min(logoMaxW / logoImg.width, logoMaxH / logoImg.height, 1);
+        const logoW = logoImg.width * scale;
+        const logoH = logoImg.height * scale;
+        const logoY = (HEADER_HEIGHT - logoH) / 2;
+        ctx.drawImage(logoImg, PADDING, logoY, logoW, logoH);
+        textStartX = PADDING + logoW + 24;
+      }
+
+      // Draw patient details on the right side
+      const clinicName = clinicData?.name || clinicSettings?.clinicName || '';
+      ctx.fillStyle = '#0066cc';
+      ctx.font = `bold ${Math.round(canvas.width * 0.018)}px Arial, sans-serif`;
+      const fontSize = Math.max(11, Math.round(canvas.width * 0.018));
+      ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+      ctx.fillText(clinicName, textStartX, PADDING + fontSize);
+
+      ctx.fillStyle = '#333333';
+      ctx.font = `${fontSize - 1}px Arial, sans-serif`;
+      const lines = [
+        `Patient: ${report.patientName}`,
+        report.patientDob ? `DOB: ${report.patientDob}` : null,
+        `Exam Date: ${report.examDate}`,
+        report.patientUrNumber ? `UR: ${report.patientUrNumber}` : null,
+        `Scan: ${report.studyType}`,
+      ].filter(Boolean) as string[];
+
+      // Split into two columns if enough space
+      const colW = (canvas.width - textStartX - PADDING) / 2;
+      const leftLines = lines.slice(0, Math.ceil(lines.length / 2));
+      const rightLines = lines.slice(Math.ceil(lines.length / 2));
+      const lineH = (fontSize - 1) + 5;
+      const textY = PADDING + fontSize + 10;
+
+      leftLines.forEach((line, i) => {
+        ctx.fillText(line, textStartX, textY + i * lineH);
+      });
+      rightLines.forEach((line, i) => {
+        ctx.fillText(line, textStartX + colW, textY + i * lineH);
+      });
+
+      // Draw worksheet image below header
+      ctx.drawImage(wsImg, 0, HEADER_HEIGHT);
+
+      // Download
+      const link = document.createElement('a');
+      link.download = `worksheet-${report.patientName.replace(/\s+/g, '-')}-${report.examDate}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+
+      toast({ title: "Downloaded", description: "Labelled worksheet saved as PNG." });
+    } catch (error) {
+      console.error("Download labelled worksheet error:", error);
+      toast({ title: "Error", description: "Failed to generate labelled worksheet.", variant: "destructive" });
+    }
+  };
+
   const handleDeleteReport = (report: Report) => {
     if (window.confirm(`Are you sure you want to delete the report for ${report.patientName}? This action cannot be undone.`)) {
       deleteReportMutation.mutate(report.id);
@@ -1182,9 +1316,22 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
           <div className="flex flex-1 overflow-hidden">
             {/* Left Panel - Worksheet */}
             <div className="w-1/2 border-r bg-gray-50 flex flex-col">
-              <div className="p-4 border-b bg-white">
-                <h3 className="text-lg font-semibold">Worksheet - {editingReport.patientName}</h3>
-                <p className="text-sm text-gray-600">Original drawing or uploaded worksheet</p>
+              <div className="p-4 border-b bg-white flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">Worksheet - {editingReport.patientName}</h3>
+                  <p className="text-sm text-gray-600">Original drawing or uploaded worksheet</p>
+                </div>
+                {(editingReport.worksheetId || editingReport.digitalWorksheetId) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownloadLabelledWorksheet(editingReport)}
+                    title="Download a copy of the worksheet with clinic logo and patient details stamped at the top"
+                  >
+                    <Download className="w-4 h-4 mr-1.5" />
+                    Download Labelled Copy
+                  </Button>
+                )}
               </div>
               <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
                 {editingReport.digitalWorksheetId ? (
