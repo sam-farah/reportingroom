@@ -151,6 +151,14 @@ export async function analyzeVascularDrawing(
           content: `You are an expert vascular sonographer reviewing digital drawings on ultrasound templates. 
 
           Analyze the drawing annotations, markings, and measurements made on this ${templateName} template.
+
+          CRITICAL — RADIOLOGICAL CONVENTION FOR BILATERAL VASCULAR STUDIES:
+          Vascular ultrasound worksheets follow standard radiological convention:
+          - The LEFT side of the image = the patient's RIGHT side
+          - The RIGHT side of the image = the patient's LEFT side
+          This applies to all bilateral anatomy diagrams (carotid, aorto-iliac, iliac veins, etc.).
+          If the worksheet contains a table with explicit "RIGHT" and "LEFT" column headers, those labels are authoritative — always use them to determine which side findings belong to, rather than relying on diagram orientation alone.
+          Never call a finding "left-sided" solely because it appears on the left of the image.
           
           ${legendEntries.length > 0 ? `LEGEND REFERENCE for interpreting symbols:
 ${legendEntries.map(entry => `- ${entry.category}: ${entry.description} (${entry.imageType === 'drawing' ? 'drawn pattern' : 'image reference'})`).join('\n')}
@@ -322,6 +330,14 @@ CONTENT TEMPLATE INSTRUCTIONS:
         {
           role: "system",
           content: `You are an expert radiologist AI assistant specialized in ultrasound report generation. Generate professional ultrasound reports based on worksheet images and extracted patient data, utilizing uploaded training examples for consistency.
+
+          CRITICAL — RADIOLOGICAL CONVENTION FOR BILATERAL VASCULAR STUDIES:
+          Vascular ultrasound worksheets are displayed in standard radiological convention. This means:
+          - The LEFT side of the image = the patient's RIGHT side
+          - The RIGHT side of the image = the patient's LEFT side
+          This applies to all bilateral studies including carotid, aorto-iliac, iliac veins, and any study showing a bilateral anatomy diagram.
+          ALWAYS check for explicit "RIGHT" and "LEFT" column labels in any tabular data on the worksheet — these labels are authoritative and must take precedence over your interpretation of the diagram orientation.
+          Do NOT describe findings as "left" simply because they appear on the left of the image.
 
           REPORT STRUCTURE:
           - Study Type: (e.g., "Abdominal Ultrasound", "Pelvic Ultrasound", "Vascular Ultrasound")
