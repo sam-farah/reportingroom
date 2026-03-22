@@ -2204,7 +2204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Digital worksheet image endpoint
-  app.get("/api/digital-worksheets/:id/image", isAuthenticated, async (req, res) => {
+  app.get("/api/digital-worksheets/:id/image", async (req, res) => {
     try {
       const worksheetId = parseInt(req.params.id);
       
@@ -2342,7 +2342,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Worksheet image endpoint for uploaded files
-  app.get("/api/worksheets/:id/image", isAuthenticated, async (req, res) => {
+  app.get("/api/worksheets/:id/image", async (req, res) => {
     try {
       const worksheetId = parseInt(req.params.id);
       
