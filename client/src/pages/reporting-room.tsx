@@ -906,13 +906,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleExportDOCX(report)}
-                  >
-                    DOCX
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
                     onClick={() => handleDistribute(report)}
                     className="text-blue-600 border-blue-200 hover:bg-blue-50"
                   >
@@ -1384,13 +1377,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                     Export PDF
                   </Button>
                   <Button
-                    onClick={() => handleExportDOCX(editingReport)}
-                    variant="outline"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Export DOCX
-                  </Button>
-                  <Button
                     onClick={() => handleDistribute(editingReport)}
                     variant="outline"
                     className="text-blue-600 border-blue-200 hover:bg-blue-50"
@@ -1708,13 +1694,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Export PDF
-                  </Button>
-                  <Button
-                    onClick={() => handleExportDOCX(editingReport)}
-                    variant="outline"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Export DOCX
                   </Button>
                   <Button
                     onClick={() => handleDistribute(editingReport)}
