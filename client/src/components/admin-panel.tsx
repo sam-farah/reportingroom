@@ -75,6 +75,8 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
   const [ctIndication, setCtIndication] = useState("");
   const [ctFindings, setCtFindings] = useState("");
   const [ctImpression, setCtImpression] = useState("");
+  const [showAddCustomType, setShowAddCustomType] = useState(false);
+  const [newCustomTypeName, setNewCustomTypeName] = useState("");
 
   const { data: contentTemplates = [] } = useQuery<ScanTypeContentTemplate[]>({
     queryKey: ["/api/content-templates"],
@@ -1041,9 +1043,93 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           </div>
           <div className="flex gap-4" style={{ minHeight: 500 }}>
             {/* Scan type list */}
-            <div className="w-56 flex-shrink-0 border rounded-lg overflow-hidden">
-              <div className="bg-muted px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scan Types</div>
-              <div className="overflow-y-auto" style={{ maxHeight: 460 }}>
+            <div className="w-56 flex-shrink-0 border rounded-lg overflow-hidden flex flex-col">
+              <div className="bg-muted px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center justify-between flex-shrink-0">
+                <span>Scan Types</span>
+                <button
+                  onClick={() => { setShowAddCustomType(true); setNewCustomTypeName(""); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Add custom scan type"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Inline new custom type input */}
+              {showAddCustomType && (
+                <div className="px-2 py-2 border-b bg-blue-50 flex gap-1 flex-shrink-0">
+                  <input
+                    autoFocus
+                    value={newCustomTypeName}
+                    onChange={(e) => setNewCustomTypeName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newCustomTypeName.trim()) {
+                        const name = newCustomTypeName.trim();
+                        setSelectedScanType(name);
+                        const existing = contentTemplates.find(ct => ct.scanType === name);
+                        setCtIndication(existing?.indicationTemplate || "");
+                        setCtFindings(existing?.findingsTemplate || "");
+                        setCtImpression(existing?.impressionTemplate || "");
+                        setShowAddCustomType(false);
+                        setNewCustomTypeName("");
+                      }
+                      if (e.key === 'Escape') { setShowAddCustomType(false); setNewCustomTypeName(""); }
+                    }}
+                    placeholder="Type name, press Enter"
+                    className="flex-1 text-xs border border-blue-300 rounded px-2 py-1 outline-none bg-white"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!newCustomTypeName.trim()) return;
+                      const name = newCustomTypeName.trim();
+                      setSelectedScanType(name);
+                      const existing = contentTemplates.find(ct => ct.scanType === name);
+                      setCtIndication(existing?.indicationTemplate || "");
+                      setCtFindings(existing?.findingsTemplate || "");
+                      setCtImpression(existing?.impressionTemplate || "");
+                      setShowAddCustomType(false);
+                      setNewCustomTypeName("");
+                    }}
+                    className="text-blue-600 hover:text-blue-800 px-1"
+                    title="Confirm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => { setShowAddCustomType(false); setNewCustomTypeName(""); }}
+                    className="text-gray-400 hover:text-gray-600 px-1"
+                    title="Cancel"
+                  >
+                    <span className="text-xs">✕</span>
+                  </button>
+                </div>
+              )}
+
+              <div className="overflow-y-auto flex-1">
+                {/* Custom types that have been saved (not in canonical list) */}
+                {contentTemplates
+                  .filter(ct => !CANONICAL_SCAN_TYPES.some(s => s.name === ct.scanType))
+                  .map((ct) => {
+                    const isActive = selectedScanType === ct.scanType;
+                    return (
+                      <button
+                        key={ct.scanType}
+                        onClick={() => {
+                          setSelectedScanType(ct.scanType);
+                          setCtIndication(ct.indicationTemplate || "");
+                          setCtFindings(ct.findingsTemplate || "");
+                          setCtImpression(ct.impressionTemplate || "");
+                        }}
+                        className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 border-b transition-colors ${isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-green-500" />
+                        <span className="truncate">{ct.scanType}</span>
+                        <span className="ml-auto text-xs opacity-60 flex-shrink-0">custom</span>
+                      </button>
+                    );
+                  })}
+
+                {/* Canonical scan types */}
                 {CANONICAL_SCAN_TYPES.map((st) => {
                   const hasTemplate = contentTemplates.some(ct => ct.scanType === st.name);
                   const isActive = selectedScanType === st.name;
