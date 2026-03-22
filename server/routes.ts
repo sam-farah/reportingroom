@@ -778,19 +778,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("Starting OCR processing...");
       const ocrResult = await extractPatientDataFromWorksheet(base64Image, isFromPdf);
       console.log("OCR result:", ocrResult);
+
+      // If a linked patient ID was provided, use that patient's data instead of OCR
+      const linkedPatientId = req.body?.linkedPatientId ? parseInt(req.body.linkedPatientId) : null;
+      let linkedPatientUsed = false;
+      let finalPatientName = ocrResult.patientName;
+      let finalPatientDob = ocrResult.patientDob;
+
+      if (linkedPatientId && !isNaN(linkedPatientId)) {
+        const linkedPatient = await storage.getPatient(linkedPatientId);
+        if (linkedPatient) {
+          finalPatientName = `${linkedPatient.firstName} ${linkedPatient.lastName}`;
+          finalPatientDob = linkedPatient.dateOfBirth || ocrResult.patientDob;
+          linkedPatientUsed = true;
+          console.log("Using linked patient data instead of OCR:", finalPatientName);
+        }
+      }
       
-      // Update worksheet with OCR results
+      // Update worksheet with resolved patient data
       const updatedWorksheet = await storage.updateWorksheet(worksheetId, {
-        patientName: ocrResult.patientName,
-        patientDob: ocrResult.patientDob,
+        patientName: finalPatientName,
+        patientDob: finalPatientDob,
         examDate: ocrResult.examDate,
-        ocrProcessed: true
+        ocrProcessed: true,
+        ...(linkedPatientId && !isNaN(linkedPatientId) ? { patientId: linkedPatientId } : {})
       });
 
       console.log("Worksheet updated successfully");
       res.json({ 
         worksheet: updatedWorksheet, 
         ocrResult,
+        linkedPatientUsed,
         confidence: ocrResult.confidence 
       });
     } catch (error) {

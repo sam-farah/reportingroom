@@ -111,10 +111,12 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
   }, [toast]);
 
   const ocrMutation = useMutation({
-    mutationFn: async (worksheetId: number) => {
-      console.log('Starting OCR for worksheet ID:', worksheetId);
+    mutationFn: async ({ worksheetId, linkedPatientId }: { worksheetId: number; linkedPatientId: number | null }) => {
+      console.log('Starting OCR for worksheet ID:', worksheetId, 'linked patient:', linkedPatientId);
       const response = await fetch(`/api/worksheets/${worksheetId}/ocr`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedPatientId }),
       });
       
       if (!response.ok) {
@@ -128,8 +130,8 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
       console.log('OCR processing successful:', data);
       setUploadStatus('completed');
       if (data.ocrResult) {
-        // Only update patient name from OCR if no patient is already linked (e.g. from calendar)
-        if (!linkedPatient) {
+        // Only update patient name and DOB from OCR if no patient is linked
+        if (!linkedPatient && !data.linkedPatientUsed) {
           setPatientName(data.ocrResult.patientName || "");
         }
         
@@ -168,7 +170,10 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
           }
         }
         
-        setPatientDob(dobFormatted);
+        // Only set DOB from OCR if no linked patient (whose DOB is already pre-filled)
+        if (!linkedPatient && !data.linkedPatientUsed) {
+          setPatientDob(dobFormatted);
+        }
         
         // Parse exam date from various formats to YYYY-MM-DD
         let examDateFormatted = "";
@@ -302,17 +307,21 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
     setSelectedWorksheet(worksheet);
     setUploadStatus('uploaded');
     
-    // Reset form state
-    setPatientName("");
-    setPatientDob("");
+    // Capture linked patient BEFORE any reset so we can pass it to OCR
+    const capturedLinkedPatient = linkedPatient;
+    
+    // Reset OCR-derived fields only (keep the linked patient if one was pre-selected)
+    setPatientName(capturedLinkedPatient ? `${capturedLinkedPatient.firstName} ${capturedLinkedPatient.lastName}` : "");
+    setPatientDob(capturedLinkedPatient?.dateOfBirth || "");
     setExamDate("");
-    setLinkedPatient(null);
-    setPatientSearch("");
+    if (!capturedLinkedPatient) {
+      setPatientSearch("");
+    }
     
     // Brief delay to show upload success, then start OCR processing
     setTimeout(() => {
       setUploadStatus('processing');
-      ocrMutation.mutate(worksheet.id);
+      ocrMutation.mutate({ worksheetId: worksheet.id, linkedPatientId: capturedLinkedPatient?.id ?? null });
     }, 500);
   };
 
