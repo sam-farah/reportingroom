@@ -6,56 +6,46 @@ import path from 'path';
 const execAsync = promisify(exec);
 
 export async function convertPdfToImage(pdfPath: string): Promise<string> {
+  if (!fs.existsSync(pdfPath)) {
+    throw new Error('PDF file not found');
+  }
+
+  // Use a unique temp prefix to avoid collisions
+  const tempPrefix = pdfPath + '_pg';
+  const expectedOutput = tempPrefix + '.png';
+
   try {
-    console.log('Converting PDF to image using ImageMagick:', pdfPath);
-    
-    // Check if file exists
-    if (!fs.existsSync(pdfPath)) {
-      throw new Error('PDF file not found');
+    // pdftoppm (Poppler) is the most reliable PDF rasteriser available.
+    // -r 200  : 200 dpi — good quality for OCR without huge files
+    // -png    : output PNG
+    // -singlefile : writes exactly one file (no page-number suffix) → <prefix>.png
+    // -f 1 -l 1 : first page only
+    const cmd = `pdftoppm -r 200 -png -singlefile -f 1 -l 1 "${pdfPath}" "${tempPrefix}"`;
+    console.log('PDF→image: running pdftoppm:', cmd);
+    await execAsync(cmd);
+
+    if (!fs.existsSync(expectedOutput)) {
+      throw new Error('pdftoppm produced no output');
     }
 
-    // Create output path for the converted image
-    const outputPath = pdfPath + '_converted.png';
-    
-    // Use ImageMagick to convert first page of PDF to PNG
-    // -density 300: High quality for OCR
-    // -quality 100: Maximum quality
-    // [0]: Only convert first page
-    const command = `convert -density 300 -quality 100 "${pdfPath}[0]" "${outputPath}"`;
-    
-    console.log('Running ImageMagick command:', command);
-    await execAsync(command);
-    
-    if (!fs.existsSync(outputPath)) {
-      throw new Error('PDF conversion failed - no output image generated');
+    const imageBuffer = fs.readFileSync(expectedOutput);
+    const base64 = imageBuffer.toString('base64');
+    console.log(`PDF converted OK, base64 length: ${base64.length}`);
+    return base64;
+  } catch (err) {
+    // Clean up partial output if present
+    if (fs.existsSync(expectedOutput)) {
+      try { fs.unlinkSync(expectedOutput); } catch {}
     }
-
-    console.log('PDF converted successfully to:', outputPath);
-    
-    // Read the converted image and return as base64
-    const imageBuffer = fs.readFileSync(outputPath);
-    const base64Image = imageBuffer.toString('base64');
-    
-    // Clean up the temporary image file
-    try {
-      fs.unlinkSync(outputPath);
-    } catch (cleanupError) {
-      console.warn('Failed to cleanup temporary image file:', cleanupError);
+    console.error('PDF conversion error:', err);
+    throw new Error(
+      `Failed to convert PDF to image: ${err instanceof Error ? err.message : String(err)}`
+    );
+  } finally {
+    // Always clean up
+    if (fs.existsSync(expectedOutput)) {
+      try { fs.unlinkSync(expectedOutput); } catch {}
     }
-    
-    return base64Image;
-  } catch (error) {
-    console.error('PDF conversion error:', error);
-    
-    if (error instanceof Error && error.message.includes('convert: not authorized')) {
-      throw new Error('PDF conversion is restricted by security policy. Please convert your PDF to an image format manually.');
-    }
-    
-    if (error instanceof Error && error.message.includes('command not found')) {
-      throw new Error('PDF conversion tools not available. Please convert your PDF to an image format manually.');
-    }
-    
-    throw new Error(`Failed to convert PDF to image: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
