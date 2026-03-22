@@ -590,24 +590,32 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
       isInvoiced: appointment.isInvoiced ?? false,
       patientId: appointment.patientId || null,
     });
-    // Populate the patient card from appointment data so it displays correctly when editing
-    if (appointment.patientName) {
-      const parts = appointment.patientName.trim().split(/\s+/);
-      setSelectedPatient({
-        id: appointment.patientId ?? 0,
-        firstName: parts[0] || appointment.patientName,
-        lastName: parts.slice(1).join(" "),
-        dateOfBirth: appointment.patientDob || "",
-        phone: appointment.patientPhone || null,
-        email: appointment.patientEmail || null,
-        urNumber: null,
-        clinicId: null, gender: null, address: null, city: null,
-        state: null, zipCode: null, insuranceProvider: null, insuranceId: null,
-        referringPhysician: null, medicalHistory: null, allergies: null,
-        notes: null, createdAt: null,
-      } as Patient);
+    // Only pre-fill selectedPatient if there's a real linked patientId
+    if (appointment.patientId) {
+      const existingPatient = allCalendarPatients.find(p => p.id === appointment.patientId);
+      if (existingPatient) {
+        setSelectedPatient(existingPatient);
+      } else {
+        // patientId exists but not yet loaded — build a minimal placeholder
+        const parts = appointment.patientName.trim().split(/\s+/);
+        setSelectedPatient({
+          id: appointment.patientId,
+          firstName: parts[0] || appointment.patientName,
+          lastName: parts.slice(1).join(" "),
+          dateOfBirth: appointment.patientDob || "",
+          phone: appointment.patientPhone || null,
+          email: appointment.patientEmail || null,
+          urNumber: null,
+          clinicId: null, gender: null, address: null, city: null,
+          state: null, zipCode: null, insuranceProvider: null, insuranceId: null,
+          referringPhysician: null, medicalHistory: null, allergies: null,
+          notes: null, createdAt: null,
+        } as Patient);
+      }
     } else {
+      // No linked patient — clear so the form requires the user to search and link one
       setSelectedPatient(null);
+      setPatientSearch(appointment.patientName || "");
     }
     setEditingAppointment(appointment);
     setViewingAppointment(null);
@@ -616,6 +624,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.patientId) {
+      toast({ title: "Patient required", description: "Please search and select a patient before saving the appointment.", variant: "destructive" });
+      return;
+    }
     
     const appointmentDateTime = new Date(`${formData.appointmentDate}T${formData.appointmentTime}`);
     
@@ -1523,7 +1536,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 <Button type="button" variant="outline" onClick={() => { setIsBookingDialogOpen(false); resetForm(); setEditingAppointment(null); }}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending || !selectedPatient}>
+                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending || !formData.patientId}>
                   {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingAppointment ? "Update" : "Create Booking"}
                 </Button>
               </div>
