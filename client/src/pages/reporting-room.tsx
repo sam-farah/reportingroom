@@ -624,6 +624,73 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       clinicLogoDataUrl = await toBase64(clinicLogoApiUrl);
     }
 
+    // If showWorksheetInReport is enabled, composite the labelled header strip onto the worksheet image
+    // (same visual as the "Download Labelled Copy" PDF, but at native resolution for HTML embedding)
+    let labelledWorksheetDataUrl: string | null = worksheetDataUrl;
+    if (template?.showWorksheetInReport && worksheetDataUrl) {
+      try {
+        const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = worksheetDataUrl!;
+        });
+        let logoImgEl: HTMLImageElement | null = null;
+        if (clinicLogoDataUrl) {
+          logoImgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = clinicLogoDataUrl!;
+          });
+        }
+        const W = wsImg.width;
+        const HPAD = Math.round(W * 0.025);
+        const HHEIGHT = Math.round(W * 0.1);
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = wsImg.height + HHEIGHT;
+        const ctx = canvas.getContext('2d')!;
+        // White header background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, W, HHEIGHT);
+        // Border line under header
+        ctx.strokeStyle = pc;
+        ctx.lineWidth = Math.round(W * 0.003);
+        ctx.beginPath(); ctx.moveTo(0, HHEIGHT); ctx.lineTo(W, HHEIGHT); ctx.stroke();
+        // Logo on the left
+        let textStartX = HPAD;
+        if (logoImgEl) {
+          const logoMaxH = HHEIGHT - HPAD * 2;
+          const logoMaxW = Math.round(W * 0.2);
+          const scale = Math.min(logoMaxW / logoImgEl.width, logoMaxH / logoImgEl.height, 1);
+          const logoW = logoImgEl.width * scale;
+          const logoH = logoImgEl.height * scale;
+          const logoY = (HHEIGHT - logoH) / 2;
+          ctx.drawImage(logoImgEl, HPAD, logoY, logoW, logoH);
+          textStartX = HPAD + logoW + Math.round(W * 0.015);
+        }
+        // Patient info lines (no clinic name text — logo is sufficient)
+        const infoFontSize = Math.round(W * 0.0135);
+        ctx.fillStyle = '#333333';
+        ctx.font = `${infoFontSize}px Arial, sans-serif`;
+        const infoLines = [
+          `Patient: ${report.patientName}`,
+          report.patientDob ? `DOB: ${report.patientDob}` : null,
+          `Exam Date: ${report.examDate}`,
+          report.patientUrNumber ? `UR: ${report.patientUrNumber}` : null,
+          `Scan: ${report.studyType}`,
+        ].filter(Boolean) as string[];
+        const infoColW = (W - textStartX - HPAD) / 2;
+        const leftInfoLines = infoLines.slice(0, Math.ceil(infoLines.length / 2));
+        const rightInfoLines = infoLines.slice(Math.ceil(infoLines.length / 2));
+        const lineH = infoFontSize + Math.round(infoFontSize * 0.45);
+        const textY = (HHEIGHT - Math.ceil(infoLines.length / 2) * lineH) / 2 + infoFontSize;
+        leftInfoLines.forEach((line, i) => ctx.fillText(line, textStartX, textY + i * lineH));
+        rightInfoLines.forEach((line, i) => ctx.fillText(line, textStartX + infoColW, textY + i * lineH));
+        // Worksheet image below header
+        ctx.drawImage(wsImg, 0, HHEIGHT);
+        labelledWorksheetDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      } catch {
+        // fall back to raw worksheet if compositing fails
+        labelledWorksheetDataUrl = worksheetDataUrl;
+      }
+    }
+
     const clinicName = clinicData?.name || clinic?.clinicName || 'Medical Clinic';
     const clinicAddress = clinicData?.address || clinic?.address || '';
     const clinicPhone = clinicData?.phone || clinic?.phone || '';
@@ -689,7 +756,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     <div class="pi"><span class="label">Report Date:</span> ${today}</div>
   </div>
 
-  ${template?.showWorksheetInReport && worksheetDataUrl ? `<img class="worksheet-img" src="${worksheetDataUrl}" alt="Original Worksheet" />` : ''}
+  ${template?.showWorksheetInReport && labelledWorksheetDataUrl ? `<img class="worksheet-img" src="${labelledWorksheetDataUrl}" alt="Labelled Worksheet" />` : ''}
 
   ${template?.showStudyType !== false ? `<div class="section"><div class="section-title">Study Type</div><div class="section-content">${report.studyType}</div></div>` : ''}
   ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
