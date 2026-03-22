@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { Report, ReportTemplate } from "@shared/schema";
+import type { Report, ReportTemplate, Physician } from "@shared/schema";
 import { format } from "date-fns";
 import TextShortcuts from "@/components/text-shortcuts";
 
@@ -35,6 +35,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
   const [activeVoiceDictation, setActiveVoiceDictation] = useState<string>('');
+  const [distributeReport, setDistributeReport] = useState<Report | null>(null);
+  const [distributeHtml, setDistributeHtml] = useState<string>("");
+  const [distributeCopied, setDistributeCopied] = useState(false);
+  const [distributeLoading, setDistributeLoading] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -54,6 +58,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   // Fetch clinic details for exports
   const { data: clinicSettings } = useQuery<{ clinicName: string; address?: string; phone?: string; kioskLogoUrl?: string }>({
     queryKey: ["/api/kiosk/settings"],
+    retry: false,
+  });
+
+  // Fetch physicians for distribute feature
+  const { data: physicians = [] } = useQuery<Physician[]>({
+    queryKey: ["/api/physicians"],
     retry: false,
   });
 
@@ -527,6 +537,159 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     }
   };
 
+  const handleDistribute = async (report: Report) => {
+    setDistributeLoading(true);
+    setDistributeReport(report);
+    setDistributeCopied(false);
+
+    // Helper to fetch a URL and return a base64 data-URI
+    const toBase64 = async (url: string): Promise<string | null> => {
+      try {
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        return null;
+      }
+    };
+
+    // Look up physician from already-loaded list
+    let physicianName = "";
+    let physicianTitle = "";
+    let physicianCredentials = "";
+    let signatureDataUrl: string | null = null;
+
+    if (report.physicianId) {
+      const physician = physicians.find(p => p.id === report.physicianId);
+      if (physician) {
+        physicianName = physician.name || "";
+        physicianTitle = physician.title || "";
+        physicianCredentials = physician.credentials || "";
+        if (physician.signatureUrl) {
+          signatureDataUrl = await toBase64(physician.signatureUrl);
+        }
+      }
+    }
+
+    // Fetch worksheet image
+    let worksheetDataUrl: string | null = null;
+    if (report.worksheetId) {
+      worksheetDataUrl = await toBase64(`/api/worksheets/${report.worksheetId}/image`);
+    } else if (report.digitalWorksheetId) {
+      worksheetDataUrl = await toBase64(`/api/digital-worksheets/${report.digitalWorksheetId}/image`);
+    }
+
+    const clinic = clinicSettings;
+    const primaryColor = "#0066cc";
+    const today = format(new Date(), 'MMMM dd, yyyy');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medical Report – ${report.patientName}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #222; background: #fff; padding: 32px 40px; max-width: 780px; margin: 0 auto; }
+    .header { text-align: center; border-bottom: 3px solid ${primaryColor}; padding-bottom: 18px; margin-bottom: 24px; }
+    .header h1 { font-size: 22px; font-weight: bold; color: ${primaryColor}; margin-bottom: 4px; }
+    .header .sub { font-size: 14px; color: #555; }
+    .header .clinic-info { font-size: 12px; color: #777; margin-top: 3px; }
+    .patient-box { background: #f4f8ff; border: 1px solid #d0e4ff; border-radius: 6px; padding: 16px 20px; margin-bottom: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+    .patient-box h3 { grid-column: span 2; font-size: 14px; font-weight: bold; color: ${primaryColor}; border-bottom: 1px solid #c0d8ff; padding-bottom: 6px; margin-bottom: 4px; }
+    .pi { font-size: 13px; }
+    .pi .label { font-weight: bold; color: #444; }
+    .ur { color: #1d4ed8; font-family: monospace; font-weight: bold; }
+    .section { margin-bottom: 22px; page-break-inside: avoid; }
+    .section-title { font-size: 15px; font-weight: bold; color: ${primaryColor}; border-bottom: 2px solid ${primaryColor}; padding-bottom: 5px; margin-bottom: 10px; }
+    .section-content { font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
+    .worksheet-img { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 24px; display: block; }
+    .signature-area { margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd; }
+    .sig-img { max-height: 70px; margin-bottom: 4px; }
+    .sig-name { font-weight: bold; font-size: 13px; }
+    .sig-creds { font-size: 12px; color: #555; }
+    .finalized { margin-top: 6px; font-size: 11px; color: #16a34a; font-weight: 600; }
+    .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #eee; font-size: 11px; color: #888; text-align: center; }
+    .amended-note { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px; padding: 8px 12px; margin-bottom: 16px; font-size: 12px; color: #92400e; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${clinic?.clinicName || 'Medical Clinic'}</h1>
+    <div class="sub">Medical Examination Report</div>
+    ${clinic?.address ? `<div class="clinic-info">${clinic.address}</div>` : ''}
+    ${clinic?.phone ? `<div class="clinic-info">Phone: ${clinic.phone}</div>` : ''}
+  </div>
+
+  ${report.isAmended ? `<div class="amended-note">⚠ This report has been amended. Original findings may have changed.</div>` : ''}
+
+  <div class="patient-box">
+    <h3>Patient Information</h3>
+    <div class="pi"><span class="label">Patient Name:</span> ${report.patientName}</div>
+    ${report.patientUrNumber ? `<div class="pi"><span class="label">UR Number:</span> <span class="ur">UR ${report.patientUrNumber}</span></div>` : '<div></div>'}
+    <div class="pi"><span class="label">Date of Birth:</span> ${report.patientDob}</div>
+    <div class="pi"><span class="label">Exam Date:</span> ${report.examDate}</div>
+    <div class="pi"><span class="label">Report ID:</span> ${report.id}</div>
+    <div class="pi"><span class="label">Report Date:</span> ${today}</div>
+  </div>
+
+  ${worksheetDataUrl ? `<img class="worksheet-img" src="${worksheetDataUrl}" alt="Original Worksheet" />` : ''}
+
+  <div class="section">
+    <div class="section-title">Study Type</div>
+    <div class="section-content">${report.studyType}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Clinical Indication</div>
+    <div class="section-content">${report.indication}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Findings</div>
+    <div class="section-content">${report.findings}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Impression</div>
+    <div class="section-content">${report.impression}</div>
+  </div>
+
+  <div class="signature-area">
+    ${signatureDataUrl ? `<img class="sig-img" src="${signatureDataUrl}" alt="Physician Signature" />` : ''}
+    ${physicianName ? `<div class="sig-name">${physicianTitle ? physicianTitle + ' ' : ''}${physicianName}</div>` : ''}
+    ${physicianCredentials ? `<div class="sig-creds">${physicianCredentials}</div>` : ''}
+    ${report.isFinalized && report.finalizedAt ? `<div class="finalized">Electronically signed on ${new Date(report.finalizedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>` : ''}
+  </div>
+
+  <div class="footer">
+    <div>Report generated: ${today}</div>
+    <div>${clinic?.clinicName || ''}</div>
+  </div>
+</body>
+</html>`;
+
+    setDistributeHtml(html);
+    setDistributeLoading(false);
+  };
+
+  const handleCopyHtml = async () => {
+    try {
+      await navigator.clipboard.writeText(distributeHtml);
+      setDistributeCopied(true);
+      toast({ title: "Copied!", description: "HTML copied to clipboard — paste it into your messaging app." });
+      setTimeout(() => setDistributeCopied(false), 3000);
+    } catch {
+      toast({ title: "Copy failed", description: "Please select all and copy manually.", variant: "destructive" });
+    }
+  };
+
   const updateEditingReport = (field: keyof EditableReport, value: any) => {
     if (!editingReport) return;
     setEditingReport(prev => prev ? { ...prev, [field]: value } : null);
@@ -702,6 +865,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                     onClick={() => handleExportDOCX(report)}
                   >
                     DOCX
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDistribute(report)}
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                  >
+                    <Share2 className="w-3 h-3 mr-1" />
+                    Distribute
                   </Button>
                 </div>
                 <div className="flex space-x-2">
@@ -1151,7 +1323,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                     onClick={() => {
                       setIsFullscreenMode(false);
                       setIsEditDialogOpen(false);
-                      // Exit browser fullscreen if active
+                      // Exit browser fullscreen if active (non-fullscreen close button)
                       if (document.fullscreenElement) {
                         document.exitFullscreen().catch(console.error);
                       }
@@ -1173,6 +1345,14 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Export DOCX
+                  </Button>
+                  <Button
+                    onClick={() => handleDistribute(editingReport)}
+                    variant="outline"
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Distribute
                   </Button>
                   <Button
                     onClick={handleSaveReport}
@@ -1493,6 +1673,14 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                     Export DOCX
                   </Button>
                   <Button
+                    onClick={() => handleDistribute(editingReport)}
+                    variant="outline"
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Distribute
+                  </Button>
+                  <Button
                     onClick={handleSaveReport}
                     disabled={updateReportMutation.isPending}
                     className="medical-btn-primary"
@@ -1659,6 +1847,62 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         </DialogContent>
       </Dialog>
 
+
+      {/* ── Distribute Dialog ── */}
+      <Dialog open={!!distributeReport} onOpenChange={(open) => { if (!open) setDistributeReport(null); }}>
+        <DialogContent className="max-w-4xl w-full max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="w-5 h-5 text-blue-600" />
+              Distribute Report — {distributeReport?.patientName}
+            </DialogTitle>
+            <DialogDescription>
+              Copy the HTML below and paste it into your messaging application.
+            </DialogDescription>
+          </DialogHeader>
+
+          {distributeLoading ? (
+            <div className="flex-1 flex items-center justify-center py-16 text-gray-500">
+              <div className="text-center space-y-2">
+                <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto" />
+                <p>Building report HTML…</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col flex-1 min-h-0 gap-3">
+              {/* Preview */}
+              <div className="border rounded-lg overflow-hidden flex-1 min-h-0" style={{ minHeight: 320 }}>
+                <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Preview</div>
+                <iframe
+                  srcDoc={distributeHtml}
+                  title="Report Preview"
+                  className="w-full h-full border-0"
+                  style={{ minHeight: 300 }}
+                  sandbox="allow-same-origin"
+                />
+              </div>
+
+              {/* Raw HTML */}
+              <div className="border rounded-lg overflow-hidden" style={{ maxHeight: 180 }}>
+                <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Raw HTML</div>
+                <textarea
+                  readOnly
+                  value={distributeHtml}
+                  className="w-full p-3 text-xs font-mono bg-white resize-none focus:outline-none"
+                  style={{ height: 140 }}
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleCopyHtml} className={distributeCopied ? "bg-green-600 hover:bg-green-700" : "medical-btn-primary"}>
+                  {distributeCopied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+                  {distributeCopied ? "Copied!" : "Copy HTML"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
