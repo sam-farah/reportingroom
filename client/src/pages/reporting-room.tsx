@@ -727,7 +727,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     .section{margin-bottom:20px;page-break-inside:avoid;}
     .section-title{${sectionTitleCSS}}
     .section-content{font-size:13px;line-height:1.75;white-space:pre-wrap;}
-    .worksheet-img{max-width:100%;border:1px solid #ddd;border-radius:4px;margin-bottom:22px;display:block;}
+    .worksheet-page{page-break-before:always;break-before:page;padding-top:30px;}
+    .worksheet-img{max-width:100%;border:1px solid #ddd;border-radius:4px;display:block;}
     .sig-area{margin-top:36px;padding-top:14px;border-top:1px solid #ddd;text-align:${sigPos};}
     .sig-img{max-height:68px;margin-bottom:4px;}
     .sig-name{font-weight:bold;font-size:13px;}
@@ -762,8 +763,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     <div class="pi"><span class="label">Report Date:</span> ${today}</div>
   </div>
 
-  ${wsUrl ? `<img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" />` : ''}
-
   ${template?.showStudyType !== false ? `<div class="section"><div class="section-title">Study Type</div><div class="section-content">${report.studyType}</div></div>` : ''}
   ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
   ${template?.showFindings !== false ? `<div class="section"><div class="section-title">Findings</div><div class="section-content">${report.findings}</div></div>` : ''}
@@ -780,6 +779,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
     ${template?.showGenerationDate !== false ? `<div>Report generated: ${today}</div>` : ''}
   </div>` : ''}
+
+  ${wsUrl ? `<div class="worksheet-page"><img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" /></div>` : ''}
 </body>
 </html>`;
 
