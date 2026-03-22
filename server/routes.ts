@@ -962,6 +962,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Scan Type Content Templates ──
+  app.get("/api/content-templates", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.json([]);
+      const templates = await storage.getScanTypeContentTemplates(user.clinicId);
+      res.json(templates);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch content templates" });
+    }
+  });
+
+  app.put("/api/content-templates/:scanType", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic associated" });
+      const scanType = decodeURIComponent(req.params.scanType);
+      const { findingsTemplate, impressionTemplate, indicationTemplate } = req.body;
+      const template = await storage.upsertScanTypeContentTemplate({
+        clinicId: user.clinicId,
+        scanType,
+        findingsTemplate: findingsTemplate || null,
+        impressionTemplate: impressionTemplate || null,
+        indicationTemplate: indicationTemplate || null,
+      });
+      res.json(template);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save content template" });
+    }
+  });
+
+  app.delete("/api/content-templates/:scanType", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const scanType = decodeURIComponent(req.params.scanType);
+      await storage.deleteScanTypeContentTemplate(user.clinicId, scanType);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete content template" });
+    }
+  });
+
   // Distribution counts summary for all reports in the clinic (for card badges)
   app.get("/api/distributions-summary", isAuthenticated, async (req: any, res) => {
     try {
@@ -1131,7 +1174,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("⚠️  NO TRAINING DATA - AI will use default knowledge only");
       }
       
-      const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, isFromPdf);
+      // Look up per-scan-type content template for this clinic
+      let contentTemplate = null;
+      if (user?.clinicId && worksheet.studyType) {
+        contentTemplate = await storage.getScanTypeContentTemplate(user.clinicId, worksheet.studyType);
+      }
+
+      const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, isFromPdf, contentTemplate);
       console.log("Report generated successfully with training context:", reportData.studyType);
       
       // Create report in storage

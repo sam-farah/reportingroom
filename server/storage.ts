@@ -69,6 +69,9 @@ import {
   reportDistributions,
   type ReportDistribution,
   type InsertReportDistribution,
+  scanTypeContentTemplates,
+  type ScanTypeContentTemplate,
+  type InsertScanTypeContentTemplate,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max } from "drizzle-orm";
@@ -238,6 +241,12 @@ export interface IStorage {
   getReportDistributions(reportId: number): Promise<ReportDistribution[]>;
   getReportDistributionCounts(clinicId: number): Promise<Record<number, number>>;
   createReportDistribution(distribution: InsertReportDistribution): Promise<ReportDistribution>;
+
+  // Scan type content templates
+  getScanTypeContentTemplates(clinicId: number): Promise<ScanTypeContentTemplate[]>;
+  getScanTypeContentTemplate(clinicId: number, scanType: string): Promise<ScanTypeContentTemplate | undefined>;
+  upsertScanTypeContentTemplate(template: InsertScanTypeContentTemplate): Promise<ScanTypeContentTemplate>;
+  deleteScanTypeContentTemplate(clinicId: number, scanType: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1262,6 +1271,34 @@ export class DatabaseStorage implements IStorage {
   async createReportDistribution(distribution: InsertReportDistribution): Promise<ReportDistribution> {
     const [created] = await db.insert(reportDistributions).values(distribution).returning();
     return created;
+  }
+
+  async getScanTypeContentTemplates(clinicId: number): Promise<ScanTypeContentTemplate[]> {
+    return db.select().from(scanTypeContentTemplates).where(eq(scanTypeContentTemplates.clinicId, clinicId));
+  }
+
+  async getScanTypeContentTemplate(clinicId: number, scanType: string): Promise<ScanTypeContentTemplate | undefined> {
+    const [row] = await db.select().from(scanTypeContentTemplates)
+      .where(and(eq(scanTypeContentTemplates.clinicId, clinicId), eq(scanTypeContentTemplates.scanType, scanType)));
+    return row;
+  }
+
+  async upsertScanTypeContentTemplate(template: InsertScanTypeContentTemplate): Promise<ScanTypeContentTemplate> {
+    const existing = await this.getScanTypeContentTemplate(template.clinicId!, template.scanType);
+    if (existing) {
+      const [updated] = await db.update(scanTypeContentTemplates)
+        .set({ ...template, updatedAt: new Date() })
+        .where(and(eq(scanTypeContentTemplates.clinicId, template.clinicId!), eq(scanTypeContentTemplates.scanType, template.scanType)))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(scanTypeContentTemplates).values({ ...template, updatedAt: new Date() }).returning();
+    return created;
+  }
+
+  async deleteScanTypeContentTemplate(clinicId: number, scanType: string): Promise<void> {
+    await db.delete(scanTypeContentTemplates)
+      .where(and(eq(scanTypeContentTemplates.clinicId, clinicId), eq(scanTypeContentTemplates.scanType, scanType)));
   }
 }
 

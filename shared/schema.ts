@@ -649,3 +649,18 @@ export const reportDistributions = pgTable("report_distributions", {
 export const insertReportDistributionSchema = createInsertSchema(reportDistributions).omit({ id: true, sentAt: true });
 export type ReportDistribution = typeof reportDistributions.$inferSelect;
 export type InsertReportDistribution = z.infer<typeof insertReportDistributionSchema>;
+
+// Per-scan-type content templates — used as AI generation baseline
+export const scanTypeContentTemplates = pgTable("scan_type_content_templates", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  scanType: varchar("scan_type", { length: 200 }).notNull(),
+  findingsTemplate: text("findings_template"),
+  impressionTemplate: text("impression_template"),
+  indicationTemplate: text("indication_template"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertScanTypeContentTemplateSchema = createInsertSchema(scanTypeContentTemplates).omit({ id: true, updatedAt: true });
+export type ScanTypeContentTemplate = typeof scanTypeContentTemplates.$inferSelect;
+export type InsertScanTypeContentTemplate = z.infer<typeof insertScanTypeContentTemplateSchema>;

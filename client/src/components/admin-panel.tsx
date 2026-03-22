@@ -14,7 +14,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import ClinicPage from "@/pages/physicians";
-import type { TrainingPair, Physician, ReportTemplate, Clinic } from "@shared/schema";
+import type { TrainingPair, Physician, ReportTemplate, Clinic, ScanTypeContentTemplate } from "@shared/schema";
+import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import ScanDurationsTab from "./scan-durations-tab";
 
 export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemplates?: () => void }) {
@@ -68,6 +69,40 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
   });
 
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Content Templates state
+  const [selectedScanType, setSelectedScanType] = useState<string>("");
+  const [ctIndication, setCtIndication] = useState("");
+  const [ctFindings, setCtFindings] = useState("");
+  const [ctImpression, setCtImpression] = useState("");
+
+  const { data: contentTemplates = [] } = useQuery<ScanTypeContentTemplate[]>({
+    queryKey: ["/api/content-templates"],
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: (data: { scanType: string; indicationTemplate: string; findingsTemplate: string; impressionTemplate: string }) =>
+      apiRequest("PUT", `/api/content-templates/${encodeURIComponent(data.scanType)}`, {
+        indicationTemplate: data.indicationTemplate,
+        findingsTemplate: data.findingsTemplate,
+        impressionTemplate: data.impressionTemplate,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-templates"] });
+      toast({ title: "Template saved", description: "Content template updated successfully." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to save template.", variant: "destructive" }),
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (scanType: string) => apiRequest("DELETE", `/api/content-templates/${encodeURIComponent(scanType)}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-templates"] });
+      setCtIndication(""); setCtFindings(""); setCtImpression("");
+      toast({ title: "Template cleared", description: "Content template removed." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to clear template.", variant: "destructive" }),
+  });
 
   // Kiosk settings state
   const kioskLogoInputRef = useRef<HTMLInputElement>(null);
@@ -518,6 +553,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="clinics" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏢 Clinic Analytics</TabsTrigger>
           <TabsTrigger value="costs" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💰 Cost Projection</TabsTrigger>
           <TabsTrigger value="training" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🌍 Global AI Training</TabsTrigger>
+          <TabsTrigger value="content-templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📋 Content Templates</TabsTrigger>
           <TabsTrigger value="templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📝 Report Templates</TabsTrigger>
           <TabsTrigger value="kiosk" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🖥️ Kiosk</TabsTrigger>
           <TabsTrigger value="backup" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💾 Backup</TabsTrigger>
@@ -946,6 +982,127 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
             </div>
           </CardContent>
         </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="content-templates" className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Content Templates</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Define default indication, findings, and impression text for each scan type. The AI will use these as a baseline when generating reports, filling in patient-specific values from the worksheet.
+            </p>
+          </div>
+          <div className="flex gap-4" style={{ minHeight: 500 }}>
+            {/* Scan type list */}
+            <div className="w-56 flex-shrink-0 border rounded-lg overflow-hidden">
+              <div className="bg-muted px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scan Types</div>
+              <div className="overflow-y-auto" style={{ maxHeight: 460 }}>
+                {CANONICAL_SCAN_TYPES.map((st) => {
+                  const hasTemplate = contentTemplates.some(ct => ct.scanType === st.name);
+                  const isActive = selectedScanType === st.name;
+                  return (
+                    <button
+                      key={st.name}
+                      onClick={() => {
+                        setSelectedScanType(st.name);
+                        const existing = contentTemplates.find(ct => ct.scanType === st.name);
+                        setCtIndication(existing?.indicationTemplate || "");
+                        setCtFindings(existing?.findingsTemplate || "");
+                        setCtImpression(existing?.impressionTemplate || "");
+                      }}
+                      className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 border-b last:border-b-0 transition-colors ${isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${hasTemplate ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                      <span className="truncate">{st.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Editor */}
+            <div className="flex-1">
+              {!selectedScanType ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground border rounded-lg bg-muted/30">
+                  <div className="text-center">
+                    <FileText className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Select a scan type to edit its template</p>
+                    <p className="text-xs mt-1 opacity-70">Green dots indicate scan types with saved templates</p>
+                  </div>
+                </div>
+              ) : (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span>{selectedScanType}</span>
+                      {contentTemplates.some(ct => ct.scanType === selectedScanType) && (
+                        <span className="text-xs font-normal px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Template saved</span>
+                      )}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Use placeholders like <code className="bg-muted px-1 rounded">{"[Patient Name]"}</code>, <code className="bg-muted px-1 rounded">{"[side]"}</code> for dynamic values.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Indication</Label>
+                      <Textarea
+                        value={ctIndication}
+                        onChange={(e) => setCtIndication(e.target.value)}
+                        placeholder="e.g. Assess for deep vein thrombosis. Clinical indication: leg swelling and pain."
+                        rows={2}
+                        className="text-sm resize-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Findings</Label>
+                      <Textarea
+                        value={ctFindings}
+                        onChange={(e) => setCtFindings(e.target.value)}
+                        placeholder="e.g. The common femoral vein, femoral vein and popliteal vein are fully compressible with normal triphasic waveforms. No intraluminal thrombus identified..."
+                        rows={7}
+                        className="text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Impression</Label>
+                      <Textarea
+                        value={ctImpression}
+                        onChange={(e) => setCtImpression(e.target.value)}
+                        placeholder="e.g. No evidence of deep vein thrombosis in the [side] lower limb."
+                        rows={3}
+                        className="text-sm resize-none"
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        onClick={() => saveTemplateMutation.mutate({
+                          scanType: selectedScanType,
+                          indicationTemplate: ctIndication,
+                          findingsTemplate: ctFindings,
+                          impressionTemplate: ctImpression,
+                        })}
+                        disabled={saveTemplateMutation.isPending}
+                        size="sm"
+                      >
+                        {saveTemplateMutation.isPending ? "Saving..." : "Save Template"}
+                      </Button>
+                      {contentTemplates.some(ct => ct.scanType === selectedScanType) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deleteTemplateMutation.mutate(selectedScanType)}
+                          disabled={deleteTemplateMutation.isPending}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          {deleteTemplateMutation.isPending ? "Clearing..." : "Clear Template"}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
         </TabsContent>
 

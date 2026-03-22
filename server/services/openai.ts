@@ -208,7 +208,8 @@ export async function generateReportFromWorksheet(
   base64Image: string, 
   extractedData: OCRResult,
   trainingData: any[] = [],
-  isFromPdf: boolean = false
+  isFromPdf: boolean = false,
+  contentTemplate: { findingsTemplate?: string | null; impressionTemplate?: string | null; indicationTemplate?: string | null } | null = null
 ): Promise<ReportData> {
   try {
     // Build comprehensive training context using actual training examples
@@ -281,8 +282,38 @@ RECOMMENDATION: Upload worksheet-report training pairs via Admin Panel → AI Tr
 Current mode: Default medical AI knowledge without training data context.`;
     }
 
+    // Build content template context
+    let contentTemplateContext = '';
+    if (contentTemplate && (contentTemplate.findingsTemplate || contentTemplate.impressionTemplate || contentTemplate.indicationTemplate)) {
+      contentTemplateContext = `
+
+📋 CLINIC CONTENT TEMPLATE — BASELINE STRUCTURE TO FOLLOW:
+This clinic has defined a standard report structure for this scan type. Use the following as the BASE SKELETON and fill in the patient-specific findings from the worksheet. Maintain this structure and language style:
+
+${contentTemplate.indicationTemplate ? `INDICATION TEMPLATE:
+"${contentTemplate.indicationTemplate}"
+→ Adapt this for the patient's specific clinical context.` : ''}
+
+${contentTemplate.findingsTemplate ? `FINDINGS TEMPLATE (use as baseline structure):
+"${contentTemplate.findingsTemplate}"
+→ Fill in actual values, measurements, and findings from the worksheet. Replace placeholder text with patient-specific observations. Do NOT copy verbatim if the worksheet contradicts — adapt to what you see.` : ''}
+
+${contentTemplate.impressionTemplate ? `IMPRESSION TEMPLATE (use as baseline):
+"${contentTemplate.impressionTemplate}"
+→ Adapt this conclusion to match the actual findings observed.` : ''}
+
+CONTENT TEMPLATE INSTRUCTIONS:
+1. Use the template structure and terminology as your FOUNDATION
+2. Fill in patient-specific values from the worksheet image
+3. Maintain the sentence structure and medical language style from the template
+4. If the worksheet shows findings not covered by the template, add them in the same style
+5. If the worksheet contradicts the template, report what you actually see (accuracy over template)`;
+      console.log('📋 Content template injected for scan type');
+    }
+
     console.log("=== AI TRAINING INTEGRATION DEBUG ===");
     console.log("Training context length:", trainingContext.length);
+    console.log("Content template context length:", contentTemplateContext.length);
     console.log("Training context preview:", trainingContext.substring(0, 500) + "...");
     
     const response = await openai.chat.completions.create({
@@ -311,7 +342,7 @@ Current mode: Default medical AI knowledge without training data context.`;
             "indication": string, 
             "findings": string,
             "impression": string
-          }${trainingContext}`
+          }${contentTemplateContext}${trainingContext}`
         },
         {
           role: "user",
