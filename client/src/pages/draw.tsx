@@ -87,8 +87,8 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
           patientDob: patient.dateOfBirth || "",
           patientId: patient.id,
         }));
+        onPreLinkedPatientConsumed?.();
       });
-    onPreLinkedPatientConsumed?.();
   }, [preLinkedPatientId]);
 
   const { data: searchedPatients = [] } = useQuery<Patient[]>({
@@ -532,6 +532,30 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
             <p className="text-gray-600 mt-1">Select a worksheet template to start a patient session</p>
           </div>
         </div>
+
+        {selectedPatient && (
+          <div className="mb-6 flex items-center gap-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
+            <div className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center shrink-0">
+              <UserCheck className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-purple-900">
+                Patient pre-filled from calendar: {selectedPatient.firstName} {selectedPatient.lastName}
+              </div>
+              <div className="text-xs text-purple-600">
+                {selectedPatient.dateOfBirth && `DOB: ${selectedPatient.dateOfBirth}`}
+                {selectedPatient.urNumber && ` · UR ${selectedPatient.urNumber}`}
+              </div>
+            </div>
+            <button
+              className="text-purple-400 hover:text-purple-600 transition-colors"
+              onClick={handleClearPatient}
+              title="Clear patient"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {(worksheetTemplates as WorksheetTemplate[] || []).map((template: WorksheetTemplate) => (
