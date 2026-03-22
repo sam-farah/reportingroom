@@ -16,6 +16,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution } from "@shared/schema";
 import { format } from "date-fns";
+import jsPDF from "jspdf";
 import TextShortcuts from "@/components/text-shortcuts";
 
 interface EditableReport extends Report {
@@ -922,15 +923,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         textStartX = PADDING + logoW + Math.round(A4_W * 0.015);
       }
 
-      // Font sizes scaled to DPI
-      const clinicFontSize = Math.round(A4_W * 0.016);  // ~26px at 200dpi
-      const infoFontSize = Math.round(A4_W * 0.013);     // ~21px
+      // Font size for patient info — scaled to DPI
+      const infoFontSize = Math.round(A4_W * 0.0135); // ~22px at 200dpi
 
-      const clinicName = clinicData?.name || clinicSettings?.clinicName || '';
-      ctx.fillStyle = primaryColor;
-      ctx.font = `bold ${clinicFontSize}px Arial, sans-serif`;
-      ctx.fillText(clinicName, textStartX, PADDING + clinicFontSize);
-
+      // Patient detail lines — two columns in the header area
       ctx.fillStyle = '#333333';
       ctx.font = `${infoFontSize}px Arial, sans-serif`;
       const lines = [
@@ -944,8 +940,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       const colW = (A4_W - textStartX - PADDING) / 2;
       const leftLines = lines.slice(0, Math.ceil(lines.length / 2));
       const rightLines = lines.slice(Math.ceil(lines.length / 2));
-      const lineH = infoFontSize + Math.round(infoFontSize * 0.4);
-      const textY = PADDING + clinicFontSize + Math.round(infoFontSize * 0.7);
+      const lineH = infoFontSize + Math.round(infoFontSize * 0.45);
+      const textY = (HEADER_HEIGHT - (Math.ceil(lines.length / 2) * lineH)) / 2 + infoFontSize;
 
       leftLines.forEach((line, i) => ctx.fillText(line, textStartX, textY + i * lineH));
       rightLines.forEach((line, i) => ctx.fillText(line, textStartX + colW, textY + i * lineH));
@@ -959,13 +955,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       const wsY = HEADER_HEIGHT + (wsAreaH - wsDrawH) / 2;
       ctx.drawImage(wsImg, wsX, wsY, wsDrawW, wsDrawH);
 
-      // Download as high-quality PNG
-      const link = document.createElement('a');
-      link.download = `worksheet-${report.patientName.replace(/\s+/g, '-')}-${report.examDate}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      // Generate PDF (A4 = 210mm × 297mm)
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const imgData = canvas.toDataURL('image/jpeg', 0.93);
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+      pdf.save(`worksheet-${report.patientName.replace(/\s+/g, '-')}-${report.examDate}.pdf`);
 
-      toast({ title: "Downloaded", description: "Labelled worksheet saved as A4 PNG (200 DPI)." });
+      toast({ title: "Downloaded", description: "Labelled worksheet saved as A4 PDF." });
     } catch (error) {
       console.error("Download labelled worksheet error:", error);
       toast({ title: "Error", description: "Failed to generate labelled worksheet.", variant: "destructive" });
