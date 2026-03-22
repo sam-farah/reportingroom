@@ -20,7 +20,11 @@ interface DrawingTool {
   opacity?: number;
 }
 
-export default function Draw() {
+export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed }: {
+  preLinkedPatientId?: number | null;
+  preLinkedPatientName?: string;
+  onPreLinkedPatientConsumed?: () => void;
+} = {}) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<WorksheetTemplate | null>(null);
@@ -68,6 +72,24 @@ export default function Draw() {
   const [patientSearch, setPatientSearch] = useState("");
   const [showPatientResults, setShowPatientResults] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+
+  // When arriving from the calendar with a pre-linked patient, fetch and pre-fill
+  useEffect(() => {
+    if (!preLinkedPatientId) return;
+    fetch(`/api/patients/${preLinkedPatientId}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((patient: Patient | null) => {
+        if (!patient) return;
+        setSelectedPatient(patient);
+        setPatientInfo(prev => ({
+          ...prev,
+          patientName: `${patient.firstName} ${patient.lastName}`,
+          patientDob: patient.dateOfBirth || "",
+          patientId: patient.id,
+        }));
+      });
+    onPreLinkedPatientConsumed?.();
+  }, [preLinkedPatientId]);
 
   const { data: searchedPatients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients", "search", patientSearch],
