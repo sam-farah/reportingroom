@@ -54,6 +54,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [bookingMode, setBookingMode] = useState<"appointment" | "event">("appointment");
 
   // Keep isMobile in sync with window width and lock view mode on small screens
   useEffect(() => {
@@ -334,6 +335,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
       setIsEventDialogOpen(false);
+      setIsBookingDialogOpen(false);
+      setBookingMode("appointment");
       toast({ title: "Event created" });
     },
     onError: () => toast({ title: "Error", description: "Failed to create event", variant: "destructive" }),
@@ -1225,12 +1228,160 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
           </CardContent>
         </Card>
 
-        <Dialog open={isBookingDialogOpen} onOpenChange={setIsBookingDialogOpen}>
+        <Dialog open={isBookingDialogOpen} onOpenChange={(open) => { setIsBookingDialogOpen(open); if (!open) { resetForm(); setEditingAppointment(null); setBookingMode("appointment"); } }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingAppointment ? "Edit Appointment" : "New Appointment"}</DialogTitle>
+              <DialogTitle>
+                {editingAppointment ? "Edit Appointment" : bookingMode === "event" ? "New Event" : "New Appointment"}
+              </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+
+            {/* Mode toggle — only shown when creating, not editing */}
+            {!editingAppointment && (
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setBookingMode("appointment")}
+                  className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    bookingMode === "appointment"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Patient Appointment
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookingMode("event");
+                    setEventForm(prev => ({
+                      ...prev,
+                      date: formData.appointmentDate || format(currentDate, "yyyy-MM-dd"),
+                      title: "",
+                      startTime: formData.appointmentTime || "09:00",
+                      endTime: "17:00",
+                      color: "purple",
+                      recurrence: "none",
+                      recurrenceEndDate: "",
+                      notes: "",
+                    }));
+                  }}
+                  className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    bookingMode === "event"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Block / Event
+                </button>
+              </div>
+            )}
+
+            {/* ── Event form (inline, when in event mode) ── */}
+            {bookingMode === "event" && (
+              <form onSubmit={handleEventSubmit} className="space-y-4">
+                <div>
+                  <Label htmlFor="inlineEventTitle">Title <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="inlineEventTitle"
+                    placeholder="e.g. Sam in Theatre, Amy Unavailable"
+                    value={eventForm.title}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, title: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="inlineEventDate">Date <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="inlineEventDate"
+                    type="date"
+                    value={eventForm.date}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, date: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="inlineEventStart">Start Time <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="inlineEventStart"
+                      type="time"
+                      value={eventForm.startTime}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, startTime: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="inlineEventEnd">End Time <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="inlineEventEnd"
+                      type="time"
+                      value={eventForm.endTime}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, endTime: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>Colour</Label>
+                  <div className="flex gap-2 mt-2">
+                    {Object.entries(EVENT_COLORS).map(([key, colors]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setEventForm(prev => ({ ...prev, color: key }))}
+                        className={`w-8 h-8 rounded-full border-2 transition-all ${colors.dot} ${
+                          eventForm.color === key ? "border-gray-800 scale-110" : "border-transparent"
+                        }`}
+                        title={key.charAt(0).toUpperCase() + key.slice(1)}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="inlineEventRecurrence">Repeat</Label>
+                  <Select value={eventForm.recurrence} onValueChange={(v) => setEventForm(prev => ({ ...prev, recurrence: v }))}>
+                    <SelectTrigger id="inlineEventRecurrence">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Does not repeat</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {eventForm.recurrence !== "none" && (
+                  <div>
+                    <Label htmlFor="inlineEventRecurrenceEnd">Repeat Until (optional)</Label>
+                    <Input
+                      id="inlineEventRecurrenceEnd"
+                      type="date"
+                      value={eventForm.recurrenceEndDate}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, recurrenceEndDate: e.target.value }))}
+                    />
+                  </div>
+                )}
+                <div>
+                  <Label htmlFor="inlineEventNotes">Notes</Label>
+                  <Textarea
+                    id="inlineEventNotes"
+                    value={eventForm.notes}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, notes: e.target.value }))}
+                    rows={2}
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setIsBookingDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={createEventMutation.isPending}>
+                    {createEventMutation.isPending ? "Creating..." : "Create Event"}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {/* ── Appointment form ── */}
+            {bookingMode === "appointment" && <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <Label>Patient <span className="text-red-500">*</span></Label>
@@ -1533,14 +1684,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => { setIsBookingDialogOpen(false); resetForm(); setEditingAppointment(null); }}>
+                <Button type="button" variant="outline" onClick={() => { setIsBookingDialogOpen(false); resetForm(); setEditingAppointment(null); setBookingMode("appointment"); }}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending || !formData.patientId}>
                   {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingAppointment ? "Update" : "Create Booking"}
                 </Button>
               </div>
-            </form>
+            </form>}
           </DialogContent>
         </Dialog>
 
