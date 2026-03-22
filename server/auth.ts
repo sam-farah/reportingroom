@@ -23,6 +23,10 @@ export function getSession() {
 
   const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
+  // In Replit (REPL_ID set) or production, the app is served over HTTPS
+  // so we need secure + sameSite "none" to allow cookies in cross-origin iframe contexts
+  const isHttps = process.env.NODE_ENV === "production" || !!process.env.REPL_ID;
+
   return session({
     secret: sessionSecret,
     store: sessionStore,
@@ -30,9 +34,9 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isHttps,
       maxAge: sessionTtl,
-      sameSite: "lax",
+      sameSite: isHttps ? "none" : "lax",
     },
   });
 }
