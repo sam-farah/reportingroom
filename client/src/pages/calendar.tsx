@@ -96,7 +96,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [showPatientResults, setShowPatientResults] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
-  const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", phone: "" });
+  const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", phone: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "" });
 
   // Calendar events state
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
@@ -317,7 +317,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     onSuccess: (patient: Patient) => {
       handleSelectPatient(patient);
       setIsCreatingPatient(false);
-      setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "" });
+      setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "" });
       queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
       toast({ title: "Patient file created", description: `${patient.firstName} ${patient.lastName} has been registered.` });
     },
@@ -387,7 +387,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     setSelectedPatient(null);
     setPatientSearch("");
     setIsCreatingPatient(false);
-    setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "" });
+    setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "" });
   };
 
   const calcDuration = (scanTypes: string[], laterality: Record<string, "unilateral" | "bilateral">): string => {
@@ -1442,7 +1442,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 ))}
                                 <div
                                   className="p-3 flex items-center gap-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer border-t"
-                                  onClick={() => { setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "" }); setIsCreatingPatient(true); setShowPatientResults(false); }}
+                                  onClick={() => { setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "" }); setIsCreatingPatient(true); setShowPatientResults(false); }}
                                 >
                                   <UserPlus className="w-4 h-4" />
                                   Create new patient file
@@ -1508,6 +1508,48 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                               />
                             </div>
                           </div>
+                          <div className="border-t border-blue-200 pt-3">
+                            <p className="text-xs font-medium text-blue-700 mb-2">Medicare Details <span className="text-blue-400 font-normal">(optional)</span></p>
+                            <div className="grid grid-cols-5 gap-2">
+                              <div className="col-span-3">
+                                <Label htmlFor="npMedicare" className="text-xs">Medicare Number</Label>
+                                <Input
+                                  id="npMedicare"
+                                  placeholder="e.g. 2123456701"
+                                  maxLength={15}
+                                  value={newPatientForm.medicareNumber}
+                                  onChange={(e) => setNewPatientForm(prev => ({ ...prev, medicareNumber: e.target.value.replace(/\D/g, "") }))}
+                                  className="mt-1"
+                                />
+                              </div>
+                              <div className="col-span-1">
+                                <Label htmlFor="npIrn" className="text-xs">IRN</Label>
+                                <Input
+                                  id="npIrn"
+                                  placeholder="1"
+                                  maxLength={2}
+                                  value={newPatientForm.medicareIrn}
+                                  onChange={(e) => setNewPatientForm(prev => ({ ...prev, medicareIrn: e.target.value.replace(/\D/g, "") }))}
+                                  className="mt-1"
+                                />
+                              </div>
+                              <div className="col-span-1">
+                                <Label htmlFor="npMedicareExpiry" className="text-xs">Expiry</Label>
+                                <Input
+                                  id="npMedicareExpiry"
+                                  placeholder="MM/YYYY"
+                                  maxLength={7}
+                                  value={newPatientForm.medicareExpiry}
+                                  onChange={(e) => {
+                                    let val = e.target.value.replace(/[^0-9/]/g, "");
+                                    if (val.length === 2 && !val.includes("/") && newPatientForm.medicareExpiry.length === 1) val += "/";
+                                    setNewPatientForm(prev => ({ ...prev, medicareExpiry: val }));
+                                  }}
+                                  className="mt-1"
+                                />
+                              </div>
+                            </div>
+                          </div>
                           <div className="flex gap-2">
                             <Button
                               type="button"
@@ -1518,6 +1560,9 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 lastName: newPatientForm.lastName,
                                 dateOfBirth: newPatientForm.dateOfBirth || null,
                                 phone: newPatientForm.phone || null,
+                                medicareNumber: newPatientForm.medicareNumber || null,
+                                medicareIrn: newPatientForm.medicareIrn || null,
+                                medicareExpiry: newPatientForm.medicareExpiry || null,
                               })}
                             >
                               {createPatientMutation.isPending ? "Creating..." : "Create & Select"}
