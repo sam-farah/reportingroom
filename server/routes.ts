@@ -962,6 +962,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Distribution counts summary for all reports in the clinic (for card badges)
+  app.get("/api/distributions-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.json({});
+      const counts = await storage.getReportDistributionCounts(user.clinicId);
+      res.json(counts);
+    } catch (error) {
+      console.error("Distributions summary error:", error);
+      res.status(500).json({ error: "Failed to fetch distribution summary" });
+    }
+  });
+
   // List distributions for a report
   app.get("/api/reports/:id/distributions", isAuthenticated, async (req, res) => {
     try {

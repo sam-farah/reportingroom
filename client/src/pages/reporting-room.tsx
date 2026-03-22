@@ -90,6 +90,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     retry: false,
   });
 
+  // Distribution counts for all reports — drives card badge + greyed styling
+  const { data: distributionCounts = {}, refetch: refetchDistributionCounts } = useQuery<Record<number, number>>({
+    queryKey: ["/api/distributions-summary"],
+    retry: false,
+  });
+
   // Update report mutation
   const updateReportMutation = useMutation({
     mutationFn: async (reportData: Partial<Report>) => {
@@ -739,6 +745,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         }),
       });
       refetchDistributions();
+      refetchDistributionCounts();
       setMarkSentName("");
       setMarkSentEmail("");
       setMarkSentNotes("");
@@ -771,6 +778,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       if (!res.ok) throw new Error(data.details || data.error || "Send failed");
       setEmailSent(true);
       refetchDistributions();
+      refetchDistributionCounts();
       toast({ title: "Email Sent", description: `Report sent to ${emailTo}` });
       setTimeout(() => setEmailSent(false), 4000);
     } catch (err: any) {
