@@ -554,7 +554,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="costs" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💰 Cost Projection</TabsTrigger>
           <TabsTrigger value="training" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🌍 Global AI Training</TabsTrigger>
           <TabsTrigger value="content-templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📋 Content Templates</TabsTrigger>
-          <TabsTrigger value="templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📝 Report Templates</TabsTrigger>
+          <TabsTrigger value="templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🎨 Report Design</TabsTrigger>
           <TabsTrigger value="kiosk" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🖥️ Kiosk</TabsTrigger>
           <TabsTrigger value="backup" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💾 Backup</TabsTrigger>
         </TabsList>
