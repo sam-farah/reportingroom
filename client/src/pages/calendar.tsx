@@ -53,11 +53,18 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [showIdCheck, setShowIdCheck] = useState(false);
   const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
+  // Keep isMobile in sync with window width and lock view mode on small screens
   useEffect(() => {
-    if (window.innerWidth < 768) {
-      setViewMode("day");
-    }
+    const onResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setViewMode("day");
+    };
+    onResize(); // run once on mount
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
   const [resizingAppointment, setResizingAppointment] = useState<{ apt: Appointment; edge: "top" | "bottom" } | null>(null);
