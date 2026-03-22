@@ -74,7 +74,13 @@ export async function setupAuth(app: Express) {
       req.session.userId = user.id;
 
       const { passwordHash: _, ...safeUser } = user;
-      res.status(201).json(safeUser);
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ message: "Registration failed. Please try again." });
+        }
+        res.status(201).json(safeUser);
+      });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Registration failed. Please try again." });
@@ -106,7 +112,13 @@ export async function setupAuth(app: Express) {
       req.session.userId = user.id;
 
       const { passwordHash: _, ...safeUser } = user;
-      res.json(safeUser);
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ message: "Login failed. Please try again." });
+        }
+        res.json(safeUser);
+      });
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Login failed. Please try again." });
