@@ -2006,6 +2006,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Serve clinic logo image (authenticated)
+  app.get("/api/clinic/logo", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic?.logoUrl) return res.status(404).json({ error: "No logo" });
+
+      const logoPath = path.join(process.cwd(), clinic.logoUrl.startsWith('/') ? clinic.logoUrl.slice(1) : clinic.logoUrl);
+      if (!fs.existsSync(logoPath)) return res.status(404).json({ error: "Logo file not found" });
+
+      // Detect MIME type from file magic bytes (handles files without extensions)
+      const headerBuf = Buffer.alloc(8);
+      const fd = fs.openSync(logoPath, 'r');
+      fs.readSync(fd, headerBuf, 0, 8, 0);
+      fs.closeSync(fd);
+      let mimeType = 'image/png';
+      if (headerBuf[0] === 0xFF && headerBuf[1] === 0xD8) mimeType = 'image/jpeg';
+      else if (headerBuf[0] === 0x89 && headerBuf[1] === 0x50) mimeType = 'image/png';
+      else if (headerBuf[0] === 0x47 && headerBuf[1] === 0x49) mimeType = 'image/gif';
+      else if (headerBuf[0] === 0x52 && headerBuf[1] === 0x49) mimeType = 'image/webp';
+      else {
+        const ext = path.extname(clinic.logoUrl).toLowerCase();
+        const mimeMap: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
+        mimeType = mimeMap[ext] || 'image/png';
+      }
+
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      fs.createReadStream(logoPath).pipe(res);
+    } catch (error) {
+      console.error("Serve clinic logo error:", error);
+      res.status(500).json({ error: "Failed to serve logo" });
+    }
+  });
+
   // Kiosk logo upload endpoint
   app.post("/api/upload-kiosk-logo", isAuthenticated, upload.single('logo'), async (req, res) => {
     try {

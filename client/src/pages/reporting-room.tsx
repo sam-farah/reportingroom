@@ -77,6 +77,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     retry: false,
   });
 
+  // Resolved clinic logo URL — always goes through the authenticated API endpoint
+  const clinicLogoApiUrl = clinicData?.logoUrl ? '/api/clinic/logo' : null;
+
   // Fetch physicians for distribute feature
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
@@ -469,7 +472,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         <body>
           ${template?.showHeader !== false ? `
             <div class="header">
-              ${clinicData?.logoUrl ? `<div class="header-logo"><img src="${clinicData.logoUrl}" alt="Clinic Logo" /></div>` : ''}
+              ${clinicLogoApiUrl ? `<div class="header-logo"><img src="${clinicLogoApiUrl}" alt="Clinic Logo" /></div>` : ''}
               <div class="header-info">
                 <h1>${clinicData?.name || clinicSettings?.clinicName || template?.clinicName || 'Medical Clinic'}</h1>
                 <div class="subtitle">Medical Examination Report</div>
@@ -643,8 +646,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
 
     // Load clinic logo for report header
     let clinicLogoDataUrl: string | null = null;
-    if (clinicData?.logoUrl) {
-      clinicLogoDataUrl = await toBase64(clinicData.logoUrl);
+    if (clinicLogoApiUrl) {
+      clinicLogoDataUrl = await toBase64(clinicLogoApiUrl);
     }
 
     const html = `<!DOCTYPE html>
@@ -883,9 +886,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
 
       // Load clinic logo if available
       let logoImg: HTMLImageElement | null = null;
-      if (clinicData?.logoUrl) {
+      if (clinicLogoApiUrl) {
         try {
-          const logoRes = await fetch(clinicData.logoUrl, { credentials: 'include' });
+          const logoRes = await fetch(clinicLogoApiUrl, { credentials: 'include' });
           if (logoRes.ok) {
             const logoBlob = await logoRes.blob();
             const logoDataUrl = await new Promise<string>((resolve) => {
