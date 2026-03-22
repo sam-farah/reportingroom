@@ -128,7 +128,10 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
       console.log('OCR processing successful:', data);
       setUploadStatus('completed');
       if (data.ocrResult) {
-        setPatientName(data.ocrResult.patientName || "");
+        // Only update patient name from OCR if no patient is already linked (e.g. from calendar)
+        if (!linkedPatient) {
+          setPatientName(data.ocrResult.patientName || "");
+        }
         
         // Parse DOB from various formats to YYYY-MM-DD
         let dobFormatted = "";
