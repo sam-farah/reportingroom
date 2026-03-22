@@ -143,6 +143,10 @@ export async function analyzeVascularDrawing(
   legendEntries: any[] = []
 ): Promise<{ findings: string; impression: string }> {
   try {
+    const legendSection = legendEntries.length > 0
+      ? `LEGEND REFERENCE for interpreting symbols:\n${legendEntries.map(e => `- ${e.category}: ${e.description} (${e.imageType === 'drawing' ? 'drawn pattern' : 'image reference'})`).join('\n')}\n\nUse this legend to interpret any symbols, patterns, or markings you see in the drawing.`
+      : '';
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -150,35 +154,32 @@ export async function analyzeVascularDrawing(
           role: "system",
           content: `You are an expert vascular sonographer reviewing digital drawings on ultrasound templates. 
 
-          Analyze the drawing annotations, markings, and measurements made on this ${templateName} template.
+Analyze the drawing annotations, markings, and measurements made on this ${templateName} template.
 
-          CRITICAL — RADIOLOGICAL CONVENTION FOR BILATERAL VASCULAR STUDIES:
-          Vascular ultrasound worksheets follow standard radiological convention:
-          - The LEFT side of the image = the patient's RIGHT side
-          - The RIGHT side of the image = the patient's LEFT side
-          This applies to all bilateral anatomy diagrams (carotid, aorto-iliac, iliac veins, etc.).
-          If the worksheet contains a table with explicit "RIGHT" and "LEFT" column headers, those labels are authoritative — always use them to determine which side findings belong to, rather than relying on diagram orientation alone.
-          Never call a finding "left-sided" solely because it appears on the left of the image.
-          
-          ${legendEntries.length > 0 ? `LEGEND REFERENCE for interpreting symbols:
-${legendEntries.map(entry => `- ${entry.category}: ${entry.description} (${entry.imageType === 'drawing' ? 'drawn pattern' : 'image reference'})`).join('\n')}
+CRITICAL — RADIOLOGICAL CONVENTION FOR BILATERAL VASCULAR STUDIES:
+Vascular ultrasound worksheets follow standard radiological convention:
+- The LEFT side of the image = the patient's RIGHT side
+- The RIGHT side of the image = the patient's LEFT side
+This applies to all bilateral anatomy diagrams (carotid, aorto-iliac, iliac veins, etc.).
+If the worksheet contains a table with explicit "RIGHT" and "LEFT" column headers, those labels are authoritative — always use them to determine which side findings belong to, rather than relying on diagram orientation alone.
+Never call a finding "left-sided" solely because it appears on the left of the image.
 
-Use this legend to interpret any symbols, patterns, or markings you see in the drawing.` : ''}
-          
-          Focus on:
-          - Vessel anatomy and patency indicated by drawings
-          - Flow patterns shown by arrows or directional markings  
-          - Measurements and annotations made by the sonographer
-          - Areas of interest highlighted or circled
-          - Compression test results if indicated
-          - Any abnormal findings marked or noted
-          - Symbol interpretation using the provided legend reference
-          
-          Generate professional medical findings and impression based on what is actually drawn.
-          
-          Return JSON format: { "findings": "detailed technical findings", "impression": "clinical summary and recommendations" }
-          
-          Make findings specific to what you can see drawn, referencing legend symbols when applicable.`
+${legendSection}
+
+Focus on:
+- Vessel anatomy and patency indicated by drawings
+- Flow patterns shown by arrows or directional markings  
+- Measurements and annotations made by the sonographer
+- Areas of interest highlighted or circled
+- Compression test results if indicated
+- Any abnormal findings marked or noted
+- Symbol interpretation using the provided legend reference
+
+Generate professional medical findings and impression based on what is actually drawn.
+
+Return JSON format: { "findings": "detailed technical findings", "impression": "clinical summary and recommendations" }
+
+Make findings specific to what you can see drawn, referencing legend symbols when applicable.`
         },
         {
           role: "user",
@@ -220,173 +221,88 @@ export async function generateReportFromWorksheet(
   contentTemplate: { findingsTemplate?: string | null; impressionTemplate?: string | null; indicationTemplate?: string | null } | null = null
 ): Promise<ReportData> {
   try {
-    // Build comprehensive training context using actual training examples
-    let trainingContext = '';
+    // --- Style reference from training data ---
+    // We show the AI the clinic's preferred language and phrasing, but NOT as findings to copy.
+    let trainingStyleSection = '';
     if (trainingData.length > 0) {
-      console.log(`Using ${trainingData.length} training examples for AI context`);
-      
-      // Categorize and prioritize training examples
-      const categoryMap = trainingData.reduce((acc, pair) => {
-        if (!acc[pair.category]) acc[pair.category] = [];
-        acc[pair.category].push(pair);
-        return acc;
-      }, {} as Record<string, any[]>);
+      const sampleTexts = trainingData
+        .slice(0, 3)
+        .filter(p => p.extractedReportText)
+        .map((p, i) => {
+          const preview = p.extractedReportText.substring(0, 400);
+          const ellipsis = p.extractedReportText.length > 400 ? '…' : '';
+          return `Example ${i + 1} (${p.category}, ${p.complexityLevel}):\n"${preview}${ellipsis}"`;
+        })
+        .join('\n\n');
 
-      const relevantExamples = trainingData.slice(0, 3); // Use top 3 most recent examples
-      
-      trainingContext = `\n\n🔥 CRITICAL TRAINING DATA INTEGRATION ACTIVE:
-You MUST utilize these ${trainingData.length} uploaded training pairs for accurate report generation.
-
-⚠️  TRAINING OVERRIDE INSTRUCTIONS:
-The uploaded training examples show ACTUAL CLINICAL FINDINGS from real worksheets. You must analyze the current worksheet and match the clinical patterns shown in the training data.
-
-TRAINING CATEGORIES AVAILABLE:
-${Object.entries(categoryMap).map(([category, pairs]) => 
-  `• ${category.toUpperCase()}: ${pairs.length} examples showing real clinical findings (${pairs.map(p => p.complexityLevel).join(', ')} complexity)`
-).join('\n')}
-
-🏥 REFERENCE EXAMPLES FOR CLINICAL PATTERN MATCHING:
-${relevantExamples.map((pair, index) => 
-  `TRAINING EXAMPLE ${index + 1}: ${pair.category.toUpperCase()} Study - ${pair.complexityLevel.toUpperCase()} Complexity
-  ▪ Uploaded: ${new Date(pair.uploadedAt).toLocaleDateString()}
-  ▪ Clinical Pattern: This training worksheet shows ${pair.category} pathology patterns
-  ▪ Finding Style: Professional ${pair.category} ultrasound reporting with ${pair.complexityLevel} level clinical detail
-  ▪ Training Files: Worksheet (${pair.worksheetUrl}) + Report (${pair.reportUrl})
-  ${pair.extractedReportText ? `▪ 🎯 EXACT TRAINING REPORT TEXT (USE THIS LANGUAGE):
-    "${pair.extractedReportText.substring(0, 500)}${pair.extractedReportText.length > 500 ? '...' : ''}"
-  ▪ 🚨 MANDATORY: Copy the exact medical terminology, phrasing, and report structure from above text` : ''}
-  ▪ IMPORTANT: If current worksheet shows similar patterns to this training example, generate findings consistent with the training data`
-).join('\n\n')}
-
-🚨 MANDATORY TRAINING COMPLIANCE:
-1. **CLINICAL FINDINGS**: If the current worksheet shows venous insufficiency patterns similar to training examples, you MUST report venous insufficiency
-2. **EXACT TEXT COPYING**: Copy the EXACT terminology, phrasing, and sentence structure from the extracted training report text  
-3. **DIAGNOSTIC ACCURACY**: Do NOT contradict clinical findings shown in the training data  
-4. **TEXT REPLICATION**: Replicate the specific medical language, sentence structure, and report style from the extracted training report text
-5. **PATHOLOGY DETECTION**: If training shows pathology, look for and report similar pathology using the same language patterns
-6. **PHRASE ADOPTION**: Adopt key phrases, measurements formats, and clinical descriptions from the sample language examples
-
-AI TRAINING INSTRUCTIONS:
-1. **Scan Type Matching**: If the current study appears to be ${relevantExamples[0]?.category || 'Lower Limb Venous'}, use the exact language patterns from ${relevantExamples[0]?.category || 'Lower Limb Venous'} training examples
-2. **Study-Specific Language**: Each scan type has specific terminology - Lower Limb Venous uses "reflux", "saphenous vein", "varicosities" etc.
-3. **Finding Type Adoption**: If training examples show ${relevantExamples[0]?.complexityLevel || 'abnormal'} findings, replicate that reporting style and language
-2. **Complexity Adaptation**: Generate ${relevantExamples[0]?.complexityLevel || 'intermediate'}-level detail matching the uploaded training examples  
-3. **Professional Standards**: Follow medical reporting standards demonstrated in the ${trainingData.length} training examples
-4. **Consistency**: Maintain reporting style, structure, and clinical approach consistent with training data
-5. **Training-Informed Decisions**: Use training patterns to inform study type classification, finding descriptions, and impression formatting
-
-TRAINING INTEGRATION STATUS: ✅ ACTIVE - AI will reference uploaded training examples for report generation consistency.`;
-    } else {
-      console.log('No training data available - using default AI knowledge');
-      trainingContext = `\n\n⚠️  TRAINING DATA STATUS: NOT AVAILABLE
-No uploaded training pairs found. Using baseline medical AI knowledge.
-
-RECOMMENDATION: Upload worksheet-report training pairs via Admin Panel → AI Training tab to:
-• Improve report accuracy and consistency
-• Customize terminology for your clinic's style  
-• Enhance AI understanding of your reporting preferences
-• Enable category-specific report generation
-
-Current mode: Default medical AI knowledge without training data context.`;
+      if (sampleTexts) {
+        trainingStyleSection = `\n\nCLINIC STYLE REFERENCE (${trainingData.length} training reports):\nThe excerpts below show this clinic's preferred terminology, sentence structure, and reporting style. Adopt this style where it naturally fits what you observe on the actual worksheet — do not copy findings or diagnoses from these examples unless they are genuinely supported by the current image:\n\n${sampleTexts}`;
+      } else {
+        trainingStyleSection = `\n\nCLINIC STYLE REFERENCE: ${trainingData.length} training reports are available for style guidance. Follow professional vascular ultrasound reporting conventions.`;
+      }
+      console.log(`Style reference: ${trainingData.length} training examples`);
     }
 
-    // Build content template context
-    let contentTemplateContext = '';
+    // --- Content template: structure and language guide only ---
+    let templateSection = '';
     if (contentTemplate && (contentTemplate.findingsTemplate || contentTemplate.impressionTemplate || contentTemplate.indicationTemplate)) {
-      contentTemplateContext = `
-
-📋 CLINIC CONTENT TEMPLATE — BASELINE STRUCTURE TO FOLLOW:
-This clinic has defined a standard report structure for this scan type. Use the following as the BASE SKELETON and fill in the patient-specific findings from the worksheet. Maintain this structure and language style:
-
-${contentTemplate.indicationTemplate ? `INDICATION TEMPLATE:
-"${contentTemplate.indicationTemplate}"
-→ Adapt this for the patient's specific clinical context.` : ''}
-
-${contentTemplate.findingsTemplate ? `FINDINGS TEMPLATE (use as baseline structure):
-"${contentTemplate.findingsTemplate}"
-→ Fill in actual values, measurements, and findings from the worksheet. Replace placeholder text with patient-specific observations. Do NOT copy verbatim if the worksheet contradicts — adapt to what you see.` : ''}
-
-${contentTemplate.impressionTemplate ? `IMPRESSION TEMPLATE (use as baseline):
-"${contentTemplate.impressionTemplate}"
-→ Adapt this conclusion to match the actual findings observed.` : ''}
-
-CONTENT TEMPLATE INSTRUCTIONS:
-1. Use the template structure and terminology as your FOUNDATION
-2. Fill in patient-specific values from the worksheet image
-3. Maintain the sentence structure and medical language style from the template
-4. If the worksheet shows findings not covered by the template, add them in the same style
-5. If the worksheet contradicts the template, report what you actually see (accuracy over template)`;
-      console.log('📋 Content template injected for scan type');
+      const parts: string[] = [];
+      if (contentTemplate.indicationTemplate) {
+        parts.push(`Indication phrasing example:\n"${contentTemplate.indicationTemplate}"`);
+      }
+      if (contentTemplate.findingsTemplate) {
+        parts.push(`Findings structure example:\n"${contentTemplate.findingsTemplate}"`);
+      }
+      if (contentTemplate.impressionTemplate) {
+        parts.push(`Impression phrasing example:\n"${contentTemplate.impressionTemplate}"`);
+      }
+      templateSection = `\n\nCLINIC REPORT TEMPLATE (language and structure guide):\nThe following shows this clinic's standard phrasing for this scan type. Use it as a style reference — replace every value with what you actually observe on the worksheet, add sections for findings not covered, and omit sections that do not apply:\n\n${parts.join('\n\n')}`;
+      console.log('Content template injected as style guide');
     }
 
-    console.log("=== AI TRAINING INTEGRATION DEBUG ===");
-    console.log("Training context length:", trainingContext.length);
-    console.log("Content template context length:", contentTemplateContext.length);
-    console.log("Training context preview:", trainingContext.substring(0, 500) + "...");
-    
+    console.log(`Generating report | training examples: ${trainingData.length} | template: ${!!templateSection}`);
+
+    const systemPrompt = `You are an expert radiologist AI assistant generating a professional vascular ultrasound report from a scanned worksheet image.
+
+YOUR FIRST PRIORITY is to carefully read and analyse the actual worksheet image provided. Everything you report must be grounded in what you can directly observe in the image — measurements written on the worksheet, tick-boxes that are marked, waveform annotations, written notes, and any values or findings the sonographer has recorded.
+
+RADIOLOGICAL CONVENTION — BILATERAL STUDIES:
+Vascular worksheets use standard radiological convention:
+- LEFT side of the image = patient's RIGHT side
+- RIGHT side of the image = patient's LEFT side
+If the worksheet has explicit "RIGHT" and "LEFT" column headers in a table, those labels are authoritative. Do not infer laterality from diagram position alone.
+
+REPORT STRUCTURE:
+- studyType: identify the scan type from the worksheet (e.g. "Lower Limb Venous Duplex", "Carotid Duplex Ultrasound")
+- indication: the clinical reason for the exam as shown or implied on the worksheet
+- findings: structured, specific observations — all vessels examined, measurements, compressibility, flow characteristics, any abnormalities
+- impression: concise clinical summary with clear conclusions and recommended follow-up if appropriate
+
+ACCURACY RULES:
+- Report only what is visible on the worksheet; do not invent or assume findings
+- If a field on the worksheet is blank or illegible, omit that detail rather than guessing
+- Do not reproduce boilerplate from style references unless the worksheet genuinely supports it
+- Distinguish clearly between normal and abnormal findings
+${templateSection}${trainingStyleSection}
+
+Return JSON: { "studyType": string, "indication": string, "findings": string, "impression": string }`;
+
+    const userPrompt = `Please generate a report for this worksheet.
+
+Patient: ${extractedData.patientName || 'Not specified'}
+DOB: ${extractedData.patientDob || 'Not specified'}
+Exam date: ${extractedData.examDate || new Date().toLocaleDateString()}
+
+Carefully read all visible markings, measurements, annotations, tick-boxes, and written values on the worksheet, then produce the report based on what you actually see.`;
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
-        {
-          role: "system",
-          content: `You are an expert radiologist AI assistant specialized in ultrasound report generation. Generate professional ultrasound reports based on worksheet images and extracted patient data, utilizing uploaded training examples for consistency.
-
-          CRITICAL — RADIOLOGICAL CONVENTION FOR BILATERAL VASCULAR STUDIES:
-          Vascular ultrasound worksheets are displayed in standard radiological convention. This means:
-          - The LEFT side of the image = the patient's RIGHT side
-          - The RIGHT side of the image = the patient's LEFT side
-          This applies to all bilateral studies including carotid, aorto-iliac, iliac veins, and any study showing a bilateral anatomy diagram.
-          ALWAYS check for explicit "RIGHT" and "LEFT" column labels in any tabular data on the worksheet — these labels are authoritative and must take precedence over your interpretation of the diagram orientation.
-          Do NOT describe findings as "left" simply because they appear on the left of the image.
-
-          REPORT STRUCTURE:
-          - Study Type: (e.g., "Abdominal Ultrasound", "Pelvic Ultrasound", "Vascular Ultrasound")
-          - Indication: (reason for exam, clinical question)
-          - Findings: (detailed observations, measurements, anatomical descriptions)
-          - Impression: (concise clinical summary and recommendations)
-
-          QUALITY STANDARDS:
-          - Use professional medical terminology
-          - Include specific anatomical references
-          - Provide measurements when visible
-          - Note normal and abnormal findings
-          - Make appropriate clinical recommendations
-          - Match complexity level to training examples when available
-          
-          Return JSON with: {
-            "studyType": string,
-            "indication": string, 
-            "findings": string,
-            "impression": string
-          }${contentTemplateContext}${trainingContext}`
-        },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
-            {
-              type: "text",
-              text: `🔥 URGENT: Generate a report for this ultrasound worksheet using TRAINING DATA GUIDANCE.
-
-PATIENT INFO:
-- Patient: ${extractedData.patientName || 'Not specified'}
-- DOB: ${extractedData.patientDob || 'Not specified'}  
-- Exam Date: ${extractedData.examDate || new Date().toLocaleDateString()}
-
-⚠️  CRITICAL TRAINING INSTRUCTION:
-You have ${trainingData.length} training examples showing REAL CLINICAL FINDINGS from similar worksheets. 
-
-${trainingData.length > 0 ? `
-🏥 SPECIFIC TRAINING GUIDANCE:
-Your training data includes ${trainingData.filter(t => t.category === 'vascular').length} vascular studies. If this worksheet shows:
-• Venous reflux patterns → Report venous insufficiency (as shown in training)
-• Flow abnormalities → Report flow disorders (as shown in training)  
-• Compression test results → Report based on training patterns
-• Varicose patterns → Report varicosities (as shown in training)
-
-TRAINING PATTERN MATCH: Look for clinical findings similar to your training examples and report them accurately.` : ''}
-
-ANALYZE THIS WORKSHEET: Look carefully at ALL markings, measurements, annotations, and findings. Match what you see to the clinical patterns in your training data.`
-            },
+            { type: "text", text: userPrompt },
             {
               type: "image_url",
               image_url: {
