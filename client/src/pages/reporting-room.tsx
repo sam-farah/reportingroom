@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2 } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
   const [activeVoiceDictation, setActiveVoiceDictation] = useState<string>('');
+  const [previousFieldValues, setPreviousFieldValues] = useState<Record<string, string>>({});
   const [distributeReport, setDistributeReport] = useState<Report | null>(null);
   const [distributeHtml, setDistributeHtml] = useState<string>("");
   const [distributeHtmlNoWs, setDistributeHtmlNoWs] = useState<string>("");
@@ -870,6 +871,18 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setEditingReport(prev => prev ? { ...prev, [field]: value } : null);
   };
 
+  const clearField = (field: 'indication' | 'findings' | 'impression') => {
+    if (!editingReport) return;
+    setPreviousFieldValues(prev => ({ ...prev, [field]: editingReport[field] || '' }));
+    updateEditingReport(field, '');
+  };
+
+  const undoField = (field: 'indication' | 'findings' | 'impression') => {
+    if (previousFieldValues[field] === undefined) return;
+    updateEditingReport(field, previousFieldValues[field]);
+    setPreviousFieldValues(prev => { const next = { ...prev }; delete next[field]; return next; });
+  };
+
   // Handle voice dictation transcription
   const handleVoiceTranscription = (text: string, field: string) => {
     if (editingReport) {
@@ -1515,6 +1528,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                         <Hash className="w-4 h-4 mr-1" />
                         Shortcuts
                       </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => clearField('indication')} title="Clear indication" disabled={!editingReport?.indication}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => undoField('indication')} title="Undo" disabled={previousFieldValues['indication'] === undefined}>
+                        <Undo2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                   <Textarea
@@ -1560,6 +1579,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                         <Hash className="w-4 h-4 mr-1" />
                         Shortcuts
                       </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => clearField('findings')} title="Clear findings" disabled={!editingReport?.findings}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => undoField('findings')} title="Undo" disabled={previousFieldValues['findings'] === undefined}>
+                        <Undo2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                   <Textarea
@@ -1604,6 +1629,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                       >
                         <Hash className="w-4 h-4 mr-1" />
                         Shortcuts
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => clearField('impression')} title="Clear impression" disabled={!editingReport?.impression}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => undoField('impression')} title="Undo" disabled={previousFieldValues['impression'] === undefined}>
+                        <Undo2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
@@ -1832,6 +1863,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                         <Hash className="w-4 h-4 mr-1" />
                         Shortcuts
                       </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => clearField('indication')} title="Clear indication" disabled={!editingReport?.indication}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => undoField('indication')} title="Undo" disabled={previousFieldValues['indication'] === undefined}>
+                        <Undo2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                   <Textarea
@@ -1878,6 +1915,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                         <Hash className="w-4 h-4 mr-1" />
                         Shortcuts
                       </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => clearField('findings')} title="Clear findings" disabled={!editingReport?.findings}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => undoField('findings')} title="Undo" disabled={previousFieldValues['findings'] === undefined}>
+                        <Undo2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                   <Textarea
@@ -1923,6 +1966,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                       >
                         <Hash className="w-4 h-4 mr-1" />
                         Shortcuts
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => clearField('impression')} title="Clear impression" disabled={!editingReport?.impression}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => undoField('impression')} title="Undo" disabled={previousFieldValues['impression'] === undefined}>
+                        <Undo2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
