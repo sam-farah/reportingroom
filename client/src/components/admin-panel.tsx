@@ -14,7 +14,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import ClinicPage from "@/pages/physicians";
-import type { TrainingPair, Physician, ReportTemplate, Clinic, ScanTypeContentTemplate } from "@shared/schema";
+import type { TrainingPair, Physician, ReportTemplate, Clinic, ScanTypeContentTemplate, WorksheetTemplate } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import ScanDurationsTab from "./scan-durations-tab";
 
@@ -79,6 +79,52 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
   const { data: contentTemplates = [] } = useQuery<ScanTypeContentTemplate[]>({
     queryKey: ["/api/content-templates"],
   });
+
+  // Blank worksheet templates state
+  const [wsName, setWsName] = useState("");
+  const [wsDescription, setWsDescription] = useState("");
+  const [wsCategory, setWsCategory] = useState("");
+  const [wsFile, setWsFile] = useState<File | null>(null);
+  const [wsUploading, setWsUploading] = useState(false);
+  const wsFileRef = useRef<HTMLInputElement>(null);
+
+  const { data: blankWorksheets = [], refetch: refetchBlankWorksheets } = useQuery<WorksheetTemplate[]>({
+    queryKey: ["/api/worksheet-templates"],
+  });
+
+  const deleteBlankWorksheetMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/worksheet-templates/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/worksheet-templates"] });
+      toast({ title: "Deleted", description: "Blank worksheet removed." });
+    },
+  });
+
+  const handleUploadBlankWorksheet = async () => {
+    if (!wsFile || !wsName || !wsCategory) return;
+    setWsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("worksheetFile", wsFile);
+      formData.append("name", wsName);
+      formData.append("description", wsDescription);
+      formData.append("category", wsCategory);
+      const res = await fetch("/api/worksheet-templates", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      queryClient.invalidateQueries({ queryKey: ["/api/worksheet-templates"] });
+      setWsName(""); setWsDescription(""); setWsCategory(""); setWsFile(null);
+      if (wsFileRef.current) wsFileRef.current.value = "";
+      toast({ title: "Uploaded", description: `"${wsName}" added as a blank worksheet.` });
+    } catch {
+      toast({ title: "Upload failed", description: "Could not upload the worksheet.", variant: "destructive" });
+    } finally {
+      setWsUploading(false);
+    }
+  };
 
   const saveTemplateMutation = useMutation({
     mutationFn: (data: { scanType: string; indicationTemplate: string; findingsTemplate: string; impressionTemplate: string }) =>
@@ -555,6 +601,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="training" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🌍 Global AI Training</TabsTrigger>
           <TabsTrigger value="content-templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📋 Content Templates</TabsTrigger>
           <TabsTrigger value="templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🎨 Report Design</TabsTrigger>
+          <TabsTrigger value="blank-worksheets" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🗂️ Blank Worksheets</TabsTrigger>
           <TabsTrigger value="kiosk" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🖥️ Kiosk</TabsTrigger>
           <TabsTrigger value="backup" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💾 Backup</TabsTrigger>
         </TabsList>
@@ -1515,6 +1562,118 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Blank Worksheets ── */}
+        <TabsContent value="blank-worksheets" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Image className="w-5 h-5 text-blue-600" />
+                Upload Blank Worksheet
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="wsName">Name *</Label>
+                  <Input id="wsName" placeholder="e.g. Lower Limb Venous" value={wsName} onChange={e => setWsName(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="wsCategory">Category *</Label>
+                  <Select value={wsCategory} onValueChange={setWsCategory}>
+                    <SelectTrigger id="wsCategory">
+                      <SelectValue placeholder="Select category…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Vascular">Vascular</SelectItem>
+                      <SelectItem value="Venous">Venous</SelectItem>
+                      <SelectItem value="Arterial">Arterial</SelectItem>
+                      <SelectItem value="Cardiac">Cardiac</SelectItem>
+                      <SelectItem value="Abdominal">Abdominal</SelectItem>
+                      <SelectItem value="Renal">Renal</SelectItem>
+                      <SelectItem value="Obstetric">Obstetric</SelectItem>
+                      <SelectItem value="Musculoskeletal">Musculoskeletal</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="wsDesc">Description</Label>
+                <Input id="wsDesc" placeholder="Optional description" value={wsDescription} onChange={e => setWsDescription(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label>Worksheet Image *</Label>
+                <input
+                  ref={wsFileRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={e => setWsFile(e.target.files?.[0] ?? null)}
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                />
+                {wsFile && <p className="text-xs text-gray-500 mt-1">{wsFile.name} ({(wsFile.size / 1024).toFixed(0)} KB)</p>}
+              </div>
+              <Button
+                onClick={handleUploadBlankWorksheet}
+                disabled={!wsName || !wsCategory || !wsFile || wsUploading}
+                className="medical-btn-primary"
+              >
+                {wsUploading ? (
+                  <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Uploading…</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-2" />Upload Worksheet</>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-600" />
+                Saved Blank Worksheets
+                <span className="ml-auto text-sm font-normal text-gray-500">{blankWorksheets.length} worksheet{blankWorksheets.length !== 1 ? "s" : ""}</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {blankWorksheets.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  <Image className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                  <p className="text-sm">No blank worksheets uploaded yet.</p>
+                  <p className="text-xs mt-1">Upload one above to make it available in the Draw section.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {blankWorksheets.map((ws) => (
+                    <div key={ws.id} className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                      <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center overflow-hidden">
+                        <img src={ws.imageUrl} alt={ws.name} className="w-full h-full object-contain" />
+                      </div>
+                      <div className="p-3">
+                        <p className="font-semibold text-sm text-gray-900 truncate">{ws.name}</p>
+                        {ws.description && <p className="text-xs text-gray-500 mt-0.5 truncate">{ws.description}</p>}
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{ws.category}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 h-7 px-2"
+                            onClick={() => {
+                              if (confirm(`Remove "${ws.name}"?`)) deleteBlankWorksheetMutation.mutate(ws.id);
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         </div>
       </Tabs>
     </div>
