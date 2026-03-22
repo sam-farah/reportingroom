@@ -258,7 +258,7 @@ export default function Dashboard() {
       {activePanel === "user" ? (
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} defaultTab={preLinkedTab} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       ) : activePanel === "draw" ? (
-        <Draw preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} />
+        <Draw preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} onDraftCreated={(reportId) => { setOpenReportId(reportId); setActivePanel("reporting-room"); }} />
       ) : activePanel === "reporting-room" ? (
         <ReportingRoom initialOpenReportId={openReportId} onReportOpened={() => setOpenReportId(null)} />
       ) : activePanel === "physicians" ? (

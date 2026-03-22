@@ -20,10 +20,11 @@ interface DrawingTool {
   opacity?: number;
 }
 
-export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed }: {
+export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed, onDraftCreated }: {
   preLinkedPatientId?: number | null;
   preLinkedPatientName?: string;
   onPreLinkedPatientConsumed?: () => void;
+  onDraftCreated?: (reportId: number) => void;
 } = {}) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -215,7 +216,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (report: any) => {
       // Exit component fullscreen mode
       setIsFullscreen(false);
       
@@ -232,9 +233,11 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       setSelectedTemplate(null);
       setShowCreateDraftDialog(false);
       
-      // Small delay to ensure fullscreen exit completes before navigation
+      // Navigate to the reporting room panel via callback (no full-page reload)
       setTimeout(() => {
-        window.location.href = "/reporting-room";
+        if (onDraftCreated && report?.id) {
+          onDraftCreated(report.id);
+        }
       }, 100);
     },
     onError: (error: Error) => {
