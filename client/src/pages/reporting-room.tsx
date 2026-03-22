@@ -878,49 +878,61 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         img.src = worksheetDataUrl;
       });
 
-      // Set up canvas
-      const HEADER_HEIGHT = 110;
-      const PADDING = 16;
+      // A4 at 200 DPI: 210mm × 297mm → 1654 × 2339 px
+      const DPI = 200;
+      const A4_W = Math.round((210 / 25.4) * DPI); // 1654
+      const A4_H = Math.round((297 / 25.4) * DPI); // 2339
+
+      // Header strip: ~11% of page height
+      const HEADER_HEIGHT = Math.round(A4_H * 0.11);
+      const PADDING = Math.round(A4_W * 0.025);
+
       const canvas = document.createElement('canvas');
-      canvas.width = wsImg.width;
-      canvas.height = wsImg.height + HEADER_HEIGHT;
+      canvas.width = A4_W;
+      canvas.height = A4_H;
       const ctx = canvas.getContext('2d')!;
 
-      // White header background
+      // White background for entire page
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, HEADER_HEIGHT);
+      ctx.fillRect(0, 0, A4_W, A4_H);
+
+      // Header background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, A4_W, HEADER_HEIGHT);
 
       // Bottom border on header
-      ctx.strokeStyle = '#0066cc';
-      ctx.lineWidth = 3;
+      const primaryColor = (templates.find((t: ReportTemplate) => t.isDefault) || templates[0])?.primaryColor || '#0066cc';
+      ctx.strokeStyle = primaryColor;
+      ctx.lineWidth = Math.round(A4_W * 0.003);
       ctx.beginPath();
-      ctx.moveTo(0, HEADER_HEIGHT - 1.5);
-      ctx.lineTo(canvas.width, HEADER_HEIGHT - 1.5);
+      ctx.moveTo(0, HEADER_HEIGHT);
+      ctx.lineTo(A4_W, HEADER_HEIGHT);
       ctx.stroke();
 
       // Draw logo on the left
       let textStartX = PADDING;
       if (logoImg) {
         const logoMaxH = HEADER_HEIGHT - PADDING * 2;
-        const logoMaxW = 180;
+        const logoMaxW = Math.round(A4_W * 0.2);
         const scale = Math.min(logoMaxW / logoImg.width, logoMaxH / logoImg.height, 1);
         const logoW = logoImg.width * scale;
         const logoH = logoImg.height * scale;
         const logoY = (HEADER_HEIGHT - logoH) / 2;
         ctx.drawImage(logoImg, PADDING, logoY, logoW, logoH);
-        textStartX = PADDING + logoW + 24;
+        textStartX = PADDING + logoW + Math.round(A4_W * 0.015);
       }
 
-      // Draw patient details on the right side
+      // Font sizes scaled to DPI
+      const clinicFontSize = Math.round(A4_W * 0.016);  // ~26px at 200dpi
+      const infoFontSize = Math.round(A4_W * 0.013);     // ~21px
+
       const clinicName = clinicData?.name || clinicSettings?.clinicName || '';
-      ctx.fillStyle = '#0066cc';
-      ctx.font = `bold ${Math.round(canvas.width * 0.018)}px Arial, sans-serif`;
-      const fontSize = Math.max(11, Math.round(canvas.width * 0.018));
-      ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-      ctx.fillText(clinicName, textStartX, PADDING + fontSize);
+      ctx.fillStyle = primaryColor;
+      ctx.font = `bold ${clinicFontSize}px Arial, sans-serif`;
+      ctx.fillText(clinicName, textStartX, PADDING + clinicFontSize);
 
       ctx.fillStyle = '#333333';
-      ctx.font = `${fontSize - 1}px Arial, sans-serif`;
+      ctx.font = `${infoFontSize}px Arial, sans-serif`;
       const lines = [
         `Patient: ${report.patientName}`,
         report.patientDob ? `DOB: ${report.patientDob}` : null,
@@ -929,30 +941,31 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         `Scan: ${report.studyType}`,
       ].filter(Boolean) as string[];
 
-      // Split into two columns if enough space
-      const colW = (canvas.width - textStartX - PADDING) / 2;
+      const colW = (A4_W - textStartX - PADDING) / 2;
       const leftLines = lines.slice(0, Math.ceil(lines.length / 2));
       const rightLines = lines.slice(Math.ceil(lines.length / 2));
-      const lineH = (fontSize - 1) + 5;
-      const textY = PADDING + fontSize + 10;
+      const lineH = infoFontSize + Math.round(infoFontSize * 0.4);
+      const textY = PADDING + clinicFontSize + Math.round(infoFontSize * 0.7);
 
-      leftLines.forEach((line, i) => {
-        ctx.fillText(line, textStartX, textY + i * lineH);
-      });
-      rightLines.forEach((line, i) => {
-        ctx.fillText(line, textStartX + colW, textY + i * lineH);
-      });
+      leftLines.forEach((line, i) => ctx.fillText(line, textStartX, textY + i * lineH));
+      rightLines.forEach((line, i) => ctx.fillText(line, textStartX + colW, textY + i * lineH));
 
-      // Draw worksheet image below header
-      ctx.drawImage(wsImg, 0, HEADER_HEIGHT);
+      // Scale worksheet image to fill the remaining page area, centred
+      const wsAreaH = A4_H - HEADER_HEIGHT;
+      const wsScale = Math.min(A4_W / wsImg.width, wsAreaH / wsImg.height);
+      const wsDrawW = wsImg.width * wsScale;
+      const wsDrawH = wsImg.height * wsScale;
+      const wsX = (A4_W - wsDrawW) / 2;
+      const wsY = HEADER_HEIGHT + (wsAreaH - wsDrawH) / 2;
+      ctx.drawImage(wsImg, wsX, wsY, wsDrawW, wsDrawH);
 
-      // Download
+      // Download as high-quality PNG
       const link = document.createElement('a');
       link.download = `worksheet-${report.patientName.replace(/\s+/g, '-')}-${report.examDate}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
 
-      toast({ title: "Downloaded", description: "Labelled worksheet saved as PNG." });
+      toast({ title: "Downloaded", description: "Labelled worksheet saved as A4 PNG (200 DPI)." });
     } catch (error) {
       console.error("Download labelled worksheet error:", error);
       toast({ title: "Error", description: "Failed to generate labelled worksheet.", variant: "destructive" });
