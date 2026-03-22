@@ -230,7 +230,11 @@ export default function ReportingRoom() {
   });
 
   const handleEditReport = (report: Report) => {
-    setEditingReport({ ...report });
+    const defaultTemplate = templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
+    setEditingReport({ 
+      ...report,
+      templateId: report.templateId || defaultTemplate?.id,
+    });
     setIsFullscreenMode(true);
     setIsEditDialogOpen(true);
     setTimeout(() => {
