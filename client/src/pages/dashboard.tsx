@@ -27,7 +27,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "draw",           label: "Draw",          icon: PenLine },
   { id: "reporting-room", label: "Reports",       icon: FolderOpen },
   { id: "patients",       label: "Patients",      icon: UserCircle },
-  { id: "requests",       label: "Requests",      icon: ClipboardList },
+  { id: "requests",       label: "Requests",      icon: ClipboardList, comingSoon: true },
   { id: "staff",          label: "Team",          icon: Users,    adminOnly: true },
   { id: "admin",          label: "Admin Panel",   icon: Settings },
   { id: "help",           label: "Help Centre",   icon: HelpCircle, comingSoon: true },
