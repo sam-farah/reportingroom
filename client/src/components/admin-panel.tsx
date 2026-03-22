@@ -93,7 +93,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
   });
 
   const deleteBlankWorksheetMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/worksheet-templates/${id}`),
+    mutationFn: (id: number) => apiRequest(`/api/worksheet-templates/${id}`, "DELETE"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/worksheet-templates"] });
       toast({ title: "Deleted", description: "Blank worksheet removed." });
