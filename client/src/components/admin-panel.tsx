@@ -70,6 +70,21 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
 
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // Dictation vocabulary state
+  const [newVocabWord, setNewVocabWord] = useState("");
+  const { data: vocabData } = useQuery<{ words: string[] }>({
+    queryKey: ["/api/clinic/dictation-vocabulary"],
+  });
+  const vocabWords = vocabData?.words ?? [];
+  const saveVocabMutation = useMutation({
+    mutationFn: (words: string[]) => apiRequest("/api/clinic/dictation-vocabulary", "PUT", { words }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic/dictation-vocabulary"] });
+      toast({ title: "Vocabulary saved", description: "Custom words updated for voice dictation." });
+    },
+    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+
   // Content Templates state
   const [selectedScanType, setSelectedScanType] = useState<string>("");
   const [ctIndication, setCtIndication] = useState("");
@@ -611,8 +626,73 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
         {/* Right content area */}
         <div className="flex-1 min-w-0">
 
-        <TabsContent value="clinic-settings">
+        <TabsContent value="clinic-settings" className="space-y-6">
           <ClinicPage />
+
+          {/* Dictation Vocabulary */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span>🎤</span> Voice Dictation — Custom Vocabulary
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Add specialist terms, drug names, or anatomical phrases that the speech recognition should know. These words are passed to Whisper to improve transcription accuracy for your clinic's specific terminology.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Word list */}
+              <div className="flex flex-wrap gap-2 min-h-[40px]">
+                {vocabWords.length === 0 && (
+                  <span className="text-sm text-muted-foreground italic">No custom words yet.</span>
+                )}
+                {vocabWords.map((word, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 text-sm rounded-full px-3 py-1">
+                    {word}
+                    <button
+                      onClick={() => saveVocabMutation.mutate(vocabWords.filter((_, idx) => idx !== i))}
+                      className="ml-1 text-blue-400 hover:text-blue-700 transition-colors"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              {/* Add word input */}
+              <div className="flex gap-2">
+                <input
+                  value={newVocabWord}
+                  onChange={(e) => setNewVocabWord(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newVocabWord.trim()) {
+                      const word = newVocabWord.trim();
+                      if (!vocabWords.includes(word)) {
+                        saveVocabMutation.mutate([...vocabWords, word]);
+                      }
+                      setNewVocabWord("");
+                    }
+                  }}
+                  placeholder="e.g. saphenofemoral junction, endovenous ablation, Valsalva…"
+                  className="flex-1 text-sm border rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const word = newVocabWord.trim();
+                    if (word && !vocabWords.includes(word)) {
+                      saveVocabMutation.mutate([...vocabWords, word]);
+                    }
+                    setNewVocabWord("");
+                  }}
+                  disabled={!newVocabWord.trim() || saveVocabMutation.isPending}
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Press Enter or click Add. Each entry can be a single word or a multi-word phrase.</p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="scan-durations">

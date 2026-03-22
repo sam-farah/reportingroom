@@ -45,6 +45,7 @@ export const clinics = pgTable("clinics", {
   kioskBackgroundColor: varchar("kiosk_background_color", { length: 50 }),
   subscription: varchar("subscription", { length: 50 }).notNull().default('basic'), // 'basic', 'premium', 'enterprise'
   isActive: boolean("is_active").notNull().default(true),
+  dictationVocabulary: text("dictation_vocabulary"), // JSON-encoded string[] of custom words/phrases for Whisper
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

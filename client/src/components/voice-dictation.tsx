@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mic, MicOff, Square, Play, Settings, Volume2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
+import { useQuery } from '@tanstack/react-query';
 
 interface VoiceDictationProps {
   onTranscription: (text: string, append: boolean) => void;
@@ -21,6 +22,11 @@ interface AudioDevice {
 export default function VoiceDictation({ onTranscription, isOpen, onClose, targetField }: VoiceDictationProps) {
   const { toast } = useToast();
   const [isRecording, setIsRecording] = useState(false);
+
+  const { data: vocabData } = useQuery<{ words: string[] }>({
+    queryKey: ["/api/clinic/dictation-vocabulary"],
+    enabled: isOpen,
+  });
   const [isProcessing, setIsProcessing] = useState(false);
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
@@ -205,6 +211,12 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       formData.append('model', 'whisper-1');
+
+      // Send custom vocabulary as a Whisper prompt to bias recognition toward clinic terms
+      const words = vocabData?.words ?? [];
+      if (words.length > 0) {
+        formData.append('vocabularyPrompt', words.join(', '));
+      }
       
       const response = await apiRequest('/api/transcribe', 'POST', formData, {
         isFormData: true

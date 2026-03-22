@@ -2152,6 +2152,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Dictation vocabulary endpoints
+  app.get("/api/clinic/dictation-vocabulary", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const clinic = await storage.getClinic(user.clinicId);
+      let words: string[] = [];
+      if (clinic?.dictationVocabulary) {
+        try { words = JSON.parse(clinic.dictationVocabulary); } catch {}
+      }
+      res.json({ words });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch vocabulary" });
+    }
+  });
+
+  app.put("/api/clinic/dictation-vocabulary", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const { words } = req.body;
+      if (!Array.isArray(words)) return res.status(400).json({ error: "words must be an array" });
+      const cleaned = words.map((w: string) => String(w).trim()).filter(Boolean);
+      await storage.updateClinic(user.clinicId, { dictationVocabulary: JSON.stringify(cleaned) });
+      res.json({ words: cleaned });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save vocabulary" });
+    }
+  });
+
   // Scan duration settings
   app.get("/api/scan-durations", isAuthenticated, async (req, res) => {
     try {
@@ -3170,12 +3200,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: req.file.mimetype || 'audio/webm' 
       });
       
-      const transcription = await openai.audio.transcriptions.create({
+      // Build Whisper prompt from custom vocabulary (biases transcription toward these terms)
+      const vocabPrompt = req.body?.vocabularyPrompt as string | undefined;
+      const whisperParams: any = {
         file: audioFile,
         model: "whisper-1",
-        language: "en", // Can be made configurable
+        language: "en",
         response_format: "json",
-      });
+      };
+      if (vocabPrompt && vocabPrompt.trim()) {
+        whisperParams.prompt = vocabPrompt.trim();
+        console.log("Whisper prompt (vocabulary):", vocabPrompt.substring(0, 100));
+      }
+      const transcription = await openai.audio.transcriptions.create(whisperParams);
 
       // Clean up uploaded file
       await fs.promises.unlink(req.file.path);
