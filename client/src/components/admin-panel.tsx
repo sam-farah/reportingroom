@@ -128,7 +128,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
 
   const saveTemplateMutation = useMutation({
     mutationFn: (data: { scanType: string; indicationTemplate: string; findingsTemplate: string; impressionTemplate: string }) =>
-      apiRequest("PUT", `/api/content-templates/${encodeURIComponent(data.scanType)}`, {
+      apiRequest(`/api/content-templates/${encodeURIComponent(data.scanType)}`, "PUT", {
         indicationTemplate: data.indicationTemplate,
         findingsTemplate: data.findingsTemplate,
         impressionTemplate: data.impressionTemplate,
@@ -141,7 +141,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
   });
 
   const deleteTemplateMutation = useMutation({
-    mutationFn: (scanType: string) => apiRequest("DELETE", `/api/content-templates/${encodeURIComponent(scanType)}`),
+    mutationFn: (scanType: string) => apiRequest(`/api/content-templates/${encodeURIComponent(scanType)}`, "DELETE"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/content-templates"] });
       setCtIndication(""); setCtFindings(""); setCtImpression("");
