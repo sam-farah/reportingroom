@@ -605,7 +605,8 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         {/* Patient Session Creation Dialog */}
         <Dialog open={showPatientDialog} onOpenChange={(open) => {
           setShowPatientDialog(open);
-          if (!open) {
+          if (!open && !currentWorksheet) {
+            // Only clear the patient if the session was NOT successfully started
             setSelectedPatient(null);
             setPatientSearch("");
           }
