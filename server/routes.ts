@@ -5,7 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
-import { sendInvitationEmail, sendReportEmail } from "./email";
+import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder } from "./email";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -424,6 +424,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting appointment:", error);
       res.status(500).json({ error: "Failed to delete appointment" });
+    }
+  });
+
+  // Send appointment reminder email
+  app.post("/api/appointments/:id/send-reminder", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) return res.status(404).json({ error: "Appointment not found" });
+      if (!appointment.patientEmail) return res.status(400).json({ error: "No email address on file for this patient" });
+
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic) return res.status(404).json({ error: "Clinic not found" });
+
+      await sendAppointmentReminder({
+        toEmail: appointment.patientEmail,
+        patientName: appointment.patientName,
+        appointmentDate: new Date(appointment.appointmentDate),
+        duration: appointment.duration,
+        scanType: appointment.scanType || null,
+        clinicName: clinic.name,
+        clinicAddress: clinic.address || null,
+        clinicPhone: clinic.phone || null,
+        clinicEmail: clinic.email || null,
+        clinicLogoUrl: clinic.logoUrl || null,
+        reminderInstructions: clinic.reminderInstructions || null,
+      });
+
+      console.log(`Appointment reminder sent to ${appointment.patientEmail} for appointment ${id}`);
+      res.json({ success: true, sentTo: appointment.patientEmail });
+    } catch (error: any) {
+      console.error("Send reminder error:", error);
+      res.status(500).json({ error: error?.message || "Failed to send reminder" });
     }
   });
 
@@ -2179,6 +2214,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ words: cleaned });
     } catch (error) {
       res.status(500).json({ error: "Failed to save vocabulary" });
+    }
+  });
+
+  // Reminder instructions endpoint
+  app.put("/api/clinic/reminder-instructions", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const { instructions } = req.body;
+      await storage.updateClinic(user.clinicId, { reminderInstructions: instructions ?? null });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save reminder instructions" });
     }
   });
 

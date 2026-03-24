@@ -8,6 +8,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Pending Features
 - **SMS Appointment Reminders**: Planned via Twilio (connector available: `connector:ccfg_twilio_01K69QJTED9YTJFE2SJ7E4SY08`). When ready, connect Twilio account and build a background scheduler that sends reminders 24h and 1h before appointments. Track `reminderSent` on appointment records to avoid duplicates. User deferred this feature.
+- **Email Appointment Reminders (COMPLETE)**: Manual one-click reminder emails from the calendar appointment dialog. Uses SendGrid. Includes appointment date/time, duration, scan type, clinic address, embedded logo, and custom prep instructions. Setup: Admin → Clinic Settings → "Appointment Reminder — Preparation Instructions" card. Send via calendar → appointment detail → "Send Reminder" button (disabled if no patient email on file).
 - **Public Clinic Registration with Payments**: When ready to onboard new clinics publicly, re-enable clinic registration at `/register-clinic` with a Stripe subscription payment step. Currently disabled — access is invitation-only. The `/register-clinic` route and backend exist but are hidden from the UI.
 
 ## System Architecture

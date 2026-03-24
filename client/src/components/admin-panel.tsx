@@ -85,6 +85,22 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
 
+  // Reminder instructions state
+  const [reminderInstructionsText, setReminderInstructionsText] = useState<string | null>(null);
+  const { data: clinicInfoForReminder } = useQuery<any>({
+    queryKey: ["/api/clinic"],
+  });
+  // Sync textarea with fetched clinic data
+  const resolvedReminderInstructions = reminderInstructionsText ?? (clinicInfoForReminder?.reminderInstructions ?? "");
+  const saveReminderMutation = useMutation({
+    mutationFn: (instructions: string) => apiRequest("/api/clinic/reminder-instructions", "PUT", { instructions }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
+      toast({ title: "Saved", description: "Appointment reminder instructions updated." });
+    },
+    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+
   // Content Templates state
   const [selectedScanType, setSelectedScanType] = useState<string>("");
   const [ctIndication, setCtIndication] = useState("");
@@ -691,6 +707,36 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">Press Enter or click Add. Each entry can be a single word or a multi-word phrase.</p>
+            </CardContent>
+          </Card>
+
+          {/* Appointment Reminder Instructions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span>📧</span> Appointment Reminder — Preparation Instructions
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                These instructions are included in every appointment reminder email sent to patients — for example, fasting requirements, what to wear, or what to bring. Leave blank to omit this section from the email.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <textarea
+                value={resolvedReminderInstructions}
+                onChange={(e) => setReminderInstructionsText(e.target.value)}
+                placeholder={"e.g.\n• Please fast for 4 hours before your ultrasound.\n• Wear comfortable, loose-fitting clothing.\n• Drink 1 litre of water 1 hour before your appointment and do not empty your bladder."}
+                rows={6}
+                className="w-full text-sm border rounded-md px-3 py-2.5 outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+              />
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => saveReminderMutation.mutate(resolvedReminderInstructions)}
+                  disabled={saveReminderMutation.isPending}
+                >
+                  {saveReminderMutation.isPending ? "Saving…" : "Save Instructions"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

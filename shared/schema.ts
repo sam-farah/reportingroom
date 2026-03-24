@@ -46,6 +46,7 @@ export const clinics = pgTable("clinics", {
   subscription: varchar("subscription", { length: 50 }).notNull().default('basic'), // 'basic', 'premium', 'enterprise'
   isActive: boolean("is_active").notNull().default(true),
   dictationVocabulary: text("dictation_vocabulary"), // JSON-encoded string[] of custom words/phrases for Whisper
+  reminderInstructions: text("reminder_instructions"), // Custom preparation instructions sent with appointment reminders
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

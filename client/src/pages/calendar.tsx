@@ -309,6 +309,19 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     },
   });
 
+  const sendReminderMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/appointments/${id}/send-reminder`, "POST");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Reminder sent", description: `Appointment reminder emailed to ${data.sentTo}` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send reminder", description: error.message || "Could not send reminder email", variant: "destructive" });
+    },
+  });
+
   const createPatientMutation = useMutation({
     mutationFn: async (data: any): Promise<Patient> => {
       const res = await apiRequest("/api/patients", "POST", data);
@@ -1990,6 +2003,17 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                         <Button variant="outline" size="sm" onClick={() => handleEditAppointment(viewingAppointment)}>
                           <Edit className="w-4 h-4 mr-1" />
                           Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-emerald-600 hover:text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                          disabled={!viewingAppointment.patientEmail || sendReminderMutation.isPending}
+                          title={!viewingAppointment.patientEmail ? "No email address on file for this patient" : "Send appointment reminder email"}
+                          onClick={() => sendReminderMutation.mutate(viewingAppointment.id)}
+                        >
+                          <Mail className="w-4 h-4 mr-1" />
+                          {sendReminderMutation.isPending ? "Sending…" : "Send Reminder"}
                         </Button>
                         <Button
                           variant="outline"
