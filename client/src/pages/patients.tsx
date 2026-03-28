@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart } from "lucide-react";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
@@ -144,6 +144,8 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     medicareNumber: "",
     medicareIrn: "",
     medicareExpiry: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
     referringPhysician: "",
     medicalHistory: "",
     allergies: "",
@@ -252,6 +254,20 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to send invitation", variant: "destructive" });
+    },
+  });
+
+  const sendRegistrationMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedPatient) return;
+      const res = await apiRequest(`/api/patients/${selectedPatient.id}/send-registration`, "POST");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Registration form sent", description: `Email sent to ${data?.sentTo}` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send", description: error.message || "Could not send registration email", variant: "destructive" });
     },
   });
 
@@ -365,6 +381,8 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       medicareNumber: "",
       medicareIrn: "",
       medicareExpiry: "",
+      emergencyContactName: "",
+      emergencyContactPhone: "",
       referringPhysician: "",
       medicalHistory: "",
       allergies: "",
@@ -390,6 +408,8 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       medicareNumber: patient.medicareNumber || "",
       medicareIrn: patient.medicareIrn || "",
       medicareExpiry: patient.medicareExpiry || "",
+      emergencyContactName: patient.emergencyContactName || "",
+      emergencyContactPhone: patient.emergencyContactPhone || "",
       referringPhysician: patient.referringPhysician || "",
       medicalHistory: patient.medicalHistory || "",
       allergies: patient.allergies || "",
@@ -947,6 +967,27 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                         {invitePortalMutation.isPending && <Clock className="w-3 h-3 animate-spin" />}
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-fit h-7 text-xs gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={() => sendRegistrationMutation.mutate()}
+                      disabled={sendRegistrationMutation.isPending || !selectedPatient.email}
+                      title={!selectedPatient.email ? "No email address on file" : "Send a registration form for the patient to fill in their own details"}
+                    >
+                      <ClipboardList className="w-3 h-3" />
+                      {sendRegistrationMutation.isPending ? "Sending…" : "Send Registration Form"}
+                    </Button>
+                  </div>
+                )}
+                {selectedPatient.emergencyContactName && (
+                  <div className="flex items-start gap-2 text-gray-600">
+                    <Heart className="w-4 h-4 mt-0.5 text-red-400" />
+                    <span>
+                      <span className="font-medium">Emergency: </span>
+                      {selectedPatient.emergencyContactName}
+                      {selectedPatient.emergencyContactPhone && <span className="text-gray-500"> — {selectedPatient.emergencyContactPhone}</span>}
+                    </span>
                   </div>
                 )}
                 {(selectedPatient.address || selectedPatient.city) && (
@@ -1167,6 +1208,14 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 <div>
                   <Label>Email</Label>
                   <Input type="email" autoComplete="off" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Emergency Contact Name</Label>
+                  <Input autoComplete="off" value={formData.emergencyContactName} onChange={(e) => setFormData(prev => ({ ...prev, emergencyContactName: capitalizeWords(e.target.value) }))} placeholder="e.g. Jane Smith" />
+                </div>
+                <div>
+                  <Label>Emergency Contact Phone</Label>
+                  <Input autoComplete="off" value={formData.emergencyContactPhone} onChange={(e) => setFormData(prev => ({ ...prev, emergencyContactPhone: e.target.value }))} placeholder="e.g. 0412 345 678" />
                 </div>
                 <div className="col-span-2">
                   <Label>Address</Label>

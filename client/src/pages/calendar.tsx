@@ -97,7 +97,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [showPatientResults, setShowPatientResults] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
-  const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", phone: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "" });
+  const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
+  const [registrationPromptPatient, setRegistrationPromptPatient] = useState<Patient | null>(null);
 
   // Calendar events state
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
@@ -323,6 +324,21 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     },
   });
 
+  const sendRegistrationMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/patients/${id}/send-registration`, "POST");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Registration form sent", description: `Email sent to ${data.sentTo}` });
+      setRegistrationPromptPatient(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send registration", description: error.message || "Could not send registration email", variant: "destructive" });
+      setRegistrationPromptPatient(null);
+    },
+  });
+
   const createPatientMutation = useMutation({
     mutationFn: async (data: any): Promise<Patient> => {
       const res = await apiRequest("/api/patients", "POST", data);
@@ -331,9 +347,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     onSuccess: (patient: Patient) => {
       handleSelectPatient(patient);
       setIsCreatingPatient(false);
-      setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "" });
+      setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
       queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
-      toast({ title: "Patient file created", description: `${patient.firstName} ${patient.lastName} has been registered.` });
+      if (patient.email) {
+        setRegistrationPromptPatient(patient);
+      } else {
+        toast({ title: "Patient file created", description: `${patient.firstName} ${patient.lastName} has been registered.` });
+      }
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to create patient file.", variant: "destructive" });
@@ -401,7 +421,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     setSelectedPatient(null);
     setPatientSearch("");
     setIsCreatingPatient(false);
-    setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "" });
+    setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
   };
 
   const calcDuration = (scanTypes: string[], laterality: Record<string, "unilateral" | "bilateral">): string => {
@@ -1484,7 +1504,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 ))}
                                 <div
                                   className="p-3 flex items-center gap-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer border-t"
-                                  onClick={() => { setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "" }); setIsCreatingPatient(true); setShowPatientResults(false); }}
+                                  onClick={() => { setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" }); setIsCreatingPatient(true); setShowPatientResults(false); }}
                                 >
                                   <UserPlus className="w-4 h-4" />
                                   Create new patient file
@@ -1549,6 +1569,37 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 className="mt-1"
                               />
                             </div>
+                            <div className="col-span-2">
+                              <Label htmlFor="npEmail" className="text-xs">Email <span className="text-blue-400 font-normal">(needed to send registration form)</span></Label>
+                              <Input
+                                id="npEmail"
+                                type="email"
+                                value={newPatientForm.email}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, email: e.target.value }))}
+                                placeholder="patient@example.com"
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="npEcName" className="text-xs">Emergency Contact Name</Label>
+                              <Input
+                                id="npEcName"
+                                value={newPatientForm.emergencyContactName}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, emergencyContactName: capitalizeWords(e.target.value) }))}
+                                placeholder="e.g. Jane Smith"
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="npEcPhone" className="text-xs">Emergency Contact Phone</Label>
+                              <Input
+                                id="npEcPhone"
+                                value={newPatientForm.emergencyContactPhone}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, emergencyContactPhone: e.target.value }))}
+                                placeholder="e.g. 0412 345 678"
+                                className="mt-1"
+                              />
+                            </div>
                           </div>
                           <div className="border-t border-blue-200 pt-3">
                             <p className="text-xs font-medium text-blue-700 mb-2">Medicare Details <span className="text-blue-400 font-normal">(optional)</span></p>
@@ -1602,9 +1653,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 lastName: newPatientForm.lastName,
                                 dateOfBirth: newPatientForm.dateOfBirth || null,
                                 phone: newPatientForm.phone || null,
+                                email: newPatientForm.email || null,
                                 medicareNumber: newPatientForm.medicareNumber || null,
                                 medicareIrn: newPatientForm.medicareIrn || null,
                                 medicareExpiry: newPatientForm.medicareExpiry || null,
+                                emergencyContactName: newPatientForm.emergencyContactName || null,
+                                emergencyContactPhone: newPatientForm.emergencyContactPhone || null,
                               })}
                             >
                               {createPatientMutation.isPending ? "Creating..." : "Create & Select"}
@@ -2097,6 +2151,36 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 </>)}
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Patient Registration Prompt Dialog */}
+        <Dialog open={!!registrationPromptPatient} onOpenChange={(open) => { if (!open) setRegistrationPromptPatient(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Mail className="w-5 h-5 text-blue-600" /> Send Registration Form?
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-2 space-y-3">
+              <p className="text-sm text-gray-600">
+                <span className="font-semibold">{registrationPromptPatient?.firstName} {registrationPromptPatient?.lastName}</span> has been added.
+                Would you like to send them a registration form so they can fill in their own details?
+              </p>
+              <p className="text-xs text-gray-400">The form will be sent to <span className="font-medium">{registrationPromptPatient?.email}</span></p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => { toast({ title: "Patient file created", description: `${registrationPromptPatient?.firstName} ${registrationPromptPatient?.lastName} has been registered.` }); setRegistrationPromptPatient(null); }}>
+                Skip
+              </Button>
+              <Button
+                size="sm"
+                disabled={sendRegistrationMutation.isPending}
+                onClick={() => registrationPromptPatient && sendRegistrationMutation.mutate(registrationPromptPatient.id)}
+              >
+                {sendRegistrationMutation.isPending ? "Sending…" : "Send Registration Form"}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
 

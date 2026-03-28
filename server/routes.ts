@@ -5,7 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
-import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder } from "./email";
+import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail } from "./email";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -728,6 +728,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting patient:", error);
       res.status(500).json({ error: "Failed to delete patient" });
+    }
+  });
+
+  // Patient self-registration: send registration form link
+  app.post("/api/patients/:id/send-registration", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const patient = await storage.getPatient(id);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      if (!patient.email) return res.status(400).json({ error: "No email address on file for this patient" });
+
+      const user = await storage.getUser(req.session.userId);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic) return res.status(404).json({ error: "Clinic not found" });
+
+      // Generate a secure token
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+      await storage.createPatientRegistrationToken(id, user.clinicId, token, expiresAt);
+
+      // Build the registration URL
+      const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const registrationUrl = `${host}/patient-registration/${token}`;
+
+      await sendPatientRegistrationEmail({
+        toEmail: patient.email,
+        patientName: `${patient.firstName} ${patient.lastName}`,
+        registrationUrl,
+        clinicName: clinic.name,
+        clinicLogoUrl: clinic.logoUrl || null,
+        clinicPhone: clinic.phone || null,
+      });
+
+      res.json({ success: true, sentTo: patient.email });
+    } catch (error: any) {
+      console.error("Send registration error:", error);
+      res.status(500).json({ error: error?.message || "Failed to send registration form" });
+    }
+  });
+
+  // Public: load patient registration form data from token
+  app.get("/api/patient-registration/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const record = await storage.getPatientRegistrationToken(token);
+      if (!record) return res.status(404).json({ error: "Registration link not found" });
+      if (record.status === "completed") return res.status(410).json({ error: "This registration link has already been used" });
+      if (new Date() > record.expiresAt) return res.status(410).json({ error: "This registration link has expired" });
+
+      const patient = await storage.getPatient(record.patientId);
+      const clinic = await storage.getClinic(record.clinicId);
+      if (!patient || !clinic) return res.status(404).json({ error: "Record not found" });
+
+      res.json({
+        clinicName: clinic.name,
+        clinicLogoUrl: clinic.logoUrl || null,
+        clinicPhone: clinic.phone || null,
+        patient: {
+          firstName: patient.firstName,
+          lastName: patient.lastName,
+          dateOfBirth: patient.dateOfBirth,
+          phone: patient.phone,
+          email: patient.email,
+          medicareNumber: patient.medicareNumber,
+          medicareIrn: patient.medicareIrn,
+          medicareExpiry: patient.medicareExpiry,
+          emergencyContactName: patient.emergencyContactName,
+          emergencyContactPhone: patient.emergencyContactPhone,
+        },
+      });
+    } catch (error) {
+      console.error("Get registration form error:", error);
+      res.status(500).json({ error: "Failed to load registration form" });
+    }
+  });
+
+  // Public: submit patient registration form
+  app.post("/api/patient-registration/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const record = await storage.getPatientRegistrationToken(token);
+      if (!record) return res.status(404).json({ error: "Registration link not found" });
+      if (record.status === "completed") return res.status(410).json({ error: "This registration link has already been used" });
+      if (new Date() > record.expiresAt) return res.status(410).json({ error: "This registration link has expired" });
+
+      const { firstName, lastName, dateOfBirth, phone, email, medicareNumber, medicareIrn, medicareExpiry, emergencyContactName, emergencyContactPhone } = req.body;
+
+      await storage.updatePatient(record.patientId, {
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        dateOfBirth: dateOfBirth || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+        medicareNumber: medicareNumber || undefined,
+        medicareIrn: medicareIrn || undefined,
+        medicareExpiry: medicareExpiry || undefined,
+        emergencyContactName: emergencyContactName || undefined,
+        emergencyContactPhone: emergencyContactPhone || undefined,
+      });
+
+      await storage.completePatientRegistrationToken(token);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Submit registration error:", error);
+      res.status(500).json({ error: "Failed to submit registration" });
     }
   });
 

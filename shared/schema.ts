@@ -297,6 +297,8 @@ export const patients = pgTable("patients", {
   medicareExpiry: varchar("medicare_expiry", { length: 7 }),
   medicareVerifiedStatus: varchar("medicare_verified_status", { length: 20 }).default("unverified"),
   medicareVerifiedAt: timestamp("medicare_verified_at"),
+  emergencyContactName: varchar("emergency_contact_name", { length: 100 }),
+  emergencyContactPhone: varchar("emergency_contact_phone", { length: 50 }),
   referringPhysician: varchar("referring_physician", { length: 255 }),
   medicalHistory: text("medical_history"),
   allergies: text("allergies"),
@@ -460,6 +462,20 @@ export const insertPatientSchema = createInsertSchema(patients).omit({
 });
 
 export type InsertPatientData = z.infer<typeof insertPatientSchema>;
+
+// Patient self-registration tokens
+export const patientRegistrationTokens = pgTable("patient_registration_tokens", {
+  id: serial("id").primaryKey(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  patientId: integer("patient_id").notNull().references(() => patients.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | completed
+  expiresAt: timestamp("expires_at").notNull(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PatientRegistrationToken = typeof patientRegistrationTokens.$inferSelect;
 
 // Appointments/Bookings table
 export const appointments = pgTable("appointments", {

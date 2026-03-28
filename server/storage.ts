@@ -72,6 +72,8 @@ import {
   scanTypeContentTemplates,
   type ScanTypeContentTemplate,
   type InsertScanTypeContentTemplate,
+  patientRegistrationTokens,
+  type PatientRegistrationToken,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max } from "drizzle-orm";
@@ -204,6 +206,9 @@ export interface IStorage {
   getPatientDigitalWorksheets(patientId: number): Promise<DigitalWorksheet[]>;
   getPatientReports(patientId: number): Promise<Report[]>;
   getPatientAppointments(patientId: number): Promise<Appointment[]>;
+  createPatientRegistrationToken(patientId: number, clinicId: number, token: string, expiresAt: Date): Promise<PatientRegistrationToken>;
+  getPatientRegistrationToken(token: string): Promise<PatientRegistrationToken | undefined>;
+  completePatientRegistrationToken(token: string): Promise<void>;
   
   // Patient document operations
   getPatientDocuments(patientId: number): Promise<PatientDocument[]>;
@@ -1051,6 +1056,20 @@ export class DatabaseStorage implements IStorage {
 
   async getPatientAppointments(patientId: number): Promise<Appointment[]> {
     return await db.select().from(appointments).where(eq(appointments.patientId, patientId)).orderBy(desc(appointments.appointmentDate));
+  }
+
+  async createPatientRegistrationToken(patientId: number, clinicId: number, token: string, expiresAt: Date): Promise<PatientRegistrationToken> {
+    const [row] = await db.insert(patientRegistrationTokens).values({ patientId, clinicId, token, expiresAt, status: "pending" }).returning();
+    return row;
+  }
+
+  async getPatientRegistrationToken(token: string): Promise<PatientRegistrationToken | undefined> {
+    const [row] = await db.select().from(patientRegistrationTokens).where(eq(patientRegistrationTokens.token, token));
+    return row;
+  }
+
+  async completePatientRegistrationToken(token: string): Promise<void> {
+    await db.update(patientRegistrationTokens).set({ status: "completed", completedAt: new Date() }).where(eq(patientRegistrationTokens.token, token));
   }
 
   async getPatientDocuments(patientId: number): Promise<PatientDocument[]> {

@@ -120,6 +120,67 @@ export async function sendPatientPortalInvitationEmail(params: {
   }
 }
 
+export async function sendPatientRegistrationEmail(params: {
+  toEmail: string;
+  patientName: string;
+  registrationUrl: string;
+  clinicName: string;
+  clinicLogoUrl: string | null;
+  clinicPhone: string | null;
+}): Promise<void> {
+  let logoHtml = '';
+  if (params.clinicLogoUrl) {
+    try {
+      const logoPath = path.join(process.cwd(), params.clinicLogoUrl.startsWith('/') ? params.clinicLogoUrl.slice(1) : params.clinicLogoUrl);
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath);
+        const ext = path.extname(params.clinicLogoUrl).toLowerCase();
+        const mimeMap: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
+        const mime = mimeMap[ext] || 'image/png';
+        logoHtml = `<img src="data:${mime};base64,${logoBuffer.toString('base64')}" alt="${params.clinicName}" style="max-height:70px;max-width:200px;object-fit:contain;" />`;
+      }
+    } catch {}
+  }
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+      <div style="background:#1a1a2e;padding:28px 32px;text-align:center;">
+        ${logoHtml || `<h1 style="color:#ffffff;font-size:22px;margin:0;">${params.clinicName}</h1>`}
+        ${logoHtml ? `<p style="color:#94a3b8;font-size:13px;margin:10px 0 0;">${params.clinicName}</p>` : ''}
+      </div>
+      <div style="padding:32px;">
+        <h2 style="color:#1a1a2e;font-size:20px;margin:0 0 8px;">Welcome, ${params.patientName}!</h2>
+        <p style="color:#555;margin:0 0 20px;font-size:15px;line-height:1.6;">
+          We've created a patient file for you at ${params.clinicName}. To help us provide the best care, please take a moment to complete your patient registration form — it only takes a minute.
+        </p>
+        <div style="text-align:center;margin:28px 0;">
+          <a href="${params.registrationUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">
+            Complete Your Registration
+          </a>
+        </div>
+        <p style="color:#94a3b8;font-size:13px;margin:0;text-align:center;">
+          This link is valid for 7 days. If you have any questions, call us${params.clinicPhone ? ` on ${params.clinicPhone}` : ''}.
+        </p>
+      </div>
+      <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 32px;text-align:center;">
+        <p style="color:#94a3b8;font-size:12px;margin:0;">${params.clinicName} &mdash; Powered by <a href="https://reportingroom.net" style="color:#94a3b8;">Reporting Room</a></p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await sgMail.send({
+      to: params.toEmail,
+      from: { email: FROM_EMAIL, name: params.clinicName },
+      subject: `Complete Your Patient Registration — ${params.clinicName}`,
+      html,
+    });
+  } catch (err: any) {
+    console.error("SendGrid registration email error:", JSON.stringify(err?.response?.body?.errors ?? err?.message, null, 2));
+    throw err;
+  }
+}
+
 export async function sendAppointmentReminder(params: {
   toEmail: string;
   patientName: string;
