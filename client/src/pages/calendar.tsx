@@ -53,6 +53,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [showIdCheck, setShowIdCheck] = useState(false);
   const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [desktopDatePickerOpen, setDesktopDatePickerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [bookingMode, setBookingMode] = useState<"appointment" | "event">("appointment");
 
@@ -915,9 +916,37 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
-              <CardTitle className="text-xl">
-                {getHeaderTitle()}
-              </CardTitle>
+              <Popover open={desktopDatePickerOpen} onOpenChange={setDesktopDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="text-xl font-semibold px-3 py-1 h-auto gap-2 hover:bg-muted"
+                  >
+                    <CalendarDays className="w-5 h-5 shrink-0 text-muted-foreground" />
+                    {getHeaderTitle()}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="center">
+                  <CalendarPicker
+                    mode="single"
+                    selected={currentDate}
+                    onSelect={(date) => {
+                      if (date) { setCurrentDate(date); setDesktopDatePickerOpen(false); }
+                    }}
+                    initialFocus
+                  />
+                  <div className="p-2 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => { setCurrentDate(new Date()); setDesktopDatePickerOpen(false); }}
+                    >
+                      Today
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
                 <Button
                   variant={viewMode === "day" ? "default" : "ghost"}
