@@ -699,7 +699,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
             result.push({ ...event, instanceStart: new Date(current), instanceEnd });
           }
           if (event.recurrence === "weekly") current = addWeeks(current, 1);
-          else if (event.recurrence === "monthly") current = addMonths(current, 1);
+          else if (event.recurrence === "monthly") current = addWeeks(current, 4);
           else break;
         }
       }
@@ -1389,7 +1389,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     <SelectContent>
                       <SelectItem value="none">Does not repeat</SelectItem>
                       <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="monthly">4-Weekly (every 4 weeks)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2174,7 +2174,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   <SelectContent>
                     <SelectItem value="none">Does not repeat</SelectItem>
                     <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="monthly">4-Weekly (every 4 weeks)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2224,7 +2224,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     {viewingEvent.recurrence !== "none" && (
                       <span className={`ml-auto text-xs flex items-center gap-1 ${colors.text}`}>
                         <Repeat className="w-3 h-3" />
-                        {viewingEvent.recurrence === "weekly" ? "Weekly" : "Monthly"}
+                        {viewingEvent.recurrence === "weekly" ? "Weekly" : "4-Weekly"}
                       </span>
                     )}
                   </div>
