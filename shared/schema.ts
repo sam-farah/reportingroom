@@ -8,11 +8,18 @@ import {
   serial,
   integer,
   boolean,
+  customType,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Custom bytea column for binary file storage in PostgreSQL
+const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
+  dataType() { return "bytea"; },
+});
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -677,6 +684,16 @@ export const reportDistributions = pgTable("report_distributions", {
 export const insertReportDistributionSchema = createInsertSchema(reportDistributions).omit({ id: true, sentAt: true });
 export type ReportDistribution = typeof reportDistributions.$inferSelect;
 export type InsertReportDistribution = z.infer<typeof insertReportDistributionSchema>;
+
+// Persistent file blob storage — ensures uploaded files survive server restarts
+export const fileBlobs = pgTable("file_blobs", {
+  filename: varchar("filename", { length: 255 }).primaryKey(), // multer-generated filename (hash)
+  data: bytea("data").notNull(),
+  mimeType: varchar("mime_type", { length: 100 }),
+  originalName: varchar("original_name", { length: 500 }),
+  size: integer("size"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 // Per-scan-type content templates — used as AI generation baseline
 export const scanTypeContentTemplates = pgTable("scan_type_content_templates", {

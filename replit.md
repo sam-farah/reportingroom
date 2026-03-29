@@ -36,7 +36,7 @@ Preferred communication style: Simple, everyday language.
 - **Primary Database**: PostgreSQL (configured, future implementation)
 - **ORM**: Drizzle ORM
 - **Current Implementation**: In-memory storage with Map-based data structures
-- **File Storage**: Local filesystem for uploaded worksheets and generated reports
+- **File Storage**: Dual-layer — local disk (fast) + PostgreSQL `file_blobs` table (permanent backup). Every uploaded file is saved to both. On serve, disk is tried first; DB is used as fallback and the file is restored to disk automatically. On startup, all existing disk files are backfilled to DB. This prevents file loss on server resets.
 
 **Rationale**: Drizzle ORM provides excellent TypeScript integration and performance. PostgreSQL offers robust data integrity and querying capabilities for medical data.
 

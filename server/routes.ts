@@ -28,6 +28,7 @@ import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVa
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
 import { createBackupArchive, getBackupInfo } from "./services/backup";
+import { saveFileToDB, getFileFromDB, detectMimeType, backfillFilesToDB } from "./services/fileStorage";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
 import crypto from "crypto";
@@ -70,6 +71,9 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Backfill any existing on-disk files to DB so they survive future resets
+  backfillFilesToDB(uploadDir).catch(() => {});
+
   // Auth middleware - setup authentication BEFORE any protected routes
   await setupAuth(app);
 
@@ -197,6 +201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const signatureUrl = `/uploads/${req.file.filename}`;
+      saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname).catch(console.error);
       res.json({ url: signatureUrl });
     } catch (error) {
       console.error("Signature upload error:", error);
@@ -622,6 +627,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const documentDate = req.body.documentDate || new Date().toISOString().split('T')[0];
       const notes = req.body.notes || null;
 
+      saveFileToDB(file.filename, file.path, file.mimetype, file.originalname).catch(console.error);
+
       const document = await storage.createPatientDocument({
         patientId,
         title,
@@ -858,7 +865,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const fileUrl = `/uploads/${req.file.filename}`;
-      
+      saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname).catch(console.error);
+
       const worksheet = await storage.createWorksheet({
         filename: req.file.filename,
         originalName: req.file.originalname,
@@ -2162,6 +2170,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const worksheetFile = files.worksheet[0];
       const reportFile = files.report[0];
 
+      saveFileToDB(worksheetFile.filename, worksheetFile.path, worksheetFile.mimetype, worksheetFile.originalname).catch(console.error);
+      saveFileToDB(reportFile.filename, reportFile.path, reportFile.mimetype, reportFile.originalname).catch(console.error);
+
       const trainingPair = await storage.createTrainingPair({
         worksheetUrl: `/uploads/${worksheetFile.filename}`,
         reportUrl: `/uploads/${reportFile.filename}`,
@@ -2220,6 +2231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const logoUrl = `/uploads/${req.file.filename}`;
+      saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname).catch(console.error);
       const user = await storage.getUser(req.session.userId!);
       if (user?.clinicId) {
         await storage.updateClinic(user.clinicId, { kioskLogoUrl: logoUrl } as any);
@@ -2264,7 +2276,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const logoUrl = `/uploads/${req.file.filename}`;
-      
+      saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname).catch(console.error);
+
       // Update clinic with new logo URL
       const user = await storage.getUser(req.session.userId!);
       if (user?.clinicId) {
@@ -2518,6 +2531,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { name, description, category } = req.body;
       
+      saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname).catch(console.error);
       const templateData = {
         name,
         description,
@@ -2781,36 +2795,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve uploaded files — detect content type from magic bytes since multer strips extensions
-  app.use('/uploads', (req, res, _next) => {
-    const filePath = path.join(uploadDir, req.path);
-    if (!fs.existsSync(filePath)) {
+  // Serve uploaded files — try local disk first, fall back to database
+  app.use('/uploads', async (req, res, _next) => {
+    const filename = req.path.replace(/^\//, "");
+    const filePath = path.join(uploadDir, filename);
+
+    // Fast path: file exists on disk
+    if (fs.existsSync(filePath)) {
+      try {
+        const fd = fs.openSync(filePath, 'r');
+        const magic = Buffer.alloc(8);
+        fs.readSync(fd, magic, 0, 8, 0);
+        fs.closeSync(fd);
+        res.setHeader('Content-Type', detectMimeType(magic));
+        return res.sendFile(filePath);
+      } catch {
+        return res.sendFile(filePath);
+      }
+    }
+
+    // Fallback: retrieve from database
+    const blob = await getFileFromDB(filename);
+    if (!blob) {
       return res.status(404).json({ error: "File not found" });
     }
-    try {
-      // Read first 8 bytes to sniff file type
-      const fd = fs.openSync(filePath, 'r');
-      const magic = Buffer.alloc(8);
-      fs.readSync(fd, magic, 0, 8, 0);
-      fs.closeSync(fd);
 
-      let contentType = 'application/octet-stream';
-      if (magic[0] === 0x25 && magic[1] === 0x50 && magic[2] === 0x44 && magic[3] === 0x46) {
-        contentType = 'application/pdf'; // %PDF
-      } else if (magic[0] === 0xFF && magic[1] === 0xD8 && magic[2] === 0xFF) {
-        contentType = 'image/jpeg';
-      } else if (magic[0] === 0x89 && magic[1] === 0x50 && magic[2] === 0x4E && magic[3] === 0x47) {
-        contentType = 'image/png';
-      } else if (magic[0] === 0x47 && magic[1] === 0x49 && magic[2] === 0x46) {
-        contentType = 'image/gif';
-      } else if (magic[0] === 0x52 && magic[1] === 0x49 && magic[2] === 0x46 && magic[3] === 0x46) {
-        contentType = 'image/webp';
-      }
-      res.setHeader('Content-Type', contentType);
-      res.sendFile(filePath);
-    } catch {
-      res.sendFile(filePath);
-    }
+    // Restore file to disk for next request (cache)
+    try { fs.writeFileSync(filePath, blob.data); } catch {}
+
+    const mimeType = blob.mimeType ?? detectMimeType(blob.data);
+    res.setHeader('Content-Type', mimeType);
+    return res.send(blob.data);
   });
 
   // Legend entries routes
@@ -2848,6 +2863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.file) {
         entryData.exampleImage = `/uploads/${req.file.filename}`;
         entryData.imageType = 'upload';
+        saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname).catch(console.error);
       } else if (entryData.drawingData) {
         // Drawing data is already in the body
         entryData.imageType = 'drawing';
@@ -2870,6 +2886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.file) {
         updateData.exampleImage = `/uploads/${req.file.filename}`;
         updateData.imageType = 'upload';
+        saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname).catch(console.error);
       } else if (updateData.drawingData) {
         updateData.imageType = 'drawing';
       }
