@@ -1973,11 +1973,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                             <span className="text-xs font-bold text-blue-700">3</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">UR Number</div>
+                            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Phone Number</div>
                             <div className="font-semibold text-gray-900 text-base">
-                              {idCheckPatient?.urNumber
-                                ? <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-sm font-mono">UR {idCheckPatient.urNumber}</span>
-                                : <span className="text-gray-400 italic">Not assigned</span>}
+                              {idCheckPatient?.phone || viewingAppointment.patientPhone
+                                ? <span>{idCheckPatient?.phone || viewingAppointment.patientPhone}</span>
+                                : <span className="text-gray-400 italic">Not recorded</span>}
                             </div>
                           </div>
                         </div>
