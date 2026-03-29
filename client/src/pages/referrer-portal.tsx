@@ -145,6 +145,44 @@ export default function ReferrerPortal() {
     finally { setBooking(false); }
   };
 
+  const downloadICS = () => {
+    if (!bookingSlot) return;
+    const start = new Date(bookingSlot.date);
+    start.setHours(bookingSlot.hour, 0, 0, 0);
+    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+    const uid = `booking-${Date.now()}@reportingroom`;
+    const summary = `${bookForm.scanType} — ${bookForm.patientName}`;
+    const description = [
+      bookForm.clinicalIndication ? `Indication: ${bookForm.clinicalIndication}` : "",
+      bookForm.notes ? `Notes: ${bookForm.notes}` : "",
+      clinic?.name ? `Clinic: ${clinic.name}` : "",
+    ].filter(Boolean).join("\\n");
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Reporting Room//EN",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTART:${fmt(start)}`,
+      `DTEND:${fmt(end)}`,
+      `SUMMARY:${summary}`,
+      description ? `DESCRIPTION:${description}` : "",
+      clinic?.name ? `LOCATION:${clinic.name}` : "",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].filter(Boolean).join("\r\n");
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `appointment-${format(start, "yyyy-MM-dd")}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const weekDays = Array.from({ length: 5 }, (_, i) => addDays(weekStart, i));
 
   const getSlotEvents = (day: Date, hour: number) => {
@@ -346,13 +384,32 @@ export default function ReferrerPortal() {
             </DialogTitle>
           </DialogHeader>
           {bookingSuccess ? (
-            <div className="text-center py-6 space-y-3">
+            <div className="text-center py-6 space-y-4">
               <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto">
                 <Clock className="w-7 h-7 text-green-600" />
               </div>
-              <p className="text-gray-700 font-medium">Appointment booked successfully.</p>
-              <p className="text-sm text-gray-500">The clinic team will contact the patient to confirm.</p>
-              <Button onClick={() => { setBookingOpen(false); setActiveTab("referrals"); }}>View My Referrals</Button>
+              <div>
+                <p className="text-gray-700 font-medium">Appointment booked successfully.</p>
+                {bookingSlot && (
+                  <p className="text-sm text-blue-700 font-medium mt-1">
+                    {format(bookingSlot.date, "EEEE d MMMM yyyy")} at {format(new Date().setHours(bookingSlot.hour, 0), "h:mm a")}
+                  </p>
+                )}
+                <p className="text-sm text-gray-500 mt-1">The clinic team will contact the patient to confirm.</p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button onClick={downloadICS} variant="outline" className="gap-2">
+                  <Calendar className="w-4 h-4" /> Add to My Calendar (.ics)
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => { setBookingOpen(false); setActiveTab("calendar"); }}>
+                    View Calendar
+                  </Button>
+                  <Button className="flex-1" onClick={() => { setBookingOpen(false); setActiveTab("referrals"); }}>
+                    View Referrals
+                  </Button>
+                </div>
+              </div>
             </div>
           ) : (
             <form onSubmit={submitBooking} className="space-y-4 mt-1">
