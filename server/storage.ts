@@ -199,6 +199,7 @@ export interface IStorage {
   getAllPatients(): Promise<Patient[]>;
   getPatient(id: number): Promise<Patient | undefined>;
   searchPatients(query: string): Promise<Patient[]>;
+  findMatchingPatient(clinicId: number, patientName: string, dob?: string | null, phone?: string | null): Promise<Patient | undefined>;
   createPatient(patient: InsertPatientData): Promise<Patient>;
   updatePatient(id: number, patient: Partial<InsertPatientData>): Promise<Patient | undefined>;
   deletePatient(id: number): Promise<void>;
@@ -1004,6 +1005,32 @@ export class DatabaseStorage implements IStorage {
         sql`(${patients.firstName} || ' ' || ${patients.lastName}) ILIKE ${searchTerm}`
       )
     ).orderBy(patients.lastName, patients.firstName);
+  }
+
+  async findMatchingPatient(clinicId: number, patientName: string, dob?: string | null, phone?: string | null): Promise<Patient | undefined> {
+    const normalized = patientName.toLowerCase().replace(/\s+/g, " ").trim();
+    const clinicPatients = await db.select().from(patients).where(eq(patients.clinicId, clinicId));
+    // Match: full name + DOB
+    if (dob) {
+      const match = clinicPatients.find(p => {
+        const full = `${p.firstName} ${p.lastName}`.toLowerCase().replace(/\s+/g, " ").trim();
+        return full === normalized && p.dateOfBirth === dob;
+      });
+      if (match) return match;
+    }
+    // Match: full name + phone (digits only, min 8 digits)
+    if (phone) {
+      const cleanPhone = phone.replace(/\D/g, "");
+      if (cleanPhone.length >= 8) {
+        const match = clinicPatients.find(p => {
+          const full = `${p.firstName} ${p.lastName}`.toLowerCase().replace(/\s+/g, " ").trim();
+          const pClean = (p.phone || "").replace(/\D/g, "");
+          return full === normalized && pClean === cleanPhone;
+        });
+        if (match) return match;
+      }
+    }
+    return undefined;
   }
 
   async generateNextUrNumber(clinicId?: number | null): Promise<string> {

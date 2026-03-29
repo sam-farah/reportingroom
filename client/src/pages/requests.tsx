@@ -16,10 +16,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Plus, Search, Edit, Trash2, User, Phone, Mail, Stethoscope,
   ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
-  MapPin, Hash, Building2, ChevronRight, X, Printer, Globe
+  MapPin, Hash, Building2, ChevronRight, X, Printer, Globe, CalendarPlus
 } from "lucide-react";
 import { format } from "date-fns";
-import type { ScanRequest, ReferringDoctor, Patient, Clinic } from "@shared/schema";
+import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
 const URGENCY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -121,6 +121,17 @@ export default function Requests() {
   const [editingDoctor, setEditingDoctor] = useState<ReferringDoctor | null>(null);
   const [doctorForm, setDoctorForm] = useState<DoctorFormData>(blankDoctor());
 
+  // ── Scheduling state ──────────────────────────────────────────────
+  const [schedulingRequest, setSchedulingRequest] = useState<ScanRequest | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    appointmentDate: format(new Date(), "yyyy-MM-dd"),
+    appointmentTime: "09:00",
+    duration: "30",
+    physicianId: "",
+    sonographerId: "",
+    notes: "",
+  });
+
   // ── Queries ───────────────────────────────────────────────────────
   const { data: clinic } = useQuery<Clinic>({
     queryKey: ["/api/clinic"],
@@ -155,6 +166,9 @@ export default function Requests() {
     },
     enabled: doctorSearchQuery.length >= 2,
   });
+
+  const { data: physicians = [] } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
+  const { data: sonographers = [] } = useQuery<Sonographer[]>({ queryKey: ["/api/sonographers"] });
 
   // ── Request mutations ─────────────────────────────────────────────
   const createRequest = useMutation({
@@ -192,6 +206,42 @@ export default function Requests() {
     mutationFn: (id: number) => apiRequest(`/api/referring-doctors/${id}`, "DELETE"),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] }); toast({ title: "Doctor deleted" }); },
     onError: () => toast({ title: "Failed to delete doctor", variant: "destructive" }),
+  });
+
+  const scheduleAppointment = useMutation({
+    mutationFn: async ({ request, form }: { request: ScanRequest; form: typeof scheduleForm }) => {
+      const [datePart] = form.appointmentDate.split("T");
+      const appointmentDate = new Date(`${datePart}T${form.appointmentTime}:00`);
+      const apptRes = await apiRequest("/api/appointments", "POST", {
+        clinicId: request.clinicId,
+        patientName: request.patientName,
+        patientDob: request.patientDob || null,
+        patientPhone: request.patientPhone || null,
+        patientEmail: request.patientEmail || null,
+        patientId: request.patientId || null,
+        scanType: (request.scanTypes ?? [])[0] || "",
+        appointmentDate: appointmentDate.toISOString(),
+        duration: parseInt(form.duration) || 30,
+        physicianId: form.physicianId ? parseInt(form.physicianId) : null,
+        sonographerId: form.sonographerId ? parseInt(form.sonographerId) : null,
+        notes: form.notes || null,
+        status: "scheduled",
+      });
+      const appt = await apptRes.json();
+      await apiRequest(`/api/scan-requests/${request.id}`, "PUT", {
+        status: "scheduled",
+        scheduledAppointmentId: appt.id,
+      });
+      return appt;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      setSchedulingRequest(null);
+      setViewingRequest(null);
+      toast({ title: "Appointment scheduled", description: "The request has been marked as scheduled." });
+    },
+    onError: () => toast({ title: "Failed to schedule appointment", variant: "destructive" }),
   });
 
   // ── Helpers ───────────────────────────────────────────────────────
@@ -1000,14 +1050,33 @@ export default function Requests() {
                     <p className="text-sm text-gray-700">{viewingRequest.notes}</p>
                   </div>
                 )}
-                <div className="flex justify-end gap-2 pt-2 border-t">
+                <div className="flex justify-end gap-2 pt-2 border-t flex-wrap">
                   <Button variant="outline" onClick={() => setViewingRequest(null)}>Close</Button>
                   <Button variant="outline" onClick={() => generateRequestPDF(viewingRequest)}>
                     <Printer className="w-4 h-4 mr-2" /> Print PDF
                   </Button>
-                  <Button onClick={() => { setViewingRequest(null); openEditRequest(viewingRequest); }}>
+                  <Button variant="outline" onClick={() => { setViewingRequest(null); openEditRequest(viewingRequest); }}>
                     <Edit className="w-4 h-4 mr-2" /> Edit
                   </Button>
+                  {viewingRequest.status !== "scheduled" && viewingRequest.status !== "completed" && (
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => {
+                        setScheduleForm({
+                          appointmentDate: format(new Date(), "yyyy-MM-dd"),
+                          appointmentTime: "09:00",
+                          duration: "30",
+                          physicianId: "",
+                          sonographerId: "",
+                          notes: viewingRequest.notes || "",
+                        });
+                        setSchedulingRequest(viewingRequest);
+                        setViewingRequest(null);
+                      }}
+                    >
+                      <CalendarPlus className="w-4 h-4 mr-2" /> Schedule Appointment
+                    </Button>
+                  )}
                 </div>
               </div>
             );
@@ -1063,6 +1132,106 @@ export default function Requests() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── SCHEDULE APPOINTMENT DIALOG ── */}
+      <Dialog open={!!schedulingRequest} onOpenChange={v => { if (!v) setSchedulingRequest(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="w-5 h-5 text-blue-600" /> Schedule Appointment
+            </DialogTitle>
+          </DialogHeader>
+          {schedulingRequest && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm">
+                <p className="font-semibold text-blue-800">{schedulingRequest.patientName}</p>
+                <p className="text-blue-600 text-xs">{(schedulingRequest.scanTypes ?? []).join(", ")}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Date *</Label>
+                  <Input
+                    type="date"
+                    value={scheduleForm.appointmentDate}
+                    onChange={e => setScheduleForm(p => ({ ...p, appointmentDate: e.target.value }))}
+                    className="mt-1"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Time *</Label>
+                  <Input
+                    type="time"
+                    value={scheduleForm.appointmentTime}
+                    onChange={e => setScheduleForm(p => ({ ...p, appointmentTime: e.target.value }))}
+                    className="mt-1"
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Duration (minutes)</Label>
+                <Select value={scheduleForm.duration} onValueChange={v => setScheduleForm(p => ({ ...p, duration: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["15","20","30","45","60","75","90","120"].map(d => (
+                      <SelectItem key={d} value={d}>{d} min</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {physicians.length > 0 && (
+                <div>
+                  <Label className="text-xs">Physician</Label>
+                  <Select value={scheduleForm.physicianId} onValueChange={v => setScheduleForm(p => ({ ...p, physicianId: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select physician (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {physicians.map(ph => (
+                        <SelectItem key={ph.id} value={String(ph.id)}>{ph.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {sonographers.length > 0 && (
+                <div>
+                  <Label className="text-xs">Sonographer</Label>
+                  <Select value={scheduleForm.sonographerId} onValueChange={v => setScheduleForm(p => ({ ...p, sonographerId: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select sonographer (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {sonographers.map(s => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Label className="text-xs">Notes</Label>
+                <Textarea
+                  value={scheduleForm.notes}
+                  onChange={e => setScheduleForm(p => ({ ...p, notes: e.target.value }))}
+                  rows={2}
+                  className="mt-1"
+                  placeholder="Optional internal notes"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <Button variant="outline" onClick={() => setSchedulingRequest(null)}>Cancel</Button>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={scheduleAppointment.isPending || !scheduleForm.appointmentDate || !scheduleForm.appointmentTime}
+                  onClick={() => scheduleAppointment.mutate({ request: schedulingRequest, form: scheduleForm })}
+                >
+                  {scheduleAppointment.isPending ? "Scheduling..." : "Confirm & Schedule"}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

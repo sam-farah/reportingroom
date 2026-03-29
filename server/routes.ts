@@ -5,7 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
-import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification } from "./email";
+import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation } from "./email";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -3898,19 +3898,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const referrerFullName = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() || "External Referrer";
       const referralPrefix = `[Referral from: ${referrerFullName}]`;
       const combinedNotes = notes ? `${referralPrefix}\n${notes}` : referralPrefix;
+
+      // Try to match existing patient record
+      const matchedPatient = await storage.findMatchingPatient(clinicId, patientName, patientDob || null, patientPhone || null);
+
+      const patientEmailVal = patientEmail || null;
       const appointment = await storage.createAppointment({
         clinicId,
         patientName,
         patientPhone: patientPhone || null,
-        patientEmail: req.body.patientEmail || null,
-        patientDob: req.body.patientDob || null,
+        patientEmail: patientEmailVal,
+        patientDob: patientDob || null,
         scanType,
         appointmentDate: apptStart,
         duration: durationMins,
         notes: combinedNotes,
         status: "scheduled",
         sonographerId: null,
-        patientId: null,
+        patientId: matchedPatient?.id ?? null,
         createdBy: req.user.id,
       });
 
@@ -3921,7 +3926,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientName,
         patientDob: patientDob || null,
         patientPhone: patientPhone || null,
-        patientEmail: patientEmail || null,
+        patientEmail: patientEmailVal,
         referringDoctorName: `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim(),
         referringDoctorProviderNumber: null,
         scanTypes: [scanType],
@@ -3934,27 +3939,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         submittedByReferrerId: req.user.id,
         referrerName: `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim(),
         scheduledAppointmentId: appointment.id,
-        patientUrNumber: null,
-        patientId: null,
+        patientUrNumber: matchedPatient?.urNumber ?? null,
+        patientId: matchedPatient?.id ?? null,
         referringDoctorId: null,
         clinicalHistory: null,
       });
 
+      const referrerFullNameForEmail = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim();
+
       // Notify clinic
       if (clinic?.email) {
-        await sendExternalReferralNotification({
+        sendExternalReferralNotification({
           clinicEmail: clinic.email,
           clinicName: clinic.name,
           patientName,
           scanTypes: [scanType],
           urgency: "routine",
-          referringDoctorName: `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim(),
+          referringDoctorName: referrerFullNameForEmail,
           source: "referrer_portal",
-          referrerName: `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim(),
+          referrerName: referrerFullNameForEmail,
         }).catch(console.error);
       }
 
-      res.json({ success: true, appointment });
+      // Send patient confirmation email
+      if (patientEmailVal) {
+        sendPatientBookingConfirmation({
+          patientEmail: patientEmailVal,
+          patientName,
+          clinicName: clinic?.name || "The clinic",
+          clinicAddress: (clinic as any)?.address || null,
+          clinicPhone: (clinic as any)?.phone || null,
+          scanType,
+          appointmentDate: apptStart,
+          duration: durationMins,
+          referringDoctorName: referrerFullNameForEmail || undefined,
+        }).catch(console.error);
+      }
+
+      res.json({ success: true, appointment, patientMatched: !!matchedPatient });
     } catch (e) {
       console.error("Referrer booking error:", e);
       res.status(500).json({ error: "Failed to create booking" });

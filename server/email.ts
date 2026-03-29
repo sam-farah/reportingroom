@@ -368,3 +368,78 @@ export async function sendExternalReferralNotification(params: {
     console.error("Failed to send referral notification email:", err?.response?.body?.errors ?? err?.message);
   }
 }
+
+export async function sendPatientBookingConfirmation(params: {
+  patientEmail: string;
+  patientName: string;
+  clinicName: string;
+  clinicAddress?: string | null;
+  clinicPhone?: string | null;
+  scanType: string;
+  appointmentDate: Date;
+  duration: number;
+  referringDoctorName?: string;
+}): Promise<void> {
+  const dateStr = params.appointmentDate.toLocaleDateString("en-AU", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "Australia/Sydney"
+  });
+  const timeStr = params.appointmentDate.toLocaleTimeString("en-AU", {
+    hour: "2-digit", minute: "2-digit", timeZone: "Australia/Sydney"
+  });
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; color: #1a1a2e; background: #f8fafc;">
+      <div style="background: #1e40af; padding: 28px 32px; border-radius: 8px 8px 0 0;">
+        <h1 style="margin: 0; color: #fff; font-size: 22px; font-weight: 700;">${params.clinicName}</h1>
+        <p style="margin: 6px 0 0; color: #bfdbfe; font-size: 14px;">Appointment Confirmation</p>
+      </div>
+      <div style="background: #fff; padding: 32px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <p style="margin: 0 0 20px; font-size: 16px; color: #374151;">Hi <strong>${params.patientName.split(' ')[0]}</strong>,</p>
+        <p style="margin: 0 0 24px; color: #4b5563; font-size: 14px; line-height: 1.6;">
+          Your appointment has been booked. Please see the details below.
+        </p>
+        <div style="background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; width: 40%; vertical-align: top;">Date</td>
+              <td style="padding: 8px 0; font-weight: 600; color: #111827;">${dateStr}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; vertical-align: top;">Time</td>
+              <td style="padding: 8px 0; font-weight: 600; color: #111827;">${timeStr} (${params.duration} min)</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; vertical-align: top;">Scan Type</td>
+              <td style="padding: 8px 0; font-weight: 600; color: #111827;">${params.scanType}</td>
+            </tr>
+            ${params.referringDoctorName ? `<tr>
+              <td style="padding: 8px 0; color: #6b7280; vertical-align: top;">Referred By</td>
+              <td style="padding: 8px 0; color: #111827;">${params.referringDoctorName}</td>
+            </tr>` : ""}
+            ${params.clinicAddress ? `<tr>
+              <td style="padding: 8px 0; color: #6b7280; vertical-align: top;">Location</td>
+              <td style="padding: 8px 0; color: #111827;">${params.clinicAddress}</td>
+            </tr>` : ""}
+            ${params.clinicPhone ? `<tr>
+              <td style="padding: 8px 0; color: #6b7280; vertical-align: top;">Contact</td>
+              <td style="padding: 8px 0; color: #111827;">${params.clinicPhone}</td>
+            </tr>` : ""}
+          </table>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: #9ca3af; line-height: 1.6;">
+          If you need to reschedule or have any questions, please contact ${params.clinicName} directly.
+        </p>
+      </div>
+    </div>`;
+
+  try {
+    await sgMail.send({
+      to: params.patientEmail,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
+      subject: `Appointment confirmed — ${params.scanType} on ${dateStr}`,
+      html,
+    });
+  } catch (err: any) {
+    console.error("Failed to send patient booking confirmation:", err?.response?.body?.errors ?? err?.message);
+  }
+}

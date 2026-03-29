@@ -126,7 +126,7 @@ export default function ReferrerPortal() {
 
   const submitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bookingSlot || !bookForm.patientName || !bookForm.scanType) return;
+    if (!bookingSlot || !bookForm.patientName || !bookForm.scanType || !bookForm.patientEmail) return;
     setBooking(true);
     try {
       const start = new Date(bookingSlot.date);
@@ -417,6 +417,10 @@ export default function ReferrerPortal() {
                 <Label className="text-sm">Patient Full Name *</Label>
                 <Input required value={bookForm.patientName} onChange={(e) => setBookForm((p) => ({ ...p, patientName: e.target.value }))} className="mt-1" />
               </div>
+              <div>
+                <Label className="text-sm">Patient Email * <span className="text-gray-400 font-normal">(confirmation will be sent here)</span></Label>
+                <Input required type="email" value={bookForm.patientEmail} onChange={(e) => setBookForm((p) => ({ ...p, patientEmail: e.target.value }))} className="mt-1" placeholder="patient@example.com" />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-sm">Date of Birth</Label>
@@ -444,7 +448,7 @@ export default function ReferrerPortal() {
               </div>
               <div className="flex gap-2 justify-end">
                 <Button type="button" variant="outline" onClick={() => setBookingOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={booking || !bookForm.patientName || !bookForm.scanType}>
+                <Button type="submit" disabled={booking || !bookForm.patientName || !bookForm.scanType || !bookForm.patientEmail}>
                   {booking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                   Confirm Booking
                 </Button>
