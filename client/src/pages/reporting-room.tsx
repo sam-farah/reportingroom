@@ -288,7 +288,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     const defaultTemplate = templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
     setEditingReport({ 
       ...report,
-      templateId: report.templateId || defaultTemplate?.id,
+      templateId: (report as EditableReport).templateId || defaultTemplate?.id,
     });
     setIsFullscreenMode(true);
     setIsEditDialogOpen(true);
@@ -362,7 +362,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const template = templates.find((t: ReportTemplate) => t.id === (editingReport?.templateId || report.templateId)) || templates[0];
+    const template = templates.find((t: ReportTemplate) => t.id === (editingReport?.templateId || (report as EditableReport).templateId)) || templates[0];
     const pc = template?.primaryColor || '#0066cc';
     const ac = template?.accentColor || '#e8f4fd';
     const ff = template?.fontFamily || 'Arial';
@@ -567,7 +567,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       if (physician) {
         physicianName = physician.name || "";
         physicianTitle = physician.title || "";
-        physicianCredentials = physician.credentials || "";
+        physicianCredentials = (physician as any).credentials || "";
         if (physician.signatureUrl) {
           signatureDataUrl = await toBase64(physician.signatureUrl);
         }
@@ -583,7 +583,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     }
 
     const clinic = clinicSettings;
-    const template = templates.find((t: ReportTemplate) => t.id === (report.templateId)) || templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
+    const template = templates.find((t: ReportTemplate) => t.id === ((report as EditableReport).templateId)) || templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
     const pc = template?.primaryColor || '#0066cc';
     const ac = template?.accentColor || '#e8f4fd';
     const ff = template?.fontFamily || 'Arial';

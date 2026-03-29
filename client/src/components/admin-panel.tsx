@@ -40,15 +40,25 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
   });
 
   // System monitoring queries
-  const { data: systemStats } = useQuery({
+  const { data: systemStats } = useQuery<{
+    databaseSize: string; monthlyGrowth: string; activeUsers: number;
+    totalReports: number; reportsThisMonth: number; reportDataSize: string;
+    reportDataPercent: number; worksheetFilesSize: string; worksheetFilesPercent: number;
+    userDataSize: string; userDataPercent: number; avgResponseTime: number;
+    apiSuccessRate: number; encryptionOverhead: number;
+  }>({
     queryKey: ["/api/admin/system-stats"],
   });
 
-  const { data: clinicStats = [] } = useQuery({
+  const { data: clinicStats = [] } = useQuery<any[]>({
     queryKey: ["/api/admin/clinic-stats"],
   });
 
-  const { data: costProjection } = useQuery({
+  const { data: costProjection } = useQuery<{
+    currentMonth: string; nextMonth: string; alerts: number;
+    databaseCost: string; storageCost: string; aiCost: string;
+    totalEstimated: string; recommendations: string[];
+  }>({
     queryKey: ["/api/admin/cost-projection"],
   });
 

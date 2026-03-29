@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { Report, Physician } from "@shared/schema";
+import type { Report, Physician, Clinic } from "@shared/schema";
 
 interface ReportPreviewProps {
   report: Report | null;
@@ -23,7 +23,7 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
   const [editedReport, setEditedReport] = useState<Report | null>(null);
 
   // Fetch clinic information
-  const { data: clinic } = useQuery({
+  const { data: clinic } = useQuery<Clinic>({
     queryKey: ["/api/clinic"],
     retry: false,
   });

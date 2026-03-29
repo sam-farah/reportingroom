@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
-import type { ReportTemplate, InsertReportTemplate, LegendEntry, InsertLegendEntryData, Clinic } from "@shared/schema";
+import type { ReportTemplate, InsertReportTemplate, LegendEntry, InsertLegendEntryData, Clinic, WorksheetTemplate } from "@shared/schema";
 import TextShortcuts from "@/components/text-shortcuts";
 
 interface TemplateFormData {
@@ -133,13 +133,13 @@ export default function Templates() {
   });
 
   // Fetch all templates
-  const { data: templates = [], isLoading } = useQuery({
+  const { data: templates = [], isLoading } = useQuery<ReportTemplate[]>({
     queryKey: ["/api/templates"],
     retry: false,
   });
 
   // Fetch worksheet templates
-  const { data: worksheetTemplates = [], isLoading: isLoadingWorksheets } = useQuery({
+  const { data: worksheetTemplates = [], isLoading: isLoadingWorksheets } = useQuery<WorksheetTemplate[]>({
     queryKey: ["/api/worksheet-templates"],
     retry: false,
   });
@@ -604,7 +604,7 @@ export default function Templates() {
       medicalMeaning: entry.medicalMeaning,
       category: entry.category || 'vascular',
       isActive: entry.isActive || false,
-      imageType: entry.imageType || 'upload',
+      imageType: (entry.imageType || 'upload') as 'upload' | 'drawing',
       exampleImage: null,
       drawingData: entry.drawingData || ''
     });

@@ -119,7 +119,7 @@ export class MedicalDataEncryption {
       const tag = forge.util.decode64(meta.tag);
       
       const decipher = forge.cipher.createDecipher('AES-GCM', key);
-      decipher.start({ iv, tag });
+      decipher.start({ iv, tag: forge.util.createBuffer(tag) });
       decipher.update(forge.util.createBuffer(encryptedData.toString('binary')));
       
       if (!decipher.finish()) {

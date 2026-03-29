@@ -8,6 +8,7 @@ import {
   serial,
   integer,
   boolean,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -62,7 +63,7 @@ export const users = pgTable("users", {
   clinicId: integer("clinic_id").references(() => clinics.id),
   role: varchar("role", { length: 50 }).notNull().default('sonographer'),
   isActive: boolean("is_active").notNull().default(true),
-  invitedBy: varchar("invited_by").references(() => users.id),
+  invitedBy: varchar("invited_by").references((): AnyPgColumn => users.id),
   invitedAt: timestamp("invited_at"),
   joinedAt: timestamp("joined_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -370,7 +371,6 @@ export const textShortcuts = pgTable("text_shortcuts", {
 });
 
 export type TextShortcut = typeof textShortcuts.$inferSelect;
-export type InsertTextShortcut = typeof textShortcuts.$inferInsert;
 
 export const insertPhysicianSchema = createInsertSchema(physicians).omit({
   id: true,

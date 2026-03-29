@@ -417,7 +417,8 @@ export default function Clinic() {
   // Toggle physician status mutation (deactivate/activate)
   const togglePhysicianMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await apiRequest(`/api/physicians/${id}/toggle-status`, "PATCH");
+      const res = await apiRequest(`/api/physicians/${id}/toggle-status`, "PATCH");
+      return res.json();
     },
     onSuccess: (data: Physician) => {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
@@ -549,7 +550,8 @@ export default function Clinic() {
   // Toggle sonographer status mutation (deactivate/activate)
   const toggleSonographerMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await apiRequest(`/api/sonographers/${id}/toggle-status`, "PATCH");
+      const res = await apiRequest(`/api/sonographers/${id}/toggle-status`, "PATCH");
+      return res.json();
     },
     onSuccess: (data: Sonographer) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
@@ -1351,7 +1353,7 @@ export default function Clinic() {
                             <p className="font-medium">{invitation.email}</p>
                             <p className="text-sm text-gray-600">
                               Role: {invitation.role.charAt(0).toUpperCase() + invitation.role.slice(1)} • 
-                              Sent {format(new Date(invitation.createdAt), 'MMM d, yyyy')}
+                              Sent {invitation.createdAt ? format(new Date(invitation.createdAt), 'MMM d, yyyy') : ''}
                             </p>
                           </div>
                         </div>

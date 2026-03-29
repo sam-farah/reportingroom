@@ -269,7 +269,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
+    const result = await db
       .insert(users)
       .values(userData)
       .onConflictDoUpdate({
@@ -283,7 +283,7 @@ export class DatabaseStorage implements IStorage {
         },
       })
       .returning();
-    return user;
+    return (result as any)[0] as User;
   }
 
   // Clinic operations
@@ -503,8 +503,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getReportsByWorksheet(worksheetId: number): Promise<Report[]> {
-    const reports = await db.select().from(reports).where(eq(reports.worksheetId, worksheetId));
-    return reports.map(report => FieldEncryption.decryptFields(report) as Report);
+    const rows = await db.select().from(reports).where(eq(reports.worksheetId, worksheetId));
+    return rows.map(report => FieldEncryption.decryptFields(report) as Report);
   }
 
   async getRecentReports(limit: number): Promise<Report[]> {
@@ -588,7 +588,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(reports)
       .where(sql`LOWER(${reports.studyType}) LIKE ${'%' + category.toLowerCase() + '%'}`)
-      .orderBy(desc(reports.createdAt))
+      .orderBy(desc(reports.generatedAt))
       .limit(limit);
     
     return categoryReports.map(report => FieldEncryption.decryptFields(report) as Report);
@@ -903,7 +903,7 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(textShortcuts)
       .set({ 
-        usageCount: textShortcuts.usageCount + 1,
+        usageCount: sql`${textShortcuts.usageCount} + 1`,
         updatedAt: new Date() 
       })
       .where(eq(textShortcuts.id, id));

@@ -71,7 +71,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       analyzerRef.current.getByteFrequencyData(dataArray);
       
       // Use peak value instead of average for more responsive display
-      const peak = Math.max(...dataArray);
+      const peak = Math.max(...Array.from(dataArray));
       // Also calculate RMS for speech-focused frequencies (300Hz-3400Hz range, roughly indices 5-50)
       const speechRange = dataArray.slice(5, 50);
       const rms = Math.sqrt(speechRange.reduce((sum, val) => sum + val * val, 0) / speechRange.length);

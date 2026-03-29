@@ -435,7 +435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!appointment) return res.status(404).json({ error: "Appointment not found" });
       if (!appointment.patientEmail) return res.status(400).json({ error: "No email address on file for this patient" });
 
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const clinic = await storage.getClinic(user.clinicId);
       if (!clinic) return res.status(404).json({ error: "Clinic not found" });
@@ -741,7 +741,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!patient) return res.status(404).json({ error: "Patient not found" });
       if (!patient.email) return res.status(400).json({ error: "No email address on file for this patient" });
 
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const clinic = await storage.getClinic(user.clinicId);
       if (!clinic) return res.status(404).json({ error: "Clinic not found" });
@@ -1034,7 +1034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/reports/:id/finalize", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       
       const report = await storage.finalizeReport(id, userId);
       if (!report) {
@@ -1056,7 +1056,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid report ID" });
       }
 
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       const { reason, ...reportUpdates } = req.body;
 
       if (!reason || reason.trim() === '') {
@@ -1093,7 +1093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const report = await storage.getReport(id);
       if (!report) return res.status(404).json({ error: "Report not found" });
 
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       const clinic = user?.clinicId ? await storage.getClinic(user.clinicId) : null;
       const clinicName = clinic?.name || "Nexus Vascular Imaging";
 
@@ -1128,7 +1128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Scan Type Content Templates ──
   app.get("/api/content-templates", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.json([]);
       const templates = await storage.getScanTypeContentTemplates(user.clinicId);
       res.json(templates);
@@ -1139,7 +1139,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/content-templates/:scanType", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic associated" });
       const scanType = decodeURIComponent(req.params.scanType);
       const { findingsTemplate, impressionTemplate, indicationTemplate } = req.body;
@@ -1158,7 +1158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/content-templates/:scanType", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const scanType = decodeURIComponent(req.params.scanType);
       await storage.deleteScanTypeContentTemplate(user.clinicId, scanType);
@@ -1171,7 +1171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Distribution counts summary for all reports in the clinic (for card badges)
   app.get("/api/distributions-summary", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.json({});
       const counts = await storage.getReportDistributionCounts(user.clinicId);
       res.json(counts);
@@ -1200,7 +1200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
 
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       const body = insertReportDistributionSchema.parse({
         ...req.body,
         reportId: id,
@@ -1231,7 +1231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get user's clinic information
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       let clinic = null;
       if (user?.clinicId) {
         clinic = await storage.getClinic(user.clinicId);
@@ -1341,7 +1341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // If the client passed a specific scan type override, use that; otherwise auto-detect from worksheet
       let contentTemplate = null;
       const { contentTemplateScanType } = req.body;
-      const effectiveScanType = contentTemplateScanType || worksheet.studyType;
+      const effectiveScanType = contentTemplateScanType || (worksheet as any).studyType;
       if (user?.clinicId && effectiveScanType) {
         contentTemplate = await storage.getScanTypeContentTemplate(user.clinicId, effectiveScanType);
         if (contentTemplateScanType) {
@@ -1393,7 +1393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get user's clinic information
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       console.log('PDF Generation - Getting user data for:', userId);
       const user = await storage.getUser(userId);
       console.log('PDF Generation - User found:', user ? { id: user.id, clinicId: user.clinicId } : 'Not found');
@@ -1727,7 +1727,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const template = await storage.getReportTemplate(templateId) || await storage.getReportTemplate(1);
 
       // Get user's clinic information
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       let clinic = null;
       if (user?.clinicId) {
         clinic = await storage.getClinic(user.clinicId);
@@ -1797,6 +1797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 children: [
                   ...(clinicLogoData ? [
                     new ImageRun({
+                      type: 'png',
                       data: clinicLogoData,
                       transformation: {
                         width: 100,
@@ -2178,7 +2179,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Serve clinic logo image (authenticated)
   app.get("/api/clinic/logo", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const clinic = await storage.getClinic(user.clinicId);
       if (!clinic?.logoUrl) return res.status(404).json({ error: "No logo" });
@@ -2219,7 +2220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const logoUrl = `/uploads/${req.file.filename}`;
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (user?.clinicId) {
         await storage.updateClinic(user.clinicId, { kioskLogoUrl: logoUrl } as any);
       }
@@ -2234,7 +2235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Save kiosk settings
   app.put("/api/kiosk/settings", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) {
         return res.status(400).json({ error: "No clinic associated" });
       }
@@ -2265,7 +2266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const logoUrl = `/uploads/${req.file.filename}`;
       
       // Update clinic with new logo URL
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (user?.clinicId) {
         await storage.updateClinicLogo(user.clinicId, logoUrl);
       }
@@ -2280,7 +2281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get clinic info
   app.get("/api/clinic", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) {
         return res.status(400).json({ error: "No clinic associated" });
       }
@@ -2300,7 +2301,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dictation vocabulary endpoints
   app.get("/api/clinic/dictation-vocabulary", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const clinic = await storage.getClinic(user.clinicId);
       let words: string[] = [];
@@ -2315,7 +2316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/clinic/dictation-vocabulary", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const { words } = req.body;
       if (!Array.isArray(words)) return res.status(400).json({ error: "words must be an array" });
@@ -2330,7 +2331,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Reminder instructions endpoint
   app.put("/api/clinic/reminder-instructions", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const { instructions } = req.body;
       await storage.updateClinic(user.clinicId, { reminderInstructions: instructions ?? null });
@@ -2343,7 +2344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Scan duration settings
   app.get("/api/scan-durations", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const settings = await storage.getScanDurationSettings(user.clinicId);
       res.json(settings);
@@ -2354,7 +2355,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/scan-durations", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const { settings } = req.body;
       if (!Array.isArray(settings)) return res.status(400).json({ error: "Invalid settings" });
@@ -2368,7 +2369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update clinic info
   app.put("/api/clinic/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) {
         return res.status(400).json({ error: "No clinic associated" });
       }
@@ -2689,7 +2690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const legendEntries = await storage.getAllLegendEntries();
           console.log("Retrieved legend entries for analysis:", legendEntries.length);
           
-          const analysisResult = await analyzeVascularDrawing(base64Image, templateName, worksheet.studyType, legendEntries);
+          const analysisResult = await analyzeVascularDrawing(base64Image, templateName, (worksheet as any).studyType || '', legendEntries);
           aiGeneratedFindings = analysisResult.findings;
           aiGeneratedImpression = analysisResult.impression;
           console.log("AI analysis completed successfully with legend context");
@@ -2889,7 +2890,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/clinics/register", isAuthenticated, async (req: any, res) => {
     try {
       const clinicData = insertClinicSchema.parse(req.body);
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       
       const existingClinic = await storage.getClinicByEmail(clinicData.email);
       if (existingClinic) {
@@ -2924,7 +2925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User invitation routes
   app.post("/api/invitations", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId || !['admin', 'clinic_owner'].includes(user.role)) {
         return res.status(403).json({ message: "Insufficient permissions" });
       }
@@ -2992,7 +2993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/invitations", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId || !['admin', 'clinic_owner'].includes(user.role)) {
         return res.status(403).json({ message: "Insufficient permissions" });
       }
@@ -3034,7 +3035,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/invitations/:token/accept", isAuthenticated, async (req: any, res) => {
     try {
       const { token } = req.params;
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
 
       await storage.acceptInvitation(token, userId);
       res.json({ message: "Invitation accepted successfully" });
@@ -3047,7 +3048,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Clinic users route
   app.get("/api/clinic/users", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) {
         return res.status(403).json({ message: "No clinic associated" });
       }
@@ -3063,7 +3064,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Staff and invitation management routes (owner/admin only)
   app.get('/api/staff', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser?.clinicId) {
@@ -3083,7 +3084,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/invitations/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       const currentUser = await storage.getUser(userId);
       const invitationId = parseInt(req.params.id);
       
@@ -3101,7 +3102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/staff/:id/deactivate', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       const currentUser = await storage.getUser(userId);
       const staffId = req.params.id;
       
@@ -3122,7 +3123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.session.userId) {
       return res.status(403).json({ message: 'Webmaster access required' });
     }
-    const user = await storage.getUser(req.session.userId);
+    const user = await storage.getUser(req.session.userId!);
     if (!user || user.email !== 'contact@samfarah.com') {
       return res.status(403).json({ message: 'Webmaster access required' });
     }
@@ -3197,7 +3198,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         
         // Determine last activity
-        const lastActivity = clinic.updatedAt ? new Date(clinic.updatedAt).getTime() : new Date(clinic.createdAt).getTime();
+        const lastActivity = clinic.updatedAt ? new Date(clinic.updatedAt).getTime() : new Date(clinic.createdAt ?? Date.now()).getTime();
         const daysSinceLastActivity = Math.floor((Date.now() - lastActivity) / (1000 * 60 * 60 * 24));
         
         return {
@@ -3377,7 +3378,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ 
         text: transcription.text,
-        duration: transcription.duration || 0
+        duration: (transcription as any).duration || 0
       });
 
     } catch (error: any) {
@@ -3753,7 +3754,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Referrer role middleware
   const isReferrer = async (req: any, res: any, next: any) => {
     if (!req.session?.userId) return res.status(401).json({ message: "Unauthorized" });
-    const user = await storage.getUser(req.session.userId);
+    const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     if (user.role !== "referrer") return res.status(403).json({ message: "Referrer access required" });
     req.user = user;
@@ -3978,7 +3979,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/referrers", isAuthenticated, async (req: any, res) => {
     try {
       const clinicId = req.user?.clinicId;
-      const actingUser = await storage.getUser(req.session.userId);
+      const actingUser = await storage.getUser(req.session.userId!);
       if (!clinicId || !["clinic_owner", "admin"].includes(actingUser?.role || "")) {
         return res.status(403).json({ error: "Admin access required" });
       }
@@ -4013,7 +4014,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/admin/referrers/:id/status", isAuthenticated, async (req: any, res) => {
     try {
       const clinicId = req.user?.clinicId;
-      const actingUser = await storage.getUser(req.session.userId);
+      const actingUser = await storage.getUser(req.session.userId!);
       if (!clinicId || !["clinic_owner", "admin"].includes(actingUser?.role || "")) {
         return res.status(403).json({ error: "Admin access required" });
       }
@@ -4030,7 +4031,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/referrers/:id", isAuthenticated, async (req: any, res) => {
     try {
       const clinicId = req.user?.clinicId;
-      const actingUser = await storage.getUser(req.session.userId);
+      const actingUser = await storage.getUser(req.session.userId!);
       if (!clinicId || !["clinic_owner", "admin"].includes(actingUser?.role || "")) {
         return res.status(403).json({ error: "Admin access required" });
       }
@@ -4046,7 +4047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin: get embed config (base URL for iframe snippets)
   app.get("/api/admin/embed-config", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.session.userId);
+      const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ error: "Unauthorized" });
       const clinicId = user.clinicId;
       // Prefer APP_URL env var (set in production), then fall back to request headers

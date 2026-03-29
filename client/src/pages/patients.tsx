@@ -317,7 +317,8 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      return await apiRequest(`/api/patients/${id}`, "PUT", data);
+      const res = await apiRequest(`/api/patients/${id}`, "PUT", data);
+      return res.json();
     },
     onSuccess: (updatedPatient: Patient) => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients"] });

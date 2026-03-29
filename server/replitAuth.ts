@@ -216,7 +216,7 @@ export async function setupAuth(app: Express) {
       })(req, res, next);
     } catch (error) {
       console.error(`CRITICAL LOGIN ERROR for ${req.hostname}:`, error);
-      res.status(500).json({ error: "Authentication failed", details: error.message });
+      res.status(500).json({ error: "Authentication failed", details: (error as any).message });
     }
   });
 
@@ -248,7 +248,7 @@ export async function setupAuth(app: Express) {
         successReturnToOrRedirect: "/",
         failureRedirect: "/api/login",
         failureFlash: false,
-      })(req, res, (err) => {
+      })(req, res, (err: any) => {
         if (err) {
           console.error(`CRITICAL CALLBACK ERROR for ${req.hostname}:`, err);
           return res.status(500).json({ error: "Callback authentication failed", details: err.message });
@@ -257,7 +257,7 @@ export async function setupAuth(app: Express) {
       });
     } catch (error) {
       console.error(`CRITICAL CALLBACK ERROR for ${req.hostname}:`, error);
-      res.status(500).json({ error: "Callback failed", details: error.message });
+      res.status(500).json({ error: "Callback failed", details: (error as any).message });
     }
   });
 
