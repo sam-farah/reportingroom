@@ -122,7 +122,8 @@ export default function Requests() {
   const [doctorForm, setDoctorForm] = useState<DoctorFormData>(blankDoctor());
 
   // ── Scheduling state ──────────────────────────────────────────────
-  const [schedulingRequest, setSchedulingRequest] = useState<ScanRequest | null>(null);
+  const [schedulingRequest, setSchedulingRequest] = useState<ScanRequest | null>(null); // kept for mutation compat
+  const [viewingStep, setViewingStep] = useState<"details" | "schedule">("details");
   const [scheduleForm, setScheduleForm] = useState({
     appointmentDate: format(new Date(), "yyyy-MM-dd"),
     appointmentTime: "09:00",
@@ -239,6 +240,7 @@ export default function Requests() {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       setSchedulingRequest(null);
       setViewingRequest(null);
+      setViewingStep("details");
       toast({ title: "Appointment scheduled", description: "The request has been marked as scheduled." });
     },
     onError: () => toast({ title: "Failed to schedule appointment", variant: "destructive" }),
@@ -975,14 +977,27 @@ export default function Requests() {
       </Dialog>
 
       {/* ── REQUEST VIEW DIALOG ── */}
-      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) setViewingRequest(null); }}>
+      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ClipboardList className="w-5 h-5 text-blue-600" /> Scan Request Details
+              {viewingStep === "schedule" ? (
+                <>
+                  <button
+                    className="text-gray-400 hover:text-gray-600 mr-1 flex items-center gap-1 text-sm font-normal"
+                    onClick={() => setViewingStep("details")}
+                  >
+                    ← Back
+                  </button>
+                  <CalendarPlus className="w-5 h-5 text-blue-600" /> Schedule Appointment
+                </>
+              ) : (
+                <><ClipboardList className="w-5 h-5 text-blue-600" /> Scan Request Details</>
+              )}
             </DialogTitle>
           </DialogHeader>
-          {viewingRequest && (() => {
+
+          {viewingRequest && viewingStep === "details" && (() => {
             const urgCfg = URGENCY_CONFIG[viewingRequest.urgency] ?? URGENCY_CONFIG.routine;
             const stsCfg = STATUS_CONFIG[viewingRequest.status] ?? STATUS_CONFIG.pending;
             return (
@@ -1071,7 +1086,7 @@ export default function Requests() {
                           notes: viewingRequest.notes || "",
                         });
                         setSchedulingRequest(viewingRequest);
-                        setViewingRequest(null);
+                        setViewingStep("schedule");
                       }}
                     >
                       <CalendarPlus className="w-4 h-4 mr-2" /> Schedule Appointment
@@ -1081,73 +1096,16 @@ export default function Requests() {
               </div>
             );
           })()}
-        </DialogContent>
-      </Dialog>
 
-      {/* ── REFERRING DOCTOR FORM DIALOG ── */}
-      <Dialog open={isDoctorOpen} onOpenChange={v => { if (!v) { setIsDoctorOpen(false); setEditingDoctor(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingDoctor ? "Edit Referring Doctor" : "Add Referring Doctor"}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmitDoctor} className="space-y-4">
-            <div>
-              <Label>Full Name *</Label>
-              <Input value={doctorForm.name} onChange={e => setDoctorForm(p => ({ ...p, name: e.target.value }))} required placeholder="Dr. John Smith" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Practice / Organisation</Label>
-                <Input value={doctorForm.practiceName} onChange={e => setDoctorForm(p => ({ ...p, practiceName: e.target.value }))} placeholder="City Medical Centre" />
-              </div>
-              <div>
-                <Label>Provider Number</Label>
-                <Input value={doctorForm.providerNumber} onChange={e => setDoctorForm(p => ({ ...p, providerNumber: e.target.value }))} placeholder="2029764K" />
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <Input value={doctorForm.phone} onChange={e => setDoctorForm(p => ({ ...p, phone: e.target.value }))} placeholder="02 9999 0000" />
-              </div>
-              <div>
-                <Label>Fax</Label>
-                <Input value={doctorForm.fax} onChange={e => setDoctorForm(p => ({ ...p, fax: e.target.value }))} placeholder="02 9999 0001" />
-              </div>
-              <div className="col-span-2">
-                <Label>Email</Label>
-                <Input type="email" value={doctorForm.email} onChange={e => setDoctorForm(p => ({ ...p, email: e.target.value }))} />
-              </div>
-              <div className="col-span-2">
-                <Label>Address</Label>
-                <Input value={doctorForm.address} onChange={e => setDoctorForm(p => ({ ...p, address: e.target.value }))} placeholder="123 Main St, Sydney NSW 2000" />
-              </div>
-              <div className="col-span-2">
-                <Label>Notes</Label>
-                <Textarea value={doctorForm.notes} onChange={e => setDoctorForm(p => ({ ...p, notes: e.target.value }))} rows={2} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-2 border-t">
-              <Button type="button" variant="outline" onClick={() => { setIsDoctorOpen(false); setEditingDoctor(null); }}>Cancel</Button>
-              <Button type="submit" disabled={createDoctor.isPending || updateDoctor.isPending}>
-                {createDoctor.isPending || updateDoctor.isPending ? "Saving..." : editingDoctor ? "Update" : "Add Doctor"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── SCHEDULE APPOINTMENT DIALOG ── */}
-      <Dialog open={!!schedulingRequest} onOpenChange={v => { if (!v) setSchedulingRequest(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarPlus className="w-5 h-5 text-blue-600" /> Schedule Appointment
-            </DialogTitle>
-          </DialogHeader>
-          {schedulingRequest && (
+          {viewingRequest && viewingStep === "schedule" && (
             <div className="space-y-4">
+              {/* Patient/scan summary stays visible at top */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm">
-                <p className="font-semibold text-blue-800">{schedulingRequest.patientName}</p>
-                <p className="text-blue-600 text-xs">{(schedulingRequest.scanTypes ?? []).join(", ")}</p>
+                <p className="font-semibold text-blue-800">{viewingRequest.patientName}</p>
+                <p className="text-blue-600 text-xs">{(viewingRequest.scanTypes ?? []).join(", ")}</p>
+                {viewingRequest.clinicalIndication && (
+                  <p className="text-blue-600 text-xs mt-0.5 italic">{viewingRequest.clinicalIndication}</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1221,11 +1179,11 @@ export default function Requests() {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t">
-                <Button variant="outline" onClick={() => setSchedulingRequest(null)}>Cancel</Button>
+                <Button variant="outline" onClick={() => setViewingStep("details")}>← Back</Button>
                 <Button
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                   disabled={scheduleAppointment.isPending || !scheduleForm.appointmentDate || !scheduleForm.appointmentTime}
-                  onClick={() => scheduleAppointment.mutate({ request: schedulingRequest, form: scheduleForm })}
+                  onClick={() => scheduleAppointment.mutate({ request: viewingRequest, form: scheduleForm })}
                 >
                   {scheduleAppointment.isPending ? "Scheduling..." : "Confirm & Schedule"}
                 </Button>
@@ -1234,6 +1192,58 @@ export default function Requests() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── REFERRING DOCTOR FORM DIALOG ── */}
+      <Dialog open={isDoctorOpen} onOpenChange={v => { if (!v) { setIsDoctorOpen(false); setEditingDoctor(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingDoctor ? "Edit Referring Doctor" : "Add Referring Doctor"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmitDoctor} className="space-y-4">
+            <div>
+              <Label>Full Name *</Label>
+              <Input value={doctorForm.name} onChange={e => setDoctorForm(p => ({ ...p, name: e.target.value }))} required placeholder="Dr. John Smith" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Practice / Organisation</Label>
+                <Input value={doctorForm.practiceName} onChange={e => setDoctorForm(p => ({ ...p, practiceName: e.target.value }))} placeholder="City Medical Centre" />
+              </div>
+              <div>
+                <Label>Provider Number</Label>
+                <Input value={doctorForm.providerNumber} onChange={e => setDoctorForm(p => ({ ...p, providerNumber: e.target.value }))} placeholder="2029764K" />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input value={doctorForm.phone} onChange={e => setDoctorForm(p => ({ ...p, phone: e.target.value }))} placeholder="02 9999 0000" />
+              </div>
+              <div>
+                <Label>Fax</Label>
+                <Input value={doctorForm.fax} onChange={e => setDoctorForm(p => ({ ...p, fax: e.target.value }))} placeholder="02 9999 0001" />
+              </div>
+              <div className="col-span-2">
+                <Label>Email</Label>
+                <Input type="email" value={doctorForm.email} onChange={e => setDoctorForm(p => ({ ...p, email: e.target.value }))} />
+              </div>
+              <div className="col-span-2">
+                <Label>Address</Label>
+                <Input value={doctorForm.address} onChange={e => setDoctorForm(p => ({ ...p, address: e.target.value }))} placeholder="123 Main St, Sydney NSW 2000" />
+              </div>
+              <div className="col-span-2">
+                <Label>Notes</Label>
+                <Textarea value={doctorForm.notes} onChange={e => setDoctorForm(p => ({ ...p, notes: e.target.value }))} rows={2} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <Button type="button" variant="outline" onClick={() => { setIsDoctorOpen(false); setEditingDoctor(null); }}>Cancel</Button>
+              <Button type="submit" disabled={createDoctor.isPending || updateDoctor.isPending}>
+                {createDoctor.isPending || updateDoctor.isPending ? "Saving..." : editingDoctor ? "Update" : "Add Doctor"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
