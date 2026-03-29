@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle, UserMinus, UserCheck } from "lucide-react";
+import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle, UserMinus, UserCheck, Wifi, RefreshCw, Download, Copy, Eye, EyeOff } from "lucide-react";
 import { format } from "date-fns";
 
 export default function Clinic() {
@@ -69,6 +69,9 @@ export default function Clinic() {
     title: "",
     department: "",
   });
+
+  // DICOM Worklist state
+  const [showDicomKey, setShowDicomKey] = useState(false);
 
   // Staff management state
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
@@ -718,6 +721,20 @@ export default function Clinic() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const regenerateDicomKeyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/api/admin/dicom/regenerate-key", "POST");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
+      toast({ title: "API Key Regenerated", description: "A new DICOM API key has been generated." });
+    },
+    onError: () => {
+      toast({ title: "Failed", description: "Could not regenerate API key.", variant: "destructive" });
     },
   });
 
@@ -1592,6 +1609,104 @@ export default function Clinic() {
                     >
                       Cancel
                     </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* DICOM Modality Worklist */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Wifi className="w-5 h-5 text-blue-600" />
+                  DICOM Modality Worklist
+                </CardTitle>
+                <CardDescription>
+                  Push today's appointments to your GE LOGIQ e ultrasound machine via a local bridge application
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800 space-y-1">
+                  <p className="font-semibold">How it works</p>
+                  <p>Run the DICOM bridge app on any PC connected to the same network as your LOGIQ e. It queries Reporting Room every few minutes and serves today's scheduled patients so the machine can auto-populate patient demographics at the start of each scan.</p>
+                </div>
+
+                {/* API Key section */}
+                <div>
+                  <Label className="text-sm font-medium">API Key</Label>
+                  <p className="text-xs text-gray-500 mb-2">This key is used by the bridge to authenticate with your clinic. Keep it private.</p>
+                  {clinic?.dicomApiKey ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 font-mono text-sm bg-gray-100 dark:bg-gray-800 rounded px-3 py-2 border">
+                        {showDicomKey ? clinic.dicomApiKey : "•".repeat(20)}
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => setShowDicomKey(v => !v)}>
+                        {showDicomKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => {
+                        navigator.clipboard.writeText(clinic.dicomApiKey!);
+                        toast({ title: "Copied", description: "API key copied to clipboard." });
+                      }}>
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">No key generated yet — click "Generate API Key" below.</p>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => regenerateDicomKeyMutation.mutate()}
+                    disabled={regenerateDicomKeyMutation.isPending}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${regenerateDicomKeyMutation.isPending ? "animate-spin" : ""}`} />
+                    {clinic?.dicomApiKey ? "Regenerate API Key" : "Generate API Key"}
+                  </Button>
+
+                  {clinic?.dicomApiKey && (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="flex items-center gap-2"
+                        onClick={() => window.open("/api/admin/dicom/bridge-config", "_blank")}
+                      >
+                        <Download className="w-4 h-4" />
+                        Download Bridge Config
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex items-center gap-2"
+                        onClick={() => window.open("/dicom-bridge.js", "_blank")}
+                      >
+                        <Download className="w-4 h-4" />
+                        Download Bridge Script
+                      </Button>
+                    </>
+                  )}
+                </div>
+
+                {/* Setup instructions */}
+                {clinic?.dicomApiKey && (
+                  <div className="bg-gray-50 border rounded-lg p-4 text-sm space-y-2">
+                    <p className="font-semibold text-gray-800">Setup Instructions</p>
+                    <ol className="list-decimal list-inside space-y-1 text-gray-600">
+                      <li>Install Node.js (v18+) on a Windows or Mac PC on your clinic network</li>
+                      <li>Download <strong>dicom-bridge.js</strong> and <strong>dicom-bridge-config.json</strong> into the same folder</li>
+                      <li>Open a terminal in that folder and run: <code className="bg-gray-200 px-1 rounded">node dicom-bridge.js</code></li>
+                      <li>On the GE LOGIQ e, go to Utility → Connectivity → Service and add a new DICOM Worklist entry:
+                        <ul className="list-disc list-inside ml-4 mt-1 space-y-0.5">
+                          <li>IP Address: this PC's local IP</li>
+                          <li>Port: 11112</li>
+                          <li>AE Title: REPORTING_ROOM</li>
+                          <li>Modality: US · Scheduled Date: Today</li>
+                        </ul>
+                      </li>
+                      <li>Press Verify on the LOGIQ e — you should see a success (smiley face) icon</li>
+                    </ol>
                   </div>
                 )}
               </CardContent>

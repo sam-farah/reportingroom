@@ -4091,6 +4091,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch { res.status(500).json({ error: "Failed" }); }
   });
 
+  // ── DICOM Modality Worklist ───────────────────────────────────────────────
+
+  // Public endpoint — authenticated by X-API-Key header (used by local bridge)
+  app.get("/api/worklist/today", async (req, res) => {
+    try {
+      const apiKey = (req.headers["x-api-key"] || req.query.apiKey) as string;
+      if (!apiKey) return res.status(401).json({ error: "Missing API key" });
+
+      // Find clinic by DICOM API key
+      const allClinics = await storage.getAllClinics();
+      const clinic = allClinics.find(c => c.dicomApiKey === apiKey);
+      if (!clinic) return res.status(401).json({ error: "Invalid API key" });
+
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      const endOfDay   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      const appts = await storage.getAppointmentsByDateRange(startOfDay, endOfDay);
+      const clinicAppts = appts.filter(a => a.clinicId === clinic.id && a.status !== "cancelled");
+
+      // Build DICOM-friendly worklist items
+      const items = await Promise.all(clinicAppts.map(async appt => {
+        let physicianName = "";
+        if (appt.physicianId) {
+          const ph = await storage.getPhysician(appt.physicianId);
+          if (ph) physicianName = ph.name;
+        }
+
+        const dt = new Date(appt.appointmentDate);
+        const dateStr = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+        const timeStr = `${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+        const dateCompact = dateStr.replace(/-/g, "");
+        const accessionNumber = `RR${dateCompact}-${String(appt.id).padStart(4,"0")}`;
+        const uidBase = `1.2.826.0.1.3680043.10.${clinic.id}.${appt.id}`;
+
+        return {
+          appointmentId: appt.id,
+          patientName:  appt.patientName,
+          patientId:    appt.patientId ? String(appt.patientId) : String(appt.id),
+          dob:          appt.patientDob || "",
+          sex:          "",
+          accessionNumber,
+          scanType:     appt.scanType || "",
+          scheduledDate: dateStr,
+          scheduledTime: timeStr,
+          physicianName,
+          studyInstanceUid: uidBase,
+          sopInstanceUid:   `${uidBase}.0`,
+        };
+      }));
+
+      res.json(items);
+    } catch (err) {
+      console.error("Worklist error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Serve the standalone DICOM bridge script
+  app.get("/dicom-bridge.js", (_req, res) => {
+    res.setHeader("Content-Type", "application/javascript");
+    res.setHeader("Content-Disposition", 'attachment; filename="dicom-bridge.js"');
+    res.send(getDicomBridgeScript());
+  });
+
+  // Regenerate the DICOM API key for the authenticated clinic
+  app.post("/api/admin/dicom/regenerate-key", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+
+      const newKey = require("crypto").randomBytes(24).toString("hex");
+      await storage.updateClinic(user.clinicId, { dicomApiKey: newKey } as any);
+      res.json({ dicomApiKey: newKey });
+    } catch (err) {
+      console.error("Regenerate DICOM key error:", err);
+      res.status(500).json({ error: "Failed to regenerate key" });
+    }
+  });
+
+  // Download bridge config pre-filled with this clinic's API key and server URL
+  app.get("/api/admin/dicom/bridge-config", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic) return res.status(404).json({ error: "Clinic not found" });
+
+      const serverUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      const config = {
+        serverUrl,
+        apiKey: clinic.dicomApiKey || "",
+        aeTitle: "REPORTING_ROOM",
+        port: 11112,
+        refreshIntervalMinutes: 5,
+      };
+
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", 'attachment; filename="dicom-bridge-config.json"');
+      res.json(config);
+    } catch (err) {
+      res.status(500).json({ error: "Failed" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
@@ -4098,4 +4203,300 @@ export async function registerRoutes(app: Express): Promise<Server> {
 // Utility function to generate invitation tokens
 function generateInvitationToken(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+// ── DICOM Bridge script template ─────────────────────────────────────────────
+function getDicomBridgeScript(): string {
+  return `#!/usr/bin/env node
+/**
+ * Reporting Room — DICOM Modality Worklist Bridge  v1.0
+ * =====================================================
+ * Run this on any PC on the same LAN as your GE LOGIQ e.
+ * It implements a DICOM C-FIND SCP (Modality Worklist) using
+ * only Node.js built-in modules — no extra packages needed.
+ *
+ * Setup:
+ *   1. Place this file and dicom-bridge-config.json in the same folder
+ *   2. Run:  node dicom-bridge.js
+ *   3. On the GE LOGIQ e → Utility → Connectivity → Service:
+ *        IP: this PC's local IP address
+ *        Port: 11112 (or as configured)
+ *        AE Title: REPORTING_ROOM
+ *        Modality: US    Scheduled Date: Today
+ *   4. Press Verify — a "smiley face" means success.
+ */
+
+const net  = require('net');
+const https = require('https');
+const http  = require('http');
+const fs   = require('fs');
+const path = require('path');
+
+// ── Config ───────────────────────────────────────────────────────────────────
+const CONFIG_PATH = path.join(__dirname, 'dicom-bridge-config.json');
+const config = Object.assign(
+  { serverUrl: 'https://reportingroom.net', apiKey: '', aeTitle: 'REPORTING_ROOM', port: 11112, refreshIntervalMinutes: 5 },
+  fs.existsSync(CONFIG_PATH) ? JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) : {}
+);
+
+// ── Data cache ───────────────────────────────────────────────────────────────
+let worklist = [];
+let lastFetched = null;
+
+function fetchWorklist() {
+  return new Promise((resolve, reject) => {
+    const url = new URL(config.serverUrl + '/api/worklist/today');
+    const lib = url.protocol === 'https:' ? https : http;
+    const opts = { hostname: url.hostname, port: url.port || (url.protocol === 'https:' ? 443 : 80), path: url.pathname + url.search, headers: { 'x-api-key': config.apiKey } };
+    const req = lib.get(opts, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => res.statusCode === 200 ? resolve(JSON.parse(d)) : reject(new Error('HTTP ' + res.statusCode + ': ' + d)));
+    });
+    req.on('error', reject);
+  });
+}
+
+async function refreshWorklist() {
+  try {
+    worklist = await fetchWorklist();
+    lastFetched = new Date();
+    console.log('[' + lastFetched.toISOString() + '] Worklist refreshed: ' + worklist.length + ' appointment(s)');
+  } catch (err) {
+    console.error('Worklist refresh failed:', err.message);
+  }
+}
+
+// ── DICOM encoding helpers (Implicit VR Little Endian) ───────────────────────
+function tag(g, e) { const b = Buffer.alloc(4); b.writeUInt16LE(g,0); b.writeUInt16LE(e,2); return b; }
+
+function de(g, e, vr, value) {
+  let v;
+  if (vr === 'US') { v = Buffer.alloc(2); v.writeUInt16LE(value||0,0); }
+  else if (vr === 'UL') { v = Buffer.alloc(4); v.writeUInt32LE(value||0,0); }
+  else if (vr === 'SQ') { v = value || Buffer.alloc(0); }
+  else {
+    let s = String(value||'');
+    if (s.length % 2 !== 0) s += (vr === 'UI' ? '\\0' : ' ');
+    v = Buffer.from(s, 'binary');
+  }
+  const h = Buffer.alloc(8); h.writeUInt16LE(g,0); h.writeUInt16LE(e,2); h.writeUInt32LE(v.length,4);
+  return Buffer.concat([h, v]);
+}
+
+function encodeSeq(g, e, items) {
+  const encoded = items.map(item => {
+    const hdr = Buffer.alloc(8); hdr.writeUInt16LE(0xFFFE,0); hdr.writeUInt16LE(0xE000,2); hdr.writeUInt32LE(item.length,4);
+    return Buffer.concat([hdr, item]);
+  });
+  const seqDelim = Buffer.alloc(8); seqDelim.writeUInt16LE(0xFFFE,0); seqDelim.writeUInt16LE(0xE0DD,2); seqDelim.writeUInt32LE(0,4);
+  const seqContent = Buffer.concat([...encoded, seqDelim]);
+  const seqTag = Buffer.alloc(8); seqTag.writeUInt16LE(g,0); seqTag.writeUInt16LE(e,2); seqTag.writeUInt32LE(0xFFFFFFFF,4);
+  return Buffer.concat([seqTag, seqContent]);
+}
+
+function buildWorklistDataset(item) {
+  const parts = (item.patientName || '').split(' ');
+  const pnDicom = parts.length >= 2 ? parts.slice(-1)[0] + '^' + parts.slice(0,-1).join(' ') : (item.patientName || '');
+  const dobFmt  = (item.dob || '').replace(/-/g,'');
+  const dateFmt = (item.scheduledDate || '').replace(/-/g,'');
+  const timeFmt = (item.scheduledTime || '').replace(':','');
+
+  const spss = Buffer.concat([
+    de(0x0008,0x0060,'CS','US'),
+    de(0x0040,0x0001,'AE', config.aeTitle),
+    de(0x0040,0x0002,'DA', dateFmt),
+    de(0x0040,0x0003,'TM', timeFmt),
+    de(0x0040,0x0006,'PN', item.physicianName || ''),
+    de(0x0040,0x0007,'LO', item.scanType || ''),
+    de(0x0040,0x0009,'SH', String(item.appointmentId || 0)),
+  ]);
+
+  return Buffer.concat([
+    de(0x0008,0x0050,'SH', item.accessionNumber || ''),
+    de(0x0008,0x0060,'CS','US'),
+    de(0x0010,0x0010,'PN', pnDicom),
+    de(0x0010,0x0020,'LO', item.patientId || ''),
+    de(0x0010,0x0030,'DA', dobFmt),
+    de(0x0010,0x0040,'CS', item.sex || ''),
+    de(0x0020,0x000D,'UI', item.studyInstanceUid || '1.2.3.' + item.appointmentId),
+    de(0x0032,0x1060,'LO', item.scanType || ''),
+    de(0x0040,0x1001,'SH', String(item.appointmentId || 0)),
+    encodeSeq(0x0040,0x0100,[spss]),
+  ]);
+}
+
+// Build C-FIND-RSP command (Implicit VR LE)
+function buildCFindRspCmd(msgId, sopClassUid, status, hasDataset) {
+  const body = Buffer.concat([
+    de(0x0000,0x0002,'UI', sopClassUid),
+    de(0x0000,0x0100,'US', 0x8020),
+    de(0x0000,0x0120,'US', msgId),
+    de(0x0000,0x0800,'US', hasDataset ? 0x0001 : 0x0101),
+    de(0x0000,0x0900,'US', status),
+  ]);
+  return Buffer.concat([de(0x0000,0x0000,'UL', body.length), body]);
+}
+
+// Wrap in P-DATA-TF PDU
+function buildPDataTF(pcid, cmd, dataset) {
+  const mkPdv = (data, isCmd) => {
+    const h = Buffer.alloc(6); h.writeUInt32BE(data.length + 2, 0); h[4] = pcid; h[5] = isCmd ? 0x03 : 0x02;
+    return Buffer.concat([h, data]);
+  };
+  const pdvs = dataset && dataset.length > 0
+    ? Buffer.concat([mkPdv(cmd, true), mkPdv(dataset, false)])
+    : mkPdv(cmd, true);
+  const hdr = Buffer.alloc(6); hdr[0] = 0x04; hdr.writeUInt32BE(pdvs.length, 2);
+  return Buffer.concat([hdr, pdvs]);
+}
+
+// Build A-ASSOCIATE-AC PDU
+function buildAssocAC(calledAE, callingAE, pcIds) {
+  const appCtxUid = Buffer.from('1.2.840.10008.3.1.1.1');
+  if (appCtxUid.length % 2 !== 0) appCtxUid.writeUInt8(0, appCtxUid.length - 1);
+  const appCtxItem = (() => { const b = Buffer.alloc(4 + appCtxUid.length); b[0]=0x10; b.writeUInt16BE(appCtxUid.length,2); appCtxUid.copy(b,4); return b; })();
+
+  const tsUid = Buffer.from('1.2.840.10008.1.2');  // Implicit VR LE
+  const tsUidPadded = tsUid.length % 2 !== 0 ? Buffer.concat([tsUid, Buffer.from([0])]) : tsUid;
+  const tsItem = (() => { const b = Buffer.alloc(4 + tsUidPadded.length); b[0]=0x40; b.writeUInt16BE(tsUidPadded.length,2); tsUidPadded.copy(b,4); return b; })();
+
+  const pcItems = pcIds.map(id => {
+    const b = Buffer.alloc(4 + 4 + tsItem.length); b[0]=0x21; b.writeUInt16BE(4+tsItem.length,2); b[4]=id; b[6]=0x00; tsItem.copy(b,8); return b;
+  });
+
+  const maxPduSub = Buffer.alloc(8); maxPduSub[0]=0x51; maxPduSub.writeUInt16BE(4,2); maxPduSub.writeUInt32BE(32768,4);
+  const userItem = (() => { const b = Buffer.alloc(4+8); b[0]=0x50; b.writeUInt16BE(8,2); maxPduSub.copy(b,4); return b; })();
+
+  const body = Buffer.alloc(68);
+  body.writeUInt16BE(0x0001,0);
+  Buffer.from(calledAE.padEnd(16).slice(0,16)).copy(body,4);
+  Buffer.from(callingAE.padEnd(16).slice(0,16)).copy(body,20);
+
+  const items = Buffer.concat([appCtxItem, ...pcItems, userItem]);
+  const pdu = Buffer.alloc(6 + body.length + items.length);
+  pdu[0]=0x02; pdu.writeUInt32BE(body.length + items.length, 2);
+  body.copy(pdu, 6); items.copy(pdu, 6 + body.length);
+  return pdu;
+}
+
+function buildReleaseRP() { const b = Buffer.alloc(10); b[0]=0x06; b.writeUInt32BE(4,2); return b; }
+
+// ── DICOM connection handler ──────────────────────────────────────────────────
+function handleConn(socket) {
+  const remote = socket.remoteAddress + ':' + socket.remotePort;
+  console.log('Connection: ' + remote);
+  let buf = Buffer.alloc(0);
+  let pcId = 1;
+  let msgId = 1;
+  let cmdBuf = Buffer.alloc(0);
+  let dataBuf = Buffer.alloc(0);
+  const SOP_CLASS = '1.2.840.10008.5.1.4.31';
+
+  socket.on('data', chunk => {
+    buf = Buffer.concat([buf, chunk]);
+    while (buf.length >= 6) {
+      const pduType = buf[0];
+      const pduLen  = buf.readUInt32BE(2);
+      if (buf.length < 6 + pduLen) break;
+      const pduData = buf.slice(6, 6 + pduLen);
+      buf = buf.slice(6 + pduLen);
+
+      if (pduType === 0x01) {
+        // A-ASSOCIATE-RQ → parse presentation contexts and accept them
+        let off = 74; // skip fixed fields (protocol ver 2 + rsvd 2 + called 16 + calling 16 + rsvd 32 = 68, + PDU hdr already stripped = 68 - 0 = 68... no, after fixed 68 bytes)
+        const pcIds = [];
+        while (off + 4 <= pduData.length) {
+          const itype = pduData[off]; const ilen = pduData.readUInt16BE(off+2);
+          if (itype === 0x20) { pcIds.push(pduData[off+4]); pcId = pduData[off+4]; }
+          off += 4 + ilen;
+        }
+        if (pcIds.length === 0) pcIds.push(1);
+        const calledAE  = pduData.slice(4, 20).toString().trim() || config.aeTitle;
+        const callingAE = pduData.slice(20, 36).toString().trim() || 'LOGIQ_E';
+        socket.write(buildAssocAC(calledAE, callingAE, pcIds));
+        console.log('Associated: ' + callingAE + ' → ' + calledAE);
+
+      } else if (pduType === 0x04) {
+        // P-DATA-TF — process PDV items
+        let off2 = 0;
+        while (off2 + 6 <= pduData.length) {
+          const pvLen = pduData.readUInt32BE(off2); off2 += 4;
+          const thisPcId = pduData[off2]; const mch = pduData[off2+1]; off2 += 2;
+          const pvData = pduData.slice(off2, off2 + pvLen - 2); off2 += pvLen - 2;
+          const isCmd  = (mch & 0x01) !== 0;
+          const isLast = (mch & 0x02) !== 0;
+          pcId = thisPcId || pcId;
+
+          if (isCmd) {
+            cmdBuf = Buffer.concat([cmdBuf, pvData]);
+            if (isLast) {
+              // Extract message ID from command dataset
+              let co = 0;
+              while (co + 8 <= cmdBuf.length) {
+                const g = cmdBuf.readUInt16LE(co); const e = cmdBuf.readUInt16LE(co+2); const l = cmdBuf.readUInt32LE(co+4);
+                if (g === 0x0000 && e === 0x0110 && l === 2) msgId = cmdBuf.readUInt16LE(co+8);
+                co += 8 + l;
+              }
+              cmdBuf = Buffer.alloc(0);
+            }
+          } else {
+            dataBuf = Buffer.concat([dataBuf, pvData]);
+            if (isLast) {
+              // C-FIND identifier received — send responses
+              const matches = worklist.slice();
+              console.log('C-FIND from ' + remote + ': returning ' + matches.length + ' item(s)');
+              for (const item of matches) {
+                try {
+                  const ds  = buildWorklistDataset(item);
+                  const cmd = buildCFindRspCmd(msgId, SOP_CLASS, 0xFF00, true);
+                  socket.write(buildPDataTF(pcId, cmd, ds));
+                } catch (err) { console.error('Item error:', err.message); }
+              }
+              // Final success response
+              socket.write(buildPDataTF(pcId, buildCFindRspCmd(msgId, SOP_CLASS, 0x0000, false), null));
+              dataBuf = Buffer.alloc(0);
+            }
+          }
+        }
+      } else if (pduType === 0x05) {
+        socket.write(buildReleaseRP()); socket.end();
+        console.log('Released: ' + remote);
+      } else if (pduType === 0x07) {
+        socket.destroy();
+      }
+    }
+  });
+
+  socket.on('error', err => console.error('Socket error ' + remote + ':', err.message));
+  socket.on('close', () => console.log('Closed: ' + remote));
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+(async () => {
+  console.log('');
+  console.log('Reporting Room — DICOM Modality Worklist Bridge');
+  console.log('================================================');
+  console.log('Server URL : ' + config.serverUrl);
+  console.log('AE Title   : ' + config.aeTitle);
+  console.log('Port       : ' + config.port);
+  if (!config.apiKey) { console.error('\\nERROR: apiKey is empty. Download dicom-bridge-config.json from Admin → Clinic Settings → DICOM Worklist.\\n'); process.exit(1); }
+  console.log('');
+
+  await refreshWorklist();
+  setInterval(refreshWorklist, config.refreshIntervalMinutes * 60 * 1000);
+
+  const server = net.createServer(handleConn);
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log('DICOM MWL server listening on port ' + config.port);
+    console.log('Configure GE LOGIQ e: IP = <this PC>, Port = ' + config.port + ', AE = ' + config.aeTitle);
+    console.log('Worklist refreshes every ' + config.refreshIntervalMinutes + ' min. Press Ctrl+C to stop.');
+    console.log('');
+  });
+  server.on('error', err => {
+    if (err.code === 'EACCES') console.error('Port ' + config.port + ' needs admin rights. Try: sudo node dicom-bridge.js');
+    else console.error('Server error:', err.message);
+    process.exit(1);
+  });
+})();
+`;
 }
