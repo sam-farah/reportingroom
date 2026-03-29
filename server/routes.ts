@@ -384,7 +384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/appointments", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req as any).user?.claims?.sub;
+      const userId = (req as any).user?.id ?? null;
       const appointmentData = {
         ...req.body,
         createdBy: userId,
@@ -478,8 +478,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/calendar-events", isAuthenticated, async (req, res) => {
     try {
+      const clinicId = (req as any).user?.clinicId ?? null;
       const eventData = {
         ...req.body,
+        clinicId,
         startTime: new Date(req.body.startTime),
         endTime: new Date(req.body.endTime),
         recurrenceEndDate: req.body.recurrenceEndDate ? new Date(req.body.recurrenceEndDate) : null,
