@@ -33,7 +33,13 @@ export default function ReferrerPortal() {
   const [loginError, setLoginError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [activeTab, setActiveTab] = useState<"calendar" | "referrals">("calendar");
-  const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    const mon = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const fri = addDays(mon, 4);
+    // If the entire Mon–Fri week is in the past (e.g. on weekends), show next week
+    if (fri < new Date()) return addWeeks(mon, 1);
+    return mon;
+  });
   const [busySlots, setBusySlots] = useState<BusySlot[]>([]);
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([]);
   const [myRequests, setMyRequests] = useState<ScanRequest[]>([]);

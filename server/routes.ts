@@ -3858,13 +3858,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ]);
       const sanitized = allAppts
         .filter((a: any) => a.clinicId === clinicId && a.status !== "cancelled")
-        .map((a: any) => ({
-          id: a.id,
-          startTime: a.startTime,
-          endTime: a.endTime,
-          scanType: a.scanType,
-          status: "booked",
-        }));
+        .map((a: any) => {
+          const start = new Date(a.appointmentDate);
+          const end = new Date(start.getTime() + (a.duration || 30) * 60 * 1000);
+          return {
+            id: a.id,
+            startTime: start.toISOString(),
+            endTime: end.toISOString(),
+            scanType: a.scanType,
+            status: "booked",
+          };
+        });
       const filteredEvents = allEvents.filter((e: any) => e.clinicId === clinicId);
       res.json({ appointments: sanitized, events: filteredEvents });
     } catch { res.status(500).json({ error: "Failed to load calendar" }); }
@@ -3885,13 +3889,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clinic = await storage.getClinic(clinicId);
 
       // Create appointment
+      const apptStart = new Date(startTime);
+      const apptEnd = new Date(endTime);
+      const durationMins = Math.max(30, Math.round((apptEnd.getTime() - apptStart.getTime()) / 60000));
       const appointment = await storage.createAppointment({
         clinicId,
         patientName,
         patientPhone: patientPhone || null,
         scanType,
-        startTime: new Date(startTime),
-        endTime: new Date(endTime),
+        appointmentDate: apptStart,
+        duration: durationMins,
         notes: notes || null,
         status: "scheduled",
         sonographerId: null,
