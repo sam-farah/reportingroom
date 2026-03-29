@@ -4037,10 +4037,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin: get embed config (base URL for iframe snippets)
   app.get("/api/admin/embed-config", isAuthenticated, async (req: any, res) => {
     try {
-      const clinicId = req.user?.clinicId;
-      const proto = req.headers["x-forwarded-proto"] || "https";
-      const host = req.headers["x-forwarded-host"] || req.headers.host;
-      const baseUrl = `${proto}://${host}`;
+      const user = await storage.getUser(req.session.userId);
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      const clinicId = user.clinicId;
+      // Prefer APP_URL env var (set in production), then fall back to request headers
+      let baseUrl: string;
+      if (process.env.APP_URL) {
+        baseUrl = process.env.APP_URL.replace(/\/$/, "");
+      } else {
+        const proto = req.headers["x-forwarded-proto"] || "https";
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        baseUrl = `${proto}://${host}`;
+      }
       res.json({ baseUrl, clinicId });
     } catch { res.status(500).json({ error: "Failed" }); }
   });

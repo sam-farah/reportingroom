@@ -21,13 +21,21 @@ export const securityMiddleware = {
 
   // Add security headers for medical data protection
   addSecurityHeaders: (req: Request, res: Response, next: NextFunction) => {
+    // Public embeddable pages must not have frame-blocking headers
+    const isEmbeddablePage = req.path.startsWith('/referral-form') ||
+      req.path.startsWith('/referrer-portal');
+
     // HIPAA/Medical data security headers
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    // Allow same-origin framing so blob: PDF previews work inside the app
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    if (!isEmbeddablePage) {
+      // Allow same-origin framing only for internal app pages (blob: PDF previews)
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    }
+    // For embeddable pages: no X-Frame-Options header = allows cross-origin framing
     
     // Medical data specific headers
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -36,6 +44,7 @@ export const securityMiddleware = {
     
     // Content Security Policy for medical applications
     // blob: allowed in frame-src and object-src so fetched PDF blobs can render inline
+    const frameAncestors = isEmbeddablePage ? "'self' https: http:" : "'self'";
     res.setHeader('Content-Security-Policy', 
       "default-src 'self'; " +
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
@@ -45,7 +54,8 @@ export const securityMiddleware = {
       "connect-src 'self'; " +
       "media-src 'none'; " +
       "object-src blob:; " +
-      "frame-src 'self' blob:;"
+      "frame-src 'self' blob:; " +
+      `frame-ancestors ${frameAncestors};`
     );
     
     next();
