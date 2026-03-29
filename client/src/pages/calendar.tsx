@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, addYears, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
-import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent } from "@shared/schema";
+import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent, ReminderLog } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
 function parseReferralNotes(notes: string | null | undefined): { referrerName: string | null; cleanNotes: string | null } {
@@ -323,12 +323,18 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     },
   });
 
+  const { data: reminderLogs = [] } = useQuery<ReminderLog[]>({
+    queryKey: ["/api/appointments", viewingAppointment?.id, "reminder-logs"],
+    enabled: !!viewingAppointment?.id,
+  });
+
   const sendReminderMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest(`/api/appointments/${id}/send-reminder`, "POST");
       return res.json();
     },
     onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments", viewingAppointment?.id, "reminder-logs"] });
       toast({ title: "Reminder sent", description: `Appointment reminder emailed to ${data.sentTo}` });
     },
     onError: (error: any) => {
@@ -2190,6 +2196,31 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </div>
                   );
                 })()}
+
+                {/* Reminder log */}
+                {reminderLogs.length > 0 && (
+                  <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reminder History</p>
+                    {reminderLogs.map((log) => (
+                      <div key={log.id} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          <span className="text-gray-700">
+                            Sent {format(new Date(log.sentAt), "d MMM yyyy 'at' h:mm a")}
+                          </span>
+                        </div>
+                        {log.openedAt ? (
+                          <span className="text-emerald-600 font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                            Opened {format(new Date(log.openedAt), "d MMM 'at' h:mm a")}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">Not opened yet</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Begin Study primary CTA */}
                 {viewingAppointment.status !== "cancelled" && (

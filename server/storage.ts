@@ -75,6 +75,8 @@ import {
   bugReports,
   type BugReport,
   type InsertBugReport,
+  reminderLogs,
+  type ReminderLog,
   patientRegistrationTokens,
   type PatientRegistrationToken,
 } from "@shared/schema";
@@ -262,6 +264,10 @@ export interface IStorage {
   createBugReport(report: InsertBugReport): Promise<BugReport>;
   updateBugReport(id: number, data: Partial<InsertBugReport>): Promise<BugReport | undefined>;
   deleteBugReport(id: number): Promise<void>;
+  createReminderLog(data: { appointmentId: number; clinicId: number; patientId?: number | null; recipientEmail: string; trackingToken: string }): Promise<ReminderLog>;
+  getReminderLogsByAppointment(appointmentId: number): Promise<ReminderLog[]>;
+  getReminderLogsByPatient(patientId: number): Promise<ReminderLog[]>;
+  markReminderOpened(trackingToken: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1380,6 +1386,35 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBugReport(id: number): Promise<void> {
     await db.delete(bugReports).where(eq(bugReports.id, id));
+  }
+
+  async createReminderLog(data: { appointmentId: number; clinicId: number; patientId?: number | null; recipientEmail: string; trackingToken: string }): Promise<ReminderLog> {
+    const [row] = await db.insert(reminderLogs).values({
+      appointmentId: data.appointmentId,
+      clinicId: data.clinicId,
+      patientId: data.patientId ?? null,
+      recipientEmail: data.recipientEmail,
+      trackingToken: data.trackingToken,
+    }).returning();
+    return row;
+  }
+
+  async getReminderLogsByAppointment(appointmentId: number): Promise<ReminderLog[]> {
+    return db.select().from(reminderLogs)
+      .where(eq(reminderLogs.appointmentId, appointmentId))
+      .orderBy(desc(reminderLogs.sentAt));
+  }
+
+  async getReminderLogsByPatient(patientId: number): Promise<ReminderLog[]> {
+    return db.select().from(reminderLogs)
+      .where(eq(reminderLogs.patientId, patientId))
+      .orderBy(desc(reminderLogs.sentAt));
+  }
+
+  async markReminderOpened(trackingToken: string): Promise<void> {
+    await db.update(reminderLogs)
+      .set({ openedAt: new Date() })
+      .where(and(eq(reminderLogs.trackingToken, trackingToken), sql`${reminderLogs.openedAt} IS NULL`));
   }
 }
 

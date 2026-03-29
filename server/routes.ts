@@ -445,6 +445,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clinic = await storage.getClinic(user.clinicId);
       if (!clinic) return res.status(404).json({ error: "Clinic not found" });
 
+      const { randomUUID } = await import("crypto");
+      const trackingToken = randomUUID();
+
       await sendAppointmentReminder({
         toEmail: appointment.patientEmail,
         patientName: appointment.patientName,
@@ -457,6 +460,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clinicEmail: clinic.email || null,
         clinicLogoUrl: clinic.logoUrl || null,
         reminderInstructions: clinic.reminderInstructions || null,
+        trackingToken,
+      });
+
+      await storage.createReminderLog({
+        appointmentId: id,
+        clinicId: user.clinicId,
+        patientId: appointment.patientId ?? null,
+        recipientEmail: appointment.patientEmail,
+        trackingToken,
       });
 
       console.log(`Appointment reminder sent to ${appointment.patientEmail} for appointment ${id}`);
@@ -464,6 +476,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Send reminder error:", error);
       res.status(500).json({ error: error?.message || "Failed to send reminder" });
+    }
+  });
+
+  // Email open tracking pixel
+  app.get("/api/reminders/:token/pixel.gif", async (req, res) => {
+    try {
+      await storage.markReminderOpened(req.params.token);
+    } catch {}
+    // 1×1 transparent GIF
+    const gif = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+    res.set({ "Content-Type": "image/gif", "Cache-Control": "no-store", "Pragma": "no-cache" });
+    res.end(gif);
+  });
+
+  // Get reminder logs for an appointment
+  app.get("/api/appointments/:id/reminder-logs", isAuthenticated, async (req, res) => {
+    try {
+      const logs = await storage.getReminderLogsByAppointment(parseInt(req.params.id));
+      res.json(logs);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch reminder logs" });
+    }
+  });
+
+  // Get reminder logs for a patient
+  app.get("/api/patients/:id/reminder-logs", isAuthenticated, async (req, res) => {
+    try {
+      const logs = await storage.getReminderLogsByPatient(parseInt(req.params.id));
+      res.json(logs);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch reminder logs" });
     }
   });
 

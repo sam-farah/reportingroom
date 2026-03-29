@@ -727,3 +727,17 @@ export const bugReports = pgTable("bug_reports", {
 export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: true, createdAt: true });
 export type BugReport = typeof bugReports.$inferSelect;
 export type InsertBugReport = z.infer<typeof insertBugReportSchema>;
+
+// Appointment reminder logs — tracks every email send + open pixel
+export const reminderLogs = pgTable("reminder_logs", {
+  id: serial("id").primaryKey(),
+  appointmentId: integer("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull(),
+  patientId: integer("patient_id"),
+  recipientEmail: varchar("recipient_email", { length: 255 }).notNull(),
+  trackingToken: varchar("tracking_token", { length: 128 }).notNull().unique(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  openedAt: timestamp("opened_at"),
+});
+
+export type ReminderLog = typeof reminderLogs.$inferSelect;

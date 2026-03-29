@@ -193,6 +193,7 @@ export async function sendAppointmentReminder(params: {
   clinicEmail: string | null;
   clinicLogoUrl: string | null;
   reminderInstructions: string | null;
+  trackingToken?: string;
 }): Promise<void> {
   // Try to embed logo as base64 data URL
   let logoHtml = '';
@@ -272,6 +273,7 @@ export async function sendAppointmentReminder(params: {
       <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 32px;text-align:center;">
         <p style="color:#94a3b8;font-size:12px;margin:0;">${params.clinicName} &mdash; Powered by <a href="https://reportingroom.net" style="color:#94a3b8;">Reporting Room</a></p>
       </div>
+      ${params.trackingToken ? `<img src="https://reportingroom.net/api/reminders/${params.trackingToken}/pixel.gif" width="1" height="1" alt="" style="display:block;" />` : ''}
     </div>
   `;
 

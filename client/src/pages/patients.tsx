@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart } from "lucide-react";
 import { format } from "date-fns";
-import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument } from "@shared/schema";
+import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Download, ExternalLink } from "lucide-react";
 
@@ -225,6 +225,17 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       if (!selectedPatient) return [];
       const response = await fetch(`/api/patients/${selectedPatient.id}/documents`, { credentials: "include" });
       if (!response.ok) throw new Error("Failed to fetch documents");
+      return response.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const { data: patientReminderLogs = [] } = useQuery<ReminderLog[]>({
+    queryKey: ["/api/patients", selectedPatient?.id, "reminder-logs"],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const response = await fetch(`/api/patients/${selectedPatient.id}/reminder-logs`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch reminder logs");
       return response.json();
     },
     enabled: !!selectedPatient,
@@ -910,6 +921,33 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 </div>
               )}
             </div>
+
+            {/* Reminder History */}
+            {patientReminderLogs.length > 0 && (
+              <div className="border-t px-3 py-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Reminder History</p>
+                <div className="space-y-2">
+                  {patientReminderLogs.map((log) => (
+                    <div key={log.id} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <span className="text-gray-700">
+                          {format(new Date(log.sentAt), "d MMM yyyy, h:mm a")}
+                        </span>
+                      </div>
+                      {log.openedAt ? (
+                        <span className="text-emerald-600 font-medium flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                          Opened
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">Not opened</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Panel - Document Preview (hidden on mobile when list is showing) */}
