@@ -15,7 +15,7 @@ import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, addYears, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
@@ -707,7 +707,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
       const duration = eventEnd.getTime() - eventStart.getTime();
       const recEndLimit = event.recurrenceEndDate ? new Date(event.recurrenceEndDate) : addMonths(rangeEnd, 0);
 
-      if (event.recurrence === "none") {
+      if (event.recurrence === "none" || !event.recurrence) {
         if (eventStart <= rangeEnd && eventEnd >= rangeStart) {
           result.push({ ...event, instanceStart: eventStart, instanceEnd: eventEnd });
         }
@@ -718,8 +718,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
           if (instanceEnd >= rangeStart) {
             result.push({ ...event, instanceStart: new Date(current), instanceEnd });
           }
-          if (event.recurrence === "weekly") current = addWeeks(current, 1);
+          if (event.recurrence === "daily") current = addDays(current, 1);
+          else if (event.recurrence === "weekly") current = addWeeks(current, 1);
+          else if (event.recurrence === "fortnightly") current = addWeeks(current, 2);
           else if (event.recurrence === "monthly") current = addWeeks(current, 4);
+          else if (event.recurrence === "calendar_monthly") current = addMonths(current, 1);
+          else if (event.recurrence === "yearly") current = addYears(current, 1);
           else break;
         }
       }
@@ -1408,8 +1412,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Does not repeat</SelectItem>
+                      <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">4-Weekly (every 4 weeks)</SelectItem>
+                      <SelectItem value="fortnightly">Every 2 weeks (fortnightly)</SelectItem>
+                      <SelectItem value="monthly">Every 4 weeks</SelectItem>
+                      <SelectItem value="calendar_monthly">Monthly (same date each month)</SelectItem>
+                      <SelectItem value="yearly">Yearly</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2257,8 +2265,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Does not repeat</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
                     <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">4-Weekly (every 4 weeks)</SelectItem>
+                    <SelectItem value="fortnightly">Every 2 weeks (fortnightly)</SelectItem>
+                    <SelectItem value="monthly">Every 4 weeks</SelectItem>
+                    <SelectItem value="calendar_monthly">Monthly (same date each month)</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2305,10 +2317,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${colors.bg} ${colors.border} border`}>
                     <div className={`w-3 h-3 rounded-full flex-shrink-0 ${colors.dot}`} />
                     <span className={`font-semibold ${colors.text}`}>{viewingEvent.title}</span>
-                    {viewingEvent.recurrence !== "none" && (
+                    {viewingEvent.recurrence && viewingEvent.recurrence !== "none" && (
                       <span className={`ml-auto text-xs flex items-center gap-1 ${colors.text}`}>
                         <Repeat className="w-3 h-3" />
-                        {viewingEvent.recurrence === "weekly" ? "Weekly" : "4-Weekly"}
+                        {{ daily: "Daily", weekly: "Weekly", fortnightly: "Fortnightly", monthly: "Every 4 weeks", calendar_monthly: "Monthly", yearly: "Yearly" }[viewingEvent.recurrence] ?? viewingEvent.recurrence}
                       </span>
                     )}
                   </div>
