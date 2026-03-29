@@ -19,6 +19,17 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, e
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
+function parseReferralNotes(notes: string | null | undefined): { referrerName: string | null; cleanNotes: string | null } {
+  if (!notes) return { referrerName: null, cleanNotes: null };
+  const match = notes.match(/^\[Referral from: ([^\]]+)\]\n?/);
+  if (match) {
+    const referrerName = match[1];
+    const cleanNotes = notes.slice(match[0].length).trim() || null;
+    return { referrerName, cleanNotes };
+  }
+  return { referrerName: null, cleanNotes: notes };
+}
+
 const EVENT_COLORS: Record<string, { bg: string; text: string; border: string; dot: string }> = {
   purple: { bg: "bg-purple-100", text: "text-purple-900", border: "border-purple-300", dot: "bg-purple-400" },
   teal:   { bg: "bg-teal-100",   text: "text-teal-900",   border: "border-teal-300",   dot: "bg-teal-400" },
@@ -845,18 +856,22 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 </div>
               );
             })}
-            {dayAppointments.slice(0, 3).map((apt) => (
-              <div
-                key={apt.id}
-                className={`text-xs p-1 rounded truncate cursor-pointer border ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setViewingAppointment(apt);
-                }}
-              >
-                {format(new Date(apt.appointmentDate), "HH:mm")} - {apt.patientName}
-              </div>
-            ))}
+            {dayAppointments.slice(0, 3).map((apt) => {
+              const { referrerName } = parseReferralNotes(apt.notes);
+              return (
+                <div
+                  key={apt.id}
+                  className={`text-xs p-1 rounded truncate cursor-pointer border ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setViewingAppointment(apt);
+                  }}
+                >
+                  {referrerName && <span className="inline-block bg-orange-100 text-orange-700 rounded px-0.5 mr-0.5 font-semibold" title={`Referred by ${referrerName}`}>R</span>}
+                  {format(new Date(apt.appointmentDate), "HH:mm")} - {apt.patientName}
+                </div>
+              );
+            })}
             {dayAppointments.length > 3 && (
               <div className="text-xs text-gray-500 pl-1">
                 +{dayAppointments.length - 3} more
@@ -1103,6 +1118,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     })}
                     {getAppointmentsForDate(currentDate).map((apt) => {
                       const { top, height } = getAppointmentPosition(apt);
+                      const { referrerName: aptReferrerName } = parseReferralNotes(apt.notes);
                       return (
                         <div
                           key={apt.id}
@@ -1132,6 +1148,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                             onClick={(e) => e.stopPropagation()}
                           />
                           <div className="p-2 pt-2 pr-6">
+                            {aptReferrerName && (
+                              <div className="text-xs bg-orange-100 text-orange-700 rounded px-1 py-0.5 mb-0.5 truncate font-medium">
+                                ↗ {aptReferrerName}
+                              </div>
+                            )}
                             <div className={`text-sm font-medium truncate ${apt.status === "cancelled" ? "line-through" : ""}`}>{apt.patientName}</div>
                             <div className="text-xs truncate">{format(new Date(apt.appointmentDate), "h:mm a")} - {apt.scanType}</div>
                           </div>
@@ -1233,6 +1254,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           {dayAppointments.map((apt) => {
                             const { top, height } = getAppointmentPosition(apt);
                             if (top < 0 || top > SLOT_COUNT * SLOT_HEIGHT) return null;
+                            const { referrerName: weekReferrerName } = parseReferralNotes(apt.notes);
                             return (
                               <div
                                 key={apt.id}
@@ -1265,6 +1287,9 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                   onClick={(e) => e.stopPropagation()}
                                 />
                                 <div className="p-1 pt-1.5 pr-4">
+                                  {weekReferrerName && (
+                                    <div className="text-[10px] bg-orange-100 text-orange-700 rounded px-0.5 mb-0.5 truncate font-semibold">↗ {weekReferrerName}</div>
+                                  )}
                                   <div className={`font-medium truncate ${apt.status === "cancelled" ? "line-through" : ""}`}>{apt.patientName}</div>
                                   <div className="text-[10px] truncate">{format(new Date(apt.appointmentDate), "h:mm a")}</div>
                                 </div>
@@ -2072,12 +2097,28 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   </div>
                 )}
 
-                {viewingAppointment.notes && (
-                  <div className="text-sm">
-                    <span className="font-medium">Notes:</span>
-                    <p className="text-gray-600 mt-1">{viewingAppointment.notes}</p>
-                  </div>
-                )}
+                {(() => {
+                  const { referrerName: dialogReferrerName, cleanNotes: dialogCleanNotes } = parseReferralNotes(viewingAppointment.notes);
+                  return (
+                    <>
+                      {dialogReferrerName && (
+                        <div className="text-sm bg-orange-50 border border-orange-200 rounded-md px-3 py-2 flex items-start gap-2">
+                          <span className="text-orange-500 font-bold text-base leading-tight">↗</span>
+                          <div>
+                            <span className="font-medium text-orange-800">External Referral</span>
+                            <p className="text-orange-700 text-xs mt-0.5">Referred by {dialogReferrerName}</p>
+                          </div>
+                        </div>
+                      )}
+                      {dialogCleanNotes && (
+                        <div className="text-sm">
+                          <span className="font-medium">Notes:</span>
+                          <p className="text-gray-600 mt-1">{dialogCleanNotes}</p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {/* Action buttons */}
                 {(() => {
@@ -2417,11 +2458,23 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
               <div>{format(new Date(tooltip.apt.appointmentDate), "EEEE d MMM, h:mm a")} ({tooltip.apt.duration} min)</div>
               {tooltip.apt.scanType && <div>{tooltip.apt.scanType}</div>}
               {tooltip.apt.patientPhone && <div>{tooltip.apt.patientPhone}</div>}
-              {tooltip.apt.notes && (
-                <div className="mt-1 pt-1 border-t border-gray-100 text-gray-700 italic">
-                  {tooltip.apt.notes}
-                </div>
-              )}
+              {(() => {
+                const { referrerName: ttReferrer, cleanNotes: ttNotes } = parseReferralNotes(tooltip.apt.notes);
+                return (
+                  <>
+                    {ttReferrer && (
+                      <div className="mt-1 pt-1 border-t border-gray-100 text-orange-600 font-medium">
+                        ↗ Referred by {ttReferrer}
+                      </div>
+                    )}
+                    {ttNotes && (
+                      <div className={`${ttReferrer ? "" : "mt-1 pt-1 border-t border-gray-100"} text-gray-700 italic`}>
+                        {ttNotes}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

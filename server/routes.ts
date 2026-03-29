@@ -3895,17 +3895,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const apptStart = new Date(startTime);
       const apptEnd = new Date(endTime);
       const durationMins = Math.max(30, Math.round((apptEnd.getTime() - apptStart.getTime()) / 60000));
+      const referrerFullName = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() || "External Referrer";
+      const referralPrefix = `[Referral from: ${referrerFullName}]`;
+      const combinedNotes = notes ? `${referralPrefix}\n${notes}` : referralPrefix;
       const appointment = await storage.createAppointment({
         clinicId,
         patientName,
         patientPhone: patientPhone || null,
+        patientEmail: req.body.patientEmail || null,
+        patientDob: req.body.patientDob || null,
         scanType,
         appointmentDate: apptStart,
         duration: durationMins,
-        notes: notes || null,
+        notes: combinedNotes,
         status: "scheduled",
         sonographerId: null,
         patientId: null,
+        createdBy: req.user.id,
       });
 
       // Create corresponding scan request
