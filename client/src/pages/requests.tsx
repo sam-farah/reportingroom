@@ -1192,6 +1192,10 @@ export default function Requests() {
                         });
                         setSchedulingRequest(viewingRequest);
                         setViewingStep("schedule");
+                        requestAnimationFrame(() => {
+                          const dlg = document.querySelector('[role="dialog"]');
+                          if (dlg) dlg.scrollTop = 0;
+                        });
                       }}
                     >
                       <CalendarPlus className="w-4 h-4 mr-2" /> Schedule Appointment
@@ -1284,7 +1288,13 @@ export default function Requests() {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t">
-                <Button variant="outline" onClick={() => setViewingStep("details")}>← Back</Button>
+                <Button variant="outline" onClick={() => {
+                  setViewingStep("details");
+                  requestAnimationFrame(() => {
+                    const dlg = document.querySelector('[role="dialog"]');
+                    if (dlg) dlg.scrollTop = 0;
+                  });
+                }}>← Back</Button>
                 <Button
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                   disabled={scheduleAppointment.isPending || !scheduleForm.appointmentDate || !scheduleForm.appointmentTime}
