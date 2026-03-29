@@ -107,6 +107,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [eventForm, setEventForm] = useState({
     title: "",
     date: "",
+    isAllDay: false,
     startTime: "09:00",
     endTime: "17:00",
     color: "purple",
@@ -739,7 +740,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const getEventsForDate = (date: Date) =>
     expandedEvents.filter(ev => isSameDay(ev.instanceStart, date));
 
-  const getEventPosition = (startTime: Date, endTime: Date) => {
+  const getEventPosition = (startTime: Date, endTime: Date, isAllDay?: boolean) => {
+    if (isAllDay) return { top: 0, height: SLOT_COUNT * SLOT_HEIGHT };
     const sh = getHours(startTime), sm = getMinutes(startTime);
     const eh = getHours(endTime),   em = getMinutes(endTime);
     const top = ((sh - START_HOUR) * 2 + sm / 30) * SLOT_HEIGHT;
@@ -752,6 +754,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     setEventForm({
       title: "",
       date: date ? format(date, "yyyy-MM-dd") : format(currentDate, "yyyy-MM-dd"),
+      isAllDay: false,
       startTime: "09:00",
       endTime: "17:00",
       color: "purple",
@@ -769,6 +772,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     setEventForm({
       title: event.title,
       date: format(start, "yyyy-MM-dd"),
+      isAllDay: event.isAllDay ?? false,
       startTime: format(start, "HH:mm"),
       endTime: format(end, "HH:mm"),
       color: event.color,
@@ -782,12 +786,17 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
 
   const handleEventSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const startTime = new Date(`${eventForm.date}T${eventForm.startTime}:00`);
-    const endTime = new Date(`${eventForm.date}T${eventForm.endTime}:00`);
+    const startTime = eventForm.isAllDay
+      ? new Date(`${eventForm.date}T00:00:00`)
+      : new Date(`${eventForm.date}T${eventForm.startTime}:00`);
+    const endTime = eventForm.isAllDay
+      ? new Date(`${eventForm.date}T23:59:59`)
+      : new Date(`${eventForm.date}T${eventForm.endTime}:00`);
     const payload = {
       title: eventForm.title,
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
+      isAllDay: eventForm.isAllDay,
       color: eventForm.color,
       recurrence: eventForm.recurrence,
       recurrenceEndDate: eventForm.recurrenceEndDate ? new Date(`${eventForm.recurrenceEndDate}T23:59:00`).toISOString() : null,
@@ -1076,12 +1085,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     ))}
                     {/* Calendar events layer (behind appointments) */}
                     {getEventsForDate(currentDate).map((ev) => {
-                      const { top, height } = getEventPosition(ev.instanceStart, ev.instanceEnd);
+                      const { top, height } = getEventPosition(ev.instanceStart, ev.instanceEnd, ev.isAllDay);
                       const colors = EVENT_COLORS[ev.color] || EVENT_COLORS.purple;
                       return (
                         <div
                           key={`ev-${ev.id}-${ev.instanceStart.toISOString()}`}
-                          className={`absolute left-1 right-1 rounded border opacity-80 cursor-pointer z-0 ${colors.bg} ${colors.border}`}
+                          className={`absolute left-1 right-1 rounded border cursor-pointer z-0 ${colors.bg} ${colors.border} ${ev.isAllDay ? "opacity-30" : "opacity-80"}`}
                           style={{ top: `${Math.max(top, 0)}px`, height: `${height}px` }}
                           onClick={() => setViewingEvent(ev)}
                         >
@@ -1205,12 +1214,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           ))}
                           {/* Calendar events behind appointments */}
                           {getEventsForDate(weekDay).map((ev) => {
-                            const { top, height } = getEventPosition(ev.instanceStart, ev.instanceEnd);
+                            const { top, height } = getEventPosition(ev.instanceStart, ev.instanceEnd, ev.isAllDay);
                             const colors = EVENT_COLORS[ev.color] || EVENT_COLORS.purple;
                             return (
                               <div
                                 key={`ev-${ev.id}-${ev.instanceStart.toISOString()}`}
-                                className={`absolute left-0 right-0 mx-0.5 rounded border opacity-80 cursor-pointer z-0 ${colors.bg} ${colors.border}`}
+                                className={`absolute left-0 right-0 mx-0.5 rounded border cursor-pointer z-0 ${colors.bg} ${colors.border} ${ev.isAllDay ? "opacity-30" : "opacity-80"}`}
                                 style={{ top: `${Math.max(top, 0)}px`, height: `${height}px` }}
                                 onClick={(e) => { e.stopPropagation(); setViewingEvent(ev); }}
                               >
@@ -1366,28 +1375,40 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="inlineEventStart">Start Time <span className="text-red-500">*</span></Label>
-                    <Input
-                      id="inlineEventStart"
-                      type="time"
-                      value={eventForm.startTime}
-                      onChange={(e) => setEventForm(prev => ({ ...prev, startTime: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="inlineEventEnd">End Time <span className="text-red-500">*</span></Label>
-                    <Input
-                      id="inlineEventEnd"
-                      type="time"
-                      value={eventForm.endTime}
-                      onChange={(e) => setEventForm(prev => ({ ...prev, endTime: e.target.value }))}
-                      required
-                    />
-                  </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="inlineEventAllDay"
+                    type="checkbox"
+                    checked={eventForm.isAllDay}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, isAllDay: e.target.checked }))}
+                    className="w-4 h-4 rounded border-gray-300 accent-blue-600"
+                  />
+                  <Label htmlFor="inlineEventAllDay" className="cursor-pointer select-none">All Day</Label>
                 </div>
+                {!eventForm.isAllDay && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="inlineEventStart">Start Time <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="inlineEventStart"
+                        type="time"
+                        value={eventForm.startTime}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, startTime: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="inlineEventEnd">End Time <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="inlineEventEnd"
+                        type="time"
+                        value={eventForm.endTime}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, endTime: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
                 <div>
                   <Label>Colour</Label>
                   <div className="flex gap-2 mt-2">
@@ -2219,28 +2240,40 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="eventStartTime">Start Time *</Label>
-                  <Input
-                    id="eventStartTime"
-                    type="time"
-                    value={eventForm.startTime}
-                    onChange={(e) => setEventForm(prev => ({ ...prev, startTime: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="eventEndTime">End Time *</Label>
-                  <Input
-                    id="eventEndTime"
-                    type="time"
-                    value={eventForm.endTime}
-                    onChange={(e) => setEventForm(prev => ({ ...prev, endTime: e.target.value }))}
-                    required
-                  />
-                </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="eventAllDay"
+                  type="checkbox"
+                  checked={eventForm.isAllDay}
+                  onChange={(e) => setEventForm(prev => ({ ...prev, isAllDay: e.target.checked }))}
+                  className="w-4 h-4 rounded border-gray-300 accent-blue-600"
+                />
+                <Label htmlFor="eventAllDay" className="cursor-pointer select-none">All Day</Label>
               </div>
+              {!eventForm.isAllDay && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="eventStartTime">Start Time *</Label>
+                    <Input
+                      id="eventStartTime"
+                      type="time"
+                      value={eventForm.startTime}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, startTime: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="eventEndTime">End Time *</Label>
+                    <Input
+                      id="eventEndTime"
+                      type="time"
+                      value={eventForm.endTime}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, endTime: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
               <div>
                 <Label>Colour</Label>
                 <div className="flex gap-2 mt-2">
@@ -2331,7 +2364,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-gray-500" />
-                      <span>{format(new Date(viewingEvent.startTime), "p")} – {format(new Date(viewingEvent.endTime), "p")}</span>
+                      {viewingEvent.isAllDay
+                        ? <span className="font-medium text-blue-600">All Day</span>
+                        : <span>{format(new Date(viewingEvent.startTime), "p")} – {format(new Date(viewingEvent.endTime), "p")}</span>
+                      }
                     </div>
                   </div>
                   {viewingEvent.recurrenceEndDate && (

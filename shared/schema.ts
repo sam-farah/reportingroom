@@ -647,6 +647,7 @@ export const calendarEvents = pgTable("calendar_events", {
   title: varchar("title", { length: 255 }).notNull(),
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
+  isAllDay: boolean("is_all_day").notNull().default(false),
   color: varchar("color", { length: 50 }).notNull().default("purple"),
   recurrence: varchar("recurrence", { length: 50 }).notNull().default("none"),
   recurrenceEndDate: timestamp("recurrence_end_date"),
