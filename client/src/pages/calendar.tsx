@@ -921,6 +921,31 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
           </div>
         </div>
 
+        <div className="flex gap-4 items-start">
+          {/* Mini-calendar sidebar — desktop only */}
+          <div className="hidden md:flex flex-col gap-2 flex-shrink-0">
+            <div className="bg-white dark:bg-gray-800 border rounded-xl shadow-sm p-2">
+              <CalendarPicker
+                mode="single"
+                selected={currentDate}
+                onSelect={(date) => { if (date) setCurrentDate(date); }}
+                className="rounded-md"
+              />
+              <div className="px-2 pb-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => setCurrentDate(new Date())}
+                >
+                  Today
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Main calendar card */}
+          <div className="flex-1 min-w-0">
         <Card>
           <CardHeader className="pb-2">
             {/* Desktop card header */}
@@ -936,37 +961,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
-              <Popover open={desktopDatePickerOpen} onOpenChange={setDesktopDatePickerOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="text-xl font-semibold px-3 py-1 h-auto gap-2 hover:bg-muted"
-                  >
-                    <CalendarDays className="w-5 h-5 shrink-0 text-muted-foreground" />
-                    {getHeaderTitle()}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="center">
-                  <CalendarPicker
-                    mode="single"
-                    selected={currentDate}
-                    onSelect={(date) => {
-                      if (date) { setCurrentDate(date); setDesktopDatePickerOpen(false); }
-                    }}
-                    initialFocus
-                  />
-                  <div className="p-2 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => { setCurrentDate(new Date()); setDesktopDatePickerOpen(false); }}
-                    >
-                      Today
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
+              <h2 className="text-xl font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                <CalendarDays className="w-5 h-5 shrink-0 text-muted-foreground" />
+                {getHeaderTitle()}
+              </h2>
               <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
                 <Button
                   variant={viewMode === "day" ? "default" : "ghost"}
@@ -1289,6 +1287,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
             )}
           </CardContent>
         </Card>
+          </div> {/* end flex-1 main calendar card */}
+        </div> {/* end flex sidebar+card container */}
 
         <Dialog open={isBookingDialogOpen} onOpenChange={(open) => { setIsBookingDialogOpen(open); if (!open) { resetForm(); setEditingAppointment(null); setBookingMode("appointment"); } }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
