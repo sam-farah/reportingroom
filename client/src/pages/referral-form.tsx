@@ -133,6 +133,8 @@ export default function ReferralFormPage() {
           <p className="text-gray-500 text-sm">Online Referral Form</p>
         </div>
 
+        <p className="text-xs text-gray-400 text-right -mt-2">Fields marked <span className="text-red-500">*</span> are required</p>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Honeypot */}
           <input type="text" name="_hp" value={form._hp} onChange={(e) => setForm((p) => ({ ...p, _hp: e.target.value }))} style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
@@ -146,22 +148,22 @@ export default function ReferralFormPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label className="text-sm">Patient Full Name *</Label>
+                <Label className="text-sm">Patient Full Name <span className="text-red-500">*</span></Label>
                 <Input required value={form.patientName} onChange={(e) => setForm((p) => ({ ...p, patientName: e.target.value }))} placeholder="e.g. Jane Smith" className="mt-1" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-sm">Date of Birth</Label>
-                  <Input type="date" value={form.patientDob} onChange={(e) => setForm((p) => ({ ...p, patientDob: e.target.value }))} className="mt-1" />
+                  <Label className="text-sm">Phone <span className="text-red-500">*</span></Label>
+                  <Input required type="tel" value={form.patientPhone} onChange={(e) => setForm((p) => ({ ...p, patientPhone: e.target.value }))} placeholder="04xx xxx xxx" className="mt-1" />
                 </div>
                 <div>
-                  <Label className="text-sm">Phone</Label>
-                  <Input type="tel" value={form.patientPhone} onChange={(e) => setForm((p) => ({ ...p, patientPhone: e.target.value }))} placeholder="04xx xxx xxx" className="mt-1" />
+                  <Label className="text-sm">Email <span className="text-red-500">*</span></Label>
+                  <Input required type="email" value={form.patientEmail} onChange={(e) => setForm((p) => ({ ...p, patientEmail: e.target.value }))} placeholder="patient@email.com" className="mt-1" />
                 </div>
               </div>
               <div>
-                <Label className="text-sm">Patient Email</Label>
-                <Input type="email" value={form.patientEmail} onChange={(e) => setForm((p) => ({ ...p, patientEmail: e.target.value }))} placeholder="optional" className="mt-1" />
+                <Label className="text-sm">Date of Birth</Label>
+                <Input type="date" value={form.patientDob} onChange={(e) => setForm((p) => ({ ...p, patientDob: e.target.value }))} className="mt-1" />
               </div>
             </CardContent>
           </Card>
@@ -176,22 +178,22 @@ export default function ReferralFormPage() {
             <CardContent className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-sm">Doctor Name *</Label>
+                  <Label className="text-sm">Doctor Name <span className="text-red-500">*</span></Label>
                   <Input required value={form.referringDoctorName} onChange={(e) => setForm((p) => ({ ...p, referringDoctorName: e.target.value }))} placeholder="Dr. John Doe" className="mt-1" />
                 </div>
                 <div>
-                  <Label className="text-sm">Practice Name</Label>
-                  <Input value={form.referringDoctorPractice} onChange={(e) => setForm((p) => ({ ...p, referringDoctorPractice: e.target.value }))} placeholder="e.g. City Medical" className="mt-1" />
+                  <Label className="text-sm">Provider Number <span className="text-red-500">*</span></Label>
+                  <Input required value={form.referringDoctorProviderNumber} onChange={(e) => setForm((p) => ({ ...p, referringDoctorProviderNumber: e.target.value }))} placeholder="e.g. 1234567A" className="mt-1" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-sm">Phone</Label>
-                  <Input type="tel" value={form.referringDoctorPhone} onChange={(e) => setForm((p) => ({ ...p, referringDoctorPhone: e.target.value }))} className="mt-1" />
+                  <Label className="text-sm">Practice Name</Label>
+                  <Input value={form.referringDoctorPractice} onChange={(e) => setForm((p) => ({ ...p, referringDoctorPractice: e.target.value }))} placeholder="e.g. City Medical" className="mt-1" />
                 </div>
                 <div>
-                  <Label className="text-sm">Provider Number</Label>
-                  <Input value={form.referringDoctorProviderNumber} onChange={(e) => setForm((p) => ({ ...p, referringDoctorProviderNumber: e.target.value }))} className="mt-1" />
+                  <Label className="text-sm">Doctor Phone</Label>
+                  <Input type="tel" value={form.referringDoctorPhone} onChange={(e) => setForm((p) => ({ ...p, referringDoctorPhone: e.target.value }))} className="mt-1" />
                 </div>
               </div>
             </CardContent>
@@ -231,7 +233,7 @@ export default function ReferralFormPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label className="text-sm">Urgency</Label>
+                <Label className="text-sm">Urgency <span className="text-red-500">*</span></Label>
                 <Select value={form.urgency} onValueChange={(v) => setForm((p) => ({ ...p, urgency: v }))}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -243,8 +245,8 @@ export default function ReferralFormPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-sm">Clinical Indication</Label>
-                <Textarea value={form.clinicalIndication} onChange={(e) => setForm((p) => ({ ...p, clinicalIndication: e.target.value }))} rows={3} placeholder="Reason for referral, symptoms..." className="mt-1" />
+                <Label className="text-sm">Clinical Information <span className="text-red-500">*</span></Label>
+                <Textarea required value={form.clinicalIndication} onChange={(e) => setForm((p) => ({ ...p, clinicalIndication: e.target.value }))} rows={3} placeholder="Reason for referral, symptoms, relevant history..." className="mt-1" />
               </div>
               <div>
                 <Label className="text-sm">Additional Notes</Label>
@@ -256,7 +258,16 @@ export default function ReferralFormPage() {
           <Button
             type="submit"
             className="w-full py-5 text-base"
-            disabled={submitting || !form.patientName || !form.referringDoctorName || form.scanTypes.length === 0}
+            disabled={
+              submitting ||
+              !form.patientName ||
+              !form.patientPhone ||
+              !form.patientEmail ||
+              !form.referringDoctorName ||
+              !form.referringDoctorProviderNumber ||
+              !form.clinicalIndication ||
+              form.scanTypes.length === 0
+            }
           >
             {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</> : "Submit Referral"}
           </Button>
