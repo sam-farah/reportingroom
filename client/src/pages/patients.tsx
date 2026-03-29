@@ -18,28 +18,33 @@ import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, Patient
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Download, ExternalLink } from "lucide-react";
 
-function PdfViewer({ url, title }: { url: string; title: string }) {
+function PdfViewer({ url, title, originalName }: { url: string; title: string; originalName?: string }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fileNotFound, setFileNotFound] = useState(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
     setLoading(true);
     setError(null);
     setBlobUrl(null);
+    setFileNotFound(false);
 
     fetch(url, { credentials: "include" })
       .then((res) => {
+        if (res.status === 404) { setFileNotFound(true); throw new Error("not_found"); }
         if (!res.ok) throw new Error(`Failed to load file (${res.status})`);
         return res.blob();
       })
       .then((blob) => {
-        objectUrl = URL.createObjectURL(blob);
+        // Re-create blob with explicit PDF mime type so browser renders it correctly
+        const pdfBlob = new Blob([blob], { type: "application/pdf" });
+        objectUrl = URL.createObjectURL(pdfBlob);
         setBlobUrl(objectUrl);
       })
       .catch((err) => {
-        setError(err.message || "Could not load PDF");
+        if (err.message !== "not_found") setError(err.message || "Could not load PDF");
       })
       .finally(() => setLoading(false));
 
@@ -47,6 +52,14 @@ function PdfViewer({ url, title }: { url: string; title: string }) {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [url]);
+
+  const handleDownload = () => {
+    if (!blobUrl) return;
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = originalName || title || "document.pdf";
+    a.click();
+  };
 
   if (loading) {
     return (
@@ -59,30 +72,23 @@ function PdfViewer({ url, title }: { url: string; title: string }) {
     );
   }
 
+  if (fileNotFound) {
+    return (
+      <div className="w-full flex flex-col items-center justify-center bg-amber-50 border border-amber-200 rounded-lg p-8 gap-3 text-center">
+        <FileText className="w-12 h-12 text-amber-400" />
+        <p className="font-semibold text-amber-800">File no longer available</p>
+        <p className="text-amber-700 text-sm max-w-sm">
+          This document was uploaded but the file could not be found on the server. Please delete this record and re-upload the document.
+        </p>
+      </div>
+    );
+  }
+
   if (error || !blobUrl) {
     return (
       <div className="w-full h-[300px] flex flex-col items-center justify-center bg-gray-50 rounded-lg border gap-4">
         <FileText className="w-12 h-12 text-gray-400" />
         <p className="text-gray-600 text-sm">{error || "Unable to preview this PDF"}</p>
-        <div className="flex gap-3">
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-          >
-            <ExternalLink className="w-4 h-4" />
-            Open in new tab
-          </a>
-          <a
-            href={url}
-            download
-            className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"
-          >
-            <Download className="w-4 h-4" />
-            Download
-          </a>
-        </div>
       </div>
     );
   }
@@ -90,23 +96,20 @@ function PdfViewer({ url, title }: { url: string; title: string }) {
   return (
     <div className="space-y-2">
       <div className="flex justify-end gap-2">
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={() => window.open(blobUrl, "_blank")}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
         >
           <ExternalLink className="w-3.5 h-3.5" />
           Open in new tab
-        </a>
-        <a
-          href={url}
-          download
+        </button>
+        <button
+          onClick={handleDownload}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50"
         >
           <Download className="w-3.5 h-3.5" />
           Download
-        </a>
+        </button>
       </div>
       <iframe
         src={blobUrl}
@@ -712,7 +715,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 />
               )}
               {isPdf && (
-                <PdfViewer url={patientDoc.fileUrl} title={patientDoc.title} />
+                <PdfViewer url={patientDoc.fileUrl} title={patientDoc.title} originalName={patientDoc.originalName || undefined} />
               )}
               {!isImage && !isPdf && (
                 <div className="text-center py-8">

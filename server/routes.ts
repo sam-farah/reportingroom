@@ -2781,13 +2781,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve uploaded files
-  app.use('/uploads', (req, res, next) => {
+  // Serve uploaded files — detect content type from magic bytes since multer strips extensions
+  app.use('/uploads', (req, res, _next) => {
     const filePath = path.join(uploadDir, req.path);
-    if (fs.existsSync(filePath)) {
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" });
+    }
+    try {
+      // Read first 8 bytes to sniff file type
+      const fd = fs.openSync(filePath, 'r');
+      const magic = Buffer.alloc(8);
+      fs.readSync(fd, magic, 0, 8, 0);
+      fs.closeSync(fd);
+
+      let contentType = 'application/octet-stream';
+      if (magic[0] === 0x25 && magic[1] === 0x50 && magic[2] === 0x44 && magic[3] === 0x46) {
+        contentType = 'application/pdf'; // %PDF
+      } else if (magic[0] === 0xFF && magic[1] === 0xD8 && magic[2] === 0xFF) {
+        contentType = 'image/jpeg';
+      } else if (magic[0] === 0x89 && magic[1] === 0x50 && magic[2] === 0x4E && magic[3] === 0x47) {
+        contentType = 'image/png';
+      } else if (magic[0] === 0x47 && magic[1] === 0x49 && magic[2] === 0x46) {
+        contentType = 'image/gif';
+      } else if (magic[0] === 0x52 && magic[1] === 0x49 && magic[2] === 0x46 && magic[3] === 0x46) {
+        contentType = 'image/webp';
+      }
+      res.setHeader('Content-Type', contentType);
       res.sendFile(filePath);
-    } else {
-      res.status(404).json({ error: "File not found" });
+    } catch {
+      res.sendFile(filePath);
     }
   });
 
