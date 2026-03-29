@@ -16,7 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Plus, Search, Edit, Trash2, User, Phone, Mail, Stethoscope,
   ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
-  MapPin, Hash, Building2, ChevronRight, X, Printer, Globe, CalendarPlus
+  MapPin, Hash, Building2, ChevronRight, X, Printer, Globe, CalendarPlus,
+  FolderOpen, CheckCheck
 } from "lucide-react";
 import { format } from "date-fns";
 import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer } from "@shared/schema";
@@ -121,6 +122,11 @@ export default function Requests() {
   const [editingDoctor, setEditingDoctor] = useState<ReferringDoctor | null>(null);
   const [doctorForm, setDoctorForm] = useState<DoctorFormData>(blankDoctor());
 
+  // ── Save-to-patient state ─────────────────────────────────────────
+  const [showPatientPicker, setShowPatientPicker] = useState(false);
+  const [savePatientSearch, setSavePatientSearch] = useState("");
+  const [savedRequestIds, setSavedRequestIds] = useState<Set<number>>(new Set());
+
   // ── Scheduling state ──────────────────────────────────────────────
   const [schedulingRequest, setSchedulingRequest] = useState<ScanRequest | null>(null); // kept for mutation compat
   const [viewingStep, setViewingStep] = useState<"details" | "schedule">("details");
@@ -170,6 +176,17 @@ export default function Requests() {
 
   const { data: physicians = [] } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: sonographers = [] } = useQuery<Sonographer[]>({ queryKey: ["/api/sonographers"] });
+
+  const { data: savePatientResults = [] } = useQuery<Patient[]>({
+    queryKey: ["/api/patients", "save-search", savePatientSearch],
+    queryFn: async () => {
+      if (!savePatientSearch || savePatientSearch.length < 2) return [];
+      const r = await fetch(`/api/patients?search=${encodeURIComponent(savePatientSearch)}`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: savePatientSearch.length >= 2,
+  });
 
   // ── Request mutations ─────────────────────────────────────────────
   const createRequest = useMutation({
@@ -244,6 +261,21 @@ export default function Requests() {
       toast({ title: "Appointment scheduled", description: "The request has been marked as scheduled." });
     },
     onError: () => toast({ title: "Failed to schedule appointment", variant: "destructive" }),
+  });
+
+  const saveToPatientFile = useMutation({
+    mutationFn: async ({ requestId, patientId, htmlContent }: { requestId: number; patientId: number; htmlContent: string }) => {
+      const res = await apiRequest(`/api/scan-requests/${requestId}/save-to-patient`, "POST", { patientId, htmlContent });
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+      setSavedRequestIds(prev => new Set(prev).add(variables.requestId));
+      setShowPatientPicker(false);
+      setSavePatientSearch("");
+      toast({ title: "Saved to patient file", description: "The scan request has been added to the patient's documents." });
+    },
+    onError: () => toast({ title: "Failed to save to patient file", variant: "destructive" }),
   });
 
   // ── Helpers ───────────────────────────────────────────────────────
@@ -324,11 +356,8 @@ export default function Requests() {
     }));
   };
 
-  // ── PDF generation ───────────────────────────────────────────────
-  const generateRequestPDF = (r: ScanRequest) => {
-    const win = window.open('', '_blank');
-    if (!win) return;
-
+  // ── PDF / save generation ─────────────────────────────────────────
+  const buildRequestHtml = (r: ScanRequest): string => {
     const clinicName = clinic?.name || 'Nexus Vascular Imaging';
     const clinicAddress = clinic?.address || '';
     const clinicPhone = clinic?.phone || '';
@@ -343,7 +372,7 @@ export default function Requests() {
     };
     const urgColor = urgencyColors[r.urgency] ?? '#4b5563';
 
-    win.document.write(`<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
@@ -594,8 +623,13 @@ export default function Requests() {
   </div>
 
 </body>
-</html>`);
+</html>`;
+  };
 
+  const generateRequestPDF = (r: ScanRequest) => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(buildRequestHtml(r));
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 300);
@@ -977,7 +1011,7 @@ export default function Requests() {
       </Dialog>
 
       {/* ── REQUEST VIEW DIALOG ── */}
-      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); } }}>
+      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); setShowPatientPicker(false); setSavePatientSearch(""); } }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1065,11 +1099,82 @@ export default function Requests() {
                     <p className="text-sm text-gray-700">{viewingRequest.notes}</p>
                   </div>
                 )}
+
+                {/* ── Save to Patient File section ── */}
+                {showPatientPicker && (
+                  <div className="border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-2">
+                    <p className="text-sm font-semibold text-blue-800">Select patient to save under:</p>
+                    <Input
+                      placeholder="Search patients…"
+                      value={savePatientSearch}
+                      onChange={e => setSavePatientSearch(e.target.value)}
+                      className="h-8 text-sm"
+                      autoFocus
+                    />
+                    {savePatientSearch.trim().length >= 2 && (
+                      <div className="max-h-36 overflow-y-auto border rounded bg-white shadow-sm">
+                        {savePatientResults.length > 0 ? savePatientResults.map(p => (
+                          <button
+                            key={p.id}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between border-b last:border-0"
+                            disabled={saveToPatientFile.isPending}
+                            onClick={() => {
+                              saveToPatientFile.mutate({
+                                requestId: viewingRequest.id,
+                                patientId: p.id,
+                                htmlContent: buildRequestHtml(viewingRequest),
+                              });
+                            }}
+                          >
+                            <span>{p.firstName} {p.lastName}</span>
+                            {p.urNumber && <span className="font-mono text-xs text-blue-600 bg-blue-50 border border-blue-200 px-1.5 rounded">UR {p.urNumber}</span>}
+                          </button>
+                        )) : (
+                          <p className="text-sm text-gray-400 px-3 py-2">No patients found</p>
+                        )}
+                      </div>
+                    )}
+                    {savePatientSearch.trim().length > 0 && savePatientSearch.trim().length < 2 && (
+                      <p className="text-xs text-gray-400">Type at least 2 characters to search</p>
+                    )}
+                    <Button variant="ghost" size="sm" className="text-xs text-gray-500" onClick={() => { setShowPatientPicker(false); setSavePatientSearch(""); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-2 pt-2 border-t flex-wrap">
                   <Button variant="outline" onClick={() => setViewingRequest(null)}>Close</Button>
                   <Button variant="outline" onClick={() => generateRequestPDF(viewingRequest)}>
                     <Printer className="w-4 h-4 mr-2" /> Print PDF
                   </Button>
+                  {savedRequestIds.has(viewingRequest.id) ? (
+                    <Button variant="outline" disabled className="text-green-600 border-green-300">
+                      <CheckCheck className="w-4 h-4 mr-2" /> Saved to File
+                    </Button>
+                  ) : viewingRequest.patientId ? (
+                    <Button
+                      variant="outline"
+                      className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                      disabled={saveToPatientFile.isPending}
+                      onClick={() => saveToPatientFile.mutate({
+                        requestId: viewingRequest.id,
+                        patientId: viewingRequest.patientId!,
+                        htmlContent: buildRequestHtml(viewingRequest),
+                      })}
+                    >
+                      <FolderOpen className="w-4 h-4 mr-2" />
+                      {saveToPatientFile.isPending ? "Saving…" : "Save to Patient File"}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                      onClick={() => { setShowPatientPicker(true); setSavePatientSearch(""); }}
+                    >
+                      <FolderOpen className="w-4 h-4 mr-2" /> Save to Patient File
+                    </Button>
+                  )}
                   <Button variant="outline" onClick={() => { setViewingRequest(null); openEditRequest(viewingRequest); }}>
                     <Edit className="w-4 h-4 mr-2" /> Edit
                   </Button>

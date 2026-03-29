@@ -697,6 +697,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       const patientDoc = doc as PatientDocument;
       const isImage = patientDoc.originalName?.match(/\.(jpg|jpeg|png|gif|bmp)$/i);
       const isPdf = patientDoc.originalName?.match(/\.pdf$/i);
+      const isHtml = patientDoc.originalName?.match(/\.html?$/i);
       
       return (
         <div className="h-full overflow-auto">
@@ -717,7 +718,16 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
               {isPdf && (
                 <PdfViewer url={patientDoc.fileUrl} title={patientDoc.title} originalName={patientDoc.originalName || undefined} />
               )}
-              {!isImage && !isPdf && (
+              {isHtml && (
+                <iframe
+                  src={patientDoc.fileUrl}
+                  title={patientDoc.title}
+                  className="w-full rounded-lg border shadow"
+                  style={{ height: '70vh', minHeight: 500 }}
+                  sandbox="allow-same-origin"
+                />
+              )}
+              {!isImage && !isPdf && !isHtml && (
                 <div className="text-center py-8">
                   <FileText className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                   <p className="text-gray-600 mb-4">Preview not available for this file type</p>

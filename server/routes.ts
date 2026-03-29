@@ -3788,6 +3788,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch { res.status(500).json({ error: "Failed to delete scan request" }); }
   });
 
+  // Save scan request HTML to patient file
+  app.post("/api/scan-requests/:id/save-to-patient", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const id = parseInt(req.params.id);
+      const { patientId, htmlContent } = req.body;
+
+      if (!patientId || !htmlContent) {
+        return res.status(400).json({ error: "patientId and htmlContent are required" });
+      }
+
+      const existing = await storage.getScanRequest(id);
+      if (!existing || existing.clinicId !== clinicId) {
+        return res.status(404).json({ error: "Scan request not found" });
+      }
+
+      const filename = crypto.randomBytes(16).toString("hex");
+      const originalName = `Scan_Request_REQ-${String(id).padStart(5, "0")}.html`;
+      const filePath = path.join(uploadDir, filename);
+
+      fs.writeFileSync(filePath, Buffer.from(htmlContent, "utf8"));
+      await saveFileToDB(filename, filePath, "text/html", originalName);
+
+      const today = new Date().toISOString().split("T")[0];
+      const document = await storage.createPatientDocument({
+        patientId,
+        title: `Scan Request REQ-${String(id).padStart(5, "0")}`,
+        filename,
+        originalName,
+        fileUrl: `/uploads/${filename}`,
+        documentDate: today,
+        notes: `Scan request for: ${(existing.scanTypes ?? []).join(", ")}`,
+      });
+
+      res.status(201).json(document);
+    } catch (error) {
+      console.error("Error saving scan request to patient file:", error);
+      res.status(500).json({ error: "Failed to save to patient file" });
+    }
+  });
+
   // ─── REFERRAL SYSTEM ────────────────────────────────────────────────────────
 
   // Referrer role middleware
