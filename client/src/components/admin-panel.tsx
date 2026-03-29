@@ -2132,7 +2132,7 @@ function BugReportsTab() {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [form, setForm] = useState({ title: "", description: "", priority: "medium", category: "" });
+  const [form, setForm] = useState({ text: "", priority: "medium", category: "" });
 
   const { data: bugs = [], isLoading } = useQuery<BugReport[]>({
     queryKey: ["/api/bug-reports"],
@@ -2140,12 +2140,18 @@ function BugReportsTab() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof form) => {
-      const res = await apiRequest("/api/bug-reports", "POST", data);
+      const firstLine = data.text.split("\n")[0].trim().slice(0, 120) || "Bug report";
+      const res = await apiRequest("/api/bug-reports", "POST", {
+        title: firstLine,
+        description: data.text.trim(),
+        priority: data.priority,
+        category: data.category || null,
+      });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bug-reports"] });
-      setForm({ title: "", description: "", priority: "medium", category: "" });
+      setForm({ text: "", priority: "medium", category: "" });
       setShowForm(false);
       toast({ title: "Bug reported", description: "Your bug report has been saved." });
     },
@@ -2217,62 +2223,43 @@ function BugReportsTab() {
         {showForm && (
           <CardContent className="border-t pt-4">
             <div className="space-y-3 max-w-xl">
-              <div>
-                <Label className="text-xs">Title *</Label>
-                <Input
-                  className="mt-1"
-                  placeholder="Short description of the issue"
-                  value={form.title}
-                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Description *</Label>
-                <Textarea
-                  className="mt-1"
-                  rows={4}
-                  placeholder="Steps to reproduce, what you expected vs what happened, any error messages..."
-                  value={form.description}
-                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Priority</Label>
-                  <Select value={form.priority} onValueChange={(v) => setForm((p) => ({ ...p, priority: v }))}>
-                    <SelectTrigger className="mt-1 h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">Category</Label>
-                  <Select value={form.category} onValueChange={(v) => setForm((p) => ({ ...p, category: v }))}>
-                    <SelectTrigger className="mt-1 h-8 text-sm">
-                      <SelectValue placeholder="Select…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex gap-2 pt-1">
+              <Textarea
+                autoFocus
+                rows={4}
+                placeholder="Describe the bug — what happened, where, and any steps to reproduce..."
+                value={form.text}
+                onChange={(e) => setForm((p) => ({ ...p, text: e.target.value }))}
+              />
+              <div className="flex items-center gap-2">
+                <Select value={form.priority} onValueChange={(v) => setForm((p) => ({ ...p, priority: v }))}>
+                  <SelectTrigger className="h-8 w-32 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={form.category} onValueChange={(v) => setForm((p) => ({ ...p, category: v }))}>
+                  <SelectTrigger className="h-8 w-36 text-xs">
+                    <SelectValue placeholder="Category…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex-1" />
                 <Button size="sm" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
                 <Button
                   size="sm"
-                  disabled={createMutation.isPending || !form.title.trim() || !form.description.trim()}
+                  disabled={createMutation.isPending || !form.text.trim()}
                   onClick={() => createMutation.mutate(form)}
                 >
                   {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-                  Submit Report
+                  Submit
                 </Button>
               </div>
             </div>
