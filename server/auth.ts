@@ -163,9 +163,18 @@ export async function setupAuth(app: Express) {
   console.log("Email/password authentication setup completed successfully");
 }
 
-export const isAuthenticated: RequestHandler = (req, res, next) => {
-  if (req.session?.userId) {
-    return next();
+export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  if (!req.session?.userId) {
+    return res.status(401).json({ message: "Unauthorized" });
   }
-  return res.status(401).json({ message: "Unauthorized" });
+  try {
+    const user = await storage.getUser(req.session.userId);
+    if (!user || !user.isActive) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    (req as any).user = user;
+    return next();
+  } catch {
+    return res.status(500).json({ message: "Authentication error" });
+  }
 };
