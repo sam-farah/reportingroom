@@ -630,6 +630,9 @@ export const scanRequests = pgTable("scan_requests", {
   notes: text("notes"),
   requestDate: varchar("request_date", { length: 20 }).notNull(),
   scheduledAppointmentId: integer("scheduled_appointment_id").references(() => appointments.id),
+  source: varchar("source", { length: 20 }).notNull().default("internal"),
+  submittedByReferrerId: varchar("submitted_by_referrer_id", { length: 36 }),
+  referrerName: varchar("referrer_name", { length: 200 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

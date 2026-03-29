@@ -16,6 +16,8 @@ import PatientPortalInvite from "@/pages/patient-portal/invite";
 import PatientPortalLogin from "@/pages/patient-portal/login";
 import PatientPortalDashboard from "@/pages/patient-portal/dashboard";
 import PatientRegistrationPage from "@/pages/patient-registration";
+import ReferralFormPage from "@/pages/referral-form";
+import ReferrerPortal from "@/pages/referrer-portal";
 import { Loader2 } from "lucide-react";
 
 function Router() {
@@ -43,6 +45,10 @@ function Router() {
 
       {/* Patient Self-Registration (public) */}
       <Route path="/patient-registration/:token" component={PatientRegistrationPage} />
+
+      {/* Public & Referrer Portal (no auth required) */}
+      <Route path="/referral-form/:clinicId" component={ReferralFormPage} />
+      <Route path="/referrer-portal" component={ReferrerPortal} />
 
       {!isAuthenticated ? (
         <>

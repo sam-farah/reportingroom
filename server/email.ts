@@ -325,3 +325,46 @@ export async function sendReportEmail(params: {
     throw err;
   }
 }
+
+export async function sendExternalReferralNotification(params: {
+  clinicEmail: string;
+  clinicName: string;
+  patientName: string;
+  scanTypes: string[];
+  urgency: string;
+  referringDoctorName: string;
+  source: "web_form" | "referrer_portal";
+  referrerName?: string;
+}): Promise<void> {
+  const urgencyColors: Record<string, string> = {
+    routine: "#2563eb", urgent: "#d97706", asap: "#dc2626", stat: "#7c3aed"
+  };
+  const urgencyColor = urgencyColors[params.urgency.toLowerCase()] || "#2563eb";
+  const sourceLabel = params.source === "referrer_portal" ? "Referrer Portal" : "Public Referral Form";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1a1a2e;">
+      <div style="background: #f0f7ff; border-left: 4px solid #2563eb; border-radius: 4px; padding: 16px 20px; margin-bottom: 24px;">
+        <h2 style="margin: 0 0 4px; color: #1e40af; font-size: 18px;">New Referral Received</h2>
+        <p style="margin: 0; color: #555; font-size: 13px;">via ${sourceLabel}${params.referrerName ? ` — ${params.referrerName}` : ""}</p>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <tr><td style="padding: 8px 0; color: #666; width: 40%;">Patient</td><td style="padding: 8px 0; font-weight: 600;">${params.patientName}</td></tr>
+        <tr><td style="padding: 8px 0; color: #666;">Referring Doctor</td><td style="padding: 8px 0;">${params.referringDoctorName || "Not specified"}</td></tr>
+        <tr><td style="padding: 8px 0; color: #666;">Scan Type(s)</td><td style="padding: 8px 0;">${params.scanTypes.join(", ")}</td></tr>
+        <tr><td style="padding: 8px 0; color: #666;">Urgency</td><td style="padding: 8px 0;"><span style="display:inline-block;padding:2px 10px;border-radius:99px;background:${urgencyColor};color:#fff;font-size:12px;text-transform:capitalize;">${params.urgency}</span></td></tr>
+      </table>
+      <p style="margin: 24px 0 0; font-size: 13px; color: #888;">Log in to ${params.clinicName}'s portal to review this referral in the Requests tab.</p>
+    </div>`;
+
+  try {
+    await sgMail.send({
+      to: params.clinicEmail,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
+      subject: `New Referral: ${params.patientName} — ${params.scanTypes[0] || "Scan"}`,
+      html,
+    });
+  } catch (err: any) {
+    console.error("Failed to send referral notification email:", err?.response?.body?.errors ?? err?.message);
+  }
+}

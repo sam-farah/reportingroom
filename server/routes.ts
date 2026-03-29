@@ -5,7 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
-import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail } from "./email";
+import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification } from "./email";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -3744,6 +3744,305 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteScanRequest(id);
       res.json({ success: true });
     } catch { res.status(500).json({ error: "Failed to delete scan request" }); }
+  });
+
+  // ─── REFERRAL SYSTEM ────────────────────────────────────────────────────────
+
+  // Referrer role middleware
+  const isReferrer = async (req: any, res: any, next: any) => {
+    if (!req.session?.userId) return res.status(401).json({ message: "Unauthorized" });
+    const user = await storage.getUser(req.session.userId);
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (user.role !== "referrer") return res.status(403).json({ message: "Referrer access required" });
+    req.user = user;
+    return next();
+  };
+
+  // Public: get clinic info for the referral form header
+  app.get("/api/public/clinic/:clinicId/info", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      const clinic = await storage.getClinic(clinicId);
+      if (!clinic || !clinic.isActive) return res.status(404).json({ error: "Clinic not found" });
+      res.json({ name: clinic.name, logoUrl: clinic.logoUrl, phone: clinic.phone, address: clinic.address });
+    } catch { res.status(500).json({ error: "Failed" }); }
+  });
+
+  // Public: submit a referral from the web form (no auth)
+  app.post("/api/public/referral/:clinicId", async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.clinicId);
+      const clinic = await storage.getClinic(clinicId);
+      if (!clinic || !clinic.isActive) return res.status(404).json({ error: "Clinic not found" });
+
+      const {
+        patientName, patientDob, patientPhone, patientEmail,
+        referringDoctorName, referringDoctorPhone, referringDoctorProviderNumber, referringDoctorPractice,
+        scanTypes, urgency, clinicalIndication, notes,
+      } = req.body;
+
+      if (!patientName || !scanTypes?.length) {
+        return res.status(400).json({ error: "Patient name and at least one scan type are required" });
+      }
+
+      // Simple honeypot check
+      if (req.body._hp) return res.status(400).json({ error: "Invalid submission" });
+
+      const today = new Date().toISOString().split("T")[0];
+      await storage.createScanRequest({
+        clinicId,
+        patientName,
+        patientDob: patientDob || null,
+        patientPhone: patientPhone || null,
+        patientEmail: patientEmail || null,
+        referringDoctorName: referringDoctorName || null,
+        referringDoctorProviderNumber: referringDoctorProviderNumber || null,
+        scanTypes: Array.isArray(scanTypes) ? scanTypes : [scanTypes],
+        urgency: urgency || "routine",
+        clinicalIndication: clinicalIndication || null,
+        notes: notes ? `Referring practice: ${referringDoctorPractice || ""}. Referring doctor phone: ${referringDoctorPhone || ""}. ${notes}`.trim() : (referringDoctorPractice || referringDoctorPhone ? `Referring practice: ${referringDoctorPractice || ""}. Phone: ${referringDoctorPhone || ""}` : null),
+        status: "pending",
+        requestDate: today,
+        source: "web_form",
+        submittedByReferrerId: null,
+        referrerName: referringDoctorName || "Web Form",
+        patientUrNumber: null,
+        patientId: null,
+        referringDoctorId: null,
+        scheduledAppointmentId: null,
+        clinicalHistory: null,
+      });
+
+      // Email notification to clinic
+      if (clinic.email) {
+        await sendExternalReferralNotification({
+          clinicEmail: clinic.email,
+          clinicName: clinic.name,
+          patientName,
+          scanTypes: Array.isArray(scanTypes) ? scanTypes : [scanTypes],
+          urgency: urgency || "routine",
+          referringDoctorName: referringDoctorName || "Not specified",
+          source: "web_form",
+        }).catch(console.error);
+      }
+
+      res.json({ success: true, message: "Referral submitted successfully" });
+    } catch (e) {
+      console.error("Public referral error:", e);
+      res.status(500).json({ error: "Failed to submit referral" });
+    }
+  });
+
+  // Referrer: get own info + clinic info
+  app.get("/api/referrer/me", isReferrer, async (req: any, res) => {
+    try {
+      const user = req.user;
+      const clinic = user.clinicId ? await storage.getClinic(user.clinicId) : null;
+      const { passwordHash: _, ...safeUser } = user;
+      res.json({ user: safeUser, clinic: clinic ? { name: clinic.name, logoUrl: clinic.logoUrl, phone: clinic.phone } : null });
+    } catch { res.status(500).json({ error: "Failed" }); }
+  });
+
+  // Referrer: get limited calendar (busy slots, no patient names)
+  app.get("/api/referrer/calendar", isReferrer, async (req: any, res) => {
+    try {
+      const clinicId = req.user.clinicId;
+      if (!clinicId) return res.status(403).json({ error: "No clinic associated" });
+      // Fetch 3 months of appointments
+      const now = new Date();
+      const future = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+      const past = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const [allAppts, allEvents] = await Promise.all([
+        storage.getAppointmentsByDateRange(past, future),
+        storage.getCalendarEventsByDateRange(past, future),
+      ]);
+      const sanitized = allAppts
+        .filter((a: any) => a.clinicId === clinicId && a.status !== "cancelled")
+        .map((a: any) => ({
+          id: a.id,
+          startTime: a.startTime,
+          endTime: a.endTime,
+          scanType: a.scanType,
+          status: "booked",
+        }));
+      const filteredEvents = allEvents.filter((e: any) => e.clinicId === clinicId);
+      res.json({ appointments: sanitized, events: filteredEvents });
+    } catch { res.status(500).json({ error: "Failed to load calendar" }); }
+  });
+
+  // Referrer: book an appointment (creates scan request + appointment)
+  app.post("/api/referrer/appointments", isReferrer, async (req: any, res) => {
+    try {
+      const clinicId = req.user.clinicId;
+      if (!clinicId) return res.status(403).json({ error: "No clinic associated" });
+      const {
+        patientName, patientDob, patientPhone, patientEmail,
+        scanType, startTime, endTime, notes, clinicalIndication,
+      } = req.body;
+      if (!patientName || !scanType || !startTime || !endTime) {
+        return res.status(400).json({ error: "Patient name, scan type, and time are required" });
+      }
+      const clinic = await storage.getClinic(clinicId);
+
+      // Create appointment
+      const appointment = await storage.createAppointment({
+        clinicId,
+        patientName,
+        patientPhone: patientPhone || null,
+        scanType,
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        notes: notes || null,
+        status: "scheduled",
+        sonographerId: null,
+        patientId: null,
+      });
+
+      // Create corresponding scan request
+      const today = new Date().toISOString().split("T")[0];
+      await storage.createScanRequest({
+        clinicId,
+        patientName,
+        patientDob: patientDob || null,
+        patientPhone: patientPhone || null,
+        patientEmail: patientEmail || null,
+        referringDoctorName: `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim(),
+        referringDoctorProviderNumber: null,
+        scanTypes: [scanType],
+        urgency: "routine",
+        clinicalIndication: clinicalIndication || null,
+        notes: notes || null,
+        status: "scheduled",
+        requestDate: today,
+        source: "referrer_portal",
+        submittedByReferrerId: req.user.id,
+        referrerName: `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim(),
+        scheduledAppointmentId: appointment.id,
+        patientUrNumber: null,
+        patientId: null,
+        referringDoctorId: null,
+        clinicalHistory: null,
+      });
+
+      // Notify clinic
+      if (clinic?.email) {
+        await sendExternalReferralNotification({
+          clinicEmail: clinic.email,
+          clinicName: clinic.name,
+          patientName,
+          scanTypes: [scanType],
+          urgency: "routine",
+          referringDoctorName: `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim(),
+          source: "referrer_portal",
+          referrerName: `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim(),
+        }).catch(console.error);
+      }
+
+      res.json({ success: true, appointment });
+    } catch (e) {
+      console.error("Referrer booking error:", e);
+      res.status(500).json({ error: "Failed to create booking" });
+    }
+  });
+
+  // Referrer: get own submitted requests
+  app.get("/api/referrer/requests", isReferrer, async (req: any, res) => {
+    try {
+      const all = await storage.getScanRequests(req.user.clinicId);
+      const mine = all.filter((r: any) => r.submittedByReferrerId === req.user.id || r.source === "referrer_portal");
+      res.json(mine);
+    } catch { res.status(500).json({ error: "Failed" }); }
+  });
+
+  // Admin: list referrer accounts for this clinic
+  app.get("/api/admin/referrers", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      if (!clinicId) return res.status(403).json({ error: "No clinic" });
+      const allUsers = await storage.getUsersByClinic(clinicId);
+      const referrers = allUsers.filter((u: any) => u.role === "referrer");
+      res.json(referrers.map(({ passwordHash: _, ...u }: any) => u));
+    } catch { res.status(500).json({ error: "Failed" }); }
+  });
+
+  // Admin: create a referrer account
+  app.post("/api/admin/referrers", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const actingUser = await storage.getUser(req.session.userId);
+      if (!clinicId || !["clinic_owner", "admin"].includes(actingUser?.role || "")) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const bcrypt = await import("bcryptjs");
+      const crypto = await import("crypto");
+      const { firstName, lastName, email, password, practiceName } = req.body;
+      if (!email || !password || !firstName || !lastName) {
+        return res.status(400).json({ error: "First name, last name, email, and password are required" });
+      }
+      const existing = await storage.getUserByEmail(email);
+      if (existing) return res.status(409).json({ error: "Email already in use" });
+      const passwordHash = await bcrypt.hash(password, 12);
+      const user = await storage.upsertUser({
+        id: crypto.randomUUID(),
+        email,
+        firstName,
+        lastName,
+        passwordHash,
+        role: "referrer",
+        clinicId,
+        isActive: true,
+      });
+      const { passwordHash: _, ...safeUser } = user;
+      res.status(201).json(safeUser);
+    } catch (e) {
+      console.error("Create referrer error:", e);
+      res.status(500).json({ error: "Failed to create referrer account" });
+    }
+  });
+
+  // Admin: toggle referrer account active status
+  app.patch("/api/admin/referrers/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const actingUser = await storage.getUser(req.session.userId);
+      if (!clinicId || !["clinic_owner", "admin"].includes(actingUser?.role || "")) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const target = await storage.getUser(req.params.id);
+      if (!target || target.clinicId !== clinicId || target.role !== "referrer") {
+        return res.status(404).json({ error: "Referrer not found" });
+      }
+      await storage.upsertUser({ ...target, isActive: !target.isActive });
+      res.json({ success: true, isActive: !target.isActive });
+    } catch { res.status(500).json({ error: "Failed" }); }
+  });
+
+  // Admin: delete referrer account
+  app.delete("/api/admin/referrers/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const actingUser = await storage.getUser(req.session.userId);
+      if (!clinicId || !["clinic_owner", "admin"].includes(actingUser?.role || "")) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const target = await storage.getUser(req.params.id);
+      if (!target || target.clinicId !== clinicId || target.role !== "referrer") {
+        return res.status(404).json({ error: "Referrer not found" });
+      }
+      await db.delete(users).where(eq(users.id, req.params.id));
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Failed" }); }
+  });
+
+  // Admin: get embed config (base URL for iframe snippets)
+  app.get("/api/admin/embed-config", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const proto = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host;
+      const baseUrl = `${proto}://${host}`;
+      res.json({ baseUrl, clinicId });
+    } catch { res.status(500).json({ error: "Failed" }); }
   });
 
   const httpServer = createServer(app);

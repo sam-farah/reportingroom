@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image } from "lucide-react";
+import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image, CheckCircle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -636,6 +636,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="templates" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🎨 Report Design</TabsTrigger>
           <TabsTrigger value="blank-worksheets" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🗂️ Blank Worksheets</TabsTrigger>
           <TabsTrigger value="kiosk" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🖥️ Kiosk</TabsTrigger>
+          <TabsTrigger value="referral-system" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🔗 Referral System</TabsTrigger>
           <TabsTrigger value="backup" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💾 Backup</TabsTrigger>
         </TabsList>
 
@@ -1886,8 +1887,229 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           </Card>
         </TabsContent>
 
+        <TabsContent value="referral-system" className="space-y-6">
+          <ReferralSystemTab />
+        </TabsContent>
+
         </div>
       </Tabs>
     </div>
   );
 }
+
+function ReferralSystemTab() {
+  const { toast } = useToast();
+  const [showAddReferrer, setShowAddReferrer] = useState(false);
+  const [addForm, setAddForm] = useState({ firstName: "", lastName: "", email: "", password: "", practiceName: "" });
+  const [creating, setCreating] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const { data: embedConfig } = useQuery<{ baseUrl: string; clinicId: number }>({
+    queryKey: ["/api/admin/embed-config"],
+  });
+
+  const { data: referrers = [], refetch: refetchReferrers } = useQuery<any[]>({
+    queryKey: ["/api/admin/referrers"],
+  });
+
+  const referralFormUrl = embedConfig ? `${embedConfig.baseUrl}/referral-form/${embedConfig.clinicId}` : "";
+  const portalUrl = embedConfig ? `${embedConfig.baseUrl}/referrer-portal` : "";
+
+  const iframeSnippet = (url: string, height = "700") =>
+    `<iframe\n  src="${url}"\n  width="100%"\n  height="${height}"\n  frameborder="0"\n  style="border-radius:8px;"\n  allow="clipboard-write"\n></iframe>`;
+
+  const copy = async (text: string, key: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const createReferrer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      const r = await apiRequest("/api/admin/referrers", "POST", addForm);
+      const data = await r.json();
+      if (!r.ok) { toast({ title: "Error", description: data.error, variant: "destructive" }); return; }
+      toast({ title: "Referrer account created", description: `${addForm.firstName} ${addForm.lastName} can now log in at /referrer-portal` });
+      setShowAddReferrer(false);
+      setAddForm({ firstName: "", lastName: "", email: "", password: "", practiceName: "" });
+      refetchReferrers();
+    } catch { toast({ title: "Error", description: "Failed to create account", variant: "destructive" }); }
+    finally { setCreating(false); }
+  };
+
+  const toggleReferrer = async (id: string) => {
+    await apiRequest(`/api/admin/referrers/${id}/status`, "PATCH", {});
+    refetchReferrers();
+  };
+
+  const deleteReferrer = async (id: string, name: string) => {
+    if (!confirm(`Delete referrer account for ${name}? This cannot be undone.`)) return;
+    await apiRequest(`/api/admin/referrers/${id}`, "DELETE", {});
+    refetchReferrers();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-800">Referral System</h2>
+        <p className="text-sm text-gray-500 mt-0.5">Embed referral tools on your website and manage referrer portal accounts.</p>
+      </div>
+
+      {/* Embed codes */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <ExternalLink className="w-4 h-4 text-blue-600" />
+              Public Referral Form
+            </CardTitle>
+            <p className="text-xs text-gray-500">Embed this on your website so any GP can submit a referral without logging in.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label className="text-xs text-gray-500 mb-1 block">Direct URL</Label>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={referralFormUrl} className="font-mono text-xs bg-gray-50" />
+                <Button size="sm" variant="outline" onClick={() => copy(referralFormUrl, "form-url")}>
+                  {copiedKey === "form-url" ? <CheckCircle className="w-3.5 h-3.5 text-green-600" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => window.open(referralFormUrl, "_blank")}>
+                  <Eye className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500 mb-1 block">Embed Code</Label>
+              <pre className="text-xs bg-gray-900 text-green-400 rounded p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">
+                {iframeSnippet(referralFormUrl, "780")}
+              </pre>
+              <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => copy(iframeSnippet(referralFormUrl, "780"), "form-embed")}>
+                {copiedKey === "form-embed" ? "Copied!" : "Copy Embed Code"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Users className="w-4 h-4 text-violet-600" />
+              Referrer Portal
+            </CardTitle>
+            <p className="text-xs text-gray-500">Password-protected portal for registered referrers to book appointments and track referrals.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label className="text-xs text-gray-500 mb-1 block">Direct URL</Label>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={portalUrl} className="font-mono text-xs bg-gray-50" />
+                <Button size="sm" variant="outline" onClick={() => copy(portalUrl, "portal-url")}>
+                  {copiedKey === "portal-url" ? <CheckCircle className="w-3.5 h-3.5 text-green-600" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => window.open(portalUrl, "_blank")}>
+                  <Eye className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500 mb-1 block">Embed Code</Label>
+              <pre className="text-xs bg-gray-900 text-green-400 rounded p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">
+                {iframeSnippet(portalUrl, "700")}
+              </pre>
+              <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => copy(iframeSnippet(portalUrl, "700"), "portal-embed")}>
+                {copiedKey === "portal-embed" ? "Copied!" : "Copy Embed Code"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Referrer account management */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <UserRound className="w-4 h-4 text-blue-600" />
+                Referrer Accounts
+              </CardTitle>
+              <p className="text-xs text-gray-500 mt-0.5">Manage portal login accounts for referring doctors and practices.</p>
+            </div>
+            <Button size="sm" onClick={() => setShowAddReferrer(true)} className="gap-1.5">
+              <Plus className="w-4 h-4" /> Add Referrer
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {showAddReferrer && (
+            <form onSubmit={createReferrer} className="border rounded-lg p-4 bg-blue-50 space-y-3 mb-4">
+              <p className="text-sm font-medium text-gray-700">Create Referrer Account</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">First Name *</Label>
+                  <Input required value={addForm.firstName} onChange={(e) => setAddForm((p) => ({ ...p, firstName: e.target.value }))} className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs">Last Name *</Label>
+                  <Input required value={addForm.lastName} onChange={(e) => setAddForm((p) => ({ ...p, lastName: e.target.value }))} className="mt-1" />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Email *</Label>
+                <Input required type="email" value={addForm.email} onChange={(e) => setAddForm((p) => ({ ...p, email: e.target.value }))} className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs">Practice Name</Label>
+                <Input value={addForm.practiceName} onChange={(e) => setAddForm((p) => ({ ...p, practiceName: e.target.value }))} className="mt-1" placeholder="e.g. City Medical Centre" />
+              </div>
+              <div>
+                <Label className="text-xs">Password *</Label>
+                <Input required type="password" value={addForm.password} onChange={(e) => setAddForm((p) => ({ ...p, password: e.target.value }))} className="mt-1" placeholder="Temporary password" />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowAddReferrer(false)}>Cancel</Button>
+                <Button type="submit" size="sm" disabled={creating}>
+                  {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                  Create Account
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {referrers.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <UserRound className="w-10 h-10 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No referrer accounts yet.</p>
+              <p className="text-xs mt-1">Add referrer accounts so GPs and practices can log in to the portal.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {referrers.map((ref: any) => (
+                <div key={ref.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50 gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm text-gray-800">{ref.firstName} {ref.lastName}</p>
+                    <p className="text-xs text-gray-500">{ref.email}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ref.isActive ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"}`}>
+                      {ref.isActive ? "Active" : "Disabled"}
+                    </span>
+                    <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => toggleReferrer(ref.id)}>
+                      {ref.isActive ? "Disable" : "Enable"}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 h-7 px-2" onClick={() => deleteReferrer(ref.id, `${ref.firstName} ${ref.lastName}`)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+

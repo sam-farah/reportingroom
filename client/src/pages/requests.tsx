@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Plus, Search, Edit, Trash2, User, Phone, Mail, Stethoscope,
   ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
-  MapPin, Hash, Building2, ChevronRight, X, Printer
+  MapPin, Hash, Building2, ChevronRight, X, Printer, Globe
 } from "lucide-react";
 import { format } from "date-fns";
 import type { ScanRequest, ReferringDoctor, Patient, Clinic } from "@shared/schema";
@@ -637,6 +637,12 @@ export default function Requests() {
                             <Badge className={`text-xs flex items-center gap-1 ${stsCfg.color}`}>
                               <StsIcon className="w-3 h-3" />{stsCfg.label}
                             </Badge>
+                            {(r as any).source && (r as any).source !== "internal" && (
+                              <Badge className="text-xs flex items-center gap-1 bg-violet-100 text-violet-700">
+                                <Globe className="w-3 h-3" />
+                                {(r as any).source === "web_form" ? "Web Form" : "Referrer Portal"}
+                              </Badge>
+                            )}
                           </div>
                           {r.referringDoctorName && (
                             <p className="text-sm text-gray-600 flex items-center gap-1">
@@ -953,6 +959,19 @@ export default function Requests() {
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Referring Doctor</p>
                     <p className="font-semibold">{viewingRequest.referringDoctorName}</p>
                     {viewingRequest.referringDoctorProviderNumber && <p className="text-sm text-gray-600">Provider #: {viewingRequest.referringDoctorProviderNumber}</p>}
+                  </div>
+                )}
+                {(viewingRequest as any).source && (viewingRequest as any).source !== "internal" && (
+                  <div className="flex items-center gap-2 rounded-lg p-2.5 bg-violet-50 border border-violet-200">
+                    <Globe className="w-4 h-4 text-violet-600 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-violet-700">
+                        {(viewingRequest as any).source === "web_form" ? "Received via Web Referral Form" : "Received via Referrer Portal"}
+                      </p>
+                      {(viewingRequest as any).referrerName && (
+                        <p className="text-xs text-violet-600">Submitted by: {(viewingRequest as any).referrerName}</p>
+                      )}
+                    </div>
                   </div>
                 )}
                 {(viewingRequest.scanTypes ?? []).length > 0 && (
