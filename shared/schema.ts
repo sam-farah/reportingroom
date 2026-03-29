@@ -722,6 +722,7 @@ export const bugReports = pgTable("bug_reports", {
   status: varchar("status", { length: 20 }).notNull().default("open"),
   category: varchar("category", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
 });
 
 export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: true, createdAt: true });

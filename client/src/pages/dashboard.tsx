@@ -74,6 +74,12 @@ export default function Dashboard() {
     retry: false,
   });
 
+  const { data: scanRequests } = useQuery<{ status: string }[]>({
+    queryKey: ["/api/scan-requests"],
+    retry: false,
+  });
+  const pendingRequestsCount = (scanRequests ?? []).filter(r => r.status === "pending").length;
+
   const visibleNav = NAV_ITEMS.filter(item => !item.adminOnly || isOwnerOrAdmin);
 
   return (
@@ -156,7 +162,14 @@ export default function Dashboard() {
                         : "text-gray-500 border-transparent hover:text-gray-800 hover:bg-gray-50"
                   }`}
                 >
-                  <Icon className={`w-5 h-5 ${isActive ? "text-blue-600" : item.comingSoon ? "text-gray-300" : "text-gray-500"}`} />
+                  <span className="relative inline-flex">
+                    <Icon className={`w-5 h-5 ${isActive ? "text-blue-600" : item.comingSoon ? "text-gray-300" : "text-gray-500"}`} />
+                    {item.id === "requests" && pendingRequestsCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                        {pendingRequestsCount > 99 ? "99+" : pendingRequestsCount}
+                      </span>
+                    )}
+                  </span>
                   <span>{item.label}</span>
                 </button>
               );

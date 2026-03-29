@@ -1173,13 +1173,35 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 />
               </div>
               <div>
-                <Label htmlFor="docFile">File</Label>
-                <Input
-                  id="docFile"
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                />
+                <Label>File</Label>
+                <div
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) setUploadFile(file);
+                  }}
+                  className={`mt-1 flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-5 cursor-pointer transition-colors ${uploadFile ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-blue-400 hover:bg-blue-50/40"}`}
+                  onClick={() => document.getElementById("docFile")?.click()}
+                >
+                  <Upload className="w-6 h-6 text-gray-400" />
+                  {uploadFile ? (
+                    <span className="text-sm font-medium text-blue-700 text-center break-all">{uploadFile.name}</span>
+                  ) : (
+                    <>
+                      <span className="text-sm text-gray-600">Drag and drop a file here, or <span className="text-blue-600 font-medium">browse</span></span>
+                      <span className="text-xs text-gray-400">Images or PDF</span>
+                    </>
+                  )}
+                  <input
+                    id="docFile"
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  />
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button variant="outline" onClick={() => setIsUploadDialogOpen(false)}>

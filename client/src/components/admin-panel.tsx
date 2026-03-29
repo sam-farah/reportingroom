@@ -2295,57 +2295,65 @@ function BugReportsTab() {
             </div>
           ) : (
             <div className="space-y-3">
-              {filtered.map((bug) => (
-                <div key={bug.id} className="border rounded-lg p-4 bg-white">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[bug.status ?? "open"]}`}>
-                          {STATUS_LABELS[bug.status ?? "open"]}
-                        </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_STYLES[bug.priority ?? "medium"]}`}>
-                          {(bug.priority ?? "medium").charAt(0).toUpperCase() + (bug.priority ?? "medium").slice(1)} priority
-                        </span>
-                        {bug.category && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
-                            {bug.category}
+              {filtered.map((bug) => {
+                const isResolved = bug.status === "resolved";
+                return (
+                  <div key={bug.id} className={`border rounded-lg p-4 transition-all ${isResolved ? "bg-gray-50 opacity-60" : "bg-white"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[bug.status ?? "open"]}`}>
+                            {STATUS_LABELS[bug.status ?? "open"]}
                           </span>
-                        )}
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_STYLES[bug.priority ?? "medium"]}`}>
+                            {(bug.priority ?? "medium").charAt(0).toUpperCase() + (bug.priority ?? "medium").slice(1)} priority
+                          </span>
+                          {bug.category && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
+                              {bug.category}
+                            </span>
+                          )}
+                        </div>
+                        <p className={`font-medium text-sm ${isResolved ? "line-through text-gray-400" : "text-gray-900"}`}>{bug.title}</p>
+                        <p className={`text-xs mt-1 whitespace-pre-wrap ${isResolved ? "text-gray-400" : "text-gray-600"}`}>{bug.description}</p>
+                        <p className="text-xs text-gray-400 mt-2">
+                          Reported by {bug.reportedByName ?? "Unknown"} · {bug.createdAt ? new Date(bug.createdAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : ""}
+                          {isResolved && (bug as any).resolvedAt && (
+                            <span className="ml-2 text-green-600 font-medium">
+                              ✓ Resolved {new Date((bug as any).resolvedAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
+                            </span>
+                          )}
+                        </p>
                       </div>
-                      <p className="font-medium text-sm text-gray-900">{bug.title}</p>
-                      <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{bug.description}</p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Reported by {bug.reportedByName ?? "Unknown"} · {bug.createdAt ? new Date(bug.createdAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : ""}
-                      </p>
-                    </div>
-                    <div className="flex flex-col gap-1.5 flex-shrink-0">
-                      <Select
-                        value={bug.status ?? "open"}
-                        onValueChange={(v) => updateStatus.mutate({ id: bug.id, status: v })}
-                      >
-                        <SelectTrigger className="h-7 w-32 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="open">Open</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="resolved">Resolved</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
-                        onClick={() => {
-                          if (confirm("Delete this bug report?")) deleteMutation.mutate(bug.id);
-                        }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
-                      </Button>
+                      <div className="flex flex-col gap-1.5 flex-shrink-0">
+                        <Select
+                          value={bug.status ?? "open"}
+                          onValueChange={(v) => updateStatus.mutate({ id: bug.id, status: v })}
+                        >
+                          <SelectTrigger className="h-7 w-32 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="open">Open</SelectItem>
+                            <SelectItem value="in_progress">In Progress</SelectItem>
+                            <SelectItem value="resolved">Resolved</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
+                          onClick={() => {
+                            if (confirm("Delete this bug report?")) deleteMutation.mutate(bug.id);
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

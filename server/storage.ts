@@ -1380,7 +1380,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateBugReport(id: number, data: Partial<InsertBugReport>): Promise<BugReport | undefined> {
-    const [updated] = await db.update(bugReports).set(data).where(eq(bugReports.id, id)).returning();
+    const payload: any = { ...data };
+    if (data.status === "resolved") payload.resolvedAt = new Date();
+    const [updated] = await db.update(bugReports).set(payload).where(eq(bugReports.id, id)).returning();
     return updated;
   }
 
