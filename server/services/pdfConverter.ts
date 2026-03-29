@@ -1,9 +1,20 @@
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 
 const execAsync = promisify(exec);
+
+// Resolve the full path to pdftoppm at startup.
+// Node's exec uses a stripped-down PATH that doesn't include nix store entries,
+// but bash -c does — so we use bash to locate the binary once and cache it.
+let PDFTOPPM: string = 'pdftoppm';
+try {
+  PDFTOPPM = execSync('bash -c "which pdftoppm"', { encoding: 'utf8' }).trim();
+  console.log(`[pdfConverter] pdftoppm found at: ${PDFTOPPM}`);
+} catch {
+  console.warn('[pdfConverter] pdftoppm not found via bash; will try bare name and likely fail');
+}
 
 export async function convertPdfToImage(pdfPath: string): Promise<string> {
   if (!fs.existsSync(pdfPath)) {
@@ -20,7 +31,7 @@ export async function convertPdfToImage(pdfPath: string): Promise<string> {
     // -png    : output PNG
     // -singlefile : writes exactly one file (no page-number suffix) → <prefix>.png
     // -f 1 -l 1 : first page only
-    const cmd = `pdftoppm -r 200 -png -singlefile -f 1 -l 1 "${pdfPath}" "${tempPrefix}"`;
+    const cmd = `"${PDFTOPPM}" -r 200 -png -singlefile -f 1 -l 1 "${pdfPath}" "${tempPrefix}"`;
     console.log('PDF→image: running pdftoppm:', cmd);
     await execAsync(cmd);
 
