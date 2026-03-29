@@ -210,8 +210,9 @@ export async function sendAppointmentReminder(params: {
     } catch {}
   }
 
-  const dateStr = params.appointmentDate.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const timeStr = params.appointmentDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const tzOpts = { timeZone: 'Australia/Sydney' };
+  const dateStr = params.appointmentDate.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', ...tzOpts });
+  const timeStr = params.appointmentDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: true, ...tzOpts });
 
   const instructionsSection = params.reminderInstructions
     ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:20px;margin-top:20px;">

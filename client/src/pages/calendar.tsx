@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
@@ -874,6 +874,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   }}
                 >
                   {referrerName && <span className="inline-block bg-orange-100 text-orange-700 rounded px-0.5 mr-0.5 font-semibold" title={`Referred by ${referrerName}`}>R</span>}
+                  {apt.status === "confirmed" && <CheckCircle className="w-3 h-3 text-emerald-600 inline mr-0.5 flex-shrink-0" />}
                   {format(new Date(apt.appointmentDate), "HH:mm")} - {apt.patientName}
                 </div>
               );
@@ -1161,7 +1162,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 ↗ {aptReferrerName}
                               </div>
                             )}
-                            <div className={`text-sm font-medium truncate ${apt.status === "cancelled" ? "line-through" : ""}`}>{apt.patientName}</div>
+                            <div className={`text-sm font-medium truncate flex items-center gap-1 ${apt.status === "cancelled" ? "line-through" : ""}`}>
+                              {apt.status === "confirmed" && <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />}
+                              {apt.patientName}
+                            </div>
                             <div className="text-xs truncate">{format(new Date(apt.appointmentDate), "h:mm a")} - {apt.scanType}</div>
                           </div>
                           {apt.isInvoiced && (
@@ -1300,7 +1304,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                   {weekReferrerName && (
                                     <div className="text-[10px] bg-orange-100 text-orange-700 rounded px-0.5 mb-0.5 truncate font-semibold">↗ {weekReferrerName}</div>
                                   )}
-                                  <div className={`font-medium truncate ${apt.status === "cancelled" ? "line-through" : ""}`}>{apt.patientName}</div>
+                                  <div className={`font-medium truncate flex items-center gap-0.5 ${apt.status === "cancelled" ? "line-through" : ""}`}>
+                                    {apt.status === "confirmed" && <CheckCircle className="w-3 h-3 text-emerald-600 flex-shrink-0" />}
+                                    {apt.patientName}
+                                  </div>
                                   <div className="text-[10px] truncate">{format(new Date(apt.appointmentDate), "h:mm a")}</div>
                                 </div>
                                 {apt.isInvoiced && (
@@ -2140,6 +2147,20 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     <div className="pt-4 border-t space-y-2">
                       {/* Top row: status actions */}
                       <div className="flex gap-2 flex-wrap">
+                        {viewingAppointment.status === "scheduled" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300"
+                            onClick={() => {
+                              updateMutation.mutate({ id: viewingAppointment.id, data: { status: "confirmed" } });
+                              setViewingAppointment({ ...viewingAppointment, status: "confirmed" });
+                            }}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Confirm
+                          </Button>
+                        )}
                         {viewingAppointment.status !== "checked_in" && (
                           <Button
                             variant="outline"
