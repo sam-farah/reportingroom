@@ -62,6 +62,7 @@ export default function PatientRegistrationPage() {
       })
       .then((data: PageData) => {
         setPageData(data);
+        document.title = data.clinicName || "Patient Registration";
         setForm({
           firstName: data.patient.firstName || "",
           lastName: data.patient.lastName || "",
