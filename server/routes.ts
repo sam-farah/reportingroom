@@ -4279,6 +4279,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bug Reports
+  app.get("/api/bug-reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const reports = await storage.getBugReports(user.clinicId);
+      res.json(reports);
+    } catch { res.status(500).json({ error: "Failed to fetch bug reports" }); }
+  });
+
+  app.post("/api/bug-reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const { title, description, priority, category } = req.body;
+      if (!title?.trim() || !description?.trim()) {
+        return res.status(400).json({ error: "Title and description are required" });
+      }
+      const report = await storage.createBugReport({
+        clinicId: user.clinicId,
+        reportedByUserId: user.id,
+        reportedByName: user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.email || "Unknown",
+        title: title.trim(),
+        description: description.trim(),
+        priority: priority || "medium",
+        status: "open",
+        category: category || null,
+      });
+      res.json(report);
+    } catch { res.status(500).json({ error: "Failed to create bug report" }); }
+  });
+
+  app.patch("/api/bug-reports/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateBugReport(id, req.body);
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json(updated);
+    } catch { res.status(500).json({ error: "Failed to update bug report" }); }
+  });
+
+  app.delete("/api/bug-reports/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteBugReport(parseInt(req.params.id));
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: "Failed to delete bug report" }); }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

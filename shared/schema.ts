@@ -709,3 +709,21 @@ export const scanTypeContentTemplates = pgTable("scan_type_content_templates", {
 export const insertScanTypeContentTemplateSchema = createInsertSchema(scanTypeContentTemplates).omit({ id: true, updatedAt: true });
 export type ScanTypeContentTemplate = typeof scanTypeContentTemplates.$inferSelect;
 export type InsertScanTypeContentTemplate = z.infer<typeof insertScanTypeContentTemplateSchema>;
+
+// Bug Reports
+export const bugReports = pgTable("bug_reports", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  reportedByUserId: varchar("reported_by_user_id", { length: 36 }).references(() => users.id),
+  reportedByName: varchar("reported_by_name", { length: 200 }),
+  title: varchar("title", { length: 300 }).notNull(),
+  description: text("description").notNull(),
+  priority: varchar("priority", { length: 20 }).notNull().default("medium"),
+  status: varchar("status", { length: 20 }).notNull().default("open"),
+  category: varchar("category", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: true, createdAt: true });
+export type BugReport = typeof bugReports.$inferSelect;
+export type InsertBugReport = z.infer<typeof insertBugReportSchema>;

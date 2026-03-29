@@ -72,6 +72,9 @@ import {
   scanTypeContentTemplates,
   type ScanTypeContentTemplate,
   type InsertScanTypeContentTemplate,
+  bugReports,
+  type BugReport,
+  type InsertBugReport,
   patientRegistrationTokens,
   type PatientRegistrationToken,
 } from "@shared/schema";
@@ -253,6 +256,12 @@ export interface IStorage {
   getScanTypeContentTemplate(clinicId: number, scanType: string): Promise<ScanTypeContentTemplate | undefined>;
   upsertScanTypeContentTemplate(template: InsertScanTypeContentTemplate): Promise<ScanTypeContentTemplate>;
   deleteScanTypeContentTemplate(clinicId: number, scanType: string): Promise<void>;
+
+  // Bug reports
+  getBugReports(clinicId: number): Promise<BugReport[]>;
+  createBugReport(report: InsertBugReport): Promise<BugReport>;
+  updateBugReport(id: number, data: Partial<InsertBugReport>): Promise<BugReport | undefined>;
+  deleteBugReport(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1350,6 +1359,27 @@ export class DatabaseStorage implements IStorage {
   async deleteScanTypeContentTemplate(clinicId: number, scanType: string): Promise<void> {
     await db.delete(scanTypeContentTemplates)
       .where(and(eq(scanTypeContentTemplates.clinicId, clinicId), eq(scanTypeContentTemplates.scanType, scanType)));
+  }
+
+  // Bug report operations
+  async getBugReports(clinicId: number): Promise<BugReport[]> {
+    return db.select().from(bugReports)
+      .where(eq(bugReports.clinicId, clinicId))
+      .orderBy(bugReports.createdAt);
+  }
+
+  async createBugReport(report: InsertBugReport): Promise<BugReport> {
+    const [created] = await db.insert(bugReports).values(report).returning();
+    return created;
+  }
+
+  async updateBugReport(id: number, data: Partial<InsertBugReport>): Promise<BugReport | undefined> {
+    const [updated] = await db.update(bugReports).set(data).where(eq(bugReports.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBugReport(id: number): Promise<void> {
+    await db.delete(bugReports).where(eq(bugReports.id, id));
   }
 }
 

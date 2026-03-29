@@ -14,7 +14,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import ClinicPage from "@/pages/physicians";
-import type { TrainingPair, Physician, ReportTemplate, Clinic, ScanTypeContentTemplate, WorksheetTemplate } from "@shared/schema";
+import type { TrainingPair, Physician, ReportTemplate, Clinic, ScanTypeContentTemplate, WorksheetTemplate, BugReport } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import ScanDurationsTab from "./scan-durations-tab";
 
@@ -648,6 +648,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="kiosk" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🖥️ Kiosk</TabsTrigger>
           <TabsTrigger value="referral-system" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🔗 Referral System</TabsTrigger>
           <TabsTrigger value="backup" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💾 Backup</TabsTrigger>
+          <TabsTrigger value="bug-reports" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🐛 Bug Reports</TabsTrigger>
         </TabsList>
 
         {/* Right content area */}
@@ -1901,6 +1902,10 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <ReferralSystemTab />
         </TabsContent>
 
+        <TabsContent value="bug-reports" className="space-y-6">
+          <BugReportsTab />
+        </TabsContent>
+
         </div>
       </Tabs>
     </div>
@@ -2123,3 +2128,241 @@ function ReferralSystemTab() {
   );
 }
 
+function BugReportsTab() {
+  const { toast } = useToast();
+  const [showForm, setShowForm] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [form, setForm] = useState({ title: "", description: "", priority: "medium", category: "" });
+
+  const { data: bugs = [], isLoading } = useQuery<BugReport[]>({
+    queryKey: ["/api/bug-reports"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: typeof form) => {
+      const res = await apiRequest("/api/bug-reports", "POST", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bug-reports"] });
+      setForm({ title: "", description: "", priority: "medium", category: "" });
+      setShowForm(false);
+      toast({ title: "Bug reported", description: "Your bug report has been saved." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to save bug report.", variant: "destructive" }),
+  });
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const res = await apiRequest(`/api/bug-reports/${id}`, "PATCH", { status });
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bug-reports"] }),
+    onError: () => toast({ title: "Error", description: "Failed to update status.", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/bug-reports/${id}`, "DELETE");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bug-reports"] }),
+    onError: () => toast({ title: "Error", description: "Failed to delete bug report.", variant: "destructive" }),
+  });
+
+  const CATEGORIES = ["UI/Display", "OCR / AI", "Reports", "Calendar", "Admin", "Patients", "Auth / Login", "DICOM", "Other"];
+
+  const PRIORITY_STYLES: Record<string, string> = {
+    low: "bg-gray-100 text-gray-600",
+    medium: "bg-yellow-100 text-yellow-700",
+    high: "bg-red-100 text-red-700",
+  };
+
+  const STATUS_STYLES: Record<string, string> = {
+    open: "bg-orange-100 text-orange-700",
+    in_progress: "bg-blue-100 text-blue-700",
+    resolved: "bg-green-100 text-green-700",
+  };
+
+  const STATUS_LABELS: Record<string, string> = {
+    open: "Open",
+    in_progress: "In Progress",
+    resolved: "Resolved",
+  };
+
+  const filtered = statusFilter === "all" ? bugs : bugs.filter((b) => b.status === statusFilter);
+
+  const counts = {
+    all: bugs.length,
+    open: bugs.filter((b) => b.status === "open").length,
+    in_progress: bugs.filter((b) => b.status === "in_progress").length,
+    resolved: bugs.filter((b) => b.status === "resolved").length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">🐛 Bug Reports</CardTitle>
+              <p className="text-xs text-gray-500 mt-1">Log issues you find so they can be reviewed and fixed.</p>
+            </div>
+            <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+              <Plus className="w-4 h-4 mr-1" /> Report a Bug
+            </Button>
+          </div>
+        </CardHeader>
+
+        {showForm && (
+          <CardContent className="border-t pt-4">
+            <div className="space-y-3 max-w-xl">
+              <div>
+                <Label className="text-xs">Title *</Label>
+                <Input
+                  className="mt-1"
+                  placeholder="Short description of the issue"
+                  value={form.title}
+                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Description *</Label>
+                <Textarea
+                  className="mt-1"
+                  rows={4}
+                  placeholder="Steps to reproduce, what you expected vs what happened, any error messages..."
+                  value={form.description}
+                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Priority</Label>
+                  <Select value={form.priority} onValueChange={(v) => setForm((p) => ({ ...p, priority: v }))}>
+                    <SelectTrigger className="mt-1 h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Category</Label>
+                  <Select value={form.category} onValueChange={(v) => setForm((p) => ({ ...p, category: v }))}>
+                    <SelectTrigger className="mt-1 h-8 text-sm">
+                      <SelectValue placeholder="Select…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
+                <Button
+                  size="sm"
+                  disabled={createMutation.isPending || !form.title.trim() || !form.description.trim()}
+                  onClick={() => createMutation.mutate(form)}
+                >
+                  {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                  Submit Report
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {(["all", "open", "in_progress", "resolved"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  statusFilter === s ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {s === "all" ? "All" : STATUS_LABELS[s]} ({counts[s]})
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-10 text-gray-400">
+              <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">{statusFilter === "all" ? "No bug reports yet." : `No ${STATUS_LABELS[statusFilter].toLowerCase()} bugs.`}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map((bug) => (
+                <div key={bug.id} className="border rounded-lg p-4 bg-white">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[bug.status ?? "open"]}`}>
+                          {STATUS_LABELS[bug.status ?? "open"]}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_STYLES[bug.priority ?? "medium"]}`}>
+                          {(bug.priority ?? "medium").charAt(0).toUpperCase() + (bug.priority ?? "medium").slice(1)} priority
+                        </span>
+                        {bug.category && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
+                            {bug.category}
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-medium text-sm text-gray-900">{bug.title}</p>
+                      <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{bug.description}</p>
+                      <p className="text-xs text-gray-400 mt-2">
+                        Reported by {bug.reportedByName ?? "Unknown"} · {bug.createdAt ? new Date(bug.createdAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5 flex-shrink-0">
+                      <Select
+                        value={bug.status ?? "open"}
+                        onValueChange={(v) => updateStatus.mutate({ id: bug.id, status: v })}
+                      >
+                        <SelectTrigger className="h-7 w-32 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="open">Open</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="resolved">Resolved</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-red-400 hover:text-red-600 hover:bg-red-50 text-xs"
+                        onClick={() => {
+                          if (confirm("Delete this bug report?")) deleteMutation.mutate(bug.id);
+                        }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
