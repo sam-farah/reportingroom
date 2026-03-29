@@ -26,7 +26,7 @@ export interface ReportData {
   impression: string;
 }
 
-export async function extractTextFromImage(base64Image: string): Promise<{ extractedText: string }> {
+export async function extractTextFromImage(base64Image: string, mimeType: string = 'image/jpeg'): Promise<{ extractedText: string }> {
   try {
     console.log("🔍 Starting OCR text extraction from training report...");
     
@@ -57,7 +57,7 @@ export async function extractTextFromImage(base64Image: string): Promise<{ extra
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
+                url: `data:${mimeType};base64,${base64Image}`
               }
             }
           ]
@@ -79,7 +79,7 @@ export async function extractTextFromImage(base64Image: string): Promise<{ extra
   }
 }
 
-export async function extractPatientDataFromWorksheet(base64Image: string, isFromPdf: boolean = false): Promise<OCRResult> {
+export async function extractPatientDataFromWorksheet(base64Image: string, mimeType: string = 'image/jpeg'): Promise<OCRResult> {
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -112,7 +112,7 @@ export async function extractPatientDataFromWorksheet(base64Image: string, isFro
             {
               type: "image_url",
               image_url: {
-                url: `data:image/${isFromPdf ? 'png' : 'jpeg'};base64,${base64Image}`
+                url: `data:${mimeType};base64,${base64Image}`
               }
             }
           ],
@@ -191,7 +191,7 @@ Make findings specific to what you can see drawn, referencing legend symbols whe
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`
+                url: `data:image/png;base64,${base64Image}`
               }
             }
           ]
@@ -217,7 +217,7 @@ export async function generateReportFromWorksheet(
   base64Image: string, 
   extractedData: OCRResult,
   trainingData: any[] = [],
-  isFromPdf: boolean = false,
+  mimeType: string = 'image/jpeg',
   contentTemplate: { findingsTemplate?: string | null; impressionTemplate?: string | null; indicationTemplate?: string | null } | null = null
 ): Promise<ReportData> {
   try {
@@ -306,7 +306,7 @@ Carefully read all visible markings, measurements, annotations, tick-boxes, and 
             {
               type: "image_url",
               image_url: {
-                url: `data:image/${isFromPdf ? 'png' : 'jpeg'};base64,${base64Image}`
+                url: `data:${mimeType};base64,${base64Image}`
               }
             }
           ],

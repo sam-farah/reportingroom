@@ -911,7 +911,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       let base64Image: string;
-      let isFromPdf = false;
+      let imageMimeType: string;
       
       // Handle PDF files by converting to image first
       console.log("Checking if file is PDF. Original name:", worksheet.originalName, "isPDF:", isPdfFile(worksheet.originalName));
@@ -919,17 +919,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("Converting PDF to image for OCR processing...");
         base64Image = await convertPdfToImage(filePath);
         console.log("PDF converted successfully, base64 length:", base64Image.length);
-        isFromPdf = true;
+        imageMimeType = 'image/png'; // pdftoppm always outputs PNG
       } else {
-        // Handle regular image files
+        // Handle regular image files — detect actual MIME type from file content
         const fileBuffer = fs.readFileSync(filePath);
         base64Image = fileBuffer.toString('base64');
-        console.log("Image file read successfully, base64 length:", base64Image.length);
+        imageMimeType = detectMimeType(fileBuffer);
+        console.log("Image file read successfully, base64 length:", base64Image.length, "mime:", imageMimeType);
       }
 
       // Extract patient data using OCR
       console.log("Starting OCR processing...");
-      const ocrResult = await extractPatientDataFromWorksheet(base64Image, isFromPdf);
+      const ocrResult = await extractPatientDataFromWorksheet(base64Image, imageMimeType);
       console.log("OCR result:", ocrResult);
 
       // If a linked patient ID was provided, use that patient's data instead of OCR
@@ -1263,7 +1264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       let base64Image: string;
-      let isFromPdf = false;
+      let imageMimeType: string;
       
       // Handle PDF files by converting to image first
       console.log("Checking if file is PDF. Original name:", worksheet.originalName, "isPDF:", isPdfFile(worksheet.originalName));
@@ -1271,12 +1272,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("Converting PDF to image for report generation...");
         base64Image = await convertPdfToImage(filePath);
         console.log("PDF converted successfully, base64 length:", base64Image.length);
-        isFromPdf = true;
+        imageMimeType = 'image/png'; // pdftoppm always outputs PNG
       } else {
-        // Handle regular image files
+        // Handle regular image files — detect actual MIME type from file content
         const fileBuffer = fs.readFileSync(filePath);
         base64Image = fileBuffer.toString('base64');
-        console.log("Image file read successfully, base64 length:", base64Image.length);
+        imageMimeType = detectMimeType(fileBuffer);
+        console.log("Image file read successfully, base64 length:", base64Image.length, "mime:", imageMimeType);
       }
 
       // Get GLOBAL training data for context - affects ALL users system-wide
@@ -1298,9 +1300,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (fs.existsSync(reportPath)) {
               const reportBuffer = fs.readFileSync(reportPath);
               const base64Report = reportBuffer.toString('base64');
+              const reportMimeType = detectMimeType(reportBuffer);
               
               // Use OCR to extract text from the training report image
-              const ocrResult = await extractTextFromImage(base64Report);
+              const ocrResult = await extractTextFromImage(base64Report, reportMimeType);
               extractedReportText = ocrResult.extractedText;
               
               console.log(`✅ Extracted ${extractedReportText.length} characters from training report`);
@@ -1357,7 +1360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, isFromPdf, contentTemplate);
+      const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, imageMimeType, contentTemplate);
       console.log("Report generated successfully with training context:", reportData.studyType);
       
       // Create report in storage
