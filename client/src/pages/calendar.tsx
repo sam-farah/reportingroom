@@ -1105,11 +1105,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                       return (
                         <div
                           key={`ev-${ev.id}-${ev.instanceStart.toISOString()}`}
-                          className={`absolute left-1 right-1 rounded border cursor-pointer z-0 ${colors.bg} ${colors.border} ${ev.isAllDay ? "opacity-30" : "opacity-80"}`}
+                          className={`absolute left-1 right-1 rounded border z-0 pointer-events-none ${colors.bg} ${colors.border} ${ev.isAllDay ? "opacity-30" : "opacity-80"}`}
                           style={{ top: `${Math.max(top, 0)}px`, height: `${height}px` }}
-                          onClick={() => setViewingEvent(ev)}
                         >
-                          <div className={`p-2 text-xs font-medium ${colors.text} flex items-center gap-1`}>
+                          <div
+                            className={`p-2 text-xs font-medium ${colors.text} flex items-center gap-1 cursor-pointer pointer-events-auto`}
+                            onClick={(e) => { e.stopPropagation(); setViewingEvent(ev); }}
+                          >
                             {ev.recurrence !== "none" && <Repeat className="w-3 h-3 flex-shrink-0" />}
                             <span className="truncate">{ev.title}</span>
                           </div>
@@ -1240,11 +1242,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                             return (
                               <div
                                 key={`ev-${ev.id}-${ev.instanceStart.toISOString()}`}
-                                className={`absolute left-0 right-0 mx-0.5 rounded border cursor-pointer z-0 ${colors.bg} ${colors.border} ${ev.isAllDay ? "opacity-30" : "opacity-80"}`}
+                                className={`absolute left-0 right-0 mx-0.5 rounded border z-0 pointer-events-none ${colors.bg} ${colors.border} ${ev.isAllDay ? "opacity-30" : "opacity-80"}`}
                                 style={{ top: `${Math.max(top, 0)}px`, height: `${height}px` }}
-                                onClick={(e) => { e.stopPropagation(); setViewingEvent(ev); }}
                               >
-                                <div className={`p-1 text-[10px] font-medium ${colors.text} flex items-center gap-0.5`}>
+                                <div
+                                  className={`p-1 text-[10px] font-medium ${colors.text} flex items-center gap-0.5 cursor-pointer pointer-events-auto`}
+                                  onClick={(e) => { e.stopPropagation(); setViewingEvent(ev); }}
+                                >
                                   {ev.recurrence !== "none" && <Repeat className="w-2.5 h-2.5 flex-shrink-0" />}
                                   <span className="truncate">{ev.title}</span>
                                 </div>
