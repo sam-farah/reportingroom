@@ -32,6 +32,8 @@ export default function ReferralFormPage() {
     urgency: "routine",
     clinicalIndication: "",
     notes: "",
+    resultMethod: "",
+    resultMethodOther: "",
     _hp: "",
   });
 
@@ -252,6 +254,32 @@ export default function ReferralFormPage() {
                 <Label className="text-sm">Additional Notes</Label>
                 <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Any other relevant information..." className="mt-1" />
               </div>
+              <div>
+                <Label className="text-sm">Method to receive results <span className="text-red-500">*</span></Label>
+                <div className="mt-2 space-y-2">
+                  {["Secure messaging", "Email", "Fax", "Other"].map((option) => (
+                    <label key={option} className="flex items-center gap-2.5 cursor-pointer hover:bg-gray-50 rounded p-1.5 transition-colors">
+                      <input
+                        type="radio"
+                        name="resultMethod"
+                        value={option}
+                        checked={form.resultMethod === option}
+                        onChange={(e) => setForm((p) => ({ ...p, resultMethod: e.target.value, resultMethodOther: e.target.value !== "Other" ? "" : p.resultMethodOther }))}
+                        className="w-4 h-4 accent-blue-600"
+                      />
+                      <span className="text-sm">{option === "Other" ? "Other (please specify)" : option}</span>
+                    </label>
+                  ))}
+                  {form.resultMethod === "Other" && (
+                    <Input
+                      value={form.resultMethodOther}
+                      onChange={(e) => setForm((p) => ({ ...p, resultMethodOther: e.target.value }))}
+                      placeholder="Please specify..."
+                      className="mt-1 ml-6 w-auto"
+                    />
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -266,7 +294,9 @@ export default function ReferralFormPage() {
               !form.referringDoctorName ||
               !form.referringDoctorProviderNumber ||
               !form.clinicalIndication ||
-              form.scanTypes.length === 0
+              form.scanTypes.length === 0 ||
+              !form.resultMethod ||
+              (form.resultMethod === "Other" && !form.resultMethodOther.trim())
             }
           >
             {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</> : "Submit Referral"}

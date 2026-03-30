@@ -3907,7 +3907,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const {
         patientName, patientDob, patientPhone, patientEmail,
         referringDoctorName, referringDoctorPhone, referringDoctorProviderNumber, referringDoctorPractice,
-        scanTypes, urgency, clinicalIndication, notes,
+        scanTypes, urgency, clinicalIndication, notes, resultMethod, resultMethodOther,
       } = req.body;
 
       if (!patientName || !scanTypes?.length) {
@@ -3929,7 +3929,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         scanTypes: Array.isArray(scanTypes) ? scanTypes : [scanTypes],
         urgency: urgency || "routine",
         clinicalIndication: clinicalIndication || null,
-        notes: notes ? `Referring practice: ${referringDoctorPractice || ""}. Referring doctor phone: ${referringDoctorPhone || ""}. ${notes}`.trim() : (referringDoctorPractice || referringDoctorPhone ? `Referring practice: ${referringDoctorPractice || ""}. Phone: ${referringDoctorPhone || ""}` : null),
+        notes: (() => {
+          const parts: string[] = [];
+          if (referringDoctorPractice) parts.push(`Referring practice: ${referringDoctorPractice}`);
+          if (referringDoctorPhone) parts.push(`Referring doctor phone: ${referringDoctorPhone}`);
+          if (resultMethod) {
+            const method = resultMethod === "Other" && resultMethodOther ? `Other – ${resultMethodOther}` : resultMethod;
+            parts.push(`Results delivery: ${method}`);
+          }
+          if (notes) parts.push(notes);
+          return parts.length > 0 ? parts.join(". ") : null;
+        })(),
         status: "pending",
         requestDate: today,
         source: "web_form",
