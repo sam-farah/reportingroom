@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,7 @@ import Draw from "./draw";
 import Templates from "./templates";
 import HelpCentre from "./help-centre";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw" | "templates" | "help";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw" | "templates" | "help" | "dicom";
 
 const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",  icon: CalendarIcon },
@@ -27,6 +27,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "reporting-room", label: "Reports",   icon: FolderOpen },
   { id: "patients",       label: "Patients",  icon: UserCircle },
   { id: "requests",       label: "Requests",  icon: ClipboardList },
+  { id: "dicom",          label: "DICOM",     icon: ScanLine },
   { id: "staff",          label: "Team",      icon: Users, adminOnly: true },
   { id: "admin",          label: "Admin",     icon: Settings },
   { id: "help",           label: "Help",      icon: HelpCircle, comingSoon: true },
@@ -44,6 +45,7 @@ const PAGE_TITLES: Record<Panel, string> = {
   "templates":      "Templates",
   "admin":          "Admin Panel",
   "help":           "Help Centre",
+  "dicom":          "DICOM Viewer",
 };
 
 export default function Dashboard() {
@@ -204,6 +206,15 @@ export default function Dashboard() {
         <AdminPanel onNavigateToTemplates={() => setActivePanel("templates")} />
       ) : activePanel === "help" ? (
         <HelpCentre />
+      ) : activePanel === "dicom" ? (
+        <div className="flex flex-col" style={{ height: "calc(100vh - 89px)" }}>
+          <iframe
+            src="http://192.168.15.23:8042"
+            className="flex-1 w-full border-0"
+            title="DICOM Server"
+            allow="fullscreen"
+          />
+        </div>
       ) : (
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       )}
