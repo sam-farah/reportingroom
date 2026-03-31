@@ -207,13 +207,25 @@ export default function Dashboard() {
       ) : activePanel === "help" ? (
         <HelpCentre />
       ) : activePanel === "dicom" ? (
-        <div className="flex flex-col" style={{ height: "calc(100vh - 89px)" }}>
-          <iframe
-            src="http://192.168.15.23:8042"
-            className="flex-1 w-full border-0"
-            title="DICOM Server"
-            allow="fullscreen"
-          />
+        <div className="flex flex-col items-center justify-center gap-6" style={{ height: "calc(100vh - 89px)" }}>
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mx-auto">
+              <ScanLine className="w-8 h-8 text-blue-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800">DICOM Server</h2>
+            <p className="text-sm text-gray-500">192.168.15.23:8042</p>
+          </div>
+          <Button
+            size="lg"
+            className="gap-2 px-8"
+            onClick={() => window.open("http://192.168.15.23:8042", "_blank")}
+          >
+            <ScanLine className="w-5 h-5" />
+            Open DICOM Server
+          </Button>
+          <p className="text-xs text-gray-400 max-w-xs text-center">
+            Opens your local Orthanc server in a new tab. Make sure you are connected to the clinic network.
+          </p>
         </div>
       ) : (
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
