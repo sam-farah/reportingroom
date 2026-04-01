@@ -61,7 +61,7 @@ function formatFindings(text: string): string {
     .join("\n");
 }
 
-async function generateReportPdfBase64(html: string): Promise<string> {
+async function generateReportPdfBase64(html: string, worksheetDataUrl?: string | null): Promise<string> {
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;visibility:hidden;";
   document.body.appendChild(iframe);
@@ -90,6 +90,23 @@ async function generateReportPdfBase64(html: string): Promise<string> {
       pdf.addImage(slice.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, A4_W_MM, pageHeightMm);
       yMm += pageHeightMm;
       if (yMm < totalHeightMm) pdf.addPage();
+    }
+    // Append worksheet as a dedicated final page
+    if (worksheetDataUrl) {
+      const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = worksheetDataUrl;
+      });
+      const scale = Math.min(A4_W_MM / wsImg.width, A4_H_MM / wsImg.height);
+      const drawW = wsImg.width * scale, drawH = wsImg.height * scale;
+      const orientation = drawH > drawW ? "portrait" : "landscape";
+      pdf.addPage([A4_W_MM, A4_H_MM], orientation);
+      const pageW = orientation === "landscape" ? A4_H_MM : A4_W_MM;
+      const pageH = orientation === "landscape" ? A4_W_MM : A4_H_MM;
+      const xOff = (pageW - drawW) / 2, yOff = (pageH - drawH) / 2;
+      pdf.addImage(worksheetDataUrl, "JPEG", xOff, yOff, drawW, drawH);
     }
     return pdf.output("datauristring").split(",")[1];
   } finally {
@@ -988,31 +1005,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : ""
       );
 
+      // Build a single combined PDF: report pages first, worksheet as dedicated final page
+      const htmlForPdf = distributeHtmlNoWs.replace(
+        "<!--COPIES_TO_PLACEHOLDER-->",
+        copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : ""
+      );
       let pdfBase64: string | undefined;
-      let worksheetPdfBase64: string | undefined;
       try {
-        pdfBase64 = await generateReportPdfBase64(htmlForEmail);
+        pdfBase64 = await generateReportPdfBase64(htmlForPdf, distributeWorksheetDataUrl);
       } catch (pdfErr) {
         console.warn("Report PDF generation failed, sending without attachment:", pdfErr);
-      }
-      if (distributeWorksheetDataUrl) {
-        try {
-          const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = reject;
-            img.src = distributeWorksheetDataUrl!;
-          });
-          const A4_W = 210, A4_H = 297;
-          const scale = Math.min(A4_W / wsImg.width, A4_H / wsImg.height);
-          const drawW = wsImg.width * scale, drawH = wsImg.height * scale;
-          const wsPdf = new jsPDF({ orientation: drawH > drawW ? "portrait" : "landscape", unit: "mm", format: "a4" });
-          const xOff = (A4_W - drawW) / 2, yOff = (A4_H - drawH) / 2;
-          wsPdf.addImage(distributeWorksheetDataUrl, "JPEG", xOff, yOff, drawW, drawH);
-          worksheetPdfBase64 = wsPdf.output("datauristring").split(",")[1];
-        } catch (wsErr) {
-          console.warn("Worksheet PDF generation failed:", wsErr);
-        }
       }
       const res = await fetch(`/api/reports/${distributeReport.id}/send-email`, {
         method: "POST",
@@ -1025,7 +1027,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
           subject: emailSubject || `Medical Report — ${distributeReport.patientName}`,
           reportHtml: htmlForEmail,
           pdfBase64,
-          worksheetPdfBase64,
           patientName: distributeReport.patientName,
         }),
       });
@@ -1048,9 +1049,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setFaxSending(true);
     setFaxSent(false);
     try {
+      // Build a single combined PDF: report pages first, worksheet as dedicated final page
       let pdfBase64: string | undefined;
       try {
-        pdfBase64 = await generateReportPdfBase64(distributeHtml);
+        pdfBase64 = await generateReportPdfBase64(distributeHtmlNoWs, distributeWorksheetDataUrl);
       } catch (pdfErr) {
         console.warn("PDF generation failed for fax, sending without attachment:", pdfErr);
       }

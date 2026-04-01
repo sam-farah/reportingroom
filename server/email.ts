@@ -312,7 +312,7 @@ export async function sendReportEmail(params: {
         <p style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: #003d99;">${params.clinicName}</p>
         <p style="margin: 0; font-size: 13px; color: #555;">
           Please find attached the medical report for <strong>${params.patientName}</strong>.
-          ${params.pdfBase64 ? "The report is attached as a PDF." : "The report is included below."}
+          ${params.pdfBase64 ? "The report and worksheet are attached as a single PDF." : "The report is included below."}
         </p>
       </div>
       ${params.pdfBase64 ? "" : params.reportHtml}
