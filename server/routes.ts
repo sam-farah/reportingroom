@@ -1137,7 +1137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
 
-      const { toEmail, toName, subject, reportHtml } = req.body;
+      const { toEmail, toName, subject, reportHtml, pdfBase64, patientName: bodyPatientName } = req.body;
       if (!toEmail || !reportHtml) {
         return res.status(400).json({ error: "toEmail and reportHtml are required" });
       }
@@ -1148,14 +1148,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(req.session.userId!);
       const clinic = user?.clinicId ? await storage.getClinic(user.clinicId) : null;
       const clinicName = clinic?.name || "Nexus Vascular Imaging";
+      const resolvedPatientName = report.patientName || bodyPatientName || "Patient";
 
       await sendReportEmail({
         toEmail,
         toName: toName || toEmail,
-        subject: subject || `Medical Report — ${report.patientName}`,
+        subject: subject || `Medical Report — ${resolvedPatientName}`,
         reportHtml,
         clinicName,
-        patientName: report.patientName,
+        patientName: resolvedPatientName,
+        pdfBase64: pdfBase64 || undefined,
       });
 
       // Auto-log the distribution

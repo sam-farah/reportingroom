@@ -298,31 +298,46 @@ export async function sendReportEmail(params: {
   reportHtml: string;
   clinicName: string;
   patientName: string;
+  pdfBase64?: string;
 }): Promise<void> {
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 780px; margin: 0 auto; padding: 24px; color: #1a1a2e;">
-      <div style="background: #f8f9fa; border-radius: 8px; padding: 16px 24px; margin-bottom: 24px; border-left: 4px solid #0066cc;">
-        <p style="margin: 0; font-size: 14px; color: #555;">
-          The following medical report for <strong>${params.patientName}</strong> has been sent from <strong>${params.clinicName}</strong>.
+  const safePatient = params.patientName.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "_");
+  const pdfFilename = `Report_${safePatient}.pdf`;
+
+  const coverHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; padding: 24px; color: #1a1a2e;">
+      <div style="background: #f0f7ff; border-radius: 8px; padding: 16px 24px; margin-bottom: 20px; border-left: 4px solid #0066cc;">
+        <p style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: #003d99;">${params.clinicName}</p>
+        <p style="margin: 0; font-size: 13px; color: #555;">
+          Please find attached the medical report for <strong>${params.patientName}</strong>.
+          ${params.pdfBase64 ? "The report is attached as a PDF." : "The report is included below."}
         </p>
       </div>
-
-      ${params.reportHtml}
-
-      <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;" />
-      <p style="color: #aaa; font-size: 12px; text-align: center; margin: 0;">
-        Sent via Reporting Room &mdash; <a href="https://reportingroom.net" style="color: #aaa;">reportingroom.net</a>
+      ${params.pdfBase64 ? "" : params.reportHtml}
+      <hr style="border: none; border-top: 1px solid #eee; margin: 28px 0;" />
+      <p style="color: #bbb; font-size: 11px; text-align: center; margin: 0;">
+        Sent via Reporting Room &mdash; <a href="https://reportingroom.net" style="color: #bbb;">reportingroom.net</a>
       </p>
     </div>
   `;
 
+  const message: any = {
+    to: { email: params.toEmail, name: params.toName },
+    from: { email: FROM_EMAIL, name: params.clinicName || FROM_NAME },
+    subject: params.subject,
+    html: coverHtml,
+  };
+
+  if (params.pdfBase64) {
+    message.attachments = [{
+      content: params.pdfBase64,
+      filename: pdfFilename,
+      type: "application/pdf",
+      disposition: "attachment",
+    }];
+  }
+
   try {
-    await sgMail.send({
-      to: { email: params.toEmail, name: params.toName },
-      from: { email: FROM_EMAIL, name: params.clinicName || FROM_NAME },
-      subject: params.subject,
-      html,
-    });
+    await sgMail.send(message);
   } catch (err: any) {
     console.error("SendGrid error details:", JSON.stringify(err?.response?.body?.errors ?? err?.message, null, 2));
     throw err;

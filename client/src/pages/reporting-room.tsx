@@ -18,7 +18,44 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution } from "@shared/schema";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import TextShortcuts from "@/components/text-shortcuts";
+
+async function generateReportPdfBase64(html: string): Promise<string> {
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;visibility:hidden;";
+  document.body.appendChild(iframe);
+  try {
+    await new Promise<void>((resolve) => {
+      iframe.onload = () => resolve();
+      iframe.srcdoc = html;
+    });
+    await new Promise(r => setTimeout(r, 800));
+    const body = iframe.contentDocument?.body;
+    if (!body) throw new Error("iframe body unavailable");
+    const canvas = await html2canvas(body, { scale: 2, useCORS: true, allowTaint: true, width: 794, windowWidth: 794, scrollY: 0 });
+    const A4_W_MM = 210, A4_H_MM = 297;
+    const pxToMm = A4_W_MM / canvas.width;
+    const totalHeightMm = canvas.height * pxToMm;
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    let yMm = 0;
+    while (yMm < totalHeightMm) {
+      const pageHeightMm = Math.min(A4_H_MM, totalHeightMm - yMm);
+      const srcY = Math.round((yMm / totalHeightMm) * canvas.height);
+      const srcH = Math.round((pageHeightMm / totalHeightMm) * canvas.height);
+      const slice = document.createElement("canvas");
+      slice.width = canvas.width;
+      slice.height = srcH;
+      slice.getContext("2d")!.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, A4_W_MM, pageHeightMm);
+      yMm += pageHeightMm;
+      if (yMm < totalHeightMm) pdf.addPage();
+    }
+    return pdf.output("datauristring").split(",")[1];
+  } finally {
+    document.body.removeChild(iframe);
+  }
+}
 
 interface EditableReport extends Report {
   templateId?: number;
@@ -841,6 +878,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setEmailSending(true);
     setEmailSent(false);
     try {
+      let pdfBase64: string | undefined;
+      try {
+        pdfBase64 = await generateReportPdfBase64(distributeHtml);
+      } catch (pdfErr) {
+        console.warn("PDF generation failed, sending without attachment:", pdfErr);
+      }
       const res = await fetch(`/api/reports/${distributeReport.id}/send-email`, {
         method: "POST",
         credentials: "include",
@@ -850,6 +893,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
           toName: emailToName || emailTo,
           subject: emailSubject || `Medical Report — ${distributeReport.patientName}`,
           reportHtml: distributeHtml,
+          pdfBase64,
+          patientName: distributeReport.patientName,
         }),
       });
       const data = await res.json();
