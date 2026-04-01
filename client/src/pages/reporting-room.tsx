@@ -136,6 +136,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [markSentLogging, setMarkSentLogging] = useState(false);
   const [showMarkSent, setShowMarkSent] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [faxNumber, setFaxNumber] = useState("");
+  const [faxSending, setFaxSending] = useState(false);
+  const [faxSent, setFaxSent] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -654,6 +657,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setMarkSentName("");
     setMarkSentEmail("");
     setMarkSentNotes("");
+    setFaxNumber("");
+    setFaxSent(false);
+    setFaxSending(false);
 
     // Helper to fetch a URL and return a base64 data-URI
     const toBase64 = async (url: string): Promise<string | null> => {
@@ -1034,6 +1040,41 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       toast({ title: "Send Failed", description: err.message || "Could not send email", variant: "destructive" });
     } finally {
       setEmailSending(false);
+    }
+  };
+
+  const handleSendFax = async () => {
+    if (!distributeReport || !faxNumber.trim()) return;
+    setFaxSending(true);
+    setFaxSent(false);
+    try {
+      let pdfBase64: string | undefined;
+      try {
+        pdfBase64 = await generateReportPdfBase64(distributeHtml);
+      } catch (pdfErr) {
+        console.warn("PDF generation failed for fax, sending without attachment:", pdfErr);
+      }
+      const res = await fetch(`/api/reports/${distributeReport.id}/send-fax`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          faxNumber: faxNumber.trim(),
+          pdfBase64,
+          patientName: distributeReport.patientName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.details || data.error || "Fax send failed");
+      setFaxSent(true);
+      refetchDistributions();
+      refetchDistributionCounts();
+      toast({ title: "Fax Sent", description: `Report faxed to ${faxNumber.trim()}` });
+      setTimeout(() => setFaxSent(false), 4000);
+    } catch (err: any) {
+      toast({ title: "Fax Failed", description: err.message || "Could not send fax", variant: "destructive" });
+    } finally {
+      setFaxSending(false);
     }
   };
 
@@ -2567,6 +2608,71 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                 </div>
               </div>
 
+              {/* ── Fax Section ── */}
+              <div className="border border-teal-100 rounded-lg bg-teal-50/40 p-4 space-y-3">
+                <h3 className="font-semibold text-sm text-teal-800 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                  Send via Fax
+                </h3>
+
+                {/* Referring doctor fax dropdown */}
+                {referringDoctors.some(d => d.fax) && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-600">Select Referring Doctor</Label>
+                    <Select
+                      value=""
+                      onValueChange={(val) => {
+                        if (val && val !== "__custom") setFaxNumber(val);
+                      }}
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue placeholder="Choose from referring doctors…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {referringDoctors.filter(d => d.fax).map(doc => (
+                          <SelectItem key={doc.id} value={doc.fax!}>
+                            <span className="font-medium">{doc.name}</span>
+                            {doc.practiceName && <span className="text-gray-400 ml-1 text-xs">· {doc.practiceName}</span>}
+                            <span className="text-gray-400 ml-1 text-xs">· {doc.fax}</span>
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__custom">Enter manually…</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs text-gray-600">Fax Number</Label>
+                    <div className="flex items-center gap-0">
+                      <span className="flex items-center px-3 h-9 text-sm bg-teal-100 border border-r-0 border-teal-200 rounded-l-md text-teal-700 font-mono select-none">+613</span>
+                      <Input
+                        type="tel"
+                        placeholder="86771755"
+                        value={faxNumber}
+                        onChange={(e) => setFaxNumber(e.target.value.replace(/[^\d\s\-]/g, ""))}
+                        className="bg-white text-sm rounded-l-none font-mono"
+                      />
+                    </div>
+                    <p className="text-xs text-teal-700/70">Local number — the 613 prefix is added automatically. Include area code (e.g. 86771755).</p>
+                  </div>
+                  <Button
+                    onClick={handleSendFax}
+                    disabled={!faxNumber.trim() || faxSending}
+                    className={faxSent ? "bg-green-600 hover:bg-green-700 text-white" : "bg-teal-600 hover:bg-teal-700 text-white"}
+                  >
+                    {faxSending ? (
+                      <><div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />Sending…</>
+                    ) : faxSent ? (
+                      <><Check className="w-4 h-4 mr-2" />Faxed!</>
+                    ) : (
+                      <><svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>Send Fax</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
               {/* ── Worksheet toggle ── */}
               {distributeHasWorksheet && (
                 <div className="flex items-center gap-3 px-1">
@@ -2662,15 +2768,17 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                   <ul className="divide-y">
                     {distributions.map((d) => (
                       <li key={d.id} className="px-4 py-3 flex items-start gap-3">
-                        <div className={`mt-0.5 rounded-full p-1 flex-shrink-0 ${d.method === "email" ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600"}`}>
+                        <div className={`mt-0.5 rounded-full p-1 flex-shrink-0 ${d.method === "email" ? "bg-blue-100 text-blue-600" : d.method === "fax" ? "bg-teal-100 text-teal-600" : "bg-amber-100 text-amber-600"}`}>
                           {d.method === "email"
                             ? <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                            : d.method === "fax"
+                            ? <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
                             : <Copy className="w-3 h-3" />
                           }
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2">
-                            <span className="text-xs font-semibold text-gray-700 capitalize">{d.method === "email" ? "Email" : "Copy HTML"}</span>
+                            <span className="text-xs font-semibold text-gray-700 capitalize">{d.method === "email" ? "Email" : d.method === "fax" ? "Fax" : "Copy HTML"}</span>
                             <span className="text-xs text-gray-400">{format(new Date(d.sentAt), "d MMM yyyy, h:mm a")}</span>
                           </div>
                           {(d.recipientName || d.recipientEmail) && (

@@ -639,13 +639,15 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                         <div className="mt-0.5 shrink-0">
                           {dist.method === 'email' ? (
                             <Mail className="w-4 h-4 text-blue-500" />
+                          ) : dist.method === 'fax' ? (
+                            <svg className="w-4 h-4 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
                           ) : (
                             <FileText className="w-4 h-4 text-gray-500" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-800 dark:text-gray-200">
-                            {dist.method === 'email' ? 'Emailed' : 'Copy/HTML'}
+                            {dist.method === 'email' ? 'Emailed' : dist.method === 'fax' ? 'Faxed' : 'Copy/HTML'}
                             {dist.recipientName && <span className="ml-1">to {dist.recipientName}</span>}
                             {dist.recipientEmail && <span className="text-gray-500 ml-1">({dist.recipientEmail})</span>}
                           </div>

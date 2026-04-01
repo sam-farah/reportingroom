@@ -1223,6 +1223,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Send Report via Fax (SIPCity fax-to-email gateway) ──
+  app.post("/api/reports/:id/send-fax", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+
+      const { faxNumber, pdfBase64, patientName: bodyPatientName } = req.body;
+      if (!faxNumber) return res.status(400).json({ error: "faxNumber is required" });
+
+      // Sanitise: digits only, strip leading 0 if present (we prepend 61)
+      const digitsOnly = String(faxNumber).replace(/\D/g, "").replace(/^0/, "");
+      if (!digitsOnly) return res.status(400).json({ error: "Invalid fax number" });
+
+      const faxEmail = `613${digitsOnly}@fax.sipcity.com.au`;
+
+      const report = await storage.getReport(id);
+      if (!report) return res.status(404).json({ error: "Report not found" });
+
+      const user = await storage.getUser(req.session.userId!);
+      const clinic = user?.clinicId ? await storage.getClinic(user.clinicId) : null;
+      const clinicName = clinic?.name || "Nexus Vascular Imaging";
+      const resolvedPatientName = report.patientName || bodyPatientName || "Patient";
+
+      const sgMail = (await import("@sendgrid/mail")).default;
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+
+      const message: any = {
+        to: faxEmail,
+        from: { email: "admin@nexusvascularimaging.com", name: clinicName },
+        subject: `Medical Report — ${resolvedPatientName}`,
+        text: `Please find attached the medical report for ${resolvedPatientName} from ${clinicName}.`,
+        html: `<p>Please find attached the medical report for <strong>${resolvedPatientName}</strong> from ${clinicName}.</p>`,
+        attachments: [] as any[],
+      };
+
+      if (pdfBase64) {
+        message.attachments.push({
+          content: pdfBase64,
+          filename: `Report_${resolvedPatientName.replace(/\s+/g, "_")}.pdf`,
+          type: "application/pdf",
+          disposition: "attachment",
+        });
+      }
+
+      await sgMail.send(message);
+
+      await storage.createReportDistribution({
+        reportId: id,
+        clinicId: user?.clinicId ?? null,
+        method: "fax",
+        recipientName: `Fax: ${faxNumber}`,
+        recipientEmail: faxEmail,
+        notes: null,
+        worksheetIncluded: false,
+        confirmedAt: new Date(),
+        confirmedBy: user?.email || null,
+      });
+
+      res.json({ success: true, faxEmail });
+    } catch (error: any) {
+      console.error("Send fax error:", error?.response?.body || error);
+      res.status(500).json({ error: "Failed to send fax", details: error?.message });
+    }
+  });
+
   // ── Scan Type Content Templates ──
   app.get("/api/content-templates", isAuthenticated, async (req: any, res) => {
     try {
