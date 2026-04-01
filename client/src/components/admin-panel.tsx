@@ -106,9 +106,41 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
     mutationFn: (instructions: string) => apiRequest("/api/clinic/reminder-instructions", "PUT", { instructions }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
-      toast({ title: "Saved", description: "Appointment reminder instructions updated." });
+      toast({ title: "Saved", description: "Default reminder instructions updated." });
     },
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+
+  // Per-scan-type prep instructions state
+  const { data: scanPrepRows = [] } = useQuery<{ id: number; scanType: string; instructions: string }[]>({
+    queryKey: ["/api/scan-prep-instructions"],
+  });
+  const [editingScanType, setEditingScanType] = useState<string | null>(null);
+  const [scanPrepDraft, setScanPrepDraft] = useState("");
+  const [addingNew, setAddingNew] = useState(false);
+  const [newScanType, setNewScanType] = useState("");
+  const [newScanPrepDraft, setNewScanPrepDraft] = useState("");
+  const saveScanPrepMutation = useMutation({
+    mutationFn: ({ scanType, instructions }: { scanType: string; instructions: string }) =>
+      apiRequest("/api/scan-prep-instructions", "PUT", { scanType, instructions }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-prep-instructions"] });
+      setEditingScanType(null);
+      setAddingNew(false);
+      setNewScanType("");
+      setNewScanPrepDraft("");
+      toast({ title: "Saved", description: "Scan-specific instructions updated." });
+    },
+    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+  const deleteScanPrepMutation = useMutation({
+    mutationFn: (scanType: string) =>
+      apiRequest("/api/scan-prep-instructions", "PUT", { scanType, instructions: "" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-prep-instructions"] });
+      toast({ title: "Deleted", description: "Scan-specific instructions removed." });
+    },
+    onError: () => toast({ title: "Delete failed", variant: "destructive" }),
   });
 
   // Content Templates state
@@ -722,14 +754,131 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
             </CardContent>
           </Card>
 
-          {/* Appointment Reminder Instructions */}
+          {/* Per-Scan-Type Preparation Instructions */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <span>📧</span> Appointment Reminder — Preparation Instructions
+                <span>📋</span> Appointment Reminder — Per-Scan-Type Preparation Instructions
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                These instructions are included in every appointment reminder email sent to patients — for example, fasting requirements, what to wear, or what to bring. Leave blank to omit this section from the email.
+                Set specific preparation instructions for each scan type. When a reminder email is sent, these instructions take priority over the default instructions below. Leave a scan type unconfigured to fall back to the default.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Configured scan types list */}
+              {scanPrepRows.length === 0 && !addingNew && (
+                <p className="text-sm text-muted-foreground italic">No scan-specific instructions configured yet.</p>
+              )}
+              {scanPrepRows.map((row) => (
+                <div key={row.scanType} className="border rounded-md p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{row.scanType}</span>
+                    <div className="flex gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingScanType(row.scanType);
+                          setScanPrepDraft(row.instructions);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => deleteScanPrepMutation.mutate(row.scanType)}
+                        disabled={deleteScanPrepMutation.isPending}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                  {editingScanType === row.scanType ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={scanPrepDraft}
+                        onChange={(e) => setScanPrepDraft(e.target.value)}
+                        rows={4}
+                        className="w-full text-sm border rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="outline" onClick={() => setEditingScanType(null)}>Cancel</Button>
+                        <Button
+                          size="sm"
+                          onClick={() => saveScanPrepMutation.mutate({ scanType: row.scanType, instructions: scanPrepDraft })}
+                          disabled={saveScanPrepMutation.isPending}
+                        >
+                          {saveScanPrepMutation.isPending ? "Saving…" : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground whitespace-pre-line line-clamp-3">{row.instructions}</p>
+                  )}
+                </div>
+              ))}
+
+              {/* Add new scan type */}
+              {addingNew ? (
+                <div className="border rounded-md p-3 space-y-2 bg-muted/30">
+                  <Select value={newScanType} onValueChange={setNewScanType}>
+                    <SelectTrigger className="text-sm">
+                      <SelectValue placeholder="Select a scan type…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CANONICAL_SCAN_TYPES
+                        .filter((st) => !scanPrepRows.some((r) => r.scanType === st.name))
+                        .map((st) => (
+                          <SelectItem key={st.name} value={st.name}>{st.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <textarea
+                    value={newScanPrepDraft}
+                    onChange={(e) => setNewScanPrepDraft(e.target.value)}
+                    placeholder={"e.g.\n• Please fast for 4 hours before your appointment.\n• Wear comfortable, loose-fitting clothing."}
+                    rows={4}
+                    className="w-full text-sm border rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="outline" onClick={() => { setAddingNew(false); setNewScanType(""); setNewScanPrepDraft(""); }}>
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (!newScanType || !newScanPrepDraft.trim()) return;
+                        saveScanPrepMutation.mutate({ scanType: newScanType, instructions: newScanPrepDraft.trim() });
+                      }}
+                      disabled={saveScanPrepMutation.isPending || !newScanType || !newScanPrepDraft.trim()}
+                    >
+                      {saveScanPrepMutation.isPending ? "Saving…" : "Add Instructions"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAddingNew(true)}
+                  className="gap-1"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Scan-Type Instructions
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Default / Fallback Appointment Reminder Instructions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span>📧</span> Appointment Reminder — Default Preparation Instructions
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                These instructions are used as a fallback in reminder emails when no scan-specific instructions are configured above. Leave blank to omit this section from the email.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -746,7 +895,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                   onClick={() => saveReminderMutation.mutate(resolvedReminderInstructions)}
                   disabled={saveReminderMutation.isPending}
                 >
-                  {saveReminderMutation.isPending ? "Saving…" : "Save Instructions"}
+                  {saveReminderMutation.isPending ? "Saving…" : "Save Default Instructions"}
                 </Button>
               </div>
             </CardContent>

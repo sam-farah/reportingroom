@@ -57,6 +57,8 @@ import {
   type ScanDurationSetting,
   type InsertScanDurationSetting,
   CANONICAL_SCAN_TYPES,
+  scanPrepInstructions,
+  type ScanPrepInstruction,
   referringDoctors,
   type ReferringDoctor,
   type InsertReferringDoctor,
@@ -234,6 +236,12 @@ export interface IStorage {
   getPatientPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined>;
   getScanDurationSettings(clinicId: number): Promise<ScanDurationSetting[]>;
   upsertScanDurationSettings(clinicId: number, settings: Omit<InsertScanDurationSetting, 'clinicId'>[]): Promise<ScanDurationSetting[]>;
+
+  // Scan prep instructions per scan type
+  getScanPrepInstructions(clinicId: number): Promise<ScanPrepInstruction[]>;
+  getScanPrepInstruction(clinicId: number, scanType: string): Promise<ScanPrepInstruction | undefined>;
+  upsertScanPrepInstruction(clinicId: number, scanType: string, instructions: string): Promise<ScanPrepInstruction>;
+  deleteScanPrepInstruction(clinicId: number, scanType: string): Promise<void>;
 
   // Referring doctor operations
   getReferringDoctors(clinicId: number): Promise<ReferringDoctor[]>;
@@ -1281,6 +1289,39 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return result;
+  }
+
+  // Scan prep instructions per scan type
+  async getScanPrepInstructions(clinicId: number): Promise<ScanPrepInstruction[]> {
+    return db.select().from(scanPrepInstructions).where(eq(scanPrepInstructions.clinicId, clinicId));
+  }
+
+  async getScanPrepInstruction(clinicId: number, scanType: string): Promise<ScanPrepInstruction | undefined> {
+    const [row] = await db.select().from(scanPrepInstructions).where(
+      and(eq(scanPrepInstructions.clinicId, clinicId), eq(scanPrepInstructions.scanType, scanType))
+    );
+    return row;
+  }
+
+  async upsertScanPrepInstruction(clinicId: number, scanType: string, instructions: string): Promise<ScanPrepInstruction> {
+    const existing = await this.getScanPrepInstruction(clinicId, scanType);
+    if (existing) {
+      const [updated] = await db.update(scanPrepInstructions)
+        .set({ instructions })
+        .where(eq(scanPrepInstructions.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(scanPrepInstructions)
+      .values({ clinicId, scanType, instructions })
+      .returning();
+    return created;
+  }
+
+  async deleteScanPrepInstruction(clinicId: number, scanType: string): Promise<void> {
+    await db.delete(scanPrepInstructions).where(
+      and(eq(scanPrepInstructions.clinicId, clinicId), eq(scanPrepInstructions.scanType, scanType))
+    );
   }
 
   // Referring doctor operations

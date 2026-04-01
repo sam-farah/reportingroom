@@ -604,6 +604,18 @@ export const insertScanDurationSettingSchema = createInsertSchema(scanDurationSe
 export type ScanDurationSetting = typeof scanDurationSettings.$inferSelect;
 export type InsertScanDurationSetting = z.infer<typeof insertScanDurationSettingSchema>;
 
+// Per-scan-type patient preparation instructions (used in appointment reminder emails)
+export const scanPrepInstructions = pgTable("scan_prep_instructions", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  scanType: varchar("scan_type", { length: 200 }).notNull(),
+  instructions: text("instructions").notNull(),
+});
+
+export const insertScanPrepInstructionSchema = createInsertSchema(scanPrepInstructions).omit({ id: true });
+export type ScanPrepInstruction = typeof scanPrepInstructions.$inferSelect;
+export type InsertScanPrepInstruction = z.infer<typeof insertScanPrepInstructionSchema>;
+
 // Referring doctors (per clinic)
 export const referringDoctors = pgTable("referring_doctors", {
   id: serial("id").primaryKey(),

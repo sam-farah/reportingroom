@@ -459,7 +459,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clinicPhone: clinic.phone || null,
         clinicEmail: clinic.email || null,
         clinicLogoUrl: clinic.logoUrl || null,
-        reminderInstructions: clinic.reminderInstructions || null,
+        reminderInstructions: await (async () => {
+          if (appointment.scanType) {
+            const specific = await storage.getScanPrepInstruction(user.clinicId!, appointment.scanType);
+            if (specific?.instructions) return specific.instructions;
+          }
+          return clinic.reminderInstructions || null;
+        })(),
         trackingToken,
       });
 
@@ -2463,6 +2469,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to save scan duration settings" });
+    }
+  });
+
+  // Scan prep instructions (per scan type, per clinic)
+  app.get("/api/scan-prep-instructions", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const rows = await storage.getScanPrepInstructions(user.clinicId);
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch scan prep instructions" });
+    }
+  });
+
+  app.put("/api/scan-prep-instructions", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const { scanType, instructions } = req.body;
+      if (!scanType || typeof scanType !== "string") return res.status(400).json({ error: "scanType required" });
+      if (instructions === "" || instructions == null) {
+        await storage.deleteScanPrepInstruction(user.clinicId, scanType);
+        return res.json({ deleted: true });
+      }
+      const row = await storage.upsertScanPrepInstruction(user.clinicId, scanType, instructions);
+      res.json(row);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save scan prep instruction" });
     }
   });
 
