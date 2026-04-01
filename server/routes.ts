@@ -1086,7 +1086,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid report ID" });
       }
 
-      const updates = req.body;
+      const updates = { ...req.body };
+
+      // Auto-populate patientUrNumber when a patientId is provided but no UR number is given
+      if (updates.patientId && !updates.patientUrNumber) {
+        const patient = await storage.getPatient(updates.patientId);
+        if (patient?.urNumber) {
+          updates.patientUrNumber = patient.urNumber;
+        }
+      }
+
       const updatedReport = await storage.updateReport(reportId, updates);
       
       if (!updatedReport) {
@@ -1556,7 +1565,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, imageMimeType, contentTemplate);
       console.log("Report generated successfully with training context:", reportData.studyType);
       
-      // Create report in storage — inherit patientId from the worksheet if already linked
+      // Create report in storage — inherit patientId and UR number from the worksheet if already linked
+      const linkedPatientForReport = worksheet.patientId ? await storage.getPatient(worksheet.patientId) : null;
       const report = await storage.createReport({
         worksheetId,
         patientName: reportData.patientName,
@@ -1569,6 +1579,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         physicianId,
         logoUrl: clinic?.logoUrl || logoUrl,
         patientId: worksheet.patientId ?? null,
+        patientUrNumber: linkedPatientForReport?.urNumber ?? null,
       });
 
       syncReportToPatientFolder(report.id).catch(err => console.error('Background report sync error:', err));
@@ -2940,6 +2951,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      const draftLinkedPatient = worksheet.patientId ? await storage.getPatient(worksheet.patientId) : null;
       const draftReport = await storage.createDraftReport({
         digitalWorksheetId: worksheet.id,
         patientName: worksheet.patientName,
@@ -2951,6 +2963,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         impression: aiGeneratedImpression || `${templateName} study completed. Awaiting physician interpretation.\n\nRECOMMENDATIONS:\n- Physician review and interpretation required\n- Clinical correlation recommended\n- Follow-up as clinically indicated`,
         sonographerId: worksheet.sonographerId,
         patientId: worksheet.patientId,
+        patientUrNumber: draftLinkedPatient?.urNumber ?? null,
       });
 
       console.log("Draft report created successfully:", draftReport.id);
