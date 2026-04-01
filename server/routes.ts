@@ -731,7 +731,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/patients", isAuthenticated, async (req, res) => {
     try {
-      const patient = await storage.createPatient(req.body);
+      const user = await storage.getUser(req.session.userId!);
+      const patient = await storage.createPatient({
+        ...req.body,
+        clinicId: user?.clinicId ?? null,
+      });
       res.status(201).json(patient);
     } catch (error) {
       console.error("Error creating patient:", error);
@@ -1410,7 +1414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, imageMimeType, contentTemplate);
       console.log("Report generated successfully with training context:", reportData.studyType);
       
-      // Create report in storage
+      // Create report in storage — inherit patientId from the worksheet if already linked
       const report = await storage.createReport({
         worksheetId,
         patientName: reportData.patientName,
@@ -1421,7 +1425,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         findings: reportData.findings,
         impression: reportData.impression,
         physicianId,
-        logoUrl: clinic?.logoUrl || logoUrl
+        logoUrl: clinic?.logoUrl || logoUrl,
+        patientId: worksheet.patientId ?? null,
       });
 
       syncReportToPatientFolder(report.id).catch(err => console.error('Background report sync error:', err));
