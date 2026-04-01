@@ -294,6 +294,7 @@ export async function sendAppointmentReminder(params: {
 export async function sendReportEmail(params: {
   toEmail: string;
   toName: string;
+  ccEmails?: string[];
   subject: string;
   reportHtml: string;
   clinicName: string;
@@ -326,6 +327,10 @@ export async function sendReportEmail(params: {
     subject: params.subject,
     html: coverHtml,
   };
+
+  if (params.ccEmails && params.ccEmails.length > 0) {
+    message.cc = params.ccEmails.map(email => ({ email }));
+  }
 
   if (params.pdfBase64) {
     message.attachments = [{

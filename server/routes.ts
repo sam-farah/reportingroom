@@ -1137,7 +1137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
 
-      const { toEmail, toName, subject, reportHtml, pdfBase64, patientName: bodyPatientName } = req.body;
+      const { toEmail, toName, ccEmails, subject, reportHtml, pdfBase64, patientName: bodyPatientName } = req.body;
       if (!toEmail || !reportHtml) {
         return res.status(400).json({ error: "toEmail and reportHtml are required" });
       }
@@ -1153,6 +1153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await sendReportEmail({
         toEmail,
         toName: toName || toEmail,
+        ccEmails: Array.isArray(ccEmails) ? ccEmails : [],
         subject: subject || `Medical Report — ${resolvedPatientName}`,
         reportHtml,
         clinicName,

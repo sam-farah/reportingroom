@@ -892,6 +892,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         body: JSON.stringify({
           toEmail: emailTo,
           toName: emailToName || emailTo,
+          ccEmails: emailCc ? emailCc.split(",").map(e => e.trim()).filter(Boolean) : [],
           subject: emailSubject || `Medical Report — ${distributeReport.patientName}`,
           reportHtml: distributeHtml,
           pdfBase64,
