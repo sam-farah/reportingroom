@@ -85,6 +85,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [distributeLoading, setDistributeLoading] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [emailToName, setEmailToName] = useState("");
+  const [emailCc, setEmailCc] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -2296,10 +2297,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                       if (val === "__custom") {
                         setEmailTo("");
                         setEmailToName("");
+                        setEmailSubject(`Medical Report — ${distributeReport?.patientName ?? ""}`);
                       } else {
                         const [email, name] = val.split("||");
                         setEmailTo(email);
                         setEmailToName(name || "");
+                        setEmailSubject(`Medical Report — ${distributeReport?.patientName ?? ""} — Attn: ${name || email}`);
                       }
                     }}
                   >
@@ -2322,7 +2325,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                 {/* Manual email input */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-600">Email Address *</Label>
+                    <Label className="text-xs text-gray-600">To (Email) *</Label>
                     <Input
                       type="email"
                       placeholder="doctor@practice.com"
@@ -2340,6 +2343,17 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                       className="bg-white text-sm"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-600">CC (optional — separate multiple with commas)</Label>
+                  <Input
+                    type="text"
+                    placeholder="cc@example.com, another@example.com"
+                    value={emailCc}
+                    onChange={(e) => setEmailCc(e.target.value)}
+                    className="bg-white text-sm"
+                  />
                 </div>
 
                 <div className="space-y-1">
