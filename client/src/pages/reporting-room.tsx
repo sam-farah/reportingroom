@@ -21,6 +21,19 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import TextShortcuts from "@/components/text-shortcuts";
 
+function formatDobAU(dob: string | null | undefined): string {
+  if (!dob) return "";
+  // Already DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dob)) return dob;
+  // YYYY-MM-DD (ISO / HTML date input)
+  const iso = dob.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  // DD-MM-YYYY
+  const dmy = dob.match(/^(\d{2})-(\d{2})-(\d{4})/);
+  if (dmy) return `${dmy[1]}/${dmy[2]}/${dmy[3]}`;
+  return dob;
+}
+
 async function generateReportPdfBase64(html: string): Promise<string> {
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;visibility:hidden;";
@@ -716,7 +729,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         ctx.font = `${infoFontSize}px Arial, sans-serif`;
         const infoLines = [
           `Patient: ${report.patientName}`,
-          report.patientDob ? `DOB: ${report.patientDob}` : null,
+          report.patientDob ? `DOB: ${formatDobAU(report.patientDob)}` : null,
           `Exam Date: ${report.examDate}`,
           report.patientUrNumber ? `UR: ${report.patientUrNumber}` : null,
           `Scan: ${report.studyType}`,
