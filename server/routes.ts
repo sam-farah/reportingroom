@@ -912,7 +912,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const fileUrl = `/uploads/${req.file.filename}`;
-      saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname).catch(console.error);
+      // Await DB backup before responding — prevents file loss on server restart
+      await saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname);
 
       const worksheet = await storage.createWorksheet({
         filename: req.file.filename,
@@ -2851,30 +2852,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const filePath = path.join(uploadDir, worksheet.filename);
-      
-      if (!fs.existsSync(filePath)) {
+
+      // Determine content type from extension (used for both paths)
+      const ext = path.extname(worksheet.filename).toLowerCase();
+      let contentType = 'application/octet-stream';
+      if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+      else if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.gif') contentType = 'image/gif';
+      else if (ext === '.webp') contentType = 'image/webp';
+      else if (ext === '.pdf') contentType = 'application/pdf';
+
+      // Fast path: file on disk
+      if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
+        return res.sendFile(filePath);
+      }
+
+      // Fallback: restore from database blob
+      const blob = await getFileFromDB(worksheet.filename);
+      if (!blob) {
         return res.status(404).json({ error: "File not found" });
       }
 
-      // Set appropriate headers for image serving
-      const ext = path.extname(worksheet.filename).toLowerCase();
-      let contentType = 'application/octet-stream';
-      
-      if (ext === '.jpg' || ext === '.jpeg') {
-        contentType = 'image/jpeg';
-      } else if (ext === '.png') {
-        contentType = 'image/png';
-      } else if (ext === '.gif') {
-        contentType = 'image/gif';
-      } else if (ext === '.webp') {
-        contentType = 'image/webp';
-      } else if (ext === '.pdf') {
-        contentType = 'application/pdf';
-      }
-      
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-      res.sendFile(filePath);
+      // Restore to disk for future requests
+      try { fs.writeFileSync(filePath, blob.data); } catch {}
+
+      const resolvedType = blob.mimeType ?? detectMimeType(blob.data) ?? contentType;
+      res.setHeader('Content-Type', resolvedType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      return res.send(blob.data);
     } catch (error) {
       console.error("Error serving worksheet image:", error);
       res.status(500).json({ error: "Failed to serve image" });
