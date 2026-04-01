@@ -300,9 +300,11 @@ export async function sendReportEmail(params: {
   clinicName: string;
   patientName: string;
   pdfBase64?: string;
+  worksheetPdfBase64?: string;
 }): Promise<void> {
   const safePatient = params.patientName.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "_");
   const pdfFilename = `Report_${safePatient}.pdf`;
+  const worksheetFilename = `Worksheet_${safePatient}.pdf`;
 
   const coverHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; padding: 24px; color: #1a1a2e;">
@@ -332,14 +334,24 @@ export async function sendReportEmail(params: {
     message.cc = params.ccEmails.map(email => ({ email }));
   }
 
+  const attachments: any[] = [];
   if (params.pdfBase64) {
-    message.attachments = [{
+    attachments.push({
       content: params.pdfBase64,
       filename: pdfFilename,
       type: "application/pdf",
       disposition: "attachment",
-    }];
+    });
   }
+  if (params.worksheetPdfBase64) {
+    attachments.push({
+      content: params.worksheetPdfBase64,
+      filename: worksheetFilename,
+      type: "application/pdf",
+      disposition: "attachment",
+    });
+  }
+  if (attachments.length > 0) message.attachments = attachments;
 
   try {
     await sgMail.send(message);

@@ -81,6 +81,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [distributeHtmlWithWs, setDistributeHtmlWithWs] = useState<string>("");
   const [distributeIncludeWorksheet, setDistributeIncludeWorksheet] = useState(true);
   const [distributeHasWorksheet, setDistributeHasWorksheet] = useState(false);
+  const [distributeWorksheetDataUrl, setDistributeWorksheetDataUrl] = useState<string | null>(null);
   const [distributeCopied, setDistributeCopied] = useState(false);
   const [distributeLoading, setDistributeLoading] = useState(false);
   const [emailTo, setEmailTo] = useState("");
@@ -827,6 +828,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     const htmlWithWs = makeHtml(labelledWorksheetDataUrl);
     const htmlNoWs = makeHtml(null);
     setDistributeHasWorksheet(hasWs);
+    setDistributeWorksheetDataUrl(labelledWorksheetDataUrl);
     setDistributeHtmlWithWs(htmlWithWs);
     setDistributeHtmlNoWs(htmlNoWs);
     setDistributeHtml(htmlWithWs); // default: worksheet included
@@ -880,10 +882,30 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setEmailSent(false);
     try {
       let pdfBase64: string | undefined;
+      let worksheetPdfBase64: string | undefined;
       try {
         pdfBase64 = await generateReportPdfBase64(distributeHtml);
       } catch (pdfErr) {
-        console.warn("PDF generation failed, sending without attachment:", pdfErr);
+        console.warn("Report PDF generation failed, sending without attachment:", pdfErr);
+      }
+      if (distributeWorksheetDataUrl) {
+        try {
+          const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = distributeWorksheetDataUrl!;
+          });
+          const A4_W = 210, A4_H = 297;
+          const scale = Math.min(A4_W / wsImg.width, A4_H / wsImg.height);
+          const drawW = wsImg.width * scale, drawH = wsImg.height * scale;
+          const wsPdf = new jsPDF({ orientation: drawH > drawW ? "portrait" : "landscape", unit: "mm", format: "a4" });
+          const xOff = (A4_W - drawW) / 2, yOff = (A4_H - drawH) / 2;
+          wsPdf.addImage(distributeWorksheetDataUrl, "JPEG", xOff, yOff, drawW, drawH);
+          worksheetPdfBase64 = wsPdf.output("datauristring").split(",")[1];
+        } catch (wsErr) {
+          console.warn("Worksheet PDF generation failed:", wsErr);
+        }
       }
       const res = await fetch(`/api/reports/${distributeReport.id}/send-email`, {
         method: "POST",
@@ -896,6 +918,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
           subject: emailSubject || `Medical Report — ${distributeReport.patientName}`,
           reportHtml: distributeHtml,
           pdfBase64,
+          worksheetPdfBase64,
           patientName: distributeReport.patientName,
         }),
       });
