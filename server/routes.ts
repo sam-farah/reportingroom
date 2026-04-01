@@ -1104,6 +1104,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sonographer marks report as complete (before doctor finalises)
+  app.post("/api/reports/:id/sonographer-complete", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      const user = await storage.getUser(req.session.userId!);
+      const completedBy = user?.name || user?.email || req.session.userId!;
+      const report = await storage.sonographerCompleteReport(id, completedBy);
+      if (!report) return res.status(404).json({ error: "Report not found" });
+      res.json(report);
+    } catch (error) {
+      console.error("Error marking sonographer complete:", error);
+      res.status(500).json({ error: "Failed to update report" });
+    }
+  });
+
+  // Archive a distributed report workflow
+  app.post("/api/reports/:id/archive", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      const report = await storage.archiveReport(id);
+      if (!report) return res.status(404).json({ error: "Report not found" });
+      res.json(report);
+    } catch (error) {
+      console.error("Error archiving report:", error);
+      res.status(500).json({ error: "Failed to archive report" });
+    }
+  });
+
   // Amendment endpoint
   app.post("/api/reports/:id/amend", isAuthenticated, async (req, res) => {
     try {
@@ -1166,7 +1196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         worksheetPdfBase64: worksheetPdfBase64 || undefined,
       });
 
-      // Auto-log the distribution
+      // Auto-log the distribution (with worksheet flag)
       await storage.createReportDistribution({
         reportId: id,
         clinicId: user?.clinicId ?? null,
@@ -1174,6 +1204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recipientName: toName || null,
         recipientEmail: toEmail,
         notes: null,
+        worksheetIncluded: !!worksheetPdfBase64,
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });

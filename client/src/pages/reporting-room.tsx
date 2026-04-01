@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2 } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Button } from "@/components/ui/button";
@@ -135,6 +135,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   const [markSentNotes, setMarkSentNotes] = useState("");
   const [markSentLogging, setMarkSentLogging] = useState(false);
   const [showMarkSent, setShowMarkSent] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   
   const REPORTS_PER_PAGE = 12;
@@ -366,6 +367,35 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
         description: error.message || "Failed to finalize report",
         variant: "destructive",
       });
+    },
+  });
+
+  const sonographerCompleteMutation = useMutation({
+    mutationFn: async (reportId: number) => {
+      const response = await apiRequest(`/api/reports/${reportId}/sonographer-complete`, "POST");
+      return await response.json();
+    },
+    onSuccess: (updated: Report) => {
+      toast({ title: "Sonographer Complete", description: "Report marked as complete by sonographer." });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      if (editingReport && editingReport.id === updated.id) setEditingReport(updated as any);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not mark as complete.", variant: "destructive" });
+    },
+  });
+
+  const archiveReportMutation = useMutation({
+    mutationFn: async (reportId: number) => {
+      const response = await apiRequest(`/api/reports/${reportId}/archive`, "POST");
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Workflow Archived", description: "Report workflow has been archived." });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not archive workflow.", variant: "destructive" });
     },
   });
 
@@ -1208,10 +1238,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     }
   };
 
-  const filteredReports = reports.filter((report: Report) =>
-    report.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    report.studyType.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredReports = reports.filter((report: Report) => {
+    if (!showArchived && (report as any).isArchived) return false;
+    return (
+      report.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      report.studyType.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredReports.length / REPORTS_PER_PAGE);
@@ -1256,7 +1289,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
             )}
           </p>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
+          <Button
+            variant={showArchived ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowArchived(v => !v)}
+            className={showArchived ? "bg-gray-600 hover:bg-gray-700 text-white" : "text-gray-600"}
+          >
+            <Archive className="w-4 h-4 mr-1.5" />
+            {showArchived ? "Hide Archived" : "Show Archived"}
+          </Button>
           <div className="relative">
             <Input
               placeholder="Search reports..."
@@ -1310,10 +1352,22 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                     Distributed {distributionCounts[report.id] > 1 ? `×${distributionCounts[report.id]}` : ""}
                   </div>
                 )}
+                {(report as any).isSonographerComplete && (report as any).sonographerCompletedAt && (
+                  <div className="flex items-center text-xs text-teal-600 mt-1">
+                    <ClipboardCheck className="w-3 h-3 mr-1" />
+                    Sono Complete: {format(new Date((report as any).sonographerCompletedAt), 'MMM dd, yyyy')}
+                  </div>
+                )}
                 {report.isAmended && report.amendedAt && (
                   <div className="flex items-center text-xs text-orange-600 mt-1">
                     <Edit3 className="w-3 h-3 mr-1" />
                     Amended: {format(new Date(report.amendedAt), 'MMM dd, yyyy')}
+                  </div>
+                )}
+                {(report as any).isArchived && (
+                  <div className="flex items-center text-xs text-gray-500 mt-1">
+                    <Archive className="w-3 h-3 mr-1" />
+                    Archived
                   </div>
                 )}
               </div>
@@ -1345,6 +1399,42 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                     <Share2 className="w-3 h-3 mr-1" />
                     Distribute
                   </Button>
+                </div>
+                {/* Sonographer Complete + Archive row */}
+                <div className="flex space-x-2">
+                  {(report as any).isSonographerComplete ? (
+                    <div className="flex items-center justify-center flex-1 py-1.5 px-2 text-xs text-teal-600 bg-teal-50 border border-teal-200 rounded">
+                      <ClipboardCheck className="w-3 h-3 mr-1" />
+                      Sono Complete
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-teal-600 border-teal-200 hover:bg-teal-50 text-xs"
+                      onClick={() => sonographerCompleteMutation.mutate(report.id)}
+                      disabled={sonographerCompleteMutation.isPending}
+                    >
+                      <ClipboardCheck className="w-3 h-3 mr-1" />
+                      Sono Complete
+                    </Button>
+                  )}
+                  {(distributionCounts[report.id] ?? 0) > 0 && !(report as any).isArchived && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-gray-500 border-gray-200 hover:bg-gray-50 px-2"
+                      onClick={() => {
+                        if (confirm("Archive this workflow? It will be hidden from the main reports list.")) {
+                          archiveReportMutation.mutate(report.id);
+                        }
+                      }}
+                      disabled={archiveReportMutation.isPending}
+                      title="Archive workflow"
+                    >
+                      <Archive className="w-3 h-3" />
+                    </Button>
+                  )}
                 </div>
                 <div className="flex space-x-2">
                   {report.isFinalized ? (

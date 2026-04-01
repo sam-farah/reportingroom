@@ -12,9 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send } from "lucide-react";
 import { format } from "date-fns";
-import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog } from "@shared/schema";
+import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Download, ExternalLink } from "lucide-react";
 
@@ -239,6 +239,18 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       return response.json();
     },
     enabled: !!selectedPatient,
+  });
+
+  const selectedReportId = selectedDocument?.type === 'report' ? selectedDocument.id : null;
+  const { data: reportDistributions = [] } = useQuery<ReportDistribution[]>({
+    queryKey: ["/api/reports", selectedReportId, "distributions"],
+    queryFn: async () => {
+      if (!selectedReportId) return [];
+      const response = await fetch(`/api/reports/${selectedReportId}/distributions`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!selectedReportId,
   });
 
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
@@ -534,10 +546,12 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <h2 className="text-xl font-bold">{report.studyType}</h2>
                   <p className="text-gray-600">Exam Date: {report.examDate}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {report.isFinalized && <Badge className="bg-green-600">Finalized</Badge>}
+                  {(report as any).isSonographerComplete && <Badge className="bg-teal-600">Sono Complete</Badge>}
                   {report.isAmended && <Badge variant="secondary">Amended</Badge>}
                   {report.isDraft && <Badge variant="outline">Draft</Badge>}
+                  {(report as any).isArchived && <Badge variant="outline" className="text-gray-500 border-gray-400">Archived</Badge>}
                 </div>
               </div>
             </div>
@@ -591,6 +605,64 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   </p>
                 </div>
               )}
+
+              {/* Sonographer workflow status */}
+              {((report as any).isSonographerComplete || (report as any).isArchived) && (
+                <div className="border-t pt-4 mt-2 space-y-1">
+                  {(report as any).isSonographerComplete && (report as any).sonographerCompletedAt && (
+                    <div className="flex items-center gap-2 text-sm text-teal-700">
+                      <ClipboardCheck className="w-4 h-4 shrink-0" />
+                      <span>Sonographer marked complete by <strong>{(report as any).sonographerCompletedBy}</strong> on {format(new Date((report as any).sonographerCompletedAt), "PPP")}</span>
+                    </div>
+                  )}
+                  {(report as any).isArchived && (report as any).archivedAt && (
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Archive className="w-4 h-4 shrink-0" />
+                      <span>Workflow archived on {format(new Date((report as any).archivedAt), "PPP")}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Distribution history */}
+              <div className="border-t pt-4 mt-2">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                  <Send className="w-4 h-4" />
+                  Distribution History
+                </h3>
+                {reportDistributions.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">Not yet distributed</p>
+                ) : (
+                  <div className="space-y-2">
+                    {reportDistributions.map((dist: ReportDistribution) => (
+                      <div key={dist.id} className="flex items-start gap-3 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg text-sm">
+                        <div className="mt-0.5 shrink-0">
+                          {dist.method === 'email' ? (
+                            <Mail className="w-4 h-4 text-blue-500" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-gray-500" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-800 dark:text-gray-200">
+                            {dist.method === 'email' ? 'Emailed' : 'Copy/HTML'}
+                            {dist.recipientName && <span className="ml-1">to {dist.recipientName}</span>}
+                            {dist.recipientEmail && <span className="text-gray-500 ml-1">({dist.recipientEmail})</span>}
+                          </div>
+                          {(dist as any).worksheetIncluded && (
+                            <div className="text-xs text-teal-600 mt-0.5">+ Worksheet attached</div>
+                          )}
+                          {dist.notes && <div className="text-gray-500 text-xs mt-0.5">{dist.notes}</div>}
+                          <div className="text-xs text-gray-400 mt-1">
+                            {dist.sentAt ? format(new Date(dist.sentAt), "d MMM yyyy, h:mm a") : ''}
+                            {dist.confirmedBy && <span className="ml-2">· sent by {dist.confirmedBy}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -134,6 +134,8 @@ export interface IStorage {
   createReport(report: InsertReport): Promise<Report>;
   updateReport(id: number, report: Partial<InsertReport>): Promise<Report | undefined>;
   amendReport(id: number, updates: Partial<InsertReport>, userId: string, reason: string): Promise<Report | undefined>;
+  sonographerCompleteReport(id: number, completedBy: string): Promise<Report | undefined>;
+  archiveReport(id: number): Promise<Report | undefined>;
   deleteReport(id: number): Promise<void>;
   
   getAllTrainingPairs(): Promise<TrainingPair[]>;
@@ -585,6 +587,31 @@ export class DatabaseStorage implements IStorage {
         isFinalized: false,
         finalizedAt: null,
         finalizedBy: null,
+      })
+      .where(eq(reports.id, id))
+      .returning();
+    return report;
+  }
+
+  async sonographerCompleteReport(id: number, completedBy: string): Promise<Report | undefined> {
+    const [report] = await db
+      .update(reports)
+      .set({
+        isSonographerComplete: true,
+        sonographerCompletedAt: new Date(),
+        sonographerCompletedBy: completedBy,
+      })
+      .where(eq(reports.id, id))
+      .returning();
+    return report;
+  }
+
+  async archiveReport(id: number): Promise<Report | undefined> {
+    const [report] = await db
+      .update(reports)
+      .set({
+        isArchived: true,
+        archivedAt: new Date(),
       })
       .where(eq(reports.id, id))
       .returning();
