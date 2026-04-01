@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution } from "@shared/schema";
+import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer } from "@shared/schema";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -23,15 +23,42 @@ import TextShortcuts from "@/components/text-shortcuts";
 
 function formatDobAU(dob: string | null | undefined): string {
   if (!dob) return "";
-  // Already DD/MM/YYYY
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(dob)) return dob;
-  // YYYY-MM-DD (ISO / HTML date input)
   const iso = dob.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
-  // DD-MM-YYYY
   const dmy = dob.match(/^(\d{2})-(\d{2})-(\d{4})/);
   if (dmy) return `${dmy[1]}/${dmy[2]}/${dmy[3]}`;
   return dob;
+}
+
+function cleanStudyType(studyType: string): string {
+  return studyType
+    .replace(/\bduplex\b/gi, "ultrasound")
+    .replace(/\b(arm|arms|leg|legs)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function formatPhysicianName(name: string): string {
+  // Handle "Last, First" storage format → display as "First Last"
+  if (name.includes(",")) {
+    const [last, first] = name.split(",").map(s => s.trim());
+    return `${first} ${last}`;
+  }
+  return name;
+}
+
+function formatFindings(text: string): string {
+  // Convert lines starting with Right: / Left: / Bilateral: into bold subheadings
+  return text
+    .split("\n")
+    .map(line => {
+      if (/^(Right|Left|Bilateral|Right side|Left side)\s*:/i.test(line.trim())) {
+        return `\n<strong style="display:block;margin-top:10px;margin-bottom:2px;font-size:14px;color:#1a1a1a;">${line.trim()}</strong>`;
+      }
+      return line;
+    })
+    .join("\n");
 }
 
 async function generateReportPdfBase64(html: string): Promise<string> {
@@ -142,6 +169,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   // Fetch physicians for distribute feature
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
+    retry: false,
+  });
+
+  // Fetch sonographers for report attribution
+  const { data: sonographersList = [] } = useQuery<Sonographer[]>({
+    queryKey: ["/api/sonographers"],
     retry: false,
   });
 
@@ -617,12 +650,21 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     if (report.physicianId) {
       const physician = physicians.find(p => p.id === report.physicianId);
       if (physician) {
-        physicianName = physician.name || "";
+        physicianName = formatPhysicianName(physician.name || "");
         physicianTitle = physician.title || "";
         physicianCredentials = (physician as any).credentials || "";
         if (physician.signatureUrl) {
           signatureDataUrl = await toBase64(physician.signatureUrl);
         }
+      }
+    }
+
+    // Look up sonographer
+    let sonographerName = "";
+    if (report.sonographerId) {
+      const sono = sonographersList.find(s => s.id === report.sonographerId);
+      if (sono) {
+        sonographerName = (sono.title ? sono.title + " " : "") + sono.name;
       }
     }
 
@@ -644,7 +686,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     const hdrStyle = (template?.headerStyle as string) || 'left-logo';
     const secStyle = (template?.sectionTitleStyle as string) || 'underline';
     const boxStyle = (template?.patientBoxStyle as string) || 'card';
-    const today = format(new Date(), 'MMMM dd, yyyy');
+    const todayAU = format(new Date(), 'dd/MM/yyyy');
 
     const sectionTitleCSS = secStyle === 'filled'
       ? `color:#fff;background:${pc};padding:6px 14px;margin-bottom:12px;font-size:14px;font-weight:700;letter-spacing:0.03em;`
@@ -756,7 +798,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     const clinicFax = clinicData?.fax || '';
     const clinicEmail = clinicData?.email || '';
 
-    const makeHtml = (wsUrl: string | null) => `<!DOCTYPE html>
+    const accessionId = report.worksheetId ? `WS-${report.worksheetId}` : report.digitalWorksheetId ? `DW-${report.digitalWorksheetId}` : '';
+    const displayStudyType = cleanStudyType(report.studyType);
+    const displayExamDate = formatDobAU(report.examDate);
+
+    const makeHtml = (wsUrl: string | null, copiesTo: string = '') => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -772,22 +818,25 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     .header-info h1{font-size:${h1Size};font-weight:700;color:${pc};margin-bottom:3px;}
     .header-info .sub{font-size:13px;color:#555;}
     .header-info .clinic-info{font-size:12px;color:#777;margin-top:2px;}
-    .patient-box{${patientBoxCSS}display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;}
+    .patient-box{${patientBoxCSS}display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;}
     .patient-box h3{grid-column:span 2;${patientBoxH3CSS}font-weight:700;}
     .pi{font-size:12px;}
     .pi .label{font-weight:bold;color:#444;}
+    .pi-full{grid-column:span 2;font-size:12px;}
+    .pi-full .label{font-weight:bold;color:#444;}
     .ur{color:#1d4ed8;font-family:monospace;font-weight:bold;}
-    .section{margin-bottom:20px;page-break-inside:avoid;}
+    .section{margin-bottom:18px;page-break-inside:avoid;}
     .section-title{${sectionTitleCSS}}
     .section-content{font-size:13px;line-height:1.75;white-space:pre-wrap;}
     .worksheet-page{page-break-before:always;break-before:page;padding-top:30px;}
     .worksheet-img{max-width:100%;border:1px solid #ddd;border-radius:4px;display:block;}
-    .sig-area{margin-top:36px;padding-top:14px;border-top:1px solid #ddd;text-align:${sigPos};}
+    .sig-area{margin-top:28px;padding-top:12px;border-top:1px solid #ddd;text-align:${sigPos};}
     .sig-img{max-height:68px;margin-bottom:4px;}
     .sig-name{font-weight:bold;font-size:13px;}
     .sig-creds{font-size:12px;color:#555;}
+    .copies-to{font-size:12px;color:#555;margin-top:6px;}
     .finalized{margin-top:5px;font-size:11px;color:#16a34a;font-weight:600;}
-    .footer{margin-top:30px;padding-top:10px;border-top:1px solid #eee;font-size:11px;color:#888;text-align:center;}
+    .footer{margin-top:24px;padding-top:10px;border-top:1px solid #eee;font-size:11px;color:#888;text-align:center;}
     .amended-note{background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:#92400e;}
   </style>
 </head>
@@ -796,10 +845,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     ${clinicLogoDataUrl ? `<div class="header-logo"><img src="${clinicLogoDataUrl}" alt="Clinic Logo" /></div>` : ''}
     <div class="header-info">
       <h1>${clinicName}</h1>
-      <div class="sub">Medical Examination Report</div>
+      <div class="sub">Vascular Ultrasound Report</div>
       ${clinicAddress ? `<div class="clinic-info">${clinicAddress}</div>` : ''}
-      ${clinicPhone ? `<div class="clinic-info">Phone: ${clinicPhone}</div>` : ''}
-      ${clinicFax ? `<div class="clinic-info">Fax: ${clinicFax}</div>` : ''}
+      ${[clinicPhone ? `Ph: ${clinicPhone}` : '', clinicFax ? `Fax: ${clinicFax}` : ''].filter(Boolean).join('  &nbsp;|&nbsp;  ')}
       ${clinicEmail ? `<div class="clinic-info">${clinicEmail}</div>` : ''}
     </div>
   </div>` : ''}
@@ -809,28 +857,30 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
   <div class="patient-box">
     <h3>Patient Information</h3>
     <div class="pi"><span class="label">Patient Name:</span> ${report.patientName}</div>
-    ${report.patientUrNumber ? `<div class="pi"><span class="label">UR Number:</span> <span class="ur">UR ${report.patientUrNumber}</span></div>` : '<div></div>'}
-    <div class="pi"><span class="label">Date of Birth:</span> ${report.patientDob}</div>
-    <div class="pi"><span class="label">Exam Date:</span> ${report.examDate}</div>
-    <div class="pi"><span class="label">Report ID:</span> ${report.id}</div>
-    <div class="pi"><span class="label">Report Date:</span> ${today}</div>
+    <div class="pi"><span class="label">UR Number:</span> ${report.patientUrNumber ? `<span class="ur">UR ${report.patientUrNumber}</span>` : '—'}</div>
+    <div class="pi"><span class="label">Date of Birth:</span> ${formatDobAU(report.patientDob)}</div>
+    <div class="pi"><span class="label">Exam Date:</span> ${displayExamDate}</div>
+    ${sonographerName ? `<div class="pi"><span class="label">Sonographer:</span> ${sonographerName}</div>` : '<div></div>'}
+    <div class="pi"><span class="label">Report Date:</span> ${todayAU}</div>
+    <div class="pi-full"><span class="label">Study:</span> ${displayStudyType}</div>
+    ${accessionId ? `<div class="pi"><span class="label">Accession:</span> ${accessionId}</div>` : ''}
   </div>
 
-  ${template?.showStudyType !== false ? `<div class="section"><div class="section-title">Study Type</div><div class="section-content">${report.studyType}</div></div>` : ''}
   ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
-  ${template?.showFindings !== false ? `<div class="section"><div class="section-title">Findings</div><div class="section-content">${report.findings}</div></div>` : ''}
+  ${template?.showFindings !== false ? `<div class="section"><div class="section-title">Findings</div><div class="section-content">${formatFindings(report.findings)}</div></div>` : ''}
   ${template?.showImpression !== false ? `<div class="section"><div class="section-title">Impression</div><div class="section-content">${report.impression}</div></div>` : ''}
 
   ${template?.showSignature !== false ? `<div class="sig-area">
     ${signatureDataUrl ? `<img class="sig-img" src="${signatureDataUrl}" alt="Physician Signature" />` : ''}
     ${physicianName ? `<div class="sig-name">${physicianTitle ? physicianTitle + ' ' : ''}${physicianName}</div>` : ''}
     ${physicianCredentials ? `<div class="sig-creds">${physicianCredentials}</div>` : ''}
-    ${report.isFinalized && report.finalizedAt ? `<div class="finalized">Electronically signed on ${new Date(report.finalizedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>` : ''}
+    ${copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : '<!--COPIES_TO_PLACEHOLDER-->'}
+    ${report.isFinalized && report.finalizedAt ? `<div class="finalized">Electronically signed ${new Date(report.finalizedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>` : ''}
   </div>` : ''}
 
   ${template?.showFooter !== false ? `<div class="footer">
     ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
-    ${template?.showGenerationDate !== false ? `<div>Report generated: ${today}</div>` : ''}
+    ${template?.showGenerationDate !== false ? `<div>Report generated: ${todayAU}</div>` : ''}
   </div>` : ''}
 
   ${wsUrl ? `<div class="worksheet-page"><img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" /></div>` : ''}
@@ -894,10 +944,18 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     setEmailSending(true);
     setEmailSent(false);
     try {
+      // Inject copies-to into the report HTML before generating the PDF
+      const ccList = emailCc ? emailCc.split(",").map(e => e.trim()).filter(Boolean) : [];
+      const copiesTo = [emailToName || emailTo, ...ccList].filter(Boolean).join(", ");
+      const htmlForEmail = distributeHtml.replace(
+        "<!--COPIES_TO_PLACEHOLDER-->",
+        copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : ""
+      );
+
       let pdfBase64: string | undefined;
       let worksheetPdfBase64: string | undefined;
       try {
-        pdfBase64 = await generateReportPdfBase64(distributeHtml);
+        pdfBase64 = await generateReportPdfBase64(htmlForEmail);
       } catch (pdfErr) {
         console.warn("Report PDF generation failed, sending without attachment:", pdfErr);
       }
@@ -929,7 +987,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
           toName: emailToName || emailTo,
           ccEmails: emailCc ? emailCc.split(",").map(e => e.trim()).filter(Boolean) : [],
           subject: emailSubject || `Medical Report — ${distributeReport.patientName}`,
-          reportHtml: distributeHtml,
+          reportHtml: htmlForEmail,
           pdfBase64,
           worksheetPdfBase64,
           patientName: distributeReport.patientName,
