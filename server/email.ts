@@ -4,7 +4,7 @@ import path from "path";
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 
-const FROM_EMAIL = "admin@nexusvascularimaging.com";
+const FROM_EMAIL = "contact@samfarah.com";
 const FROM_NAME = "Nexus Vascular Imaging";
 
 export async function sendInvitationEmail(params: {
