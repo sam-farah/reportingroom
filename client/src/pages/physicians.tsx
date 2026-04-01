@@ -224,26 +224,15 @@ export default function Clinic() {
     },
     onSuccess: () => {
       toast({
-        title: "Staff Deactivated",
-        description: "Staff member has been deactivated",
+        title: "Team Member Removed",
+        description: "The team member has been removed from the clinic.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
     },
     onError: (error: Error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
       toast({
         title: "Error",
-        description: "Failed to deactivate staff member",
+        description: "Failed to remove team member. Please try again.",
         variant: "destructive",
       });
     },
@@ -1428,14 +1417,30 @@ export default function Clinic() {
                             </p>
                           </div>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => deactivateStaffMutation.mutate(staff.id)}
-                          disabled={deactivateStaffMutation.isPending}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="outline" size="sm" title="Remove from team">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to remove <strong>{staff.firstName && staff.lastName ? `${staff.firstName} ${staff.lastName}` : staff.email}</strong> from the clinic? They will lose access immediately.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deactivateStaffMutation.mutate(staff.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Remove
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     ))}
                   </div>

@@ -147,23 +147,27 @@ export default function StaffManagement() {
     },
   });
 
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<StaffMember | null>(null);
+
   const deactivateStaffMutation = useMutation({
     mutationFn: async (staffId: string) => {
       return await apiRequest(`/api/staff/${staffId}/deactivate`, "PATCH");
     },
     onSuccess: () => {
       toast({
-        title: "Staff Member Deactivated",
-        description: "The staff member has been deactivated successfully.",
+        title: "Team Member Removed",
+        description: "The team member has been removed from your clinic.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
+      setConfirmRemoveMember(null);
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to Deactivate Staff",
-        description: error.message || "Failed to deactivate staff member. Please try again.",
+        title: "Failed to Remove Team Member",
+        description: error.message || "Failed to remove team member. Please try again.",
         variant: "destructive",
       });
+      setConfirmRemoveMember(null);
     },
   });
 
@@ -350,9 +354,10 @@ export default function StaffManagement() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => deactivateStaffMutation.mutate(member.id)}
-                      disabled={member.id === user.id || deactivateStaffMutation.isPending}
+                      onClick={() => setConfirmRemoveMember(member)}
+                      disabled={member.id === user.id}
                       className="text-red-600 hover:text-red-800"
+                      title="Remove from team"
                     >
                       <XCircle className="h-4 w-4" />
                     </Button>
@@ -449,6 +454,36 @@ export default function StaffManagement() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Confirm Remove Dialog */}
+      <Dialog open={!!confirmRemoveMember} onOpenChange={(open) => { if (!open) setConfirmRemoveMember(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove Team Member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove{" "}
+              <strong>
+                {confirmRemoveMember?.firstName && confirmRemoveMember?.lastName
+                  ? `${confirmRemoveMember.firstName} ${confirmRemoveMember.lastName}`
+                  : confirmRemoveMember?.email}
+              </strong>{" "}
+              from the clinic? They will lose access immediately and can only rejoin via a new invitation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setConfirmRemoveMember(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmRemoveMember && deactivateStaffMutation.mutate(confirmRemoveMember.id)}
+              disabled={deactivateStaffMutation.isPending}
+            >
+              {deactivateStaffMutation.isPending ? "Removing…" : "Remove"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

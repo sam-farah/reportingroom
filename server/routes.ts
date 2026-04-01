@@ -3341,12 +3341,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!currentUser?.clinicId) {
         return res.status(400).json({ message: "User not associated with a clinic" });
       }
+      if (!["clinic_owner", "admin"].includes(currentUser.role || "")) {
+        return res.status(403).json({ message: "Only clinic owners and admins can remove staff" });
+      }
+      if (staffId === userId) {
+        return res.status(400).json({ message: "You cannot remove yourself" });
+      }
 
       await storage.deactivateStaffMember(staffId, currentUser.clinicId);
-      res.json({ message: "Staff member deactivated successfully" });
+      res.json({ message: "Staff member removed successfully" });
     } catch (error) {
-      console.error("Error deactivating staff:", error);
-      res.status(500).json({ message: "Failed to deactivate staff member" });
+      console.error("Error removing staff:", error);
+      res.status(500).json({ message: "Failed to remove staff member" });
     }
   });
 

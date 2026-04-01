@@ -408,7 +408,7 @@ export class DatabaseStorage implements IStorage {
     const staff = await db
       .select()
       .from(users)
-      .where(eq(users.clinicId, clinicId))
+      .where(and(eq(users.clinicId, clinicId), eq(users.isActive, true)))
       .orderBy(desc(users.joinedAt));
     return staff.map(user => FieldEncryption.decryptFields(user) as User);
   }
@@ -439,8 +439,8 @@ export class DatabaseStorage implements IStorage {
   async deactivateStaffMember(staffId: string, clinicId: number): Promise<void> {
     await db
       .update(users)
-      .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(users.id, staffId));
+      .set({ isActive: false, clinicId: null, updatedAt: new Date() })
+      .where(and(eq(users.id, staffId), eq(users.clinicId, clinicId)));
   }
 
   async updateClinicLogo(clinicId: number, logoUrl: string): Promise<void> {
