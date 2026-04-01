@@ -760,3 +760,18 @@ export const reminderLogs = pgTable("reminder_logs", {
 });
 
 export type ReminderLog = typeof reminderLogs.$inferSelect;
+
+// Patient-level activity notes (fax sends, emails, manual notes)
+export const patientNotes = pgTable("patient_notes", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  type: varchar("type", { length: 50 }).notNull().default("note"), // "note" | "fax" | "email" | "system"
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdBy: varchar("created_by").references(() => users.id),
+});
+
+export const insertPatientNoteSchema = createInsertSchema(patientNotes).omit({ id: true, createdAt: true });
+export type PatientNote = typeof patientNotes.$inferSelect;
+export type InsertPatientNote = z.infer<typeof insertPatientNoteSchema>;

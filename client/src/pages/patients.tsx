@@ -12,9 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer } from "lucide-react";
 import { format } from "date-fns";
-import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution } from "@shared/schema";
+import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Download, ExternalLink } from "lucide-react";
 
@@ -129,6 +129,8 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment' | 'document'; id: number } | null>(null);
   const [showPatientInfo, setShowPatientInfo] = useState(false);
+  const [newNoteContent, setNewNoteContent] = useState("");
+  const [isAddingNote, setIsAddingNote] = useState(false);
 
   const [formData, setFormData] = useState({
     urNumber: "",
@@ -225,6 +227,17 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       if (!selectedPatient) return [];
       const response = await fetch(`/api/patients/${selectedPatient.id}/documents`, { credentials: "include" });
       if (!response.ok) throw new Error("Failed to fetch documents");
+      return response.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const { data: patientNotes = [] } = useQuery<PatientNote[]>({
+    queryKey: ["/api/patients", selectedPatient?.id, "notes"],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const response = await fetch(`/api/patients/${selectedPatient.id}/notes`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch notes");
       return response.json();
     },
     enabled: !!selectedPatient,
@@ -388,6 +401,19 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to update Medicare status", variant: "destructive" });
     },
+  });
+
+  const createNoteMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await apiRequest(`/api/patients/${selectedPatient!.id}/notes`, "POST", { content });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, "notes"] });
+      setNewNoteContent("");
+      setIsAddingNote(false);
+    },
+    onError: () => toast({ title: "Error", description: "Failed to save note", variant: "destructive" }),
   });
 
   const resetForm = () => {
@@ -1022,6 +1048,65 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 </div>
               </div>
             )}
+
+            {/* Notes & Activity */}
+            <div className="border-t px-3 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes & Activity</p>
+                <button
+                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  onClick={() => setIsAddingNote(v => !v)}
+                >
+                  <Plus className="w-3 h-3" />Add Note
+                </button>
+              </div>
+              {isAddingNote && (
+                <div className="mb-2">
+                  <textarea
+                    className="w-full text-xs border rounded p-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                    rows={2}
+                    placeholder="Add a note..."
+                    value={newNoteContent}
+                    onChange={e => setNewNoteContent(e.target.value)}
+                  />
+                  <div className="flex gap-1 mt-1 justify-end">
+                    <button className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1" onClick={() => { setIsAddingNote(false); setNewNoteContent(""); }}>Cancel</button>
+                    <button
+                      className="text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                      disabled={!newNoteContent.trim() || createNoteMutation.isPending}
+                      onClick={() => createNoteMutation.mutate(newNoteContent.trim())}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
+              {patientNotes.length === 0 && !isAddingNote ? (
+                <p className="text-xs text-gray-400 italic">No notes yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {patientNotes.map((note) => (
+                    <div key={note.id} className="flex items-start gap-2 text-xs">
+                      <div className="mt-0.5 shrink-0">
+                        {note.type === 'fax' ? (
+                          <Printer className="w-3.5 h-3.5 text-teal-500" />
+                        ) : note.type === 'email' ? (
+                          <Mail className="w-3.5 h-3.5 text-blue-500" />
+                        ) : (
+                          <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-gray-700 dark:text-gray-300">{note.content}</div>
+                        <div className="text-gray-400 mt-0.5">
+                          {note.createdAt ? format(new Date(note.createdAt), "d MMM yyyy, h:mm a") : ""}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Panel - Document Preview (hidden on mobile when list is showing) */}

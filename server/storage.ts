@@ -81,6 +81,9 @@ import {
   type ReminderLog,
   patientRegistrationTokens,
   type PatientRegistrationToken,
+  patientNotes,
+  type PatientNote,
+  type InsertPatientNote,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max } from "drizzle-orm";
@@ -224,6 +227,8 @@ export interface IStorage {
   getPatientDocuments(patientId: number): Promise<PatientDocument[]>;
   createPatientDocument(document: InsertPatientDocument): Promise<PatientDocument>;
   deletePatientDocument(id: number): Promise<void>;
+  getPatientNotes(patientId: number): Promise<PatientNote[]>;
+  createPatientNote(note: InsertPatientNote): Promise<PatientNote>;
 
   // Patient portal operations
   createPatientPortalInvitation(data: InsertPatientPortalInvitation): Promise<PatientPortalInvitation>;
@@ -1160,6 +1165,15 @@ export class DatabaseStorage implements IStorage {
 
   async deletePatientDocument(id: number): Promise<void> {
     await db.delete(patientDocuments).where(eq(patientDocuments.id, id));
+  }
+
+  async getPatientNotes(patientId: number): Promise<PatientNote[]> {
+    return await db.select().from(patientNotes).where(eq(patientNotes.patientId, patientId)).orderBy(desc(patientNotes.createdAt));
+  }
+
+  async createPatientNote(note: InsertPatientNote): Promise<PatientNote> {
+    const [created] = await db.insert(patientNotes).values(note).returning();
+    return created;
   }
 
   // Patient portal operations

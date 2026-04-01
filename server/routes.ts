@@ -663,6 +663,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/patients/:id/notes", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const notes = await storage.getPatientNotes(id);
+      res.json(notes);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch patient notes" });
+    }
+  });
+
+  app.post("/api/patients/:id/notes", isAuthenticated, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const user = await storage.getUser(req.session.userId!);
+      const note = await storage.createPatientNote({
+        patientId,
+        clinicId: user?.clinicId ?? null,
+        type: "note",
+        content: req.body.content,
+        createdBy: user?.id ?? null,
+      });
+      res.status(201).json(note);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create patient note" });
+    }
+  });
+
   app.post("/api/patients/:id/documents", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
       const patientId = parseInt(req.params.id);
@@ -1280,6 +1307,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });
+
+      // Log fax in patient activity history if report is linked to a patient
+      if (report.patientId) {
+        const sentByName = user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email : "staff";
+        await storage.createPatientNote({
+          patientId: report.patientId,
+          clinicId: user?.clinicId ?? null,
+          type: "fax",
+          content: `Report faxed to ${faxNumber} by ${sentByName}.`,
+          createdBy: user?.id ?? null,
+        });
+      }
 
       res.json({ success: true, faxEmail });
     } catch (error: any) {
