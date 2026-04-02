@@ -1177,6 +1177,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/reports/:id/unarchive", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      const report = await storage.updateReport(id, { isArchived: false, archivedAt: null });
+      if (!report) return res.status(404).json({ error: "Report not found" });
+      res.json(report);
+    } catch (error) {
+      console.error("Error unarchiving report:", error);
+      res.status(500).json({ error: "Failed to unarchive report" });
+    }
+  });
+
   // Amendment endpoint
   app.post("/api/reports/:id/amend", isAuthenticated, async (req, res) => {
     try {
@@ -3905,7 +3918,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const allReports = await storage.getPatientReports(account.patientId);
       const finalizedReports = allReports
-        .filter(r => r.isFinalized)
+        .filter(r => r.isFinalized && !r.isArchived)
         .sort((a, b) => {
           const dateA = a.generatedAt ? new Date(a.generatedAt).getTime() : 0;
           const dateB = b.generatedAt ? new Date(b.generatedAt).getTime() : 0;

@@ -416,6 +416,32 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     onError: () => toast({ title: "Error", description: "Failed to save note", variant: "destructive" }),
   });
 
+  const archiveReportMutation = useMutation({
+    mutationFn: async (reportId: number) => {
+      const res = await apiRequest(`/api/reports/${reportId}/archive`, "POST");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, "reports"] });
+      toast({ title: "Archived", description: "Report moved to archive." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to archive report", variant: "destructive" }),
+  });
+
+  const unarchiveReportMutation = useMutation({
+    mutationFn: async (reportId: number) => {
+      const res = await apiRequest(`/api/reports/${reportId}/unarchive`, "POST");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, "reports"] });
+      toast({ title: "Restored", description: "Report moved back to active." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to unarchive report", variant: "destructive" }),
+  });
+
+  const [historyTab, setHistoryTab] = useState<'active' | 'archived'>('active');
+
   const resetForm = () => {
     setFormData({
       urNumber: "",
@@ -490,6 +516,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       date: r.examDate || (r.generatedAt ? format(new Date(r.generatedAt), "yyyy-MM-dd") : ''),
       status: r.isFinalized ? 'finalized' : r.isDraft ? 'draft' : 'pending',
       isAmended: r.isAmended,
+      isArchived: (r as any).isArchived ?? false,
       data: r,
     })),
     ...patientWorksheets.map(w => ({
@@ -499,6 +526,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       date: w.uploadedAt ? format(new Date(w.uploadedAt), "yyyy-MM-dd") : '',
       status: w.ocrProcessed ? 'processed' : 'pending',
       isAmended: false,
+      isArchived: false,
       data: w,
     })),
     ...patientDigitalWorksheets.map(dw => ({
@@ -508,6 +536,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       date: dw.createdAt ? format(new Date(dw.createdAt), "yyyy-MM-dd") : '',
       status: dw.isDraft ? 'draft' : 'completed',
       isAmended: false,
+      isArchived: false,
       data: dw,
     })),
     ...patientAppointments.map(a => ({
@@ -517,6 +546,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       date: a.appointmentDate ? format(new Date(a.appointmentDate), "yyyy-MM-dd") : '',
       status: a.status || 'scheduled',
       isAmended: false,
+      isArchived: false,
       data: a,
     })),
     ...patientDocuments.map(d => ({
@@ -526,9 +556,13 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       date: d.documentDate || '',
       status: 'uploaded',
       isAmended: false,
+      isArchived: false,
       data: d,
     })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const activeDocuments = allDocuments.filter(d => !d.isArchived);
+  const archivedDocuments = allDocuments.filter(d => d.isArchived);
 
   const getSelectedDocumentData = () => {
     if (!selectedDocument) return null;
@@ -954,71 +988,143 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
           {/* Left Panel - Document List (hidden on mobile when detail is showing) */}
           <div className={`${mobileShowDetail ? 'hidden' : 'flex'} md:flex w-full md:w-80 bg-white dark:bg-gray-800 border-r flex-col`}>
             <div className="p-3 border-b bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documents ({allDocuments.length})</h2>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setIsUploadDialogOpen(true)}
-                className="h-7 px-2"
-              >
-                <Upload className="w-4 h-4 mr-1" />
-                Upload
-              </Button>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setHistoryTab('active')}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors ${historyTab === 'active' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Active ({activeDocuments.length})
+                </button>
+                <button
+                  onClick={() => setHistoryTab('archived')}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${historyTab === 'archived' ? 'bg-gray-500 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <Archive className="w-3 h-3" />
+                  Archived {archivedDocuments.length > 0 && `(${archivedDocuments.length})`}
+                </button>
+              </div>
+              {historyTab === 'active' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsUploadDialogOpen(true)}
+                  className="h-7 px-2"
+                >
+                  <Upload className="w-4 h-4 mr-1" />
+                  Upload
+                </Button>
+              )}
             </div>
             <div className="flex-1 overflow-auto">
-              {allDocuments.length === 0 ? (
-                <div className="p-4 text-center text-gray-500">
-                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No documents found</p>
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {allDocuments.map((doc) => (
-                    <div
-                      key={`${doc.type}-${doc.id}`}
-                      className={`p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
-                        selectedDocument?.type === doc.type && selectedDocument?.id === doc.id
-                          ? 'bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500'
-                          : ''
-                      }`}
-                      onClick={() => { setSelectedDocument({ type: doc.type, id: doc.id }); setMobileShowDetail(true); }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded ${
-                          doc.type === 'report' ? 'bg-green-100 text-green-600' :
-                          doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
-                          doc.type === 'digitalWorksheet' ? 'bg-orange-100 text-orange-600' :
-                          doc.type === 'document' ? 'bg-yellow-100 text-yellow-600' :
-                          'bg-blue-100 text-blue-600'
-                        }`}>
-                          {doc.type === 'report' ? <FileText className="w-4 h-4" /> :
-                           doc.type === 'worksheet' ? <ClipboardList className="w-4 h-4" /> :
-                           doc.type === 'digitalWorksheet' ? <ClipboardList className="w-4 h-4" /> :
-                           doc.type === 'document' ? <File className="w-4 h-4" /> :
-                           <Calendar className="w-4 h-4" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{doc.title}</div>
-                          <div className="text-xs text-gray-500">{doc.date}</div>
-                          <div className="flex items-center gap-1 mt-1">
-                            <Badge variant="outline" className="text-xs px-1.5 py-0">
-                              {doc.type}
-                            </Badge>
-                            {doc.status === 'finalized' && (
-                              <CheckCircle className="w-3 h-3 text-green-500" />
-                            )}
-                            {doc.status === 'draft' && (
-                              <Clock className="w-3 h-3 text-yellow-500" />
-                            )}
-                            {doc.isAmended && (
-                              <AlertCircle className="w-3 h-3 text-orange-500" />
-                            )}
+              {historyTab === 'active' ? (
+                activeDocuments.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500">
+                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p>No documents found</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {activeDocuments.map((doc) => (
+                      <div
+                        key={`${doc.type}-${doc.id}`}
+                        className={`group p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                          selectedDocument?.type === doc.type && selectedDocument?.id === doc.id
+                            ? 'bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500'
+                            : ''
+                        }`}
+                        onClick={() => { setSelectedDocument({ type: doc.type, id: doc.id }); setMobileShowDetail(true); }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`p-2 rounded ${
+                            doc.type === 'report' ? 'bg-green-100 text-green-600' :
+                            doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
+                            doc.type === 'digitalWorksheet' ? 'bg-orange-100 text-orange-600' :
+                            doc.type === 'document' ? 'bg-yellow-100 text-yellow-600' :
+                            'bg-blue-100 text-blue-600'
+                          }`}>
+                            {doc.type === 'report' ? <FileText className="w-4 h-4" /> :
+                             doc.type === 'worksheet' ? <ClipboardList className="w-4 h-4" /> :
+                             doc.type === 'digitalWorksheet' ? <ClipboardList className="w-4 h-4" /> :
+                             doc.type === 'document' ? <File className="w-4 h-4" /> :
+                             <Calendar className="w-4 h-4" />}
                           </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{doc.title}</div>
+                            <div className="text-xs text-gray-500">{doc.date}</div>
+                            <div className="flex items-center gap-1 mt-1">
+                              <Badge variant="outline" className="text-xs px-1.5 py-0">
+                                {doc.type}
+                              </Badge>
+                              {doc.status === 'finalized' && (
+                                <CheckCircle className="w-3 h-3 text-green-500" />
+                              )}
+                              {doc.status === 'draft' && (
+                                <Clock className="w-3 h-3 text-yellow-500" />
+                              )}
+                              {doc.isAmended && (
+                                <AlertCircle className="w-3 h-3 text-orange-500" />
+                              )}
+                            </div>
+                          </div>
+                          {doc.type === 'report' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); archiveReportMutation.mutate(doc.id); }}
+                              className="ml-1 p-1 text-gray-400 hover:text-gray-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Archive report"
+                            >
+                              <Archive className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                archivedDocuments.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500">
+                    <Archive className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No archived documents</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {archivedDocuments.map((doc) => (
+                      <div
+                        key={`${doc.type}-${doc.id}`}
+                        className={`p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors opacity-70 ${
+                          selectedDocument?.type === doc.type && selectedDocument?.id === doc.id
+                            ? 'bg-gray-100 dark:bg-gray-700 border-l-4 border-gray-400'
+                            : ''
+                        }`}
+                        onClick={() => { setSelectedDocument({ type: doc.type, id: doc.id }); setMobileShowDetail(true); }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded bg-gray-100 text-gray-500">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate text-gray-600">{doc.title}</div>
+                            <div className="text-xs text-gray-400">{doc.date}</div>
+                            <div className="flex items-center gap-1 mt-1">
+                              <Badge variant="outline" className="text-xs px-1.5 py-0 text-gray-400 border-gray-300">
+                                archived
+                              </Badge>
+                            </div>
+                          </div>
+                          {doc.type === 'report' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); unarchiveReportMutation.mutate(doc.id); }}
+                              className="ml-1 p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
+                              title="Restore report"
+                            >
+                              <Archive className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
               )}
             </div>
 
