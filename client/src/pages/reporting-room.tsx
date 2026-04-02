@@ -967,6 +967,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
     if (!distributeReport) return;
     setMarkSentLogging(true);
     try {
+      // Generate a PDF snapshot of exactly what was transmitted
+      let pdfBlob: string | null = null;
+      try {
+        pdfBlob = await generateReportPdfBase64(distributeHtmlNoWs, distributeWorksheetDataUrl);
+      } catch (pdfErr) {
+        console.warn("PDF generation failed for Copy HTML record:", pdfErr);
+      }
       await fetch(`/api/reports/${distributeReport.id}/distributions`, {
         method: "POST",
         credentials: "include",
@@ -976,15 +983,18 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
           recipientName: markSentName || null,
           recipientEmail: markSentEmail || null,
           notes: markSentNotes || null,
+          pdfBlob: pdfBlob || null,
+          worksheetIncluded: !!distributeWorksheetDataUrl,
         }),
       });
       refetchDistributions();
       refetchDistributionCounts();
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       setMarkSentName("");
       setMarkSentEmail("");
       setMarkSentNotes("");
       setShowMarkSent(false);
-      toast({ title: "Distribution Recorded", description: "The copy has been logged in the distribution history." });
+      toast({ title: "Distribution Recorded", description: "The transmitted PDF has been stored and report archived." });
     } catch {
       toast({ title: "Log Failed", description: "Could not save distribution record.", variant: "destructive" });
     } finally {
@@ -1035,6 +1045,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       setEmailSent(true);
       refetchDistributions();
       refetchDistributionCounts();
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       toast({ title: "Email Sent", description: `Report sent to ${emailTo}` });
       setTimeout(() => setEmailSent(false), 4000);
     } catch (err: any) {
@@ -1071,6 +1082,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
       setFaxSent(true);
       refetchDistributions();
       refetchDistributionCounts();
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       toast({ title: "Fax Sent", description: `Report faxed to ${faxNumber.trim()}` });
       setTimeout(() => setFaxSent(false), 4000);
     } catch (err: any) {

@@ -265,6 +265,7 @@ export interface IStorage {
 
   // Report distributions
   getReportDistributions(reportId: number): Promise<ReportDistribution[]>;
+  getDistributionById(id: number): Promise<ReportDistribution | undefined>;
   getReportDistributionCounts(clinicId: number): Promise<Record<number, number>>;
   createReportDistribution(distribution: InsertReportDistribution): Promise<ReportDistribution>;
 
@@ -1405,6 +1406,11 @@ export class DatabaseStorage implements IStorage {
       .from(reportDistributions)
       .where(eq(reportDistributions.reportId, reportId))
       .orderBy(desc(reportDistributions.sentAt));
+  }
+
+  async getDistributionById(id: number): Promise<ReportDistribution | undefined> {
+    const [row] = await db.select().from(reportDistributions).where(eq(reportDistributions.id, id));
+    return row;
   }
 
   async getReportDistributionCounts(clinicId: number): Promise<Record<number, number>> {

@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, LogOut, FileText, ImageIcon, ShieldCheck, ChevronRight, Download } from "lucide-react";
+import { Loader2, LogOut, FileText, ImageIcon, ShieldCheck, ChevronRight, Download, ExternalLink, Send } from "lucide-react";
 import { format } from "date-fns";
 import { Report, Worksheet } from "@shared/schema";
 import {
@@ -17,6 +17,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+
+interface TransmittedReport {
+  distributionId: number;
+  reportId: number;
+  studyType: string;
+  examDate: string | null;
+  sentAt: string;
+  method: string;
+  recipientName: string | null;
+}
 
 interface PortalMe {
   id: number;
@@ -40,6 +50,11 @@ export default function PatientPortalDashboard() {
 
   const { data: reports, isLoading: isLoadingReports } = useQuery<Report[]>({
     queryKey: ["/api/portal/reports"],
+    enabled: !!me,
+  });
+
+  const { data: transmittedReports = [], isLoading: isLoadingTransmitted } = useQuery<TransmittedReport[]>({
+    queryKey: ["/api/portal/transmitted-reports"],
     enabled: !!me,
   });
 
@@ -132,20 +147,52 @@ export default function PatientPortalDashboard() {
         </div>
 
         <div className="grid sm:grid-cols-2 gap-5 sm:gap-8">
-          {/* Reports Section */}
+          {/* Reports Section — shows transmitted PDFs as primary; raw report text as fallback */}
           <section className="space-y-3">
             <div className="flex items-center gap-2 text-slate-900">
               <FileText className="w-4 h-4 text-blue-600" />
               <h3 className="text-base font-bold">Your Reports</h3>
               <Badge variant="outline" className="ml-1 bg-blue-50 text-blue-700 border-blue-100 text-xs">
-                {reports?.length || 0}
+                {transmittedReports.length > 0 ? transmittedReports.length : (reports?.length || 0)}
               </Badge>
             </div>
 
-            {isLoadingReports ? (
+            {isLoadingTransmitted || isLoadingReports ? (
               <div className="space-y-3">
                 {[1, 2].map((i) => (
                   <Card key={i} className="animate-pulse h-20 bg-slate-100" />
+                ))}
+              </div>
+            ) : transmittedReports.length > 0 ? (
+              <div className="space-y-3">
+                {transmittedReports.map((tr) => (
+                  <Card key={tr.distributionId} className="shadow-sm border-slate-200">
+                    <CardContent className="p-4 flex items-center justify-between gap-2">
+                      <div className="space-y-0.5 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-slate-900 text-sm truncate">{tr.studyType || "Report"}</p>
+                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none px-1.5 py-0 text-[10px] flex-shrink-0">
+                            <Send className="w-2.5 h-2.5 mr-1" />
+                            Sent
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          {tr.examDate ? format(new Date(tr.examDate), 'MMM d, yyyy') : ''}
+                          {tr.examDate && ' · '}
+                          Dispatched {format(new Date(tr.sentAt), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                      <a
+                        href={`/api/portal/distributions/${tr.distributionId}/pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        View PDF
+                      </a>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             ) : reports && reports.length > 0 ? (
@@ -205,22 +252,16 @@ export default function PatientPortalDashboard() {
                               <p className="font-semibold text-slate-900 text-sm">{report.indication}</p>
                             </div>
                           </div>
-
                           <div className="space-y-4">
                             <div>
                               <h4 className="text-base font-bold text-slate-900 mb-2 border-l-4 border-blue-600 pl-3">Findings</h4>
-                              <div className="text-slate-700 whitespace-pre-wrap leading-relaxed text-sm">
-                                {report.findings}
-                              </div>
+                              <div className="text-slate-700 whitespace-pre-wrap leading-relaxed text-sm">{report.findings}</div>
                             </div>
                             <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                               <h4 className="text-base font-bold text-blue-900 mb-2">Impression</h4>
-                              <div className="text-slate-800 whitespace-pre-wrap leading-relaxed font-medium text-sm">
-                                {report.impression}
-                              </div>
+                              <div className="text-slate-800 whitespace-pre-wrap leading-relaxed font-medium text-sm">{report.impression}</div>
                             </div>
                           </div>
-
                           <div className="pt-4 border-t text-xs text-slate-500 flex flex-col sm:flex-row justify-between gap-3">
                             <div>
                               <p className="font-semibold text-slate-900 text-sm">Finalized On</p>
@@ -240,7 +281,7 @@ export default function PatientPortalDashboard() {
             ) : (
               <Card className="border-dashed bg-transparent border-slate-300">
                 <CardContent className="p-6 text-center text-slate-500 text-sm">
-                  No finalized reports available yet.
+                  No reports available yet.
                 </CardContent>
               </Card>
             )}

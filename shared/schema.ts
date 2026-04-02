@@ -689,11 +689,12 @@ export const reportDistributions = pgTable("report_distributions", {
   id: serial("id").primaryKey(),
   reportId: integer("report_id").notNull().references(() => reports.id, { onDelete: "cascade" }),
   clinicId: integer("clinic_id").references(() => clinics.id),
-  method: varchar("method", { length: 20 }).notNull(), // "email" | "copy_html"
+  method: varchar("method", { length: 20 }).notNull(), // "email" | "fax" | "copy_html"
   recipientName: varchar("recipient_name", { length: 200 }),
   recipientEmail: varchar("recipient_email", { length: 200 }),
   notes: text("notes"),
   worksheetIncluded: boolean("worksheet_included").default(false),
+  pdfBlob: text("pdf_blob"), // base64 combined PDF snapshot of exactly what was transmitted
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   confirmedAt: timestamp("confirmed_at"),
   confirmedBy: varchar("confirmed_by", { length: 200 }),

@@ -690,6 +690,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all transmitted PDFs (distributions with a stored PDF) for a patient
+  app.get("/api/patients/:id/transmitted-reports", isAuthenticated, async (req, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
+      const allReports = await storage.getPatientReports(patientId);
+      const result: any[] = [];
+      for (const report of allReports) {
+        const dists = await storage.getReportDistributions(report.id);
+        for (const d of dists) {
+          if (d.pdfBlob) {
+            result.push({
+              distributionId: d.id,
+              reportId: report.id,
+              studyType: report.studyType,
+              examDate: report.examDate,
+              patientName: report.patientName,
+              sentAt: d.sentAt,
+              method: d.method,
+              recipientName: d.recipientName,
+              confirmedBy: d.confirmedBy,
+            });
+          }
+        }
+      }
+      result.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch transmitted reports" });
+    }
+  });
+
   app.post("/api/patients/:id/documents", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
       const patientId = parseInt(req.params.id);
@@ -1252,7 +1284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         worksheetPdfBase64: worksheetPdfBase64 || undefined,
       });
 
-      // Auto-log the distribution (with worksheet flag)
+      // Auto-log the distribution and store the transmitted PDF snapshot
       await storage.createReportDistribution({
         reportId: id,
         clinicId: user?.clinicId ?? null,
@@ -1261,9 +1293,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recipientEmail: toEmail,
         notes: null,
         worksheetIncluded: !!worksheetPdfBase64,
+        pdfBlob: pdfBase64 || null,
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });
+
+      // Auto-archive the source report now that a transmitted PDF is stored
+      if (pdfBase64) {
+        await storage.archiveReport(id);
+      }
 
       res.json({ success: true, message: `Report sent to ${toEmail}` });
     } catch (error: any) {
@@ -1325,10 +1363,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recipientName: `Fax: ${faxNumber}`,
         recipientEmail: faxEmail,
         notes: null,
-        worksheetIncluded: false,
+        worksheetIncluded: true,
+        pdfBlob: pdfBase64 || null,
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });
+
+      // Auto-archive the source report now that a transmitted PDF is stored
+      if (pdfBase64) {
+        await storage.archiveReport(id);
+      }
 
       // Log fax in patient activity history if report is linked to a patient
       if (report.patientId) {
@@ -1434,10 +1478,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const distribution = await storage.createReportDistribution(body);
+
+      // Auto-archive the source report if a PDF snapshot was provided
+      if (body.pdfBlob) {
+        await storage.archiveReport(id);
+      }
+
       res.json(distribution);
     } catch (error) {
       console.error("Create distribution error:", error);
       res.status(500).json({ error: "Failed to log distribution" });
+    }
+  });
+
+  // Serve the stored transmitted PDF for a distribution record
+  app.get("/api/distributions/:id/pdf", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid distribution ID" });
+      const distributions = await storage.getDistributionById(id);
+      if (!distributions?.pdfBlob) return res.status(404).json({ error: "No PDF stored for this distribution" });
+      const pdfBuffer = Buffer.from(distributions.pdfBlob, "base64");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="transmitted-report-${id}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Serve distribution PDF error:", error);
+      res.status(500).json({ error: "Failed to serve PDF" });
+    }
+  });
+
+  // Portal: serve a distribution PDF (portal-authenticated)
+  app.get("/api/portal/distributions/:id/pdf", async (req, res) => {
+    const portalUserId = (req.session as any).portalUserId;
+    if (!portalUserId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid distribution ID" });
+      const dist = await storage.getDistributionById(id);
+      if (!dist?.pdfBlob) return res.status(404).json({ error: "No PDF stored" });
+      // Verify this distribution belongs to this patient's report
+      const account = await storage.getPatientPortalAccountById(portalUserId);
+      if (!account) return res.status(403).json({ error: "Forbidden" });
+      const report = await storage.getReport(dist.reportId);
+      if (!report || report.patientId !== account.patientId) return res.status(403).json({ error: "Forbidden" });
+      const pdfBuffer = Buffer.from(dist.pdfBlob, "base64");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="report-${id}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to serve PDF" });
+    }
+  });
+
+  // Portal: list transmitted PDFs for patient
+  app.get("/api/portal/transmitted-reports", async (req, res) => {
+    const portalUserId = (req.session as any).portalUserId;
+    if (!portalUserId) return res.status(401).json({ error: "Not authenticated" });
+    try {
+      const account = await storage.getPatientPortalAccountById(portalUserId);
+      if (!account) return res.status(404).json({ error: "Account not found" });
+      const allReports = await storage.getPatientReports(account.patientId);
+      const result: any[] = [];
+      for (const report of allReports) {
+        const dists = await storage.getReportDistributions(report.id);
+        for (const d of dists) {
+          if (d.pdfBlob) {
+            result.push({
+              distributionId: d.id,
+              reportId: report.id,
+              studyType: report.studyType,
+              examDate: report.examDate,
+              sentAt: d.sentAt,
+              method: d.method,
+              recipientName: d.recipientName,
+            });
+          }
+        }
+      }
+      result.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch transmitted reports" });
     }
   });
 

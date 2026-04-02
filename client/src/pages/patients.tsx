@@ -254,6 +254,29 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     enabled: !!selectedPatient,
   });
 
+  // Transmitted reports (distributions with a stored PDF) for this patient
+  type TransmittedReport = {
+    distributionId: number;
+    reportId: number;
+    studyType: string;
+    examDate: string | null;
+    patientName: string;
+    sentAt: string;
+    method: string;
+    recipientName: string | null;
+    confirmedBy: string | null;
+  };
+  const { data: transmittedReports = [] } = useQuery<TransmittedReport[]>({
+    queryKey: ["/api/patients", selectedPatient?.id, "transmitted-reports"],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/transmitted-reports`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
   const selectedReportId = selectedDocument?.type === 'report' ? selectedDocument.id : null;
   const { data: reportDistributions = [] } = useQuery<ReportDistribution[]>({
     queryKey: ["/api/reports", selectedReportId, "distributions"],
@@ -440,7 +463,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     onError: () => toast({ title: "Error", description: "Failed to unarchive report", variant: "destructive" }),
   });
 
-  const [historyTab, setHistoryTab] = useState<'active' | 'archived'>('active');
+  const [historyTab, setHistoryTab] = useState<'active' | 'archived' | 'completed'>('active');
 
   const resetForm = () => {
     setFormData({
@@ -1002,6 +1025,13 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Archive className="w-3 h-3" />
                   Archived {archivedDocuments.length > 0 && `(${archivedDocuments.length})`}
                 </button>
+                <button
+                  onClick={() => setHistoryTab('completed')}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${historyTab === 'completed' ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <CheckCircle className="w-3 h-3" />
+                  Sent {transmittedReports.length > 0 && `(${transmittedReports.length})`}
+                </button>
               </div>
               {historyTab === 'active' && (
                 <Button
@@ -1016,7 +1046,50 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
               )}
             </div>
             <div className="flex-1 overflow-auto">
-              {historyTab === 'active' ? (
+              {historyTab === 'completed' ? (
+                transmittedReports.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500">
+                    <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No transmitted reports yet</p>
+                    <p className="text-xs text-gray-400 mt-1">PDFs sent via email, fax, or copy HTML appear here</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {transmittedReports.map((tr) => (
+                      <div key={tr.distributionId} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded bg-emerald-100 text-emerald-600 flex-shrink-0">
+                            <Send className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{tr.studyType || "Report"}</div>
+                            <div className="text-xs text-gray-500">
+                              {tr.examDate ? format(new Date(tr.examDate), "d MMM yyyy") : "—"} · Sent {format(new Date(tr.sentAt), "d MMM yyyy")}
+                            </div>
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              <Badge variant="outline" className="text-xs px-1.5 py-0 text-emerald-700 border-emerald-300 bg-emerald-50">
+                                {tr.method === "copy_html" ? "copy" : tr.method}
+                              </Badge>
+                              {tr.recipientName && (
+                                <span className="text-xs text-gray-500 truncate">→ {tr.recipientName}</span>
+                              )}
+                            </div>
+                          </div>
+                          <a
+                            href={`/api/distributions/${tr.distributionId}/pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-shrink-0 p-1.5 rounded text-emerald-600 hover:bg-emerald-100 transition-colors"
+                            title="View transmitted PDF"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : historyTab === 'active' ? (
                 activeDocuments.length === 0 ? (
                   <div className="p-4 text-center text-gray-500">
                     <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
