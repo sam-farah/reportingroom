@@ -2039,7 +2039,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                         <FileUp className="w-5 h-5 text-white" />
                       </div>
                       <div>
-                        <div className="font-semibold text-blue-900">Upload PDF Worksheet</div>
+                        <div className="font-semibold text-blue-900">Upload Worksheet</div>
                         <div className="text-sm text-blue-600">Upload a scanned or digital worksheet to generate a report</div>
                       </div>
                     </button>

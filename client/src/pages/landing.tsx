@@ -172,7 +172,7 @@ export default function Landing() {
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">Upload Worksheet</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  Simply drag and drop your ultrasound worksheet image or PDF into the system for instant processing.
+                  Simply drag and drop your ultrasound worksheet image into the system for instant processing.
                 </p>
               </div>
               
