@@ -1185,7 +1185,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
       const user = await storage.getUser(req.session.userId!);
-      const completedBy = user?.name || user?.email || req.session.userId!;
+      const completedBy = user
+        ? ([user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || String(req.session.userId!))
+        : String(req.session.userId!);
       const report = await storage.sonographerCompleteReport(id, completedBy);
       if (!report) return res.status(404).json({ error: "Report not found" });
       res.json(report);
