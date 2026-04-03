@@ -26,6 +26,7 @@ interface TransmittedReport {
   sentAt: string;
   method: string;
   recipientName: string | null;
+  hasPdf: boolean;
 }
 
 interface PortalMe {
@@ -182,15 +183,19 @@ export default function PatientPortalDashboard() {
                           Dispatched {format(new Date(tr.sentAt), 'MMM d, yyyy')}
                         </p>
                       </div>
-                      <a
-                        href={`/api/portal/distributions/${tr.distributionId}/pdf`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        View PDF
-                      </a>
+                      {tr.hasPdf ? (
+                        <a
+                          href={`/api/portal/distributions/${tr.distributionId}/pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          View PDF
+                        </a>
+                      ) : (
+                        <span className="flex-shrink-0 text-xs text-slate-400 italic">no PDF</span>
+                      )}
                     </CardContent>
                   </Card>
                 ))}

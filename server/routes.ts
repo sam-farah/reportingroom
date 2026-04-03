@@ -700,19 +700,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const report of allReports) {
         const dists = await storage.getReportDistributions(report.id);
         for (const d of dists) {
-          if (d.pdfBlob) {
-            result.push({
-              distributionId: d.id,
-              reportId: report.id,
-              studyType: report.studyType,
-              examDate: report.examDate,
-              patientName: report.patientName,
-              sentAt: d.sentAt,
-              method: d.method,
-              recipientName: d.recipientName,
-              confirmedBy: d.confirmedBy,
-            });
-          }
+          result.push({
+            distributionId: d.id,
+            reportId: report.id,
+            studyType: report.studyType,
+            examDate: report.examDate,
+            patientName: report.patientName,
+            sentAt: d.sentAt,
+            method: d.method,
+            recipientName: d.recipientName,
+            confirmedBy: d.confirmedBy,
+            hasPdf: !!d.pdfBlob,
+          });
         }
       }
       result.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
@@ -1545,17 +1544,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const report of allReports) {
         const dists = await storage.getReportDistributions(report.id);
         for (const d of dists) {
-          if (d.pdfBlob) {
-            result.push({
-              distributionId: d.id,
-              reportId: report.id,
-              studyType: report.studyType,
-              examDate: report.examDate,
-              sentAt: d.sentAt,
-              method: d.method,
-              recipientName: d.recipientName,
-            });
-          }
+          result.push({
+            distributionId: d.id,
+            reportId: report.id,
+            studyType: report.studyType,
+            examDate: report.examDate,
+            sentAt: d.sentAt,
+            method: d.method,
+            recipientName: d.recipientName,
+            hasPdf: !!d.pdfBlob,
+          });
         }
       }
       result.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());

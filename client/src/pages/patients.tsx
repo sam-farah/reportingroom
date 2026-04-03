@@ -265,6 +265,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     method: string;
     recipientName: string | null;
     confirmedBy: string | null;
+    hasPdf: boolean;
   };
   const { data: transmittedReports = [] } = useQuery<TransmittedReport[]>({
     queryKey: ["/api/patients", selectedPatient?.id, "transmitted-reports"],
@@ -1075,15 +1076,19 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                               )}
                             </div>
                           </div>
-                          <a
-                            href={`/api/distributions/${tr.distributionId}/pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-shrink-0 p-1.5 rounded text-emerald-600 hover:bg-emerald-100 transition-colors"
-                            title="View transmitted PDF"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
+                          {tr.hasPdf ? (
+                            <a
+                              href={`/api/distributions/${tr.distributionId}/pdf`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-shrink-0 p-1.5 rounded text-emerald-600 hover:bg-emerald-100 transition-colors"
+                              title="View transmitted PDF"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          ) : (
+                            <span className="flex-shrink-0 text-xs text-gray-400 italic">no PDF</span>
+                          )}
                         </div>
                       </div>
                     ))}
