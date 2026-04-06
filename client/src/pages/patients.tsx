@@ -1147,7 +1147,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                           {doc.type === 'report' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); archiveReportMutation.mutate(doc.id); }}
-                              className="ml-1 p-1 text-gray-400 hover:text-gray-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="ml-1 p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0"
                               title="Archive report"
                             >
                               <Archive className="w-3.5 h-3.5" />
