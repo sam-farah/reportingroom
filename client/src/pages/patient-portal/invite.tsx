@@ -237,6 +237,16 @@ export default function PatientPortalInvite() {
           ) : (
             <Form {...loginForm}>
               <form onSubmit={loginForm.handleSubmit((data) => loginMutation.mutate(data))} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Email</label>
+                  <Input
+                    type="email"
+                    value={invite.invitation.email}
+                    readOnly
+                    className="h-11 mt-1 bg-slate-50 text-slate-500 cursor-default select-all"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">This is the email your clinic has on file for you.</p>
+                </div>
                 <FormField
                   control={loginForm.control}
                   name="password"
