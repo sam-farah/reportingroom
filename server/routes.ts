@@ -33,7 +33,7 @@ import OpenAI from "openai";
 import { createReadStream } from "fs";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { sendPatientPortalInvitationEmail } from "./email";
+import { sendPatientPortalInvitationEmail, sendPortalPasswordResetEmail } from "./email";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -4066,6 +4066,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/portal/logout", (req, res) => {
     (req.session as any).portalUserId = null;
     res.json({ success: true });
+  });
+
+  // Forgot password — sends a reset link by email
+  app.post("/api/portal/forgot-password", async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    try {
+      const account = await storage.getPatientPortalAccountByEmail(email.toLowerCase().trim());
+
+      // Always return success so we don't reveal whether the email exists
+      if (account) {
+        const patient = await storage.getPatient(account.patientId);
+        const clinic = await storage.getClinic(account.clinicId);
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+        await storage.createPasswordResetToken(email.toLowerCase().trim(), token, expiresAt);
+
+        await sendPortalPasswordResetEmail({
+          toEmail: email.toLowerCase().trim(),
+          token,
+          patientFirstName: patient?.firstName || "Patient",
+          clinicName: clinic?.name || "Reporting Room",
+        }).catch(err => console.error("Failed to send password reset email:", err));
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Forgot password error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Validate a reset token
+  app.get("/api/portal/reset-password/:token", async (req, res) => {
+    const { token } = req.params;
+    try {
+      const reset = await storage.getPasswordResetToken(token);
+      if (!reset) return res.status(404).json({ error: "Invalid or expired reset link" });
+      if (reset.usedAt) return res.status(410).json({ error: "This reset link has already been used" });
+      if (new Date() > reset.expiresAt) return res.status(410).json({ error: "This reset link has expired" });
+      res.json({ valid: true, email: reset.email });
+    } catch (err: any) {
+      console.error("Validate reset token error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Complete password reset
+  app.post("/api/portal/reset-password", async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: "Token and password are required" });
+    if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters" });
+
+    try {
+      const reset = await storage.getPasswordResetToken(token);
+      if (!reset) return res.status(404).json({ error: "Invalid or expired reset link" });
+      if (reset.usedAt) return res.status(410).json({ error: "This reset link has already been used" });
+      if (new Date() > reset.expiresAt) return res.status(410).json({ error: "This reset link has expired" });
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      await storage.updatePatientPortalPassword(reset.email, passwordHash);
+      await storage.markPasswordResetTokenUsed(token);
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   app.get("/api/portal/me", async (req, res) => {

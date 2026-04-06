@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, KeyRound } from "lucide-react";
+import { Link } from "wouter";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -91,6 +92,13 @@ export default function PatientPortalLogin() {
                   </FormItem>
                 )}
               />
+              <div className="flex justify-end">
+                <Link href="/patient-portal/forgot-password">
+                  <a className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                    Forgot password?
+                  </a>
+                </Link>
+              </div>
               <Button 
                 type="submit" 
                 className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold" 

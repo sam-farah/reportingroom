@@ -566,6 +566,18 @@ export const insertPatientPortalAccountSchema = createInsertSchema(patientPortal
 export type PatientPortalAccount = typeof patientPortalAccounts.$inferSelect;
 export type InsertPatientPortalAccount = z.infer<typeof insertPatientPortalAccountSchema>;
 
+// Patient Portal Password Resets
+export const patientPortalPasswordResets = pgTable("patient_portal_password_resets", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PatientPortalPasswordReset = typeof patientPortalPasswordResets.$inferSelect;
+
 // Canonical scan types for the clinic
 export const CANONICAL_SCAN_TYPES: { name: string; hasLaterality: boolean }[] = [
   { name: "Carotid and vertebral", hasLaterality: false },

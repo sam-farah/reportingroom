@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useRoute, useLocation } from "wouter";
+import { useRoute, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -260,6 +260,13 @@ export default function PatientPortalInvite() {
                     </FormItem>
                   )}
                 />
+                <div className="flex justify-end">
+                  <Link href="/patient-portal/forgot-password">
+                    <a className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                      Forgot password?
+                    </a>
+                  </Link>
+                </div>
                 <Button
                   type="submit"
                   className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold"

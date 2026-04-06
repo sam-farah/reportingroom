@@ -12,10 +12,12 @@ import {
   patientDocuments,
   patientPortalInvitations,
   patientPortalAccounts,
+  patientPortalPasswordResets,
   type PatientPortalInvitation,
   type InsertPatientPortalInvitation,
   type PatientPortalAccount,
   type InsertPatientPortalAccount,
+  type PatientPortalPasswordReset,
   type User,
   type UpsertUser,
   type Clinic,
@@ -246,6 +248,10 @@ export interface IStorage {
   getPatientPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined>;
   getPatientPortalAccountById(id: number): Promise<PatientPortalAccount | undefined>;
   getPatientPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined>;
+  updatePatientPortalPassword(email: string, passwordHash: string): Promise<void>;
+  createPasswordResetToken(email: string, token: string, expiresAt: Date): Promise<PatientPortalPasswordReset>;
+  getPasswordResetToken(token: string): Promise<PatientPortalPasswordReset | undefined>;
+  markPasswordResetTokenUsed(token: string): Promise<void>;
   getScanDurationSettings(clinicId: number): Promise<ScanDurationSetting[]>;
   upsertScanDurationSettings(clinicId: number, settings: Omit<InsertScanDurationSetting, 'clinicId'>[]): Promise<ScanDurationSetting[]>;
 
@@ -1278,6 +1284,36 @@ export class DatabaseStorage implements IStorage {
       .from(patientPortalAccounts)
       .where(eq(patientPortalAccounts.patientId, patientId));
     return account;
+  }
+
+  async updatePatientPortalPassword(email: string, passwordHash: string): Promise<void> {
+    await db
+      .update(patientPortalAccounts)
+      .set({ passwordHash })
+      .where(eq(patientPortalAccounts.email, email));
+  }
+
+  async createPasswordResetToken(email: string, token: string, expiresAt: Date): Promise<PatientPortalPasswordReset> {
+    const [reset] = await db
+      .insert(patientPortalPasswordResets)
+      .values({ email, token, expiresAt })
+      .returning();
+    return reset;
+  }
+
+  async getPasswordResetToken(token: string): Promise<PatientPortalPasswordReset | undefined> {
+    const [reset] = await db
+      .select()
+      .from(patientPortalPasswordResets)
+      .where(eq(patientPortalPasswordResets.token, token));
+    return reset;
+  }
+
+  async markPasswordResetTokenUsed(token: string): Promise<void> {
+    await db
+      .update(patientPortalPasswordResets)
+      .set({ usedAt: new Date() })
+      .where(eq(patientPortalPasswordResets.token, token));
   }
 
   async getScanDurationSettings(clinicId: number): Promise<ScanDurationSetting[]> {
