@@ -4008,9 +4008,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid or expired invitation" });
       }
 
-      const existingAccount = await storage.getPatientPortalAccountByEmail(invitation.email);
-      if (existingAccount) {
-        return res.status(400).json({ error: "Account already exists for this email" });
+      // Check if an account already exists for this patient or email
+      const existingByEmail = await storage.getPatientPortalAccountByEmail(invitation.email);
+      const existingByPatient = await storage.getPatientPortalAccountByPatientId(invitation.patientId);
+      if (existingByEmail || existingByPatient) {
+        return res.status(400).json({ error: "An account already exists for this patient. Please log in instead." });
       }
 
       const passwordHash = await bcrypt.hash(password, 12);
@@ -4033,7 +4035,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Portal register error:", error);
-      res.status(500).json({ error: "Registration failed" });
+      res.status(500).json({ error: "Registration failed. Please try again or use the login tab." });
     }
   });
 

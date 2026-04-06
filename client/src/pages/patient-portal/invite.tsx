@@ -62,11 +62,15 @@ export default function PatientPortalInvite() {
 
   const registerMutation = useMutation({
     mutationFn: async (values: z.infer<typeof registerSchema>) => {
-      const res = await apiRequest("/api/portal/register", "POST", {
-        token: params?.token,
-        password: values.password,
+      const res = await fetch("/api/portal/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ token: params?.token, password: values.password }),
       });
-      return res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Registration failed");
+      return data;
     },
     onSuccess: () => {
       toast({
