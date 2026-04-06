@@ -1223,6 +1223,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/worksheets/:id/archive", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const row = await storage.archiveWorksheet(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch { res.status(500).json({ error: "Failed to archive worksheet" }); }
+  });
+
+  app.post("/api/worksheets/:id/unarchive", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const row = await storage.unarchiveWorksheet(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch { res.status(500).json({ error: "Failed to unarchive worksheet" }); }
+  });
+
+  app.post("/api/digital-worksheets/:id/archive", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const row = await storage.archiveDigitalWorksheet(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch { res.status(500).json({ error: "Failed to archive digital worksheet" }); }
+  });
+
+  app.post("/api/digital-worksheets/:id/unarchive", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const row = await storage.unarchiveDigitalWorksheet(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch { res.status(500).json({ error: "Failed to unarchive digital worksheet" }); }
+  });
+
+  app.post("/api/patient-documents/:id/archive", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const row = await storage.archivePatientDocument(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch { res.status(500).json({ error: "Failed to archive document" }); }
+  });
+
+  app.post("/api/patient-documents/:id/unarchive", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const row = await storage.unarchivePatientDocument(id);
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch { res.status(500).json({ error: "Failed to unarchive document" }); }
+  });
+
   // Amendment endpoint
   app.post("/api/reports/:id/amend", isAuthenticated, async (req, res) => {
     try {

@@ -142,6 +142,13 @@ export interface IStorage {
   sonographerCompleteReport(id: number, completedBy: string): Promise<Report | undefined>;
   archiveReport(id: number): Promise<Report | undefined>;
   deleteReport(id: number): Promise<void>;
+
+  archiveWorksheet(id: number): Promise<Worksheet | undefined>;
+  unarchiveWorksheet(id: number): Promise<Worksheet | undefined>;
+  archiveDigitalWorksheet(id: number): Promise<DigitalWorksheet | undefined>;
+  unarchiveDigitalWorksheet(id: number): Promise<DigitalWorksheet | undefined>;
+  archivePatientDocument(id: number): Promise<PatientDocument | undefined>;
+  unarchivePatientDocument(id: number): Promise<PatientDocument | undefined>;
   
   getAllTrainingPairs(): Promise<TrainingPair[]>;
   getTrainingPair(id: number): Promise<TrainingPair | undefined>;
@@ -623,13 +630,40 @@ export class DatabaseStorage implements IStorage {
   async archiveReport(id: number): Promise<Report | undefined> {
     const [report] = await db
       .update(reports)
-      .set({
-        isArchived: true,
-        archivedAt: new Date(),
-      })
+      .set({ isArchived: true, archivedAt: new Date() })
       .where(eq(reports.id, id))
       .returning();
     return report;
+  }
+
+  async archiveWorksheet(id: number): Promise<Worksheet | undefined> {
+    const [row] = await db.update(worksheets).set({ isArchived: true, archivedAt: new Date() }).where(eq(worksheets.id, id)).returning();
+    return row;
+  }
+
+  async unarchiveWorksheet(id: number): Promise<Worksheet | undefined> {
+    const [row] = await db.update(worksheets).set({ isArchived: false, archivedAt: null }).where(eq(worksheets.id, id)).returning();
+    return row;
+  }
+
+  async archiveDigitalWorksheet(id: number): Promise<DigitalWorksheet | undefined> {
+    const [row] = await db.update(digitalWorksheets).set({ isArchived: true, archivedAt: new Date() }).where(eq(digitalWorksheets.id, id)).returning();
+    return row;
+  }
+
+  async unarchiveDigitalWorksheet(id: number): Promise<DigitalWorksheet | undefined> {
+    const [row] = await db.update(digitalWorksheets).set({ isArchived: false, archivedAt: null }).where(eq(digitalWorksheets.id, id)).returning();
+    return row;
+  }
+
+  async archivePatientDocument(id: number): Promise<PatientDocument | undefined> {
+    const [row] = await db.update(patientDocuments).set({ isArchived: true, archivedAt: new Date() }).where(eq(patientDocuments.id, id)).returning();
+    return row;
+  }
+
+  async unarchivePatientDocument(id: number): Promise<PatientDocument | undefined> {
+    const [row] = await db.update(patientDocuments).set({ isArchived: false, archivedAt: null }).where(eq(patientDocuments.id, id)).returning();
+    return row;
   }
 
   async deleteReport(id: number): Promise<void> {

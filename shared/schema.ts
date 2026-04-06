@@ -112,6 +112,8 @@ export const worksheets = pgTable("worksheets", {
   examDate: text("exam_date"),
   ocrProcessed: boolean("ocr_processed").default(false),
   patientId: integer("patient_id").references(() => patients.id),
+  isArchived: boolean("is_archived").default(false),
+  archivedAt: timestamp("archived_at"),
 });
 
 export const reports = pgTable("reports", {
@@ -236,6 +238,8 @@ export const digitalWorksheets = pgTable("digital_worksheets", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   patientId: integer("patient_id").references(() => patients.id),
+  isArchived: boolean("is_archived").default(false),
+  archivedAt: timestamp("archived_at"),
 });
 
 // Relations
@@ -337,6 +341,8 @@ export const patientDocuments = pgTable("patient_documents", {
   documentDate: varchar("document_date", { length: 20 }).notNull(),
   notes: text("notes"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  isArchived: boolean("is_archived").default(false),
+  archivedAt: timestamp("archived_at"),
 });
 
 export type PatientDocument = typeof patientDocuments.$inferSelect;

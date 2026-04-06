@@ -464,6 +464,26 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     onError: () => toast({ title: "Error", description: "Failed to unarchive report", variant: "destructive" }),
   });
 
+  const makeArchiveMutation = (endpoint: string, invalidateKey: string, action: 'archive' | 'unarchive') =>
+    useMutation({
+      mutationFn: async (id: number) => {
+        const res = await apiRequest(`/api/${endpoint}/${id}/${action}`, "POST");
+        return res.json();
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, invalidateKey] });
+        toast({ title: action === 'archive' ? "Archived" : "Restored", description: action === 'archive' ? "Moved to archive." : "Moved back to active." });
+      },
+      onError: () => toast({ title: "Error", description: `Failed to ${action} item`, variant: "destructive" }),
+    });
+
+  const archiveWorksheetMutation = makeArchiveMutation("worksheets", "worksheets", "archive");
+  const unarchiveWorksheetMutation = makeArchiveMutation("worksheets", "worksheets", "unarchive");
+  const archiveDigitalWorksheetMutation = makeArchiveMutation("digital-worksheets", "digital-worksheets", "archive");
+  const unarchiveDigitalWorksheetMutation = makeArchiveMutation("digital-worksheets", "digital-worksheets", "unarchive");
+  const archiveDocumentMutation = makeArchiveMutation("patient-documents", "documents", "archive");
+  const unarchiveDocumentMutation = makeArchiveMutation("patient-documents", "documents", "unarchive");
+
   const [historyTab, setHistoryTab] = useState<'active' | 'archived' | 'completed'>('active');
 
   const resetForm = () => {
@@ -550,7 +570,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       date: w.uploadedAt ? format(new Date(w.uploadedAt), "yyyy-MM-dd") : '',
       status: w.ocrProcessed ? 'processed' : 'pending',
       isAmended: false,
-      isArchived: false,
+      isArchived: (w as any).isArchived ?? false,
       data: w,
     })),
     ...patientDigitalWorksheets.map(dw => ({
@@ -560,7 +580,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       date: dw.createdAt ? format(new Date(dw.createdAt), "yyyy-MM-dd") : '',
       status: dw.isDraft ? 'draft' : 'completed',
       isAmended: false,
-      isArchived: false,
+      isArchived: (dw as any).isArchived ?? false,
       data: dw,
     })),
     ...patientAppointments.map(a => ({
@@ -580,7 +600,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       date: d.documentDate || '',
       status: 'uploaded',
       isAmended: false,
-      isArchived: false,
+      isArchived: (d as any).isArchived ?? false,
       data: d,
     })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1144,11 +1164,17 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                               )}
                             </div>
                           </div>
-                          {doc.type === 'report' && (
+                          {doc.type !== 'appointment' && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); archiveReportMutation.mutate(doc.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (doc.type === 'report') archiveReportMutation.mutate(doc.id);
+                                else if (doc.type === 'worksheet') archiveWorksheetMutation.mutate(doc.id);
+                                else if (doc.type === 'digitalWorksheet') archiveDigitalWorksheetMutation.mutate(doc.id);
+                                else if (doc.type === 'document') archiveDocumentMutation.mutate(doc.id);
+                              }}
                               className="ml-1 p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0"
-                              title="Archive report"
+                              title="Archive"
                             >
                               <Archive className="w-3.5 h-3.5" />
                             </button>
@@ -1189,11 +1215,17 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                               </Badge>
                             </div>
                           </div>
-                          {doc.type === 'report' && (
+                          {doc.type !== 'appointment' && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); unarchiveReportMutation.mutate(doc.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (doc.type === 'report') unarchiveReportMutation.mutate(doc.id);
+                                else if (doc.type === 'worksheet') unarchiveWorksheetMutation.mutate(doc.id);
+                                else if (doc.type === 'digitalWorksheet') unarchiveDigitalWorksheetMutation.mutate(doc.id);
+                                else if (doc.type === 'document') unarchiveDocumentMutation.mutate(doc.id);
+                              }}
                               className="ml-1 p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
-                              title="Restore report"
+                              title="Restore"
                             >
                               <Archive className="w-3.5 h-3.5" />
                             </button>
