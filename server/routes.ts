@@ -3987,12 +3987,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const patient = await storage.getPatient(invitation.patientId);
       const clinic = await storage.getClinic(invitation.clinicId);
+      const existingAccount = await storage.getPatientPortalAccountByPatientId(invitation.patientId);
 
       res.json({
         invitation,
         patientFirstName: patient?.firstName,
         clinicName: clinic?.name,
         clinicLogoUrl: clinic?.logoUrl || null,
+        hasExistingAccount: !!existingAccount,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch invitation" });

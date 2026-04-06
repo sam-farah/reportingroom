@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl,FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Loader2, ArrowRight, CheckCircle2, Info } from "lucide-react";
 
 const registerSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
@@ -32,6 +32,7 @@ interface InviteData {
   patientFirstName: string;
   clinicName: string;
   clinicLogoUrl: string | null;
+  hasExistingAccount: boolean;
 }
 
 export default function PatientPortalInvite() {
@@ -44,6 +45,12 @@ export default function PatientPortalInvite() {
     queryKey: ["/api/portal/invite", params?.token],
     enabled: !!params?.token,
   });
+
+  useEffect(() => {
+    if (invite?.hasExistingAccount) {
+      setMode("login");
+    }
+  }, [invite?.hasExistingAccount]);
 
   const registerForm = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
@@ -81,21 +88,33 @@ export default function PatientPortalInvite() {
       setLocation("/patient-portal");
     },
     onError: (error: Error) => {
-      toast({
-        title: "Registration failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      if (error.message.toLowerCase().includes("already exists")) {
+        setMode("login");
+        toast({
+          title: "Account already exists",
+          description: "You already have an account. Please sign in below.",
+        });
+      } else {
+        toast({
+          title: "Registration failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 
   const loginMutation = useMutation({
     mutationFn: async (values: z.infer<typeof loginSchema>) => {
-      const res = await apiRequest("/api/portal/login", "POST", {
-        email: invite?.invitation.email,
-        password: values.password,
+      const res = await fetch("/api/portal/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: invite?.invitation.email, password: values.password }),
       });
-      return res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Login failed");
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/portal/me"] });
@@ -158,16 +177,23 @@ export default function PatientPortalInvite() {
             )}
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight text-slate-900">
-            Welcome, {invite.patientFirstName}
+            Welcome{invite.patientFirstName ? `, ${invite.patientFirstName}` : ""}
           </CardTitle>
           <CardDescription className="text-slate-500 text-lg">
-            Access your medical records from {invite.clinicName}
+            {mode === "register" ? "Set up access to your medical records" : `Sign in to ${invite.clinicName}`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 text-blue-800 text-sm">
-            You are registering with: <strong>{invite.invitation.email}</strong>
-          </div>
+          {invite.hasExistingAccount && mode === "login" ? (
+            <div className="p-4 bg-amber-50 rounded-lg border border-amber-200 text-amber-800 text-sm flex gap-2">
+              <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>You already have a portal account for <strong>{invite.invitation.email}</strong>. Please sign in with your existing password.</span>
+            </div>
+          ) : (
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 text-blue-800 text-sm">
+              {mode === "register" ? "Creating account for" : "Signing in as"}: <strong>{invite.invitation.email}</strong>
+            </div>
+          )}
 
           {mode === "register" ? (
             <Form {...registerForm}>
@@ -198,9 +224,9 @@ export default function PatientPortalInvite() {
                     </FormItem>
                   )}
                 />
-                <Button 
-                  type="submit" 
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold" 
+                <Button
+                  type="submit"
+                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold"
                   disabled={registerMutation.isPending}
                 >
                   {registerMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -218,15 +244,15 @@ export default function PatientPortalInvite() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input type="password" {...field} className="h-11" placeholder="••••••••" />
+                        <Input type="password" {...field} className="h-11" placeholder="••••••••" autoFocus />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <Button 
-                  type="submit" 
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold" 
+                <Button
+                  type="submit"
+                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold"
                   disabled={loginMutation.isPending}
                 >
                   {loginMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -241,11 +267,11 @@ export default function PatientPortalInvite() {
             <Button variant="link" className="text-slate-500" onClick={() => setMode("login")}>
               Already have an account? Sign in
             </Button>
-          ) : (
+          ) : !invite.hasExistingAccount ? (
             <Button variant="link" className="text-slate-500" onClick={() => setMode("register")}>
               Back to registration
             </Button>
-          )}
+          ) : null}
         </CardFooter>
       </Card>
     </div>
