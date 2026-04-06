@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers } from "lucide-react";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
@@ -620,6 +620,21 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
   const activeDocuments = allDocuments.filter(d => !d.isArchived);
   const archivedDocuments = allDocuments.filter(d => d.isArchived);
 
+  // Visit grouping: find examDates where 2+ non-archived reports exist (same-day multi-scan visits)
+  const visitMap = new Map<string, number[]>(); // examDate → [reportIds]
+  patientReports.forEach(r => {
+    if (!(r as any).isArchived && r.examDate) {
+      const ids = visitMap.get(r.examDate) || [];
+      ids.push(r.id);
+      visitMap.set(r.examDate, ids);
+    }
+  });
+  const multiScanDates = new Set(
+    Array.from(visitMap.entries())
+      .filter(([, ids]) => ids.length >= 2)
+      .map(([date]) => date)
+  );
+
   const getSelectedDocumentData = () => {
     if (!selectedDocument) return null;
     if (selectedDocument.type === 'report') {
@@ -656,6 +671,11 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
 
     if (selectedDocument?.type === 'report') {
       const report = doc as Report;
+      const visitSiblings = patientReports.filter(r =>
+        r.examDate === report.examDate &&
+        r.id !== report.id &&
+        !(r as any).isArchived
+      );
       return (
         <div className="h-full overflow-auto">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg">
@@ -674,6 +694,31 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 </div>
               </div>
             </div>
+
+            {visitSiblings.length > 0 && (
+              <div className="mb-4 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <CalendarDays className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  <span className="text-sm font-semibold text-teal-700 dark:text-teal-300">
+                    Same-day visit — {visitSiblings.length + 1} scans on {report.examDate}
+                  </span>
+                </div>
+                <p className="text-xs text-teal-600 dark:text-teal-400 mb-2">Other scans completed during this visit:</p>
+                <div className="flex flex-wrap gap-2">
+                  {visitSiblings.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setSelectedDocument({ type: 'report', id: s.id })}
+                      className="text-xs px-2.5 py-1 bg-white dark:bg-teal-800 hover:bg-teal-100 dark:hover:bg-teal-700 text-teal-800 dark:text-teal-200 rounded border border-teal-300 dark:border-teal-600 transition-colors flex items-center gap-1"
+                    >
+                      <FileText className="w-3 h-3" />
+                      {s.studyType}
+                      {s.isFinalized && <CheckCircle className="w-3 h-3 text-green-500" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             
             <div className="space-y-4">
               <div>
@@ -1150,68 +1195,94 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   </div>
                 ) : (
                   <div className="divide-y">
-                    {activeDocuments.map((doc) => (
-                      <div
-                        key={`${doc.type}-${doc.id}`}
-                        className={`group p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
-                          selectedDocument?.type === doc.type && selectedDocument?.id === doc.id
-                            ? 'bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500'
-                            : ''
-                        }`}
-                        onClick={() => { setSelectedDocument({ type: doc.type, id: doc.id }); setMobileShowDetail(true); }}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`p-2 rounded ${
-                            doc.type === 'report' ? 'bg-green-100 text-green-600' :
-                            doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
-                            doc.type === 'digitalWorksheet' ? 'bg-orange-100 text-orange-600' :
-                            doc.type === 'document' ? 'bg-yellow-100 text-yellow-600' :
-                            doc.type === 'note' ? 'bg-gray-100 text-gray-500' :
-                            'bg-blue-100 text-blue-600'
-                          }`}>
-                            {doc.type === 'report' ? <FileText className="w-4 h-4" /> :
-                             doc.type === 'worksheet' ? <ClipboardList className="w-4 h-4" /> :
-                             doc.type === 'digitalWorksheet' ? <ClipboardList className="w-4 h-4" /> :
-                             doc.type === 'document' ? <File className="w-4 h-4" /> :
-                             doc.type === 'note' ? <MessageSquare className="w-4 h-4" /> :
-                             <Calendar className="w-4 h-4" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">{doc.title}</div>
-                            <div className="text-xs text-gray-500">{doc.date}</div>
-                            <div className="flex items-center gap-1 mt-1">
-                              <Badge variant="outline" className="text-xs px-1.5 py-0">
-                                {doc.type}
-                              </Badge>
-                              {doc.status === 'finalized' && (
-                                <CheckCircle className="w-3 h-3 text-green-500" />
-                              )}
-                              {doc.status === 'draft' && (
-                                <Clock className="w-3 h-3 text-yellow-500" />
-                              )}
-                              {doc.isAmended && (
-                                <AlertCircle className="w-3 h-3 text-orange-500" />
-                              )}
+                    {activeDocuments.flatMap((doc, index) => {
+                      const isMultiReport = doc.type === 'report' && doc.date && multiScanDates.has(doc.date);
+                      const prevDoc = index > 0 ? activeDocuments[index - 1] : null;
+                      const isFirstOfVisit = isMultiReport && !(prevDoc?.type === 'report' && prevDoc?.date === doc.date);
+                      const isSelected = selectedDocument?.type === doc.type && selectedDocument?.id === doc.id;
+
+                      const row = (
+                        <div
+                          key={`${doc.type}-${doc.id}`}
+                          className={`group p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                            isMultiReport ? 'pl-5' : ''
+                          } ${
+                            isSelected
+                              ? 'bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500'
+                              : isMultiReport
+                              ? 'border-l-4 border-teal-200 dark:border-teal-700'
+                              : ''
+                          }`}
+                          onClick={() => { setSelectedDocument({ type: doc.type, id: doc.id }); setMobileShowDetail(true); }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded ${
+                              doc.type === 'report' ? 'bg-green-100 text-green-600' :
+                              doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
+                              doc.type === 'digitalWorksheet' ? 'bg-orange-100 text-orange-600' :
+                              doc.type === 'document' ? 'bg-yellow-100 text-yellow-600' :
+                              doc.type === 'note' ? 'bg-gray-100 text-gray-500' :
+                              'bg-blue-100 text-blue-600'
+                            }`}>
+                              {doc.type === 'report' ? <FileText className="w-4 h-4" /> :
+                               doc.type === 'worksheet' ? <ClipboardList className="w-4 h-4" /> :
+                               doc.type === 'digitalWorksheet' ? <ClipboardList className="w-4 h-4" /> :
+                               doc.type === 'document' ? <File className="w-4 h-4" /> :
+                               doc.type === 'note' ? <MessageSquare className="w-4 h-4" /> :
+                               <Calendar className="w-4 h-4" />}
                             </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">{doc.title}</div>
+                              <div className="text-xs text-gray-500">{doc.date}</div>
+                              <div className="flex items-center gap-1 mt-1">
+                                <Badge variant="outline" className="text-xs px-1.5 py-0">
+                                  {doc.type}
+                                </Badge>
+                                {doc.status === 'finalized' && (
+                                  <CheckCircle className="w-3 h-3 text-green-500" />
+                                )}
+                                {doc.status === 'draft' && (
+                                  <Clock className="w-3 h-3 text-yellow-500" />
+                                )}
+                                {doc.isAmended && (
+                                  <AlertCircle className="w-3 h-3 text-orange-500" />
+                                )}
+                              </div>
+                            </div>
+                            {doc.type !== 'appointment' && doc.type !== 'note' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (doc.type === 'report') archiveReportMutation.mutate(doc.id);
+                                  else if (doc.type === 'worksheet') archiveWorksheetMutation.mutate(doc.id);
+                                  else if (doc.type === 'digitalWorksheet') archiveDigitalWorksheetMutation.mutate(doc.id);
+                                  else if (doc.type === 'document') archiveDocumentMutation.mutate(doc.id);
+                                }}
+                                className="ml-1 p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0"
+                                title="Archive"
+                              >
+                                <Archive className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
-                          {doc.type !== 'appointment' && doc.type !== 'note' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (doc.type === 'report') archiveReportMutation.mutate(doc.id);
-                                else if (doc.type === 'worksheet') archiveWorksheetMutation.mutate(doc.id);
-                                else if (doc.type === 'digitalWorksheet') archiveDigitalWorksheetMutation.mutate(doc.id);
-                                else if (doc.type === 'document') archiveDocumentMutation.mutate(doc.id);
-                              }}
-                              className="ml-1 p-1 text-gray-400 hover:text-gray-600 rounded transition-colors flex-shrink-0"
-                              title="Archive"
-                            >
-                              <Archive className="w-3.5 h-3.5" />
-                            </button>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+
+                      if (isFirstOfVisit) {
+                        const visitCount = visitMap.get(doc.date)?.length ?? 2;
+                        const visitHeader = (
+                          <div key={`visit-header-${doc.date}-${doc.id}`} className="px-3 py-1.5 bg-teal-50 dark:bg-teal-900/30 flex items-center gap-2 border-l-4 border-teal-400">
+                            <Layers className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                            <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">
+                              Same-day visit &middot; {doc.date} &middot; {visitCount} scans
+                            </span>
+                          </div>
+                        );
+                        return [visitHeader, row];
+                      }
+
+                      return [row];
+                    })}
                   </div>
                 )
               ) : (
