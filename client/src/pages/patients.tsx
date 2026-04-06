@@ -1097,9 +1097,6 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
               <Button variant="ghost" size="sm" className="px-2" onClick={() => setShowPatientInfo(true)}>
                 <User className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="px-2" onClick={() => handleEdit(selectedPatient)}>
-                <Edit className="w-4 h-4" />
-              </Button>
             </div>
           </div>
           {/* Desktop header */}
@@ -1673,6 +1670,15 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
               )}
 
             </div>
+
+            <div className="pt-4 border-t mt-2 sticky bottom-0 bg-white dark:bg-gray-950 pb-1">
+              <Button
+                className="w-full gap-2"
+                onClick={() => { setShowPatientInfo(false); handleEdit(selectedPatient); }}
+              >
+                <Edit className="w-4 h-4" /> Edit Patient
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
 
@@ -1954,14 +1960,6 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                         </div>
                       </div>
                     </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      className="shrink-0"
-                      onClick={(e) => { e.stopPropagation(); handleEdit(patient); }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
