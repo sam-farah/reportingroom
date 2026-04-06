@@ -437,6 +437,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, "notes"] });
       setNewNoteContent("");
       setIsAddingNote(false);
+      setShowNotesDialog(false);
     },
     onError: () => toast({ title: "Error", description: "Failed to save note", variant: "destructive" }),
   });
@@ -1322,74 +1323,39 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
 
           {/* Notes Dialog */}
           <Dialog open={showNotesDialog} onOpenChange={(open) => { setShowNotesDialog(open); if (!open) { setIsAddingNote(false); setNewNoteContent(""); } }}>
-            <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col">
+            <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-blue-600" />
-                  Notes & Activity
+                  Add Note
                   {selectedPatient && <span className="text-gray-400 font-normal text-sm">— {selectedPatient.firstName} {selectedPatient.lastName}</span>}
                 </DialogTitle>
               </DialogHeader>
-              <div className="flex-1 overflow-y-auto space-y-3 py-1 pr-1">
-                {patientNotes.length === 0 && !isAddingNote ? (
-                  <p className="text-sm text-gray-400 italic text-center py-6">No notes yet</p>
-                ) : (
-                  <div className="space-y-3">
-                    {patientNotes.map((note) => (
-                      <div key={note.id} className="flex items-start gap-2.5 text-sm">
-                        <div className="mt-0.5 shrink-0">
-                          {note.type === 'fax' ? (
-                            <Printer className="w-4 h-4 text-teal-500" />
-                          ) : note.type === 'email' ? (
-                            <Mail className="w-4 h-4 text-blue-500" />
-                          ) : (
-                            <MessageSquare className="w-4 h-4 text-gray-400" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-gray-800 dark:text-gray-200 leading-snug">{note.content}</div>
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {note.createdAt ? format(new Date(note.createdAt), "d MMM yyyy, h:mm a") : ""}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {isAddingNote && (
-                  <div className="border-t pt-3">
-                    <textarea
-                      className="w-full text-sm border rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
-                      rows={3}
-                      placeholder="Type your note..."
-                      value={newNoteContent}
-                      onChange={e => setNewNoteContent(e.target.value)}
-                      autoFocus
-                    />
-                    <div className="flex gap-2 mt-2 justify-end">
-                      <button className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5" onClick={() => { setIsAddingNote(false); setNewNoteContent(""); }}>Cancel</button>
-                      <button
-                        className="text-sm bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700 disabled:opacity-50 font-medium"
-                        disabled={!newNoteContent.trim() || createNoteMutation.isPending}
-                        onClick={() => createNoteMutation.mutate(newNoteContent.trim())}
-                      >
-                        {createNoteMutation.isPending ? "Saving..." : "Save Note"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {!isAddingNote && (
-                <div className="border-t pt-3">
+              <div className="pt-2">
+                <textarea
+                  className="w-full text-sm border rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                  rows={4}
+                  placeholder="Type your note..."
+                  value={newNoteContent}
+                  onChange={e => setNewNoteContent(e.target.value)}
+                  autoFocus
+                />
+                <div className="flex gap-2 mt-3 justify-end">
                   <button
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors text-sm font-medium"
-                    onClick={() => setIsAddingNote(true)}
+                    className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5"
+                    onClick={() => { setShowNotesDialog(false); setNewNoteContent(""); }}
                   >
-                    <Plus className="w-4 h-4" />
-                    Add Note
+                    Cancel
+                  </button>
+                  <button
+                    className="text-sm bg-blue-600 text-white rounded-lg px-4 py-1.5 hover:bg-blue-700 disabled:opacity-50 font-medium"
+                    disabled={!newNoteContent.trim() || createNoteMutation.isPending}
+                    onClick={() => createNoteMutation.mutate(newNoteContent.trim())}
+                  >
+                    {createNoteMutation.isPending ? "Saving..." : "Save Note"}
                   </button>
                 </div>
-              )}
+              </div>
             </DialogContent>
           </Dialog>
 
