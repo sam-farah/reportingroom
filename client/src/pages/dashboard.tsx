@@ -55,6 +55,7 @@ export default function Dashboard() {
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
   const [preLinkedPatientName, setPreLinkedPatientName] = useState<string>("");
+  const [preLinkedExamDate, setPreLinkedExamDate] = useState<string>("");
   const [preLinkedTab, setPreLinkedTab] = useState<"upload" | "draw">("upload");
   const [openReportId, setOpenReportId] = useState<number | null>(null);
 
@@ -182,11 +183,22 @@ export default function Dashboard() {
 
       {/* ── Page content ── */}
       {activePanel === "user" ? (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} defaultTab={preLinkedTab} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} preLinkedExamDate={preLinkedExamDate} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedExamDate(""); setPreLinkedTab("upload"); }} defaultTab={preLinkedTab} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       ) : activePanel === "draw" ? (
         <Draw preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} onDraftCreated={(reportId) => { setOpenReportId(reportId); setActivePanel("reporting-room"); }} />
       ) : activePanel === "reporting-room" ? (
-        <ReportingRoom initialOpenReportId={openReportId} onReportOpened={() => setOpenReportId(null)} />
+        <ReportingRoom
+          initialOpenReportId={openReportId}
+          onReportOpened={() => setOpenReportId(null)}
+          onStartAnotherScan={({ patientId, patientName, examDate }) => {
+            setPreLinkedPatientId(patientId);
+            setPreLinkedPatientName(patientName);
+            setPreLinkedExamDate(examDate);
+            setPreLinkedTab("upload");
+            setOpenReportId(null);
+            setActivePanel("user");
+          }}
+        />
       ) : activePanel === "physicians" ? (
         <Physicians />
       ) : activePanel === "staff" && isOwnerOrAdmin ? (
@@ -228,7 +240,7 @@ export default function Dashboard() {
           </p>
         </div>
       ) : (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} preLinkedExamDate={preLinkedExamDate} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedExamDate(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       )}
 
     </div>

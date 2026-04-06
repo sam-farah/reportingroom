@@ -16,7 +16,7 @@ import FileUpload from "./file-upload";
 import DrawingCanvas from "./drawing-canvas";
 import type { Worksheet, Physician, Report, Patient, ScanTypeContentTemplate } from "@shared/schema";
 
-export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, onPreLinkedPatientConsumed, defaultTab, onReportGenerated }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw"; onReportGenerated?: (reportId: number) => void } = {}) {
+export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, preLinkedExamDate, onPreLinkedPatientConsumed, defaultTab, onReportGenerated }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; preLinkedExamDate?: string; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw"; onReportGenerated?: (reportId: number) => void } = {}) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
@@ -66,9 +66,12 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, on
       })
     : allPatients.slice(0, 8);
 
-  // Auto-link patient when arriving from calendar "Begin Study"
+  // Auto-link patient when arriving from calendar "Begin Study" or "Start another scan"
   useEffect(() => {
     if (allPatients.length === 0) return;
+    if (preLinkedExamDate) {
+      setExamDate(preLinkedExamDate);
+    }
     if (preLinkedPatientId) {
       // Exact match by ID — best case
       const found = allPatients.find(p => p.id === preLinkedPatientId);

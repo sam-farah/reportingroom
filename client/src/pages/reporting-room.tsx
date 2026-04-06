@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Button } from "@/components/ui/button";
@@ -118,7 +118,7 @@ interface EditableReport extends Report {
   templateId?: number;
 }
 
-export default function ReportingRoom({ initialOpenReportId, onReportOpened }: { initialOpenReportId?: number | null; onReportOpened?: () => void } = {}) {
+export default function ReportingRoom({ initialOpenReportId, onReportOpened, onStartAnotherScan }: { initialOpenReportId?: number | null; onReportOpened?: () => void; onStartAnotherScan?: (params: { patientId: number | null; patientName: string; examDate: string }) => void } = {}) {
   const { toast } = useToast();
   const [editingReport, setEditingReport] = useState<EditableReport | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -1639,6 +1639,26 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
                 Next
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
+              {onStartAnotherScan && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsFullscreenMode(false);
+                    setIsEditDialogOpen(false);
+                    if (document.fullscreenElement) document.exitFullscreen().catch(console.error);
+                    onStartAnotherScan({
+                      patientId: editingReport.patientId ?? null,
+                      patientName: editingReport.patientName,
+                      examDate: editingReport.examDate,
+                    });
+                  }}
+                  className="text-teal-700 border-teal-300 hover:bg-teal-50 hover:border-teal-400"
+                >
+                  <PlusCircle className="w-4 h-4 mr-1.5" />
+                  Another scan — {editingReport.patientName.split(" ")[0]}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -2047,10 +2067,32 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened }: {
           {editingReport && (
             <>
               <DialogHeader>
-                <DialogTitle>Edit Report - {editingReport.patientName}</DialogTitle>
-                <DialogDescription>
-                  Review and modify report details, then save your changes.
-                </DialogDescription>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <DialogTitle>Edit Report - {editingReport.patientName}</DialogTitle>
+                    <DialogDescription>
+                      Review and modify report details, then save your changes.
+                    </DialogDescription>
+                  </div>
+                  {onStartAnotherScan && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsEditDialogOpen(false);
+                        onStartAnotherScan({
+                          patientId: editingReport.patientId ?? null,
+                          patientName: editingReport.patientName,
+                          examDate: editingReport.examDate,
+                        });
+                      }}
+                      className="shrink-0 text-teal-700 border-teal-300 hover:bg-teal-50 hover:border-teal-400"
+                    >
+                      <PlusCircle className="w-4 h-4 mr-1.5" />
+                      Another scan — {editingReport.patientName.split(" ")[0]}
+                    </Button>
+                  )}
+                </div>
               </DialogHeader>
 
               <div className="space-y-6">
