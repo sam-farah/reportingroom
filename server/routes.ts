@@ -953,6 +953,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           dateOfBirth: patient.dateOfBirth,
           phone: patient.phone,
           email: patient.email,
+          address: patient.address,
+          city: patient.city,
+          state: patient.state,
+          zipCode: patient.zipCode,
           medicareNumber: patient.medicareNumber,
           medicareIrn: patient.medicareIrn,
           medicareExpiry: patient.medicareExpiry,
@@ -975,7 +979,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (record.status === "completed") return res.status(410).json({ error: "This registration link has already been used" });
       if (new Date() > record.expiresAt) return res.status(410).json({ error: "This registration link has expired" });
 
-      const { firstName, lastName, dateOfBirth, phone, email, medicareNumber, medicareIrn, medicareExpiry, emergencyContactName, emergencyContactPhone } = req.body;
+      const { firstName, lastName, dateOfBirth, phone, email, address, city, state, zipCode, medicareNumber, medicareIrn, medicareExpiry, emergencyContactName, emergencyContactPhone } = req.body;
 
       await storage.updatePatient(record.patientId, {
         firstName: firstName || undefined,
@@ -983,6 +987,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dateOfBirth: dateOfBirth || undefined,
         phone: phone || undefined,
         email: email || undefined,
+        address: address || undefined,
+        city: city || undefined,
+        state: state || undefined,
+        zipCode: zipCode || undefined,
         medicareNumber: medicareNumber || undefined,
         medicareIrn: medicareIrn || undefined,
         medicareExpiry: medicareExpiry || undefined,

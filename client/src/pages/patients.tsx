@@ -12,11 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link } from "lucide-react";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
-import { Download, ExternalLink, Link } from "lucide-react";
 
 function PdfViewer({ url, title, originalName }: { url: string; title: string; originalName?: string }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -1454,218 +1453,225 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
 
         {/* Patient Info Modal */}
         <Dialog open={showPatientInfo} onOpenChange={setShowPatientInfo}>
-          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <User className="w-5 h-5" />
                 Patient Details
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="space-y-5 pb-2">
+
+              {/* Name + identifiers */}
               <div>
                 <h3 className="text-xl font-semibold">{selectedPatient.firstName} {selectedPatient.lastName}</h3>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {selectedPatient.urNumber && (
-                    <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded text-sm">UR {selectedPatient.urNumber}</span>
+                    <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded text-sm">UR {selectedPatient.urNumber}</span>
                   )}
                   {!selectedPatient.isActive && <Badge variant="secondary">Inactive</Badge>}
-                </div>
-              </div>
-              
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Calendar className="w-4 h-4" />
-                  <span>DOB: {selectedPatient.dateOfBirth}</span>
-                </div>
-                {selectedPatient.gender && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <User className="w-4 h-4" />
-                    <span>Gender: {selectedPatient.gender}</span>
-                  </div>
-                )}
-                {selectedPatient.phone && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Phone className="w-4 h-4" />
-                    <span>{selectedPatient.phone}</span>
-                  </div>
-                )}
-                {selectedPatient.email && (
-                  <div className="flex flex-col gap-2 pt-1">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Mail className="w-4 h-4" />
-                      <span>{selectedPatient.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {portalStatus?.hasPortalAccess && (
-                        <Badge variant="outline" className="w-fit bg-green-50 text-green-700 border-green-200 gap-1">
-                          <CheckCircle className="w-3 h-3" />
-                          Portal Access Active
-                        </Badge>
-                      )}
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="w-fit h-7 text-xs gap-1.5"
-                        onClick={() => invitePortalMutation.mutate()}
-                        disabled={invitePortalMutation.isPending}
-                      >
-                        <Mail className="w-3 h-3" />
-                        {portalStatus?.hasPortalAccess ? "Resend Portal Invite" : portalStatus?.invitePending ? "Resend Portal Invitation" : "Invite to Patient Portal"}
-                        {invitePortalMutation.isPending && <Clock className="w-3 h-3 animate-spin" />}
-                      </Button>
-                    </div>
-                    {/* Registration status badge */}
-                    {registrationStatus && registrationStatus.status === "completed" && (
-                      <Badge variant="outline" className="w-fit bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 text-xs">
-                        <CheckCircle className="w-3 h-3" />
-                        Registration completed
-                        {registrationStatus.completedAt && (
-                          <span className="text-emerald-500 font-normal">
-                            · {new Date(registrationStatus.completedAt).toLocaleDateString()}
-                          </span>
-                        )}
-                      </Badge>
-                    )}
-                    {registrationStatus && registrationStatus.status === "pending" && !registrationStatus.isExpired && (
-                      <Badge variant="outline" className="w-fit bg-amber-50 text-amber-700 border-amber-200 gap-1 text-xs">
-                        <Clock className="w-3 h-3" />
-                        Registration form sent — awaiting completion
-                      </Badge>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-fit h-7 text-xs gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
-                        onClick={() => sendRegistrationMutation.mutate()}
-                        disabled={sendRegistrationMutation.isPending || !selectedPatient.email}
-                        title={!selectedPatient.email ? "No email address on file" : "Email the patient a link to fill in their own details"}
-                      >
-                        <ClipboardList className="w-3 h-3" />
-                        {sendRegistrationMutation.isPending ? "Sending…" : registrationStatus?.status === "completed" ? "Re-send Form" : "Send Registration Form"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-fit h-7 text-xs gap-1.5 border-slate-200 text-slate-600 hover:bg-slate-50"
-                        onClick={() => copyRegistrationLinkMutation.mutate()}
-                        disabled={copyRegistrationLinkMutation.isPending}
-                        title="Generate a registration link to copy and share via SMS or WhatsApp"
-                      >
-                        <Link className="w-3 h-3" />
-                        {copyRegistrationLinkMutation.isPending ? "Generating…" : "Copy Form Link"}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                {selectedPatient.emergencyContactName && (
-                  <div className="flex items-start gap-2 text-gray-600">
-                    <Heart className="w-4 h-4 mt-0.5 text-red-400" />
-                    <span>
-                      <span className="font-medium">Emergency: </span>
-                      {selectedPatient.emergencyContactName}
-                      {selectedPatient.emergencyContactPhone && <span className="text-gray-500"> — {selectedPatient.emergencyContactPhone}</span>}
-                    </span>
-                  </div>
-                )}
-                {(selectedPatient.address || selectedPatient.city) && (
-                  <div className="flex items-start gap-2 text-gray-600">
-                    <MapPin className="w-4 h-4 mt-0.5" />
-                    <span>
-                      {selectedPatient.address && <div>{selectedPatient.address}</div>}
-                      {selectedPatient.city && <div>{selectedPatient.city}, {selectedPatient.state} {selectedPatient.zipCode}</div>}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {selectedPatient.insuranceProvider && (
-                <div className="pt-2 border-t">
-                  <div className="text-sm font-medium">Insurance</div>
-                  <div className="text-sm text-gray-600">{selectedPatient.insuranceProvider}</div>
-                  {selectedPatient.insuranceId && (
-                    <div className="text-sm text-gray-600">ID: {selectedPatient.insuranceId}</div>
+                  {registrationStatus?.status === "completed" && (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 text-xs">
+                      <CheckCircle className="w-3 h-3" />
+                      Registration completed
+                      {registrationStatus.completedAt && <span className="font-normal text-emerald-500"> · {new Date(registrationStatus.completedAt).toLocaleDateString()}</span>}
+                    </Badge>
+                  )}
+                  {registrationStatus?.status === "pending" && !registrationStatus.isExpired && (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 text-xs">
+                      <Clock className="w-3 h-3" />
+                      Awaiting registration
+                    </Badge>
                   )}
                 </div>
-              )}
+              </div>
 
-              {selectedPatient.medicareNumber && (
-                <div className="pt-2 border-t">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-1.5">
-                      <CreditCard className="w-3.5 h-3.5 text-blue-600" />
-                      <span className="text-sm font-medium">Medicare</span>
+              {/* Personal */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5" /> Personal
+                </div>
+                <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Date of Birth</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.dateOfBirth || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Gender</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.gender || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5" /> Contact
+                </div>
+                <div className="p-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-x-6">
+                    <div>
+                      <div className="text-xs text-gray-400 mb-0.5">Phone</div>
+                      <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.phone || <span className="italic text-gray-300">—</span>}</div>
                     </div>
-                    {selectedPatient.medicareVerifiedStatus === "verified" ? (
+                    <div>
+                      <div className="text-xs text-gray-400 mb-0.5">Email</div>
+                      <div className="text-sm text-gray-800 dark:text-gray-200 break-all">{selectedPatient.email || <span className="italic text-gray-300">—</span>}</div>
+                    </div>
+                  </div>
+                  {/* Portal + registration actions */}
+                  <div className="pt-1 flex flex-wrap gap-2">
+                    {portalStatus?.hasPortalAccess && (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 text-xs">
+                        <CheckCircle className="w-3 h-3" /> Portal Access Active
+                      </Badge>
+                    )}
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => invitePortalMutation.mutate()} disabled={invitePortalMutation.isPending || !selectedPatient.email}>
+                      <Mail className="w-3 h-3" />
+                      {portalStatus?.hasPortalAccess ? "Resend Portal Invite" : portalStatus?.invitePending ? "Resend Portal Invitation" : "Invite to Patient Portal"}
+                      {invitePortalMutation.isPending && <Clock className="w-3 h-3 animate-spin" />}
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => sendRegistrationMutation.mutate()} disabled={sendRegistrationMutation.isPending || !selectedPatient.email} title={!selectedPatient.email ? "No email address on file" : undefined}>
+                      <ClipboardList className="w-3 h-3" />
+                      {sendRegistrationMutation.isPending ? "Sending…" : registrationStatus?.status === "completed" ? "Re-send Form" : "Send Registration Form"}
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => copyRegistrationLinkMutation.mutate()} disabled={copyRegistrationLinkMutation.isPending} title="Generate a registration link to copy and share via SMS or WhatsApp">
+                      <Link className="w-3 h-3" />
+                      {copyRegistrationLinkMutation.isPending ? "Generating…" : "Copy Form Link"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5" /> Address
+                </div>
+                <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div className="col-span-2">
+                    <div className="text-xs text-gray-400 mb-0.5">Street Address</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.address || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">City / Suburb</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.city || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-xs text-gray-400 mb-0.5">State</div>
+                      <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.state || <span className="italic text-gray-300">—</span>}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-400 mb-0.5">Postcode</div>
+                      <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.zipCode || <span className="italic text-gray-300">—</span>}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Emergency Contact */}
+              <div className="border rounded-lg overflow-hidden border-red-100 dark:border-red-900/30">
+                <div className="bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-red-500 flex items-center gap-1.5">
+                  <Heart className="w-3.5 h-3.5" /> Emergency Contact
+                </div>
+                <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Name</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.emergencyContactName || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Phone</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.emergencyContactPhone || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Medicare */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Medicare</span>
+                  {selectedPatient.medicareNumber && (
+                    selectedPatient.medicareVerifiedStatus === "verified" ? (
                       <div className="flex items-center gap-1">
-                        <Badge className="bg-green-100 text-green-700 border-green-200 text-xs gap-1">
+                        <Badge className="bg-green-100 text-green-700 border-green-200 text-xs gap-1 normal-case font-normal tracking-normal">
                           <ShieldCheck className="w-3 h-3" /> Verified
                         </Badge>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 text-xs text-gray-400 px-1"
-                          onClick={() => verifyMedicareMutation.mutate({ id: selectedPatient.id, action: "unverify" })}
-                          disabled={verifyMedicareMutation.isPending}
-                        >
+                        <Button size="sm" variant="ghost" className="h-5 text-xs text-gray-400 px-1 normal-case font-normal tracking-normal" onClick={() => verifyMedicareMutation.mutate({ id: selectedPatient.id, action: "unverify" })} disabled={verifyMedicareMutation.isPending}>
                           Unverify
                         </Button>
                       </div>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
-                        onClick={() => verifyMedicareMutation.mutate({ id: selectedPatient.id, action: "verify" })}
-                        disabled={verifyMedicareMutation.isPending}
-                      >
-                        <ShieldAlert className="w-3 h-3" />
-                        Mark Verified
+                      <Button size="sm" variant="outline" className="h-6 text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-50 normal-case font-normal tracking-normal" onClick={() => verifyMedicareMutation.mutate({ id: selectedPatient.id, action: "verify" })} disabled={verifyMedicareMutation.isPending}>
+                        <ShieldAlert className="w-3 h-3" /> Mark Verified
                       </Button>
-                    )}
-                  </div>
-                  <div className="text-sm text-gray-600 font-mono tracking-wider">
-                    {selectedPatient.medicareNumber}
-                    {selectedPatient.medicareIrn && <span className="ml-2 text-gray-400">/{selectedPatient.medicareIrn}</span>}
-                  </div>
-                  {selectedPatient.medicareExpiry && (
-                    <div className="text-xs text-gray-400 mt-0.5">Expires {selectedPatient.medicareExpiry}</div>
+                    )
                   )}
-                  {selectedPatient.medicareVerifiedAt && (
-                    <div className="text-xs text-green-600 mt-0.5">
-                      Verified {format(new Date(selectedPatient.medicareVerifiedAt), "d MMM yyyy")}
+                </div>
+                <div className="p-3 grid grid-cols-3 gap-x-6 gap-y-3">
+                  <div className="col-span-2">
+                    <div className="text-xs text-gray-400 mb-0.5">Medicare Number</div>
+                    <div className="text-sm font-mono tracking-wider text-gray-800 dark:text-gray-200">
+                      {selectedPatient.medicareNumber || <span className="italic text-gray-300 font-sans tracking-normal">—</span>}
+                      {selectedPatient.medicareNumber && selectedPatient.medicareIrn && <span className="text-gray-400"> / {selectedPatient.medicareIrn}</span>}
                     </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Expiry</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.medicareExpiry || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                  {selectedPatient.medicareVerifiedAt && (
+                    <div className="col-span-3 text-xs text-green-600">Verified {format(new Date(selectedPatient.medicareVerifiedAt), "d MMM yyyy")}</div>
                   )}
                 </div>
-              )}
+              </div>
 
-              {selectedPatient.referringPhysician && (
-                <div className="pt-2 border-t">
-                  <div className="text-sm font-medium">Referring Physician</div>
-                  <div className="text-sm text-gray-600">{selectedPatient.referringPhysician}</div>
+              {/* Medical */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" /> Medical
+                </div>
+                <div className="p-3 space-y-3">
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Allergies</div>
+                    <div className={`text-sm ${selectedPatient.allergies ? "text-red-600 font-medium" : "italic text-gray-300"}`}>{selectedPatient.allergies || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Medical History</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{selectedPatient.medicalHistory || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 mb-0.5">Referring Physician</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.referringPhysician || <span className="italic text-gray-300">—</span>}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Insurance */}
+              {(selectedPatient.insuranceProvider || selectedPatient.insuranceId) && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Insurance</div>
+                  <div className="p-3 grid grid-cols-2 gap-x-6">
+                    <div>
+                      <div className="text-xs text-gray-400 mb-0.5">Provider</div>
+                      <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.insuranceProvider || <span className="italic text-gray-300">—</span>}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-400 mb-0.5">Policy ID</div>
+                      <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.insuranceId || <span className="italic text-gray-300">—</span>}</div>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {selectedPatient.allergies && (
-                <div className="pt-2 border-t">
-                  <div className="text-sm font-medium text-red-600">Allergies</div>
-                  <div className="text-sm text-gray-600">{selectedPatient.allergies}</div>
-                </div>
-              )}
-
-              {selectedPatient.medicalHistory && (
-                <div className="pt-2 border-t">
-                  <div className="text-sm font-medium">Medical History</div>
-                  <div className="text-sm text-gray-600">{selectedPatient.medicalHistory}</div>
-                </div>
-              )}
-
+              {/* Notes */}
               {selectedPatient.notes && (
-                <div className="pt-2 border-t">
-                  <div className="text-sm font-medium">Notes</div>
-                  <div className="text-sm text-gray-600">{selectedPatient.notes}</div>
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Notes</div>
+                  <div className="p-3 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{selectedPatient.notes}</div>
                 </div>
               )}
+
             </div>
           </DialogContent>
         </Dialog>

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, AlertCircle, Loader2, User, Phone, Mail, Shield, Heart } from "lucide-react";
+import { CheckCircle, AlertCircle, Loader2, User, Phone, Mail, Shield, Heart, MapPin } from "lucide-react";
 
 type FormState = {
   firstName: string;
@@ -12,6 +12,10 @@ type FormState = {
   dateOfBirth: string;
   phone: string;
   email: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
   medicareNumber: string;
   medicareIrn: string;
   medicareExpiry: string;
@@ -44,6 +48,10 @@ export default function PatientRegistrationPage() {
     dateOfBirth: "",
     phone: "",
     email: "",
+    address: "",
+    city: "",
+    state: "",
+    zipCode: "",
     medicareNumber: "",
     medicareIrn: "",
     medicareExpiry: "",
@@ -69,6 +77,10 @@ export default function PatientRegistrationPage() {
           dateOfBirth: data.patient.dateOfBirth || "",
           phone: data.patient.phone || "",
           email: data.patient.email || "",
+          address: data.patient.address || "",
+          city: data.patient.city || "",
+          state: data.patient.state || "",
+          zipCode: data.patient.zipCode || "",
           medicareNumber: data.patient.medicareNumber || "",
           medicareIrn: data.patient.medicareIrn || "",
           medicareExpiry: data.patient.medicareExpiry || "",
@@ -245,6 +257,62 @@ export default function PatientRegistrationPage() {
                   placeholder="e.g. jane@example.com"
                   className="mt-1"
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Address */}
+          <Card>
+            <CardHeader className="pb-3 pt-5">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-blue-600" /> Home Address
+                <span className="text-xs font-normal text-gray-400">(optional)</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="address" className="text-sm">Street Address</Label>
+                <Input
+                  id="address"
+                  value={form.address}
+                  onChange={(e) => field("address", e.target.value)}
+                  placeholder="e.g. 12 Main Street"
+                  className="mt-1"
+                />
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                <div className="col-span-2">
+                  <Label htmlFor="city" className="text-sm">City / Suburb</Label>
+                  <Input
+                    id="city"
+                    value={form.city}
+                    onChange={(e) => field("city", capitalizeWords(e.target.value))}
+                    placeholder="e.g. Sydney"
+                    className="mt-1"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label htmlFor="state" className="text-sm">State</Label>
+                  <Input
+                    id="state"
+                    value={form.state}
+                    onChange={(e) => field("state", e.target.value.toUpperCase())}
+                    placeholder="e.g. NSW"
+                    maxLength={3}
+                    className="mt-1"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <Label htmlFor="zipCode" className="text-sm">Postcode</Label>
+                  <Input
+                    id="zipCode"
+                    value={form.zipCode}
+                    onChange={(e) => field("zipCode", e.target.value.replace(/\D/g, ""))}
+                    placeholder="2000"
+                    maxLength={4}
+                    className="mt-1"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
