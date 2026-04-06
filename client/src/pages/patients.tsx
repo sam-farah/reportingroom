@@ -1312,11 +1312,6 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <MessageSquare className="w-4 h-4 text-gray-400 group-hover:text-blue-500" />
                   <span className="text-sm font-medium text-gray-600 group-hover:text-blue-700">Notes & Activity</span>
                 </div>
-                {patientNotes.length > 0 && (
-                  <span className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">
-                    {patientNotes.length}
-                  </span>
-                )}
               </button>
             </div>
           </div>
@@ -1334,7 +1329,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
               <div className="pt-2">
                 <textarea
                   className="w-full text-sm border rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
-                  rows={4}
+                  rows={6}
                   placeholder="Type your note..."
                   value={newNoteContent}
                   onChange={e => setNewNoteContent(e.target.value)}
