@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Button } from "@/components/ui/button";
@@ -123,6 +123,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [editingReport, setEditingReport] = useState<EditableReport | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
+  const [isReuploading, setIsReuploading] = useState(false);
+  const [reuploadLoading, setReuploadLoading] = useState(false);
+  const [reuploadDragOver, setReuploadDragOver] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isAmendDialogOpen, setIsAmendDialogOpen] = useState(false);
@@ -233,6 +236,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       setIsEditDialogOpen(false);
       setEditingReport(null);
+      setIsReuploading(false);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -421,6 +425,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
   const handleEditReport = (report: Report) => {
     const defaultTemplate = templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
+    setIsReuploading(false);
+    setReuploadDragOver(false);
     setEditingReport({ 
       ...report,
       templateId: (report as EditableReport).templateId || defaultTemplate?.id,
@@ -491,6 +497,39 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
     const { id, generatedAt, worksheetId, ...updateData } = editingReport;
     updateReportMutation.mutate(updateData);
+  };
+
+  const handleReuploadWorksheet = async (file: File) => {
+    if (!editingReport) return;
+    setReuploadLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("worksheet", file);
+      const uploadRes = await fetch("/api/worksheets/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const { worksheetId: newWorksheetId } = await uploadRes.json();
+
+      // Patch the report with the new worksheetId + clear digitalWorksheetId
+      const patchRes = await fetch(`/api/reports/${editingReport.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ worksheetId: newWorksheetId, digitalWorksheetId: null }),
+      });
+      if (!patchRes.ok) throw new Error("Failed to link worksheet to report");
+
+      setEditingReport(prev => prev ? { ...prev, worksheetId: newWorksheetId, digitalWorksheetId: undefined } : prev);
+      setIsReuploading(false);
+      toast({ title: "Worksheet replaced", description: "The new worksheet has been saved to this report." });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+    } catch (err: any) {
+      toast({ title: "Reupload failed", description: err.message || "Something went wrong.", variant: "destructive" });
+    } finally {
+      setReuploadLoading(false);
+      setReuploadDragOver(false);
+    }
   };
 
   const handleExportPDF = (report: Report) => {
@@ -1691,25 +1730,90 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
           <div className="flex flex-1 overflow-hidden">
             {/* Left Panel - Worksheet */}
             <div className="w-1/2 border-r bg-gray-50 flex flex-col">
-              <div className="p-4 border-b bg-white flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">Worksheet - {editingReport.patientName}</h3>
-                  <p className="text-sm text-gray-600">Original drawing or uploaded worksheet</p>
+              <div className="p-4 border-b bg-white flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-semibold truncate">Worksheet — {editingReport.patientName}</h3>
+                  <p className="text-sm text-gray-600">
+                    {isReuploading ? "Drop or select a replacement file" : "Original drawing or uploaded worksheet"}
+                  </p>
                 </div>
-                {(editingReport.worksheetId || editingReport.digitalWorksheetId) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDownloadLabelledWorksheet(editingReport)}
-                    title="Download a copy of the worksheet with clinic logo and patient details stamped at the top"
-                  >
-                    <Download className="w-4 h-4 mr-1.5" />
-                    Download Labelled Copy
-                  </Button>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {!isReuploading && (editingReport.worksheetId || editingReport.digitalWorksheetId) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownloadLabelledWorksheet(editingReport)}
+                      title="Download a copy of the worksheet with clinic logo and patient details stamped at the top"
+                    >
+                      <Download className="w-4 h-4 mr-1.5" />
+                      Download Labelled Copy
+                    </Button>
+                  )}
+                  {isReuploading ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setIsReuploading(false); setReuploadDragOver(false); }}
+                      disabled={reuploadLoading}
+                    >
+                      Cancel
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsReuploading(true)}
+                      className="text-amber-700 border-amber-300 hover:bg-amber-50 hover:border-amber-400"
+                    >
+                      <Upload className="w-4 h-4 mr-1.5" />
+                      Replace Worksheet
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
-                {editingReport.digitalWorksheetId ? (
+                {isReuploading ? (
+                  /* ── Reupload drop zone ── */
+                  <div
+                    className={`w-full h-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed transition-colors cursor-pointer select-none ${
+                      reuploadDragOver
+                        ? "border-amber-400 bg-amber-50"
+                        : "border-gray-300 bg-white hover:border-amber-300 hover:bg-amber-50/40"
+                    }`}
+                    onDragOver={(e) => { e.preventDefault(); setReuploadDragOver(true); }}
+                    onDragLeave={() => setReuploadDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setReuploadDragOver(false);
+                      const file = e.dataTransfer.files[0];
+                      if (file) handleReuploadWorksheet(file);
+                    }}
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.accept = "image/*,.pdf";
+                      input.onchange = (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (file) handleReuploadWorksheet(file);
+                      };
+                      input.click();
+                    }}
+                  >
+                    {reuploadLoading ? (
+                      <>
+                        <div className="w-10 h-10 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-4" />
+                        <p className="text-amber-700 font-medium">Uploading worksheet…</p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-12 h-12 text-amber-400 mb-4" />
+                        <p className="text-base font-semibold text-gray-700 mb-1">Drop the correct worksheet here</p>
+                        <p className="text-sm text-gray-500">or click to browse — JPG, PNG, PDF accepted</p>
+                        <p className="text-xs text-amber-600 mt-3">This will replace the current worksheet on this report</p>
+                      </>
+                    )}
+                  </div>
+                ) : editingReport.digitalWorksheetId ? (
                   <div className="w-full h-full flex items-center justify-center">
                     <img 
                       src={`/api/digital-worksheets/${editingReport.digitalWorksheetId}/image`}
@@ -1728,7 +1832,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                 ) : (
                   <div className="text-center text-gray-500">
                     <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                    <p>No worksheet image available</p>
+                    <p className="mb-3">No worksheet uploaded yet</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsReuploading(true)}
+                      className="text-amber-700 border-amber-300 hover:bg-amber-50"
+                    >
+                      <Upload className="w-4 h-4 mr-1.5" />
+                      Upload Worksheet
+                    </Button>
                   </div>
                 )}
               </div>
