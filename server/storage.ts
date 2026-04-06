@@ -230,6 +230,7 @@ export interface IStorage {
   getPatientAppointments(patientId: number): Promise<Appointment[]>;
   createPatientRegistrationToken(patientId: number, clinicId: number, token: string, expiresAt: Date): Promise<PatientRegistrationToken>;
   getPatientRegistrationToken(token: string): Promise<PatientRegistrationToken | undefined>;
+  getLatestPatientRegistrationToken(patientId: number): Promise<PatientRegistrationToken | undefined>;
   completePatientRegistrationToken(token: string): Promise<void>;
   
   // Patient document operations
@@ -1188,6 +1189,14 @@ export class DatabaseStorage implements IStorage {
 
   async getPatientRegistrationToken(token: string): Promise<PatientRegistrationToken | undefined> {
     const [row] = await db.select().from(patientRegistrationTokens).where(eq(patientRegistrationTokens.token, token));
+    return row;
+  }
+
+  async getLatestPatientRegistrationToken(patientId: number): Promise<PatientRegistrationToken | undefined> {
+    const [row] = await db.select().from(patientRegistrationTokens)
+      .where(eq(patientRegistrationTokens.patientId, patientId))
+      .orderBy(desc(patientRegistrationTokens.createdAt))
+      .limit(1);
     return row;
   }
 

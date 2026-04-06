@@ -16,7 +16,7 @@ import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edi
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink, Link } from "lucide-react";
 
 function PdfViewer({ url, title, originalName }: { url: string; title: string; originalName?: string }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -321,6 +321,23 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     },
   });
 
+  const { data: registrationStatus, refetch: refetchRegistrationStatus } = useQuery<{
+    status: "none" | "pending" | "completed";
+    expiresAt?: string;
+    completedAt?: string;
+    isExpired?: boolean;
+    token?: string;
+  }>({
+    queryKey: ["/api/patients", selectedPatient?.id, "registration-status"],
+    queryFn: async () => {
+      if (!selectedPatient) return { status: "none" };
+      const r = await fetch(`/api/patients/${selectedPatient.id}/registration-status`, { credentials: "include" });
+      if (!r.ok) return { status: "none" };
+      return r.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
   const sendRegistrationMutation = useMutation({
     mutationFn: async () => {
       if (!selectedPatient) return;
@@ -328,10 +345,31 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       return res.json();
     },
     onSuccess: (data: any) => {
+      refetchRegistrationStatus();
       toast({ title: "Registration form sent", description: `Email sent to ${data?.sentTo}` });
     },
     onError: (error: any) => {
       toast({ title: "Failed to send", description: error.message || "Could not send registration email", variant: "destructive" });
+    },
+  });
+
+  const copyRegistrationLinkMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedPatient) return;
+      const res = await fetch(`/api/patients/${selectedPatient.id}/generate-registration-link`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to generate link");
+      return res.json();
+    },
+    onSuccess: async (data: any) => {
+      await navigator.clipboard.writeText(data.registrationUrl);
+      refetchRegistrationStatus();
+      toast({ title: "Link copied!", description: "Registration link copied to clipboard — valid for 7 days." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed", description: error.message || "Could not generate link", variant: "destructive" });
     },
   });
 
@@ -1476,17 +1514,48 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                         {invitePortalMutation.isPending && <Clock className="w-3 h-3 animate-spin" />}
                       </Button>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-fit h-7 text-xs gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
-                      onClick={() => sendRegistrationMutation.mutate()}
-                      disabled={sendRegistrationMutation.isPending || !selectedPatient.email}
-                      title={!selectedPatient.email ? "No email address on file" : "Send a registration form for the patient to fill in their own details"}
-                    >
-                      <ClipboardList className="w-3 h-3" />
-                      {sendRegistrationMutation.isPending ? "Sending…" : "Send Registration Form"}
-                    </Button>
+                    {/* Registration status badge */}
+                    {registrationStatus && registrationStatus.status === "completed" && (
+                      <Badge variant="outline" className="w-fit bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 text-xs">
+                        <CheckCircle className="w-3 h-3" />
+                        Registration completed
+                        {registrationStatus.completedAt && (
+                          <span className="text-emerald-500 font-normal">
+                            · {new Date(registrationStatus.completedAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </Badge>
+                    )}
+                    {registrationStatus && registrationStatus.status === "pending" && !registrationStatus.isExpired && (
+                      <Badge variant="outline" className="w-fit bg-amber-50 text-amber-700 border-amber-200 gap-1 text-xs">
+                        <Clock className="w-3 h-3" />
+                        Registration form sent — awaiting completion
+                      </Badge>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-fit h-7 text-xs gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
+                        onClick={() => sendRegistrationMutation.mutate()}
+                        disabled={sendRegistrationMutation.isPending || !selectedPatient.email}
+                        title={!selectedPatient.email ? "No email address on file" : "Email the patient a link to fill in their own details"}
+                      >
+                        <ClipboardList className="w-3 h-3" />
+                        {sendRegistrationMutation.isPending ? "Sending…" : registrationStatus?.status === "completed" ? "Re-send Form" : "Send Registration Form"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-fit h-7 text-xs gap-1.5 border-slate-200 text-slate-600 hover:bg-slate-50"
+                        onClick={() => copyRegistrationLinkMutation.mutate()}
+                        disabled={copyRegistrationLinkMutation.isPending}
+                        title="Generate a registration link to copy and share via SMS or WhatsApp"
+                      >
+                        <Link className="w-3 h-3" />
+                        {copyRegistrationLinkMutation.isPending ? "Generating…" : "Copy Form Link"}
+                      </Button>
+                    </div>
                   </div>
                 )}
                 {selectedPatient.emergencyContactName && (

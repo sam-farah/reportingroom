@@ -891,6 +891,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get registration status for a patient
+  app.get("/api/patients/:id/registration-status", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const token = await storage.getLatestPatientRegistrationToken(id);
+      if (!token) return res.json({ status: "none" });
+      res.json({
+        status: token.status,
+        expiresAt: token.expiresAt,
+        completedAt: token.completedAt,
+        isExpired: new Date() > token.expiresAt,
+        token: token.token,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch registration status" });
+    }
+  });
+
+  // Generate a registration link without sending email (for copy/paste to SMS etc.)
+  app.post("/api/patients/:id/generate-registration-link", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      await storage.createPatientRegistrationToken(id, user.clinicId, token, expiresAt);
+
+      const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const registrationUrl = `${host}/patient-registration/${token}`;
+      res.json({ registrationUrl, token });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to generate link" });
+    }
+  });
+
   // Public: load patient registration form data from token
   app.get("/api/patient-registration/:token", async (req, res) => {
     try {
