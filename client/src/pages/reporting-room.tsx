@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -126,6 +127,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [isReuploading, setIsReuploading] = useState(false);
   const [reuploadLoading, setReuploadLoading] = useState(false);
   const [reuploadDragOver, setReuploadDragOver] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isAmendDialogOpen, setIsAmendDialogOpen] = useState(false);
@@ -237,6 +240,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       setIsEditDialogOpen(false);
       setEditingReport(null);
       setIsReuploading(false);
+      setHasUnsavedChanges(false);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -427,6 +431,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const defaultTemplate = templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
     setIsReuploading(false);
     setReuploadDragOver(false);
+    setHasUnsavedChanges(false);
     setEditingReport({ 
       ...report,
       templateId: (report as EditableReport).templateId || defaultTemplate?.id,
@@ -492,11 +497,137 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     });
   };
 
-  const handleSaveReport = () => {
-    if (!editingReport) return;
+  // ── Shared helper: composite clinic header onto the worksheet image ──────────
+  const generateLabelledCanvas = async (report: Report): Promise<HTMLCanvasElement | null> => {
+    const imageUrl = (report as any).digitalWorksheetId
+      ? `/api/digital-worksheets/${(report as any).digitalWorksheetId}/image`
+      : (report as any).worksheetId
+        ? `/api/worksheets/${(report as any).worksheetId}/image`
+        : null;
+    if (!imageUrl) return null;
 
+    const worksheetRes = await fetch(imageUrl, { credentials: 'include' });
+    if (!worksheetRes.ok) return null;
+    const worksheetBlob = await worksheetRes.blob();
+    const worksheetDataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(worksheetBlob);
+    });
+
+    let logoImg: HTMLImageElement | null = null;
+    if (clinicLogoApiUrl) {
+      try {
+        const logoRes = await fetch(clinicLogoApiUrl, { credentials: 'include' });
+        if (logoRes.ok) {
+          const logoBlob = await logoRes.blob();
+          const logoDataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(logoBlob);
+          });
+          logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = logoDataUrl;
+          });
+        }
+      } catch { /* logo optional */ }
+    }
+
+    const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = worksheetDataUrl;
+    });
+
+    const DPI = 200;
+    const A4_W = Math.round((210 / 25.4) * DPI);
+    const A4_H = Math.round((297 / 25.4) * DPI);
+    const HEADER_HEIGHT = Math.round(A4_H * 0.11);
+    const PADDING = Math.round(A4_W * 0.025);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = A4_W; canvas.height = A4_H;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, A4_W, A4_H);
+
+    const primaryColor = (templates.find((t: ReportTemplate) => t.isDefault) || templates[0])?.primaryColor || '#0066cc';
+    ctx.strokeStyle = primaryColor; ctx.lineWidth = Math.round(A4_W * 0.003);
+    ctx.beginPath(); ctx.moveTo(0, HEADER_HEIGHT); ctx.lineTo(A4_W, HEADER_HEIGHT); ctx.stroke();
+
+    let textStartX = PADDING;
+    if (logoImg) {
+      const logoMaxH = HEADER_HEIGHT - PADDING * 2;
+      const logoMaxW = Math.round(A4_W * 0.2);
+      const scale = Math.min(logoMaxW / logoImg.width, logoMaxH / logoImg.height, 1);
+      const logoW = logoImg.width * scale; const logoH = logoImg.height * scale;
+      const logoY = (HEADER_HEIGHT - logoH) / 2;
+      ctx.drawImage(logoImg, PADDING, logoY, logoW, logoH);
+      textStartX = PADDING + logoW + Math.round(A4_W * 0.015);
+    }
+
+    const infoFontSize = Math.round(A4_W * 0.0135);
+    ctx.fillStyle = '#333333'; ctx.font = `${infoFontSize}px Arial, sans-serif`;
+    const lines = [
+      `Patient: ${report.patientName}`,
+      (report as any).patientDob ? `DOB: ${(report as any).patientDob}` : null,
+      `Exam Date: ${(report as any).examDate}`,
+      (report as any).patientUrNumber ? `UR: ${(report as any).patientUrNumber}` : null,
+      `Scan: ${report.studyType}`,
+    ].filter(Boolean) as string[];
+    const colW = (A4_W - textStartX - PADDING) / 2;
+    const leftLines = lines.slice(0, Math.ceil(lines.length / 2));
+    const rightLines = lines.slice(Math.ceil(lines.length / 2));
+    const lineH = infoFontSize + Math.round(infoFontSize * 0.45);
+    const textY = (HEADER_HEIGHT - Math.ceil(lines.length / 2) * lineH) / 2 + infoFontSize;
+    leftLines.forEach((line, i) => ctx.fillText(line, textStartX, textY + i * lineH));
+    rightLines.forEach((line, i) => ctx.fillText(line, textStartX + colW, textY + i * lineH));
+
+    const wsAreaH = A4_H - HEADER_HEIGHT;
+    const wsScale = Math.min(A4_W / wsImg.width, wsAreaH / wsImg.height);
+    const wsDrawW = wsImg.width * wsScale; const wsDrawH = wsImg.height * wsScale;
+    const wsX = (A4_W - wsDrawW) / 2; const wsY = HEADER_HEIGHT + (wsAreaH - wsDrawH) / 2;
+    ctx.drawImage(wsImg, wsX, wsY, wsDrawW, wsDrawH);
+    return canvas;
+  };
+
+  const handleSaveReport = async () => {
+    if (!editingReport) return;
     const { id, generatedAt, worksheetId, ...updateData } = editingReport;
-    updateReportMutation.mutate(updateData);
+
+    // Auto-generate and store the labelled worksheet on save (when a raw worksheet exists)
+    let labelledWorksheetId: number | undefined;
+    if (editingReport.worksheetId || (editingReport as any).digitalWorksheetId) {
+      try {
+        const canvas = await generateLabelledCanvas(editingReport);
+        if (canvas) {
+          const blob: Blob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.93));
+          const formData = new FormData();
+          formData.append("worksheet", new File([blob], `labelled-${editingReport.id}.jpg`, { type: 'image/jpeg' }));
+          const uploadRes = await fetch("/api/worksheets/upload", { method: "POST", body: formData });
+          if (uploadRes.ok) {
+            const { worksheetId: newId } = await uploadRes.json();
+            labelledWorksheetId = newId;
+          }
+        }
+      } catch { /* non-fatal — report still saves without labelled copy */ }
+    }
+
+    updateReportMutation.mutate({ ...updateData, ...(labelledWorksheetId ? { labelledWorksheetId } : {}) } as any);
+  };
+
+  // ── Closes the editor, or prompts if there are unsaved changes ───────────────
+  const closeEditor = () => {
+    setIsFullscreenMode(false);
+    setIsEditDialogOpen(false);
+    setIsReuploading(false);
+    setHasUnsavedChanges(false);
+    if (document.fullscreenElement) document.exitFullscreen().catch(console.error);
+  };
+
+  const handleTryClose = () => {
+    if (hasUnsavedChanges) {
+      setIsCloseConfirmOpen(true);
+    } else {
+      closeEditor();
+    }
   };
 
   const handleReuploadWorksheet = async (file: File) => {
@@ -1134,6 +1265,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const updateEditingReport = (field: keyof EditableReport, value: any) => {
     if (!editingReport) return;
     setEditingReport(prev => prev ? { ...prev, [field]: value } : null);
+    setHasUnsavedChanges(true);
   };
 
   const clearField = (field: 'indication' | 'findings' | 'impression') => {
@@ -1186,139 +1318,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
   const handleDownloadLabelledWorksheet = async (report: Report) => {
     try {
-      // Determine image URL
-      const imageUrl = report.digitalWorksheetId
-        ? `/api/digital-worksheets/${report.digitalWorksheetId}/image`
-        : report.worksheetId
-          ? `/api/worksheets/${report.worksheetId}/image`
-          : null;
-      if (!imageUrl) {
+      if (!report.worksheetId && !(report as any).digitalWorksheetId) {
         toast({ title: "No worksheet", description: "No worksheet image is attached to this report.", variant: "destructive" });
         return;
       }
+      const canvas = await generateLabelledCanvas(report);
+      if (!canvas) throw new Error("Failed to generate labelled canvas");
 
-      // Load worksheet image
-      const worksheetRes = await fetch(imageUrl, { credentials: 'include' });
-      if (!worksheetRes.ok) throw new Error("Failed to load worksheet image");
-      const worksheetBlob = await worksheetRes.blob();
-      const worksheetDataUrl = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(worksheetBlob);
-      });
-
-      // Load clinic logo if available
-      let logoImg: HTMLImageElement | null = null;
-      if (clinicLogoApiUrl) {
-        try {
-          const logoRes = await fetch(clinicLogoApiUrl, { credentials: 'include' });
-          if (logoRes.ok) {
-            const logoBlob = await logoRes.blob();
-            const logoDataUrl = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.readAsDataURL(logoBlob);
-            });
-            logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-              const img = new Image();
-              img.onload = () => resolve(img);
-              img.onerror = reject;
-              img.src = logoDataUrl;
-            });
-          }
-        } catch { /* logo optional */ }
-      }
-
-      // Load worksheet as image element
-      const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = worksheetDataUrl;
-      });
-
-      // A4 at 200 DPI: 210mm × 297mm → 1654 × 2339 px
-      const DPI = 200;
-      const A4_W = Math.round((210 / 25.4) * DPI); // 1654
-      const A4_H = Math.round((297 / 25.4) * DPI); // 2339
-
-      // Header strip: ~11% of page height
-      const HEADER_HEIGHT = Math.round(A4_H * 0.11);
-      const PADDING = Math.round(A4_W * 0.025);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = A4_W;
-      canvas.height = A4_H;
-      const ctx = canvas.getContext('2d')!;
-
-      // White background for entire page
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, A4_W, A4_H);
-
-      // Header background
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, A4_W, HEADER_HEIGHT);
-
-      // Bottom border on header
-      const primaryColor = (templates.find((t: ReportTemplate) => t.isDefault) || templates[0])?.primaryColor || '#0066cc';
-      ctx.strokeStyle = primaryColor;
-      ctx.lineWidth = Math.round(A4_W * 0.003);
-      ctx.beginPath();
-      ctx.moveTo(0, HEADER_HEIGHT);
-      ctx.lineTo(A4_W, HEADER_HEIGHT);
-      ctx.stroke();
-
-      // Draw logo on the left
-      let textStartX = PADDING;
-      if (logoImg) {
-        const logoMaxH = HEADER_HEIGHT - PADDING * 2;
-        const logoMaxW = Math.round(A4_W * 0.2);
-        const scale = Math.min(logoMaxW / logoImg.width, logoMaxH / logoImg.height, 1);
-        const logoW = logoImg.width * scale;
-        const logoH = logoImg.height * scale;
-        const logoY = (HEADER_HEIGHT - logoH) / 2;
-        ctx.drawImage(logoImg, PADDING, logoY, logoW, logoH);
-        textStartX = PADDING + logoW + Math.round(A4_W * 0.015);
-      }
-
-      // Font size for patient info — scaled to DPI
-      const infoFontSize = Math.round(A4_W * 0.0135); // ~22px at 200dpi
-
-      // Patient detail lines — two columns in the header area
-      ctx.fillStyle = '#333333';
-      ctx.font = `${infoFontSize}px Arial, sans-serif`;
-      const lines = [
-        `Patient: ${report.patientName}`,
-        report.patientDob ? `DOB: ${report.patientDob}` : null,
-        `Exam Date: ${report.examDate}`,
-        report.patientUrNumber ? `UR: ${report.patientUrNumber}` : null,
-        `Scan: ${report.studyType}`,
-      ].filter(Boolean) as string[];
-
-      const colW = (A4_W - textStartX - PADDING) / 2;
-      const leftLines = lines.slice(0, Math.ceil(lines.length / 2));
-      const rightLines = lines.slice(Math.ceil(lines.length / 2));
-      const lineH = infoFontSize + Math.round(infoFontSize * 0.45);
-      const textY = (HEADER_HEIGHT - (Math.ceil(lines.length / 2) * lineH)) / 2 + infoFontSize;
-
-      leftLines.forEach((line, i) => ctx.fillText(line, textStartX, textY + i * lineH));
-      rightLines.forEach((line, i) => ctx.fillText(line, textStartX + colW, textY + i * lineH));
-
-      // Scale worksheet image to fill the remaining page area, centred
-      const wsAreaH = A4_H - HEADER_HEIGHT;
-      const wsScale = Math.min(A4_W / wsImg.width, wsAreaH / wsImg.height);
-      const wsDrawW = wsImg.width * wsScale;
-      const wsDrawH = wsImg.height * wsScale;
-      const wsX = (A4_W - wsDrawW) / 2;
-      const wsY = HEADER_HEIGHT + (wsAreaH - wsDrawH) / 2;
-      ctx.drawImage(wsImg, wsX, wsY, wsDrawW, wsDrawH);
-
-      // Generate PDF (A4 = 210mm × 297mm)
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const imgData = canvas.toDataURL('image/jpeg', 0.93);
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297);
       pdf.save(`worksheet-${report.patientName.replace(/\s+/g, '-')}-${report.examDate}.pdf`);
-
       toast({ title: "Downloaded", description: "Labelled worksheet saved as A4 PDF." });
     } catch (error) {
       console.error("Download labelled worksheet error:", error);
@@ -1708,17 +1717,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                 <Trash2 className="w-4 h-4 mr-1" />
                 {deleteReportMutation.isPending ? "Deleting..." : "Delete"}
               </Button>
+              {hasUnsavedChanges && (
+                <span className="text-amber-600 text-xs font-medium flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                  Unsaved changes
+                </span>
+              )}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  setIsFullscreenMode(false);
-                  setIsEditDialogOpen(false);
-                  // Exit browser fullscreen if active
-                  if (document.fullscreenElement) {
-                    document.exitFullscreen().catch(console.error);
-                  }
-                }}
+                onClick={handleTryClose}
               >
                 <Minimize2 className="w-4 h-4 mr-2" />
                 Exit Fullscreen
@@ -2099,14 +2107,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                 <div className="flex space-x-2 pt-4 border-t">
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      setIsFullscreenMode(false);
-                      setIsEditDialogOpen(false);
-                      // Exit browser fullscreen if active (non-fullscreen close button)
-                      if (document.fullscreenElement) {
-                        document.exitFullscreen().catch(console.error);
-                      }
-                    }}
+                    onClick={handleTryClose}
                   >
                     <X className="w-4 h-4 mr-2" />
                     Close
@@ -2171,10 +2172,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
       {/* Regular Report Editor Dialog */}
       <Dialog open={isEditDialogOpen && !isFullscreenMode} onOpenChange={(open) => {
-        setIsEditDialogOpen(open);
-        if (!open) {
-          setIsFullscreenMode(false);
-        }
+        if (!open) handleTryClose();
       }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           {editingReport && (
@@ -2965,6 +2963,27 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Unsaved changes confirmation */}
+      <AlertDialog open={isCloseConfirmOpen} onOpenChange={setIsCloseConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>You have unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              The report and worksheet changes you made have not been saved yet. If you close now, your edits will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go back and save</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setIsCloseConfirmOpen(false); closeEditor(); }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Discard changes and close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );

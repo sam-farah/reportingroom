@@ -120,6 +120,7 @@ export const reports = pgTable("reports", {
   id: serial("id").primaryKey(),
   worksheetId: integer("worksheet_id").references(() => worksheets.id),
   digitalWorksheetId: integer("digital_worksheet_id").references(() => digitalWorksheets.id),
+  labelledWorksheetId: integer("labelled_worksheet_id").references(() => worksheets.id),
   patientName: text("patient_name").notNull(),
   patientUrNumber: varchar("patient_ur_number", { length: 20 }),
   patientDob: text("patient_dob").notNull(),
