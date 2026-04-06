@@ -1062,10 +1062,6 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 <MessageSquare className="w-4 h-4 mr-1" />
                 Add Note
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleEdit(selectedPatient)}>
-                <Edit className="w-4 h-4 mr-1" />
-                Edit
-              </Button>
             </div>
           </div>
         </div>
