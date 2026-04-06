@@ -127,7 +127,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment' | 'document'; id: number } | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment' | 'document' | 'note'; id: number } | null>(null);
   const [showPatientInfo, setShowPatientInfo] = useState(false);
   const [newNoteContent, setNewNoteContent] = useState("");
   const [isAddingNote, setIsAddingNote] = useState(false);
@@ -604,6 +604,16 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       isArchived: (d as any).isArchived ?? false,
       data: d,
     })),
+    ...patientNotes.map(n => ({
+      type: 'note' as const,
+      id: n.id,
+      title: n.content.length > 60 ? n.content.slice(0, 60) + '…' : n.content,
+      date: n.createdAt ? format(new Date(n.createdAt), "yyyy-MM-dd") : '',
+      status: n.type || 'note',
+      isAmended: false,
+      isArchived: false,
+      data: n,
+    })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const activeDocuments = allDocuments.filter(d => !d.isArchived);
@@ -625,6 +635,9 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     }
     if (selectedDocument.type === 'document') {
       return patientDocuments.find(d => d.id === selectedDocument.id);
+    }
+    if (selectedDocument.type === 'note') {
+      return patientNotes.find(n => n.id === selectedDocument.id);
     }
     return null;
   };
@@ -943,6 +956,26 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       );
     }
 
+    if (selectedDocument?.type === 'note') {
+      const note = doc as PatientNote;
+      return (
+        <div className="h-full overflow-auto">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-xl mx-auto mt-8 shadow-sm border">
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`p-2 rounded-lg ${note.type === 'fax' ? 'bg-teal-100 text-teal-600' : note.type === 'email' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'}`}>
+                {note.type === 'fax' ? <Printer className="w-5 h-5" /> : note.type === 'email' ? <Mail className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-800 dark:text-gray-200 capitalize">{note.type === 'note' ? 'Manual Note' : note.type === 'fax' ? 'Fax Activity' : note.type === 'email' ? 'Email Activity' : 'System Note'}</h2>
+                <p className="text-xs text-gray-400">{note.createdAt ? format(new Date(note.createdAt), "d MMM yyyy, h:mm a") : ''}</p>
+              </div>
+            </div>
+            <p className="text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">{note.content}</p>
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -1139,12 +1172,14 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                             doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
                             doc.type === 'digitalWorksheet' ? 'bg-orange-100 text-orange-600' :
                             doc.type === 'document' ? 'bg-yellow-100 text-yellow-600' :
+                            doc.type === 'note' ? 'bg-gray-100 text-gray-500' :
                             'bg-blue-100 text-blue-600'
                           }`}>
                             {doc.type === 'report' ? <FileText className="w-4 h-4" /> :
                              doc.type === 'worksheet' ? <ClipboardList className="w-4 h-4" /> :
                              doc.type === 'digitalWorksheet' ? <ClipboardList className="w-4 h-4" /> :
                              doc.type === 'document' ? <File className="w-4 h-4" /> :
+                             doc.type === 'note' ? <MessageSquare className="w-4 h-4" /> :
                              <Calendar className="w-4 h-4" />}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -1165,7 +1200,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                               )}
                             </div>
                           </div>
-                          {doc.type !== 'appointment' && (
+                          {doc.type !== 'appointment' && doc.type !== 'note' && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
