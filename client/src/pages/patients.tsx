@@ -1054,6 +1054,14 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 <User className="w-4 h-4 mr-1" />
                 Full Details
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setIsUploadDialogOpen(true)}>
+                <Upload className="w-4 h-4 mr-1" />
+                Upload
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowNotesDialog(true)}>
+                <MessageSquare className="w-4 h-4 mr-1" />
+                Add Note
+              </Button>
               <Button variant="outline" size="sm" onClick={() => handleEdit(selectedPatient)}>
                 <Edit className="w-4 h-4 mr-1" />
                 Edit
@@ -1089,17 +1097,6 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   Sent {transmittedReports.length > 0 && `(${transmittedReports.length})`}
                 </button>
               </div>
-              {historyTab === 'active' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsUploadDialogOpen(true)}
-                  className="h-7 px-2"
-                >
-                  <Upload className="w-4 h-4 mr-1" />
-                  Upload
-                </Button>
-              )}
             </div>
             <div className="flex-1 overflow-auto">
               {historyTab === 'completed' ? (
@@ -1302,18 +1299,6 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
               </div>
             )}
 
-            {/* Notes button — opens dialog */}
-            <div className="border-t p-2 flex-shrink-0">
-              <button
-                onClick={() => setShowNotesDialog(true)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 transition-colors group"
-              >
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-gray-400 group-hover:text-blue-500" />
-                  <span className="text-sm font-medium text-gray-600 group-hover:text-blue-700">Notes & Activity</span>
-                </div>
-              </button>
-            </div>
           </div>
 
           {/* Notes Dialog */}
