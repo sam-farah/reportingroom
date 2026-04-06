@@ -119,6 +119,13 @@ function PdfViewer({ url, title, originalName }: { url: string; title: string; o
   );
 }
 
+function formatDob(dob: string | null | undefined): string {
+  if (!dob) return "";
+  const m = dob.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return dob;
+}
+
 export default function Patients({ initialPatientId, onPatientOpened }: { initialPatientId?: number; onPatientOpened?: () => void } = {}) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -1090,7 +1097,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                     <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0 rounded text-xs shrink-0">UR {selectedPatient.urNumber}</span>
                   )}
                 </div>
-                <div className="text-xs text-gray-500">DOB: {selectedPatient.dateOfBirth}</div>
+                <div className="text-xs text-gray-500">DOB: {formatDob(selectedPatient.dateOfBirth)}</div>
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
@@ -1119,7 +1126,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-sm text-gray-600">
-                    <span>DOB: {selectedPatient.dateOfBirth}</span>
+                    <span>DOB: {formatDob(selectedPatient.dateOfBirth)}</span>
                     {selectedPatient.phone && <span>{selectedPatient.phone}</span>}
                     {selectedPatient.allergies && (
                       <span className="text-red-600 font-medium">Allergies: {selectedPatient.allergies}</span>
@@ -1491,7 +1498,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-3">
                   <div>
                     <div className="text-xs text-gray-400 mb-0.5">Date of Birth</div>
-                    <div className="text-sm text-gray-800 dark:text-gray-200">{selectedPatient.dateOfBirth || <span className="italic text-gray-300">—</span>}</div>
+                    <div className="text-sm text-gray-800 dark:text-gray-200">{formatDob(selectedPatient.dateOfBirth) || <span className="italic text-gray-300">—</span>}</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-400 mb-0.5">Gender</div>
@@ -1955,7 +1962,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                           {patient.urNumber && (
                             <span className="font-mono font-semibold text-blue-700 bg-blue-50 px-1.5 py-0 rounded text-xs">UR {patient.urNumber}</span>
                           )}
-                          <span>DOB: {patient.dateOfBirth}</span>
+                          <span>DOB: {formatDob(patient.dateOfBirth)}</span>
                           {patient.phone && <span className="hidden sm:inline">{patient.phone}</span>}
                         </div>
                       </div>
