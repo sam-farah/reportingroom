@@ -1386,12 +1386,13 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                       <Mail className="w-4 h-4" />
                       <span>{selectedPatient.email}</span>
                     </div>
-                    {portalStatus?.hasPortalAccess ? (
-                      <Badge variant="outline" className="w-fit bg-green-50 text-green-700 border-green-200 gap-1">
-                        <CheckCircle className="w-3 h-3" />
-                        Portal Access Active
-                      </Badge>
-                    ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {portalStatus?.hasPortalAccess && (
+                        <Badge variant="outline" className="w-fit bg-green-50 text-green-700 border-green-200 gap-1">
+                          <CheckCircle className="w-3 h-3" />
+                          Portal Access Active
+                        </Badge>
+                      )}
                       <Button 
                         size="sm" 
                         variant="outline" 
@@ -1400,10 +1401,10 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                         disabled={invitePortalMutation.isPending}
                       >
                         <Mail className="w-3 h-3" />
-                        {portalStatus?.invitePending ? "Resend Portal Invitation" : "Invite to Patient Portal"}
+                        {portalStatus?.hasPortalAccess ? "Resend Portal Invite" : portalStatus?.invitePending ? "Resend Portal Invitation" : "Invite to Patient Portal"}
                         {invitePortalMutation.isPending && <Clock className="w-3 h-3 animate-spin" />}
                       </Button>
-                    )}
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"
