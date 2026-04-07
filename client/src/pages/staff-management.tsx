@@ -346,7 +346,7 @@ export default function StaffManagement() {
                         </Badge>
                         {member.joinedAt && (
                           <span className="text-xs text-gray-400">
-                            Joined {new Date(member.joinedAt).toLocaleDateString()}
+                            Joined {new Date(member.joinedAt).toLocaleDateString('en-AU')}
                           </span>
                         )}
                       </div>
@@ -407,7 +407,7 @@ export default function StaffManagement() {
                           </Badge>
                           <div className="flex items-center text-xs text-gray-400">
                             <Clock className="h-3 w-3 mr-1" />
-                            Sent {new Date(invitation.createdAt).toLocaleDateString()}
+                            Sent {new Date(invitation.createdAt).toLocaleDateString('en-AU')}
                           </div>
                         </div>
                       </div>

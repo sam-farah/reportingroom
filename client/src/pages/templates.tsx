@@ -1716,7 +1716,7 @@ export default function Templates() {
                       <h3 className="font-semibold" style={{ color: previewTemplate.primaryColor }}>
                         Ultrasound Report
                       </h3>
-                      <p className="text-sm text-gray-500">Report Date: {new Date().toLocaleDateString()}</p>
+                      <p className="text-sm text-gray-500">Report Date: {new Date().toLocaleDateString('en-AU')}</p>
                     </div>
                   </div>
                 )}
@@ -1730,11 +1730,11 @@ export default function Templates() {
                     </div>
                     <div>
                       <span className="font-semibold">DOB:</span>
-                      <span className="ml-2">01/15/1980</span>
+                      <span className="ml-2">15/01/1980</span>
                     </div>
                     <div>
                       <span className="font-semibold">Exam Date:</span>
-                      <span className="ml-2">{new Date().toLocaleDateString()}</span>
+                      <span className="ml-2">{new Date().toLocaleDateString('en-AU')}</span>
                     </div>
                     {previewTemplate.showPatientId && (
                       <div>

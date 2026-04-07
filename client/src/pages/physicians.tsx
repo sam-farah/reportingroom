@@ -1191,7 +1191,7 @@ export default function Clinic() {
                           </div>
                         )}
                         <div className="text-xs text-gray-500">
-                          Added: {sonographer.createdAt ? new Date(sonographer.createdAt).toLocaleDateString() : 'N/A'}
+                          Added: {sonographer.createdAt ? new Date(sonographer.createdAt).toLocaleDateString('en-AU') : 'N/A'}
                         </div>
                       </div>
                     </CardContent>

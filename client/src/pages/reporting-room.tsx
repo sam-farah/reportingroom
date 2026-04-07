@@ -849,7 +849,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
   ${template?.showFooter !== false ? `<div class="footer">
     ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
-    ${template?.showGenerationDate !== false ? `<div>Report Generated: ${format(new Date(), 'MMMM dd, yyyy')}</div>` : ''}
+    ${template?.showGenerationDate !== false ? `<div>Report Generated: ${format(new Date(), 'dd/MM/yyyy')}</div>` : ''}
   </div>` : ''}
 </body>
 </html>`);
@@ -1494,12 +1494,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   {report.studyType}
                 </div>
                 <div className="text-xs text-gray-500">
-                  Generated: {format(new Date(report.generatedAt), 'MMM dd, yyyy')}
+                  Generated: {format(new Date(report.generatedAt), 'dd/MM/yyyy')}
                 </div>
                 {report.isFinalized && report.finalizedAt && (
                   <div className="flex items-center text-xs text-green-600 mt-1">
                     <CheckCircle2 className="w-3 h-3 mr-1" />
-                    Signed: {format(new Date(report.finalizedAt), 'MMM dd, yyyy')}
+                    Signed: {format(new Date(report.finalizedAt), 'dd/MM/yyyy')}
                   </div>
                 )}
                 {(distributionCounts[report.id] ?? 0) > 0 && (
@@ -1511,13 +1511,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                 {(report as any).isSonographerComplete && (report as any).sonographerCompletedAt && (
                   <div className="flex items-center text-xs text-teal-600 mt-1">
                     <ClipboardCheck className="w-3 h-3 mr-1" />
-                    Sono Complete: {format(new Date((report as any).sonographerCompletedAt), 'MMM dd, yyyy')}
+                    Sono Complete: {format(new Date((report as any).sonographerCompletedAt), 'dd/MM/yyyy')}
                   </div>
                 )}
                 {report.isAmended && report.amendedAt && (
                   <div className="flex items-center text-xs text-orange-600 mt-1">
                     <Edit3 className="w-3 h-3 mr-1" />
-                    Amended: {format(new Date(report.amendedAt), 'MMM dd, yyyy')}
+                    Amended: {format(new Date(report.amendedAt), 'dd/MM/yyyy')}
                   </div>
                 )}
                 {(report as any).isArchived && (

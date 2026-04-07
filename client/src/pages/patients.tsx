@@ -1479,7 +1479,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                     <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 text-xs">
                       <CheckCircle className="w-3 h-3" />
                       Registration completed
-                      {registrationStatus.completedAt && <span className="font-normal text-emerald-500"> · {new Date(registrationStatus.completedAt).toLocaleDateString()}</span>}
+                      {registrationStatus.completedAt && <span className="font-normal text-emerald-500"> · {new Date(registrationStatus.completedAt).toLocaleDateString('en-AU')}</span>}
                     </Badge>
                   )}
                   {registrationStatus?.status === "pending" && !registrationStatus.isExpired && (
