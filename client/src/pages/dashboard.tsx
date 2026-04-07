@@ -284,7 +284,7 @@ export default function Dashboard() {
                 </button>
                 <button
                   onClick={() => {
-                    window.open(`http://100.108.175.83:8042${dicomPendingPath}`, "_blank");
+                    window.open(`http://100.108.175.83:8042/`, "_blank");
                     setDicomDialogOpen(false);
                   }}
                   className="flex items-center gap-4 p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 transition-colors text-left group"
