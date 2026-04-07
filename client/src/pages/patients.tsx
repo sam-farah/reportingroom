@@ -110,10 +110,11 @@ function PdfViewer({ url, title, originalName }: { url: string; title: string; o
           Download
         </button>
       </div>
-      <iframe
+      <embed
         src={blobUrl}
-        className="w-full h-[650px] rounded-lg border bg-white"
-        title={title}
+        type="application/pdf"
+        className="w-full rounded-lg border bg-white"
+        style={{ height: "650px" }}
       />
     </div>
   );
