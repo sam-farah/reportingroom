@@ -26,11 +26,17 @@ import TextShortcuts from "@/components/text-shortcuts";
 
 function formatDobAU(dob: string | null | undefined): string {
   if (!dob) return "";
+  // Already DD/MM/YYYY — return as-is
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(dob)) return dob;
+  // ISO YYYY-MM-DD → DD/MM/YYYY
   const iso = dob.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  // DD-MM-YYYY → DD/MM/YYYY
   const dmy = dob.match(/^(\d{2})-(\d{2})-(\d{4})/);
   if (dmy) return `${dmy[1]}/${dmy[2]}/${dmy[3]}`;
+  // D/M/YYYY (single-digit day or month) — pad to DD/MM/YYYY (Australian: day first)
+  const slashDMY = dob.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashDMY) return `${slashDMY[1].padStart(2, '0')}/${slashDMY[2].padStart(2, '0')}/${slashDMY[3]}`;
   return dob;
 }
 
@@ -599,7 +605,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const lines = [
       `Patient: ${report.patientName}`,
       (report as any).patientDob ? `DOB: ${(report as any).patientDob}` : null,
-      `Exam Date: ${(report as any).examDate}`,
+      `Exam Date: ${formatDobAU((report as any).examDate)}`,
       (report as any).patientUrNumber ? `UR: ${(report as any).patientUrNumber}` : null,
       `Scan: ${report.studyType}`,
     ].filter(Boolean) as string[];
@@ -808,7 +814,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     <div class="pi"><span class="label">Patient Name:</span> ${report.patientName}</div>
     ${report.patientUrNumber ? `<div class="pi"><span class="label">UR Number:</span> <span class="ur">UR ${report.patientUrNumber}</span></div>` : '<div></div>'}
     <div class="pi"><span class="label">Date of Birth:</span> ${report.patientDob}</div>
-    <div class="pi"><span class="label">Exam Date:</span> ${report.examDate}</div>
+    <div class="pi"><span class="label">Exam Date:</span> ${formatDobAU(report.examDate)}</div>
     <div class="pi"><span class="label">Report ID:</span> ${report.id}</div>
     <div class="pi"><span class="label">Report Date:</span> ${format(new Date(), 'MMMM dd, yyyy')}</div>
   </div>
@@ -1026,7 +1032,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         const infoLines = [
           `Patient: ${report.patientName}`,
           report.patientDob ? `DOB: ${formatDobAU(report.patientDob)}` : null,
-          `Exam Date: ${report.examDate}`,
+          `Exam Date: ${formatDobAU(report.examDate)}`,
           report.patientUrNumber ? `UR: ${report.patientUrNumber}` : null,
           `Scan: ${report.studyType}`,
         ].filter(Boolean) as string[];
@@ -1466,7 +1472,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
               <div className="space-y-2 mb-4">
                 <div className="flex items-center text-sm text-gray-600">
                   <Calendar className="w-4 h-4 mr-2" />
-                  {report.examDate}
+                  {formatDobAU(report.examDate)}
                 </div>
                 <div className="text-sm font-medium text-gray-800">
                   {report.studyType}
