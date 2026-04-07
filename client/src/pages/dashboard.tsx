@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Wifi, Search, Eye, LayoutGrid } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Wifi, Search, Eye, LayoutGrid, Building2, Shield } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -56,6 +57,8 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const [activePanel, setActivePanel] = useState<Panel>("calendar");
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
+  const [dicomDialogOpen, setDicomDialogOpen] = useState(false);
+  const [dicomPendingPath, setDicomPendingPath] = useState<string>("/ui/app/");
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
   const [preLinkedPatientName, setPreLinkedPatientName] = useState<string>("");
   const [preLinkedExamDate, setPreLinkedExamDate] = useState<string>("");
@@ -236,21 +239,11 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* VPN notice */}
-          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
-            <Wifi className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-amber-800">
-              <span className="font-semibold">Tailscale VPN required.</span>{" "}
-              Connect to Tailscale before opening the viewer. Address:{" "}
-              <code className="font-mono bg-amber-100 px-1 rounded text-amber-900">100.108.175.83:8042</code>
-            </p>
-          </div>
-
           {/* Primary launch button */}
           <Button
             size="lg"
             className="w-full gap-2 mb-6 h-12 text-base"
-            onClick={() => window.open("http://100.108.175.83:8042/ui/app/", "_blank")}
+            onClick={() => { setDicomPendingPath("/ui/app/"); setDicomDialogOpen(true); }}
           >
             <ExternalLink className="w-5 h-5" />
             Open DICOM Viewer
@@ -260,7 +253,7 @@ export default function Dashboard() {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Quick Access</p>
           <div className="grid grid-cols-3 gap-3">
             <button
-              onClick={() => window.open("http://100.108.175.83:8042/ui/app/", "_blank")}
+              onClick={() => { setDicomPendingPath("/ui/app/"); setDicomDialogOpen(true); }}
               className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
             >
               <div className="w-9 h-9 rounded-lg bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
@@ -270,7 +263,7 @@ export default function Dashboard() {
               <span className="text-xs text-gray-400">Browse &amp; view studies</span>
             </button>
             <button
-              onClick={() => window.open("http://100.108.175.83:8042/app/explorer.html", "_blank")}
+              onClick={() => { setDicomPendingPath("/app/explorer.html"); setDicomDialogOpen(true); }}
               className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
             >
               <div className="w-9 h-9 rounded-lg bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center transition-colors">
@@ -280,7 +273,7 @@ export default function Dashboard() {
               <span className="text-xs text-gray-400">Manage studies</span>
             </button>
             <button
-              onClick={() => window.open("http://100.108.175.83:8042/", "_blank")}
+              onClick={() => { setDicomPendingPath("/"); setDicomDialogOpen(true); }}
               className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
             >
               <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
@@ -292,8 +285,57 @@ export default function Dashboard() {
           </div>
 
           <p className="text-xs text-gray-400 text-center mt-6">
-            Opens in a new browser tab. HTTP access is required — the viewer cannot be embedded inline.
+            Opens in a new browser tab. You will be asked how you are connecting.
           </p>
+
+          {/* Connection type dialog */}
+          <Dialog open={dicomDialogOpen} onOpenChange={setDicomDialogOpen}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <ScanLine className="w-5 h-5 text-blue-600" />
+                  How are you connecting?
+                </DialogTitle>
+                <DialogDescription>
+                  Choose your current connection to reach the correct DICOM server address.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    window.open(`http://192.168.15.23:8042${dicomPendingPath}`, "_blank");
+                    setDicomDialogOpen(false);
+                  }}
+                  className="flex items-center gap-4 p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-green-400 hover:bg-green-50 transition-colors text-left group"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-green-100 group-hover:bg-green-200 flex items-center justify-center flex-shrink-0 transition-colors">
+                    <Building2 className="w-6 h-6 text-green-700" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">I am on site</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Connected to the clinic Wi-Fi or LAN</p>
+                    <code className="text-xs text-green-700 font-mono">192.168.15.23:8042</code>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    window.open(`http://100.108.175.83:8042${dicomPendingPath}`, "_blank");
+                    setDicomDialogOpen(false);
+                  }}
+                  className="flex items-center gap-4 p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 transition-colors text-left group"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center flex-shrink-0 transition-colors">
+                    <Shield className="w-6 h-6 text-blue-700" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">I am connected via VPN</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Connected via Tailscale from outside the clinic</p>
+                    <code className="text-xs text-blue-700 font-mono">100.108.175.83:8042</code>
+                  </div>
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       ) : (
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} preLinkedExamDate={preLinkedExamDate} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedExamDate(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
