@@ -871,7 +871,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     // Look up physician from already-loaded list
     let physicianName = "";
     let physicianTitle = "";
-    let physicianCredentials = "";
+    let physicianSpecialty = "";
     let signatureDataUrl: string | null = null;
 
     if (report.physicianId) {
@@ -879,7 +879,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       if (physician) {
         physicianName = formatPhysicianName(physician.name || "");
         physicianTitle = physician.title || "";
-        physicianCredentials = (physician as any).credentials || "";
+        physicianSpecialty = physician.specialty || "";
         if (physician.signatureUrl) {
           signatureDataUrl = await toBase64(physician.signatureUrl);
         }
@@ -1099,8 +1099,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
   ${template?.showSignature !== false ? `<div class="sig-area">
     ${signatureDataUrl ? `<img class="sig-img" src="${signatureDataUrl}" alt="Physician Signature" />` : ''}
-    ${physicianName ? `<div class="sig-name">${physicianTitle ? physicianTitle + ' ' : ''}${physicianName}</div>` : ''}
-    ${physicianCredentials ? `<div class="sig-creds">${physicianCredentials}</div>` : ''}
+    ${physicianName ? `<div class="sig-name">${physicianName}${physicianTitle ? ' ' + physicianTitle : ''}</div>` : ''}
+    ${physicianSpecialty ? `<div class="sig-creds">${physicianSpecialty}</div>` : ''}
     ${copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : '<!--COPIES_TO_PLACEHOLDER-->'}
     ${report.isFinalized && report.finalizedAt ? `<div class="finalized">Electronically signed ${new Date(report.finalizedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>` : ''}
   </div>` : ''}
