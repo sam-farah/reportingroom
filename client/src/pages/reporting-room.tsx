@@ -2125,6 +2125,27 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   )}
                 </div>
 
+                {/* Sono Complete */}
+                <div className="border-t pt-4">
+                  {(editingReport as any).isSonographerComplete ? (
+                    <div className="flex items-center text-sm text-teal-600 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+                      <ClipboardCheck className="w-4 h-4 mr-2 flex-shrink-0" />
+                      Sono complete — {(editingReport as any).sonographerCompletedBy || "Sonographer"}{(editingReport as any).sonographerCompletedAt ? ` on ${format(new Date((editingReport as any).sonographerCompletedAt), 'dd MMM yyyy')}` : ""}
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
+                      onClick={() => sonographerCompleteMutation.mutate(editingReport.id)}
+                      disabled={sonographerCompleteMutation.isPending}
+                    >
+                      <ClipboardCheck className="w-4 h-4 mr-2" />
+                      Mark Sono Complete
+                    </Button>
+                  )}
+                </div>
+
                 {/* Finalization */}
                 <div className="border-t pt-4 space-y-4">
                   <div className="flex items-center space-x-2">
@@ -2471,6 +2492,27 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       onTranscription={handleVoiceTranscription}
                       onClose={() => setActiveVoiceDictation('')}
                     />
+                  )}
+                </div>
+
+                {/* Sono Complete */}
+                <div className="border-t pt-4">
+                  {(editingReport as any).isSonographerComplete ? (
+                    <div className="flex items-center text-sm text-teal-600 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
+                      <ClipboardCheck className="w-4 h-4 mr-2 flex-shrink-0" />
+                      Sono complete — {(editingReport as any).sonographerCompletedBy || "Sonographer"}{(editingReport as any).sonographerCompletedAt ? ` on ${format(new Date((editingReport as any).sonographerCompletedAt), 'dd MMM yyyy')}` : ""}
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
+                      onClick={() => sonographerCompleteMutation.mutate(editingReport.id)}
+                      disabled={sonographerCompleteMutation.isPending}
+                    >
+                      <ClipboardCheck className="w-4 h-4 mr-2" />
+                      Mark Sono Complete
+                    </Button>
                   )}
                 </div>
 

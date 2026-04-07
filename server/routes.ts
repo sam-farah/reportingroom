@@ -1165,6 +1165,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updates = { ...req.body };
+      const userId = req.session.userId!;
+
+      // Capture finalization intent before stripping from regular updates
+      const isFinalizingNow = updates.isFinalized === true;
+      const isUnfinalizingNow = updates.isFinalized === false;
+
+      // Remove finalization metadata so updateReport doesn't set them directly
+      delete updates.isFinalized;
+      delete updates.finalizedAt;
+      delete updates.finalizedBy;
 
       // Auto-populate patientUrNumber when a patientId is provided but no UR number is given
       if (updates.patientId && !updates.patientUrNumber) {
@@ -1174,13 +1184,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const updatedReport = await storage.updateReport(reportId, updates);
-      
-      if (!updatedReport) {
+      // Apply all other field updates first
+      if (Object.keys(updates).length > 0) {
+        await storage.updateReport(reportId, updates);
+      }
+
+      // Handle finalization separately so timestamps & userId are properly recorded
+      let finalReport;
+      if (isFinalizingNow) {
+        finalReport = await storage.finalizeReport(reportId, userId);
+      } else if (isUnfinalizingNow) {
+        finalReport = await storage.updateReport(reportId, { isFinalized: false, finalizedAt: null, finalizedBy: null } as any);
+      } else {
+        finalReport = await storage.getReport(reportId);
+      }
+
+      if (!finalReport) {
         return res.status(404).json({ error: "Report not found" });
       }
 
-      res.json(updatedReport);
+      res.json(finalReport);
     } catch (error) {
       console.error("Report update error:", error);
       res.status(500).json({ error: "Failed to update report" });
