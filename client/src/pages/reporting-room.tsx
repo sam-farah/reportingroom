@@ -70,6 +70,28 @@ function formatFindings(text: string): string {
     .join("\n");
 }
 
+/** Scan a rendered canvas from the bottom upward to find the last row with non-white pixels.
+ *  Returns the pixel Y coordinate of the content bottom (exclusive), so we can trim trailing whitespace. */
+function findCanvasContentBottom(canvas: HTMLCanvasElement): number {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas.height;
+  const { width, height } = canvas;
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  // Step through every 6th column for speed while remaining accurate enough
+  const colStep = Math.max(1, Math.floor(width / 120));
+  for (let y = height - 1; y >= 0; y--) {
+    for (let x = 0; x < width; x += colStep) {
+      const i = (y * width + x) * 4;
+      // Consider any pixel darker than 248 (off-white or colored) as "content"
+      if (data[i] < 248 || data[i + 1] < 248 || data[i + 2] < 248) {
+        return y + 2; // +2 px buffer so we don't clip descenders
+      }
+    }
+  }
+  return 0;
+}
+
 async function generateReportPdfBase64(html: string, worksheetDataUrl?: string | null): Promise<string> {
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;visibility:hidden;";
@@ -83,15 +105,13 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
     const body = iframe.contentDocument?.body;
     if (!body) throw new Error("iframe body unavailable");
 
-    // Measure the true content height (excludes trailing whitespace / padding overhang)
-    // by finding the bottom edge of the last rendered element.
+    // Measure the true content height via DOM — gives initial estimate
     const allEls = body.querySelectorAll("*");
     let maxBottom = 0;
     allEls.forEach(el => {
       const rect = el.getBoundingClientRect();
       if (rect.bottom > maxBottom) maxBottom = rect.bottom;
     });
-    // Add a small buffer (8px) and cap at the body's scrollHeight
     const contentHeightPx = Math.min(Math.ceil(maxBottom) + 8, body.scrollHeight);
 
     const canvas = await html2canvas(body, {
@@ -103,29 +123,27 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
       windowWidth: 794,
       scrollY: 0,
     });
+
+    // Pixel-accurate trim: find the last row with real (non-white) content
+    // This eliminates blank pages caused by padding/margin overhang in the HTML
+    const contentBottomPx = findCanvasContentBottom(canvas);
+
     const A4_W_MM = 210, A4_H_MM = 297;
     const pxToMm = A4_W_MM / canvas.width;
-    const totalHeightMm = canvas.height * pxToMm;
+    const totalHeightMm = contentBottomPx * pxToMm; // use trimmed height
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     let yMm = 0;
     while (yMm < totalHeightMm) {
       const pageHeightMm = Math.min(A4_H_MM, totalHeightMm - yMm);
-      // Skip near-empty trailing slices (< 8mm) to prevent blank pages before the worksheet
-      if (pageHeightMm < 8 && yMm > 0) break;
-      const srcY = Math.round((yMm / totalHeightMm) * canvas.height);
-      const srcH = Math.round((pageHeightMm / totalHeightMm) * canvas.height);
+      const srcY = Math.round((yMm / totalHeightMm) * contentBottomPx);
+      const srcH = Math.round((pageHeightMm / totalHeightMm) * contentBottomPx);
       const slice = document.createElement("canvas");
       slice.width = canvas.width;
       slice.height = Math.max(srcH, 1);
       slice.getContext("2d")!.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
       pdf.addImage(slice.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, A4_W_MM, pageHeightMm);
       yMm += pageHeightMm;
-      if (yMm < totalHeightMm) {
-        // Only add a new page if there is meaningful content remaining
-        const nextHeight = Math.min(A4_H_MM, totalHeightMm - yMm);
-        if (nextHeight >= 8) pdf.addPage();
-        else break;
-      }
+      if (yMm < totalHeightMm) pdf.addPage();
     }
     // Append worksheet as a dedicated final page
     if (worksheetDataUrl) {
