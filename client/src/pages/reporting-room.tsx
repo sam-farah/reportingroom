@@ -808,7 +808,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     .sig-name{font-weight:700;font-size:14px;}
     .sig-creds{font-size:12px;color:#555;}
     .finalized{margin-top:6px;font-size:11px;color:#16a34a;font-weight:600;}
-    .footer{margin-top:36px;padding-top:12px;border-top:1px solid #eee;font-size:11px;color:#888;text-align:center;}
     @media print{body{padding:16px;}@page{margin:15mm;}}
   </style>
 </head>
@@ -847,10 +846,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     ${report.isFinalized && report.finalizedAt ? `<div class="finalized">Electronically signed on ${new Date(report.finalizedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>` : ''}
   </div>` : ''}
 
-  ${template?.showFooter !== false ? `<div class="footer">
-    ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
-    ${template?.showGenerationDate !== false ? `<div>Report Generated: ${format(new Date(), 'dd/MM/yyyy')}</div>` : ''}
-  </div>` : ''}
 </body>
 </html>`);
 
@@ -1113,7 +1108,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     .sig-creds{font-size:12px;color:#555;}
     .copies-to{font-size:12px;color:#555;margin-top:6px;}
     .finalized{margin-top:5px;font-size:11px;color:#16a34a;font-weight:600;}
-    .footer{margin-top:24px;padding-top:10px;border-top:1px solid #eee;font-size:11px;color:#888;text-align:center;}
     .amended-note{background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:#92400e;}
   </style>
 </head>
@@ -1154,10 +1148,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     ${report.isFinalized && report.finalizedAt ? `<div class="finalized">Electronically signed ${new Date(report.finalizedAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'long', year: 'numeric' })}</div>` : ''}
   </div>` : ''}
 
-  ${template?.showFooter !== false ? `<div class="footer">
-    ${template?.footerText ? `<div>${template.footerText}</div>` : ''}
-    ${template?.showGenerationDate !== false ? `<div>Report generated: ${todayAU}</div>` : ''}
-  </div>` : ''}
 
   ${wsUrl ? `<div class="worksheet-page"><img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" /></div>` : ''}
 </body>
