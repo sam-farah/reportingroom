@@ -1869,6 +1869,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       }}
                     />
                   </div>
+                ) : (editingReport as any).labelledWorksheetId ? (
+                  /* Show the annotated (labelled) version once the report has been saved */
+                  <WorksheetViewer
+                    worksheetId={(editingReport as any).labelledWorksheetId}
+                    alt="Annotated Worksheet"
+                  />
                 ) : editingReport.worksheetId ? (
                   <WorksheetViewer 
                     worksheetId={editingReport.worksheetId} 
