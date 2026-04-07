@@ -291,7 +291,7 @@ Return JSON: { "studyType": string, "indication": string, "findings": string, "i
 
 Patient: ${extractedData.patientName || 'Not specified'}
 DOB: ${extractedData.patientDob || 'Not specified'}
-Exam date: ${extractedData.examDate || new Date().toLocaleDateString()}
+Exam date: ${extractedData.examDate || new Date().toLocaleDateString('en-AU')}
 
 Carefully read all visible markings, measurements, annotations, tick-boxes, and written values on the worksheet, then produce the report based on what you actually see.`;
 
@@ -321,7 +321,7 @@ Carefully read all visible markings, measurements, annotations, tick-boxes, and 
     return {
       patientName: extractedData.patientName || "Not specified",
       patientDob: extractedData.patientDob || "Not specified",
-      examDate: extractedData.examDate || new Date().toLocaleDateString(),
+      examDate: extractedData.examDate || new Date().toLocaleDateString('en-AU'),
       studyType: result.studyType || "Ultrasound Examination",
       indication: result.indication || "Clinical evaluation",
       findings: result.findings || "No significant findings documented.",

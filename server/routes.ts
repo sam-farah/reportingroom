@@ -2109,10 +2109,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 <span class="info-label">Name:</span> ${report.patientName}
             </div>
             <div class="info-item">
-                <span class="info-label">Date of Birth:</span> ${report.patientDob}
+                <span class="info-label">Date of Birth:</span> ${formatDateAU(report.patientDob)}
             </div>
             <div class="info-item">
-                <span class="info-label">Exam Date:</span> ${report.examDate}
+                <span class="info-label">Exam Date:</span> ${formatDateAU(report.examDate)}
             </div>
         </div>
         <div class="info-section">
@@ -2146,7 +2146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         <div style="margin-top: 10px; font-size: 14px;">
             <strong>${physician ? `${physician.name}, ${physician.title || "MD"}` : "Reporting Physician"}</strong><br>
             ${physician && physician.specialty ? `${physician.specialty}<br>` : ""}
-            Date: ${new Date().toLocaleDateString()}
+            Date: ${formatDateAU(new Date().toISOString().split('T')[0])}
         </div>
     </div>
 
@@ -2363,14 +2363,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             new Paragraph({
               children: [
                 new TextRun({ text: "Date of Birth: ", bold: true }),
-                new TextRun({ text: report.patientDob }),
+                new TextRun({ text: formatDateAU(report.patientDob) }),
               ],
               spacing: { after: 120 },
             }),
             new Paragraph({
               children: [
                 new TextRun({ text: "Exam Date: ", bold: true }),
-                new TextRun({ text: report.examDate }),
+                new TextRun({ text: formatDateAU(report.examDate) }),
               ],
               spacing: { after: 120 },
             }),
@@ -2547,7 +2547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ] : []),
               new Paragraph({
                 children: [
-                  new TextRun({ text: `Date: ${new Date().toLocaleDateString()}`, size: 18 }),
+                  new TextRun({ text: `Date: ${formatDateAU(new Date().toISOString().split('T')[0])}`, size: 18 }),
                 ],
                 alignment: template?.signaturePosition === 'center' ? AlignmentType.CENTER : 
                           template?.signaturePosition === 'left' ? AlignmentType.LEFT : AlignmentType.RIGHT,
@@ -2574,7 +2574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 new Paragraph({
                   children: [
                     new TextRun({ 
-                      text: `Report Generated: ${new Date().toLocaleDateString('en-US', { 
+                      text: `Report Generated: ${new Date().toLocaleDateString('en-AU', { 
                         year: 'numeric', 
                         month: 'long', 
                         day: 'numeric' 
@@ -4928,6 +4928,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 }
 
 // Utility function to generate invitation tokens
+/** Format any date string (ISO, D/M/YYYY, M/D/YYYY, DD/MM/YYYY) into Australian DD/MM/YYYY format. */
+function formatDateAU(d: string | null | undefined): string {
+  if (!d) return "";
+  // Already DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
+  // ISO YYYY-MM-DD
+  const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  // DD-MM-YYYY
+  const dmy = d.match(/^(\d{2})-(\d{2})-(\d{4})/);
+  if (dmy) return `${dmy[1]}/${dmy[2]}/${dmy[3]}`;
+  // D/M/YYYY or M/D/YYYY — pad and keep order (AU: day first)
+  const slash = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) return `${slash[1].padStart(2, "0")}/${slash[2].padStart(2, "0")}/${slash[3]}`;
+  return d;
+}
+
 function generateInvitationToken(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }

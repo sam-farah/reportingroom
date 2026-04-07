@@ -831,10 +831,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     <h3>Patient Information</h3>
     <div class="pi"><span class="label">Patient Name:</span> ${report.patientName}</div>
     ${report.patientUrNumber ? `<div class="pi"><span class="label">UR Number:</span> <span class="ur">UR ${report.patientUrNumber}</span></div>` : '<div></div>'}
-    <div class="pi"><span class="label">Date of Birth:</span> ${report.patientDob}</div>
+    <div class="pi"><span class="label">Date of Birth:</span> ${formatDobAU(report.patientDob)}</div>
     <div class="pi"><span class="label">Exam Date:</span> ${formatDobAU(report.examDate)}</div>
     <div class="pi"><span class="label">Report ID:</span> ${report.id}</div>
-    <div class="pi"><span class="label">Report Date:</span> ${format(new Date(), 'MMMM dd, yyyy')}</div>
+    <div class="pi"><span class="label">Report Date:</span> ${format(new Date(), 'dd/MM/yyyy')}</div>
   </div>
 
   ${template?.showStudyType !== false ? `<div class="section"><div class="section-title">Study Type</div><div class="section-content">${report.studyType}</div></div>` : ''}
