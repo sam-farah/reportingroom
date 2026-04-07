@@ -4,6 +4,28 @@ import { setupVite, serveStatic, log } from "./vite";
 import { securityMiddleware } from "./middleware/security";
 import { MedicalDataEncryption } from "./encryption";
 
+// Prevent dropped database connections from crashing the server process.
+// Neon serverless culls idle connections, which surfaces as an unhandled
+// rejection if there is an in-flight query at that moment.
+process.on("unhandledRejection", (reason: any) => {
+  const msg = reason?.message ?? String(reason);
+  // 57P01 = "terminating connection due to administrator command" (Neon idle cull)
+  if (reason?.code === "57P01" || msg.includes("terminating connection")) {
+    console.warn("[db] Database connection terminated by server — will reconnect on next query.");
+  } else {
+    console.error("[server] Unhandled rejection:", reason);
+  }
+});
+
+process.on("uncaughtException", (err: any) => {
+  if (err?.code === "57P01" || err?.message?.includes("terminating connection")) {
+    console.warn("[db] Database connection terminated by server — will reconnect on next query.");
+  } else {
+    console.error("[server] Uncaught exception:", err);
+    process.exit(1);
+  }
+});
+
 // Security validation - ensure encryption is properly configured
 console.log('🔐 Validating encryption setup for regulatory compliance...');
 const encryptionValidation = MedicalDataEncryption.validateEncryptionSetup();
