@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Wifi, Search, Eye, LayoutGrid, Building2, Shield } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -249,42 +249,7 @@ export default function Dashboard() {
             Open DICOM Viewer
           </Button>
 
-          {/* Quick links */}
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Quick Access</p>
-          <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => { setDicomPendingPath("/ui/app/"); setDicomDialogOpen(true); }}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
-            >
-              <div className="w-9 h-9 rounded-lg bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
-                <Eye className="w-5 h-5 text-blue-600" />
-              </div>
-              <span className="text-xs font-medium text-gray-700">OHIF Viewer</span>
-              <span className="text-xs text-gray-400">Browse &amp; view studies</span>
-            </button>
-            <button
-              onClick={() => { setDicomPendingPath("/app/explorer.html"); setDicomDialogOpen(true); }}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
-            >
-              <div className="w-9 h-9 rounded-lg bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center transition-colors">
-                <Search className="w-5 h-5 text-purple-600" />
-              </div>
-              <span className="text-xs font-medium text-gray-700">Orthanc Explorer</span>
-              <span className="text-xs text-gray-400">Manage studies</span>
-            </button>
-            <button
-              onClick={() => { setDicomPendingPath("/"); setDicomDialogOpen(true); }}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
-            >
-              <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
-                <LayoutGrid className="w-5 h-5 text-gray-600" />
-              </div>
-              <span className="text-xs font-medium text-gray-700">REST API</span>
-              <span className="text-xs text-gray-400">Orthanc index</span>
-            </button>
-          </div>
-
-          <p className="text-xs text-gray-400 text-center mt-6">
+          <p className="text-xs text-gray-400 text-center mt-2">
             Opens in a new browser tab. You will be asked how you are connecting.
           </p>
 
