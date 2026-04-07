@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,11 +14,12 @@ import StaffManagement from "./staff-management";
 import Calendar from "./calendar";
 import Patients from "./patients";
 import Requests from "./requests";
+import Contacts from "./contacts";
 import Draw from "./draw";
 import Templates from "./templates";
 import HelpCentre from "./help-centre";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "draw" | "templates" | "help" | "dicom";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom";
 
 const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",  icon: CalendarIcon },
@@ -27,6 +28,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "reporting-room", label: "Reports",   icon: FolderOpen },
   { id: "patients",       label: "Patients",  icon: UserCircle },
   { id: "requests",       label: "Requests",  icon: ClipboardList },
+  { id: "contacts",       label: "Contacts",  icon: BookUser },
   { id: "dicom",          label: "DICOM",     icon: ScanLine },
   { id: "staff",          label: "Team",      icon: Users, adminOnly: true },
   { id: "admin",          label: "Admin",     icon: Settings },
@@ -42,6 +44,7 @@ const PAGE_TITLES: Record<Panel, string> = {
   "staff":          "Team",
   "patients":       "Patients",
   "requests":       "Scan Requests",
+  "contacts":       "Contacts",
   "templates":      "Templates",
   "admin":          "Admin Panel",
   "help":           "Help Centre",
@@ -212,6 +215,8 @@ export default function Dashboard() {
         <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
       ) : activePanel === "requests" ? (
         <Requests />
+      ) : activePanel === "contacts" ? (
+        <Contacts />
       ) : activePanel === "templates" ? (
         <Templates />
       ) : activePanel === "admin" ? (
