@@ -1051,8 +1051,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     .section{margin-bottom:18px;page-break-inside:avoid;}
     .section-title{${sectionTitleCSS}}
     .section-content{font-size:13px;line-height:1.75;white-space:pre-wrap;}
-    .worksheet-page{page-break-before:always;break-before:page;padding-top:30px;}
-    .worksheet-img{max-width:100%;border:1px solid #ddd;border-radius:4px;display:block;}
+    .worksheet-page{page-break-before:always;break-before:page;page-break-inside:avoid;break-inside:avoid;padding-top:30px;}
+    .worksheet-img{max-width:100%;max-height:270mm;object-fit:contain;border:1px solid #ddd;border-radius:4px;display:block;page-break-inside:avoid;break-inside:avoid;}
     .sig-area{margin-top:28px;padding-top:12px;border-top:1px solid #ddd;text-align:${sigPos};}
     .sig-img{max-height:68px;margin-bottom:4px;}
     .sig-name{font-weight:bold;font-size:13px;}
