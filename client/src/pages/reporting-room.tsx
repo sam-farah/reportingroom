@@ -2805,6 +2805,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                               <CommandItem
                                 key={doc.id}
                                 value={`${doc.name} ${doc.practiceName ?? ""} ${doc.email}`}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setEmailTo(doc.email!);
+                                  setEmailToName(doc.name);
+                                  setEmailSubject(`Medical Report — ${distributeReport?.patientName ?? ""} — Attn: ${doc.name}`);
+                                  setEmailDoctorOpen(false);
+                                }}
                                 onSelect={() => {
                                   setEmailTo(doc.email!);
                                   setEmailToName(doc.name);
