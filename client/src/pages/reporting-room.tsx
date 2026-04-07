@@ -798,9 +798,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     .pi{font-size:13px;margin-bottom:2px;}
     .pi .label{font-weight:bold;color:#444;}
     .ur{color:#1d4ed8;font-family:monospace;font-weight:bold;}
-    .section{margin-bottom:26px;page-break-inside:avoid;}
+    .section{margin-bottom:14px;page-break-inside:avoid;}
     .section-title{${sectionTitleCSS}}
-    .section-content{font-size:14px;line-height:1.75;white-space:pre-wrap;}
+    .section-content{font-size:14px;line-height:1.55;white-space:pre-wrap;}
     .worksheet-img{max-width:100%;border:1px solid #ddd;border-radius:4px;margin-bottom:24px;display:block;}
     .amended-note{background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:16px;font-size:12px;color:#92400e;}
     .signature-area{margin-top:40px;padding-top:16px;border-top:1px solid #ddd;text-align:${sigPos};}
@@ -828,7 +828,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   ${report.isAmended ? `<div class="amended-note">&#9888; This report has been amended. Original findings may have changed.</div>` : ''}
 
   <div class="patient-box">
-    <h3>Patient Information</h3>
     <div class="pi"><span class="label">Patient Name:</span> ${report.patientName}</div>
     ${report.patientUrNumber ? `<div class="pi"><span class="label">UR Number:</span> <span class="ur">UR ${report.patientUrNumber}</span></div>` : '<div></div>'}
     <div class="pi"><span class="label">Date of Birth:</span> ${formatDobAU(report.patientDob)}</div>
@@ -1103,9 +1102,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     .pi-full{grid-column:span 2;font-size:12px;}
     .pi-full .label{font-weight:bold;color:#444;}
     .ur{color:#1d4ed8;font-family:monospace;font-weight:bold;}
-    .section{margin-bottom:18px;page-break-inside:avoid;}
+    .section{margin-bottom:12px;page-break-inside:avoid;}
     .section-title{${sectionTitleCSS}}
-    .section-content{font-size:13px;line-height:1.75;white-space:pre-wrap;}
+    .section-content{font-size:13px;line-height:1.55;white-space:pre-wrap;}
     .worksheet-page{page-break-before:always;break-before:page;page-break-inside:avoid;break-inside:avoid;padding-top:30px;}
     .worksheet-img{max-width:100%;max-height:270mm;object-fit:contain;border:1px solid #ddd;border-radius:4px;display:block;page-break-inside:avoid;break-inside:avoid;}
     .sig-area{margin-top:28px;padding-top:12px;border-top:1px solid #ddd;text-align:${sigPos};}
@@ -1133,7 +1132,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   ${report.isAmended ? `<div class="amended-note">&#9888; This report has been amended. Original findings may have changed.</div>` : ''}
 
   <div class="patient-box">
-    <h3>Patient Information</h3>
     <div class="pi"><span class="label">Patient Name:</span> ${report.patientName}</div>
     <div class="pi"><span class="label">UR Number:</span> ${report.patientUrNumber ? `<span class="ur">UR ${report.patientUrNumber}</span>` : '—'}</div>
     <div class="pi"><span class="label">Date of Birth:</span> ${formatDobAU(report.patientDob)}</div>
