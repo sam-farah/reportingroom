@@ -6,6 +6,14 @@ Reporting Room is a comprehensive full-stack web application designed to automat
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## DICOM Integration
+- **Orthanc DICOM Server**: Accessible via Tailscale VPN at `100.108.175.83:8042`
+- **DICOM panel** in the app (`/dicom` nav item) provides a launcher with three quick links:
+  - **OHIF Viewer** (`/ui/app/`) — main study viewer
+  - **Orthanc Explorer** (`/app/explorer.html`) — study management
+  - **REST API** (`/`) — Orthanc index
+- Not embeddable inline because Orthanc is HTTP and the app is HTTPS (mixed-content policy); opens in a new tab
+
 ## Pending Features
 - **SMS Appointment Reminders**: Planned via Twilio (connector available: `connector:ccfg_twilio_01K69QJTED9YTJFE2SJ7E4SY08`). When ready, connect Twilio account and build a background scheduler that sends reminders 24h and 1h before appointments. Track `reminderSent` on appointment records to avoid duplicates. User deferred this feature.
 - **Email Appointment Reminders (COMPLETE)**: Manual one-click reminder emails from the calendar appointment dialog. Uses SendGrid. Includes appointment date/time, duration, scan type, clinic address, embedded logo, and custom prep instructions. Setup: Admin → Clinic Settings → "Appointment Reminder — Preparation Instructions" card. Send via calendar → appointment detail → "Send Reminder" button (disabled if no patient email on file).

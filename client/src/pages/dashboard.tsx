@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Wifi, Search, Eye, LayoutGrid } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -224,24 +224,75 @@ export default function Dashboard() {
       ) : activePanel === "help" ? (
         <HelpCentre />
       ) : activePanel === "dicom" ? (
-        <div className="flex flex-col items-center justify-center gap-6" style={{ height: "calc(100vh - 89px)" }}>
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mx-auto">
-              <ScanLine className="w-8 h-8 text-blue-600" />
+        <div className="p-8 max-w-2xl mx-auto w-full" style={{ paddingTop: "48px" }}>
+          {/* Header */}
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center shadow-md flex-shrink-0">
+              <ScanLine className="w-7 h-7 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-gray-800">DICOM Server</h2>
-            <p className="text-sm text-gray-500">192.168.15.23:8042</p>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">DICOM Viewer</h2>
+              <p className="text-sm text-gray-500">Orthanc — Nexus Vascular Imaging</p>
+            </div>
           </div>
+
+          {/* VPN notice */}
+          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
+            <Wifi className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-amber-800">
+              <span className="font-semibold">Tailscale VPN required.</span>{" "}
+              Connect to Tailscale before opening the viewer. Address:{" "}
+              <code className="font-mono bg-amber-100 px-1 rounded text-amber-900">100.108.175.83:8042</code>
+            </p>
+          </div>
+
+          {/* Primary launch button */}
           <Button
             size="lg"
-            className="gap-2 px-8"
-            onClick={() => window.open("http://192.168.15.23:8042", "_blank")}
+            className="w-full gap-2 mb-6 h-12 text-base"
+            onClick={() => window.open("http://100.108.175.83:8042/ui/app/", "_blank")}
           >
-            <ScanLine className="w-5 h-5" />
-            Open DICOM Server
+            <ExternalLink className="w-5 h-5" />
+            Open DICOM Viewer
           </Button>
-          <p className="text-xs text-gray-400 max-w-xs text-center">
-            Opens your local Orthanc server in a new tab. Make sure you are connected to the clinic network.
+
+          {/* Quick links */}
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Quick Access</p>
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              onClick={() => window.open("http://100.108.175.83:8042/ui/app/", "_blank")}
+              className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
+            >
+              <div className="w-9 h-9 rounded-lg bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
+                <Eye className="w-5 h-5 text-blue-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-700">OHIF Viewer</span>
+              <span className="text-xs text-gray-400">Browse &amp; view studies</span>
+            </button>
+            <button
+              onClick={() => window.open("http://100.108.175.83:8042/app/explorer.html", "_blank")}
+              className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
+            >
+              <div className="w-9 h-9 rounded-lg bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center transition-colors">
+                <Search className="w-5 h-5 text-purple-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-700">Orthanc Explorer</span>
+              <span className="text-xs text-gray-400">Manage studies</span>
+            </button>
+            <button
+              onClick={() => window.open("http://100.108.175.83:8042/", "_blank")}
+              className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-colors text-center group"
+            >
+              <div className="w-9 h-9 rounded-lg bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                <LayoutGrid className="w-5 h-5 text-gray-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-700">REST API</span>
+              <span className="text-xs text-gray-400">Orthanc index</span>
+            </button>
+          </div>
+
+          <p className="text-xs text-gray-400 text-center mt-6">
+            Opens in a new browser tab. HTTP access is required — the viewer cannot be embedded inline.
           </p>
         </div>
       ) : (
