@@ -76,7 +76,27 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
     await new Promise(r => setTimeout(r, 800));
     const body = iframe.contentDocument?.body;
     if (!body) throw new Error("iframe body unavailable");
-    const canvas = await html2canvas(body, { scale: 2, useCORS: true, allowTaint: true, width: 794, windowWidth: 794, scrollY: 0 });
+
+    // Measure the true content height (excludes trailing whitespace / padding overhang)
+    // by finding the bottom edge of the last rendered element.
+    const allEls = body.querySelectorAll("*");
+    let maxBottom = 0;
+    allEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > maxBottom) maxBottom = rect.bottom;
+    });
+    // Add a small buffer (8px) and cap at the body's scrollHeight
+    const contentHeightPx = Math.min(Math.ceil(maxBottom) + 8, body.scrollHeight);
+
+    const canvas = await html2canvas(body, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      width: 794,
+      height: contentHeightPx,
+      windowWidth: 794,
+      scrollY: 0,
+    });
     const A4_W_MM = 210, A4_H_MM = 297;
     const pxToMm = A4_W_MM / canvas.width;
     const totalHeightMm = canvas.height * pxToMm;
@@ -84,15 +104,22 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
     let yMm = 0;
     while (yMm < totalHeightMm) {
       const pageHeightMm = Math.min(A4_H_MM, totalHeightMm - yMm);
+      // Skip near-empty trailing slices (< 8mm) to prevent blank pages before the worksheet
+      if (pageHeightMm < 8 && yMm > 0) break;
       const srcY = Math.round((yMm / totalHeightMm) * canvas.height);
       const srcH = Math.round((pageHeightMm / totalHeightMm) * canvas.height);
       const slice = document.createElement("canvas");
       slice.width = canvas.width;
-      slice.height = srcH;
+      slice.height = Math.max(srcH, 1);
       slice.getContext("2d")!.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
       pdf.addImage(slice.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, A4_W_MM, pageHeightMm);
       yMm += pageHeightMm;
-      if (yMm < totalHeightMm) pdf.addPage();
+      if (yMm < totalHeightMm) {
+        // Only add a new page if there is meaningful content remaining
+        const nextHeight = Math.min(A4_H_MM, totalHeightMm - yMm);
+        if (nextHeight >= 8) pdf.addPage();
+        else break;
+      }
     }
     // Append worksheet as a dedicated final page
     if (worksheetDataUrl) {
