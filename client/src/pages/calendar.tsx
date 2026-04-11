@@ -2513,6 +2513,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
             <div className="text-gray-600 text-xs space-y-0.5">
               <div>{format(new Date(tooltip.apt.appointmentDate), "EEEE d MMM, h:mm a")} ({tooltip.apt.duration} min)</div>
               {tooltip.apt.scanType && <div>{tooltip.apt.scanType}</div>}
+              {tooltip.apt.patientDob && <div>DOB: {(() => { try { const [y,m,d] = tooltip.apt.patientDob.split("-"); return d && m && y ? `${d}/${m}/${y}` : tooltip.apt.patientDob; } catch { return tooltip.apt.patientDob; } })()}</div>}
               {tooltip.apt.patientPhone && <div>{tooltip.apt.patientPhone}</div>}
               {(() => {
                 const { referrerName: ttReferrer, cleanNotes: ttNotes } = parseReferralNotes(tooltip.apt.notes);
