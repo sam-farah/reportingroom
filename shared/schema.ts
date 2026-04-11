@@ -517,6 +517,8 @@ export const appointments = pgTable("appointments", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   patientId: integer("patient_id").references(() => patients.id),
+  checkedInAt: timestamp("checked_in_at"),
+  studyStartedAt: timestamp("study_started_at"),
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({

@@ -671,6 +671,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="clinic-settings" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏥 Clinic Settings</TabsTrigger>
           <TabsTrigger value="scan-durations" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">⏱️ Scan Durations</TabsTrigger>
           <TabsTrigger value="monitoring" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📊 System Monitoring</TabsTrigger>
+          <TabsTrigger value="wait-analytics" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">⏳ Wait Analytics</TabsTrigger>
           <TabsTrigger value="clinics" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏢 Clinic Analytics</TabsTrigger>
           <TabsTrigger value="costs" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💰 Cost Projection</TabsTrigger>
           <TabsTrigger value="training" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🌍 Global AI Training</TabsTrigger>
@@ -1013,6 +1014,10 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="wait-analytics" className="space-y-6">
+          <WaitAnalyticsPanel />
         </TabsContent>
 
         <TabsContent value="clinics" className="space-y-6">
@@ -2507,6 +2512,84 @@ function BugReportsTab() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function WaitAnalyticsPanel() {
+  const { data, isLoading } = useQuery<{
+    allTime: { avgWait: number | null; minWait: number | null; maxWait: number | null; sampleCount: number };
+    today: { checkins: number; currentlyWaiting: number; avgCurrentWait: number | null };
+  }>({
+    queryKey: ["/api/appointments/wait-metrics"],
+    refetchInterval: 60000,
+  });
+
+  const fmt = (v: number | null) => v === null ? "—" : `${v} min`;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900">Wait Time Analytics</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Tracks the time from patient check-in to study commencement. Data is captured automatically when patients check in via the kiosk and when a study is marked as started.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading metrics…</div>
+      ) : (
+        <>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4 text-center">
+                  <div className="text-3xl font-bold text-blue-700">{data?.today.checkins ?? "—"}</div>
+                  <div className="text-xs text-blue-500 mt-1 font-medium uppercase tracking-wide">Check-ins today</div>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-4 text-center">
+                  <div className="text-3xl font-bold text-amber-700">{data?.today.currentlyWaiting ?? "—"}</div>
+                  <div className="text-xs text-amber-500 mt-1 font-medium uppercase tracking-wide">Currently waiting</div>
+                </div>
+                <div className="bg-orange-50 rounded-lg p-4 text-center">
+                  <div className="text-3xl font-bold text-orange-700">{fmt(data?.today.avgCurrentWait ?? null)}</div>
+                  <div className="text-xs text-orange-500 mt-1 font-medium uppercase tracking-wide">Avg current wait</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">All-Time (check-in → study started)</CardTitle>
+              <p className="text-xs text-muted-foreground">{data?.allTime.sampleCount ?? 0} completed sessions with wait data</p>
+            </CardHeader>
+            <CardContent>
+              {(data?.allTime.sampleCount ?? 0) === 0 ? (
+                <p className="text-sm text-gray-400 italic">No completed sessions with wait data yet. Wait times will appear here once patients have checked in via the kiosk and their study has commenced.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-green-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl font-bold text-green-700">{fmt(data?.allTime.avgWait ?? null)}</div>
+                    <div className="text-xs text-green-600 mt-1 font-medium uppercase tracking-wide">Average wait</div>
+                  </div>
+                  <div className="bg-teal-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl font-bold text-teal-700">{fmt(data?.allTime.minWait ?? null)}</div>
+                    <div className="text-xs text-teal-600 mt-1 font-medium uppercase tracking-wide">Shortest wait</div>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl font-bold text-red-700">{fmt(data?.allTime.maxWait ?? null)}</div>
+                    <div className="text-xs text-red-500 mt-1 font-medium uppercase tracking-wide">Longest wait</div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

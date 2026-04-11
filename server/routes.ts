@@ -183,7 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Can only check in for today's appointments" });
       }
 
-      const updated = await storage.updateAppointment(id, { status: 'checked_in' });
+      const updated = await storage.updateAppointment(id, { status: 'checked_in', checkedInAt: new Date() });
       res.json({ success: true, appointment: { id: updated?.id, patientName: updated?.patientName, status: updated?.status } });
     } catch (error) {
       console.error("Kiosk check-in error:", error);
@@ -406,10 +406,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/appointments/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const updateData = {
+      const updateData: any = {
         ...req.body,
         appointmentDate: req.body.appointmentDate ? new Date(req.body.appointmentDate) : undefined,
       };
+      // Auto-set studyStartedAt when the study first starts
+      if (req.body.status === 'in_progress' || req.body.status === 'completed') {
+        const existing = await storage.getAppointment(id);
+        if (existing && !existing.studyStartedAt) {
+          updateData.studyStartedAt = new Date();
+        }
+      }
+      // If manually setting to checked_in without a checkedInAt, record it now
+      if (req.body.status === 'checked_in') {
+        const existing = await storage.getAppointment(id);
+        if (existing && !existing.checkedInAt) {
+          updateData.checkedInAt = new Date();
+        }
+      }
       const appointment = await storage.updateAppointment(id, updateData);
       if (!appointment) {
         return res.status(404).json({ error: "Appointment not found" });
@@ -429,6 +443,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting appointment:", error);
       res.status(500).json({ error: "Failed to delete appointment" });
+    }
+  });
+
+  // Wait time metrics
+  app.get("/api/appointments/wait-metrics", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const allApts = await storage.getAppointments(user.clinicId);
+
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+      // Appointments with both timestamps — full wait data
+      const withWait = allApts.filter(a => a.checkedInAt && a.studyStartedAt);
+      const waitMins = withWait.map(a =>
+        Math.round((new Date(a.studyStartedAt!).getTime() - new Date(a.checkedInAt!).getTime()) / 60000)
+      ).filter(m => m >= 0 && m < 300); // ignore negative/outlier values
+
+      const avgWait = waitMins.length ? Math.round(waitMins.reduce((s, m) => s + m, 0) / waitMins.length) : null;
+      const minWait = waitMins.length ? Math.min(...waitMins) : null;
+      const maxWait = waitMins.length ? Math.max(...waitMins) : null;
+
+      // Today's patients currently waiting (checked_in, no study started)
+      const currentlyWaiting = allApts.filter(a => {
+        const aptDate = new Date(a.appointmentDate);
+        return a.status === 'checked_in' && !a.studyStartedAt && aptDate >= todayStart && aptDate <= todayEnd;
+      });
+      const currentWaitMins = currentlyWaiting.map(a => a.checkedInAt
+        ? Math.round((now.getTime() - new Date(a.checkedInAt).getTime()) / 60000)
+        : null
+      ).filter((m): m is number => m !== null);
+      const avgCurrentWait = currentWaitMins.length
+        ? Math.round(currentWaitMins.reduce((s, m) => s + m, 0) / currentWaitMins.length)
+        : null;
+
+      // Today's check-ins
+      const todayCheckins = allApts.filter(a => {
+        if (!a.checkedInAt) return false;
+        const d = new Date(a.checkedInAt);
+        return d >= todayStart && d <= todayEnd;
+      }).length;
+
+      res.json({
+        allTime: { avgWait, minWait, maxWait, sampleCount: waitMins.length },
+        today: { checkins: todayCheckins, currentlyWaiting: currentlyWaiting.length, avgCurrentWait },
+      });
+    } catch (error) {
+      console.error("Wait metrics error:", error);
+      res.status(500).json({ error: "Failed to calculate metrics" });
     }
   });
 

@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
@@ -129,6 +129,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
 
   // Hover tooltip state
   const [tooltip, setTooltip] = useState<{ apt: Appointment; x: number; y: number } | null>(null);
+
+  // Live clock tick — refreshes every 60 s so wait-time badges stay current
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const { data: allCalendarPatients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients"],
@@ -1180,6 +1187,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                               <DollarSign className="w-3.5 h-3.5 text-emerald-700" />
                             </div>
                           )}
+                          {apt.status === "checked_in" && (apt as any).checkedInAt && (
+                            <div className="absolute bottom-1.5 right-1 z-10 flex items-center gap-0.5 bg-amber-100 text-amber-700 rounded px-1 py-0.5 text-[10px] font-mono leading-none">
+                              <Hourglass className="w-2.5 h-2.5 flex-shrink-0" />
+                              {Math.max(0, Math.floor((nowTick - new Date((apt as any).checkedInAt).getTime()) / 60000))}m
+                            </div>
+                          )}
                           <div
                             className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
                             onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
@@ -1320,6 +1333,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 {apt.isInvoiced && (
                                   <div className="absolute top-0.5 right-0.5 z-10">
                                     <DollarSign className="w-3 h-3 text-emerald-700" />
+                                  </div>
+                                )}
+                                {apt.status === "checked_in" && (apt as any).checkedInAt && (
+                                  <div className="absolute bottom-1 right-0.5 z-10 flex items-center gap-0.5 bg-amber-100 text-amber-700 rounded px-0.5 py-px text-[9px] font-mono leading-none">
+                                    <Hourglass className="w-2 h-2 flex-shrink-0" />
+                                    {Math.max(0, Math.floor((nowTick - new Date((apt as any).checkedInAt).getTime()) / 60000))}m
                                   </div>
                                 )}
                                 <div
