@@ -98,6 +98,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     status: "scheduled",
     isInvoiced: false,
     patientId: null as number | null,
+    referringDoctorName: "",
+    referringDoctorEmail: "",
+    referringDoctorFax: "",
+    copyToName: "",
+    copyToEmail: "",
+    copyToFax: "",
   });
 
   const { data: scanDurations = [] } = useQuery<ScanDurationSetting[]>({
@@ -271,6 +277,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     queryKey: ["/api/sonographers"],
   });
 
+  const { data: calendarReferringDoctors = [] } = useQuery<any[]>({
+    queryKey: ["/api/referring-doctors"],
+  });
+
   // Fetch events over a wide rolling window so recurrences are visible
   const eventsStart = subDays(startDate, 365);
   const eventsEnd = addMonths(endDate, 12);
@@ -442,6 +452,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
       status: "scheduled",
       isInvoiced: false,
       patientId: null,
+      referringDoctorName: "",
+      referringDoctorEmail: "",
+      referringDoctorFax: "",
+      copyToName: "",
+      copyToEmail: "",
+      copyToFax: "",
     });
     setSelectedPatient(null);
     setPatientSearch("");
@@ -651,6 +667,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
       status: appointment.status,
       isInvoiced: appointment.isInvoiced ?? false,
       patientId: appointment.patientId || null,
+      referringDoctorName: (appointment as any).referringDoctorName || "",
+      referringDoctorEmail: (appointment as any).referringDoctorEmail || "",
+      referringDoctorFax: (appointment as any).referringDoctorFax || "",
+      copyToName: (appointment as any).copyToName || "",
+      copyToEmail: (appointment as any).copyToEmail || "",
+      copyToFax: (appointment as any).copyToFax || "",
     });
     // Only pre-fill selectedPatient if there's a real linked patientId
     if (appointment.patientId) {
@@ -708,6 +730,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
       notes: formData.notes || null,
       status: formData.status,
       isInvoiced: formData.isInvoiced,
+      referringDoctorName: formData.referringDoctorName || null,
+      referringDoctorEmail: formData.referringDoctorEmail || null,
+      referringDoctorFax: formData.referringDoctorFax || null,
+      copyToName: formData.copyToName || null,
+      copyToEmail: formData.copyToEmail || null,
+      copyToFax: formData.copyToFax || null,
     };
 
     if (editingAppointment) {
@@ -1896,6 +1924,71 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </Select>
                   </div>
                 )}
+                {/* Referring Doctor */}
+                <div className="col-span-2 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-semibold text-gray-700">Referring Doctor</Label>
+                    <span className="text-xs text-gray-400">(pre-fills distribution email/fax)</span>
+                  </div>
+                  {calendarReferringDoctors.filter((d: any) => d.email || d.fax).length > 0 && (
+                    <Select onValueChange={(value) => {
+                      const doc = calendarReferringDoctors.find((d: any) => String(d.id) === value);
+                      if (doc) {
+                        setFormData(prev => ({
+                          ...prev,
+                          referringDoctorName: doc.name || "",
+                          referringDoctorEmail: doc.email || "",
+                          referringDoctorFax: doc.fax || "",
+                        }));
+                      }
+                    }}>
+                      <SelectTrigger className="bg-white text-sm h-9">
+                        <SelectValue placeholder="Autofill from saved referring doctors…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {calendarReferringDoctors.filter((d: any) => d.email || d.fax).map((doc: any) => (
+                          <SelectItem key={doc.id} value={String(doc.id)}>
+                            {doc.name}{doc.practiceName ? ` — ${doc.practiceName}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Name</Label>
+                      <Input placeholder="Dr. Smith" value={formData.referringDoctorName} onChange={(e) => setFormData(prev => ({ ...prev, referringDoctorName: e.target.value }))} className="text-sm h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Email</Label>
+                      <Input type="email" placeholder="dr@clinic.com" value={formData.referringDoctorEmail} onChange={(e) => setFormData(prev => ({ ...prev, referringDoctorEmail: e.target.value }))} className="text-sm h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Fax</Label>
+                      <Input placeholder="03XXXXXXXX" value={formData.referringDoctorFax} onChange={(e) => setFormData(prev => ({ ...prev, referringDoctorFax: e.target.value }))} className="text-sm h-8" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Copy To (additional CC) */}
+                <div className="col-span-2 space-y-2">
+                  <Label className="text-sm font-semibold text-gray-700">Copy To <span className="text-xs text-gray-400 font-normal">(optional CC recipient)</span></Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Name</Label>
+                      <Input placeholder="GP / Specialist" value={formData.copyToName} onChange={(e) => setFormData(prev => ({ ...prev, copyToName: e.target.value }))} className="text-sm h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Email</Label>
+                      <Input type="email" placeholder="cc@clinic.com" value={formData.copyToEmail} onChange={(e) => setFormData(prev => ({ ...prev, copyToEmail: e.target.value }))} className="text-sm h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Fax</Label>
+                      <Input placeholder="03XXXXXXXX" value={formData.copyToFax} onChange={(e) => setFormData(prev => ({ ...prev, copyToFax: e.target.value }))} className="text-sm h-8" />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="col-span-2">
                   <Label htmlFor="notes">Notes</Label>
                   <Textarea

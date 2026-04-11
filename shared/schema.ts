@@ -519,6 +519,12 @@ export const appointments = pgTable("appointments", {
   patientId: integer("patient_id").references(() => patients.id),
   checkedInAt: timestamp("checked_in_at"),
   studyStartedAt: timestamp("study_started_at"),
+  referringDoctorName: varchar("referring_doctor_name", { length: 255 }),
+  referringDoctorEmail: varchar("referring_doctor_email", { length: 255 }),
+  referringDoctorFax: varchar("referring_doctor_fax", { length: 50 }),
+  copyToName: varchar("copy_to_name", { length: 255 }),
+  copyToEmail: varchar("copy_to_email", { length: 255 }),
+  copyToFax: varchar("copy_to_fax", { length: 50 }),
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({

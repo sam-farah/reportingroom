@@ -276,6 +276,29 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     retry: false,
   });
 
+  // Fetch patient appointments to pre-populate referring doctor fields in distribute dialog
+  const { data: patientAppointmentsForDist = [] } = useQuery<any[]>({
+    queryKey: ["/api/patients", distributeReport?.patientId, "appointments"],
+    enabled: !!distributeReport?.patientId,
+    retry: false,
+  });
+
+  // When appointments load for a distribute dialog, pre-fill referring doctor fields from the most recent one
+  useEffect(() => {
+    if (!distributeReport || patientAppointmentsForDist.length === 0) return;
+    const sorted = [...patientAppointmentsForDist].sort(
+      (a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+    );
+    const latest = sorted.find(a => a.referringDoctorName || a.referringDoctorEmail || a.referringDoctorFax);
+    if (!latest) return;
+    if (latest.referringDoctorEmail && !emailTo) setEmailTo(latest.referringDoctorEmail);
+    if (latest.referringDoctorName && !emailToName) setEmailToName(latest.referringDoctorName);
+    if (latest.referringDoctorFax && !faxNumber) setFaxNumber(latest.referringDoctorFax);
+    // Pre-fill CC from copyTo if present
+    const ccLatest = sorted.find(a => a.copyToEmail);
+    if (ccLatest?.copyToEmail && !emailCc) setEmailCc(ccLatest.copyToEmail);
+  }, [patientAppointmentsForDist, distributeReport?.id]);
+
   // Update report mutation
   const updateReportMutation = useMutation({
     mutationFn: async (reportData: Partial<Report>) => {
