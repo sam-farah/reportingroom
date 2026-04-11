@@ -2017,12 +2017,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                       <button
                         className="flex-1 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
                         onClick={() => {
-                          if (onBeginStudy) {
-                            setViewingAppointment(null);
-                            setShowBeginStudy(false);
-                            setShowIdCheck(false);
-                            onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "", studyMode);
-                          }
+                          setShowIdCheck(false);
+                          setShowBeginStudy(true);
                         }}
                       >
                         Confirmed — Continue
@@ -2040,7 +2036,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </p>
                     <button
                       className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-colors text-left group"
-                      onClick={() => { setStudyMode("upload"); setShowIdCheck(true); }}
+                      onClick={() => {
+                        if (onBeginStudy) {
+                          setViewingAppointment(null);
+                          setShowBeginStudy(false);
+                          setShowIdCheck(false);
+                          onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "", "upload");
+                        }
+                      }}
                     >
                       <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-700 transition-colors">
                         <FileUp className="w-5 h-5 text-white" />
@@ -2052,7 +2055,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </button>
                     <button
                       className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-purple-300 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 transition-colors text-left group"
-                      onClick={() => { setStudyMode("draw"); setShowIdCheck(true); }}
+                      onClick={() => {
+                        if (onBeginStudy) {
+                          setViewingAppointment(null);
+                          setShowBeginStudy(false);
+                          setShowIdCheck(false);
+                          onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "", "draw");
+                        }
+                      }}
                     >
                       <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center shrink-0 group-hover:bg-purple-700 transition-colors">
                         <PenLine className="w-5 h-5 text-white" />
@@ -2254,7 +2264,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 {viewingAppointment.status !== "cancelled" && (
                   <Button
                     className="w-full medical-btn-primary gap-2 mt-2"
-                    onClick={() => setShowBeginStudy(true)}
+                    onClick={() => setShowIdCheck(true)}
                   >
                     <PlayCircle className="w-4 h-4" />
                     Begin Study / Report
