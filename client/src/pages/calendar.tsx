@@ -1156,15 +1156,22 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                             onMouseDown={(e) => handleResizeStart(e, apt, "top")}
                             onClick={(e) => e.stopPropagation()}
                           />
-                          <div className="p-2 pt-2 pr-6">
+                          <div className="p-1 pr-6">
                             {aptReferrerName && (
                               <div className="text-xs bg-orange-100 text-orange-700 rounded px-1 py-0.5 mb-0.5 truncate font-medium">
                                 ↗ {aptReferrerName}
                               </div>
                             )}
-                            <div className={`text-sm font-medium truncate flex items-center gap-1 ${apt.status === "cancelled" ? "line-through" : ""}`}>
-                              {apt.status === "confirmed" && <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />}
-                              {apt.patientName}
+                            <div className="flex items-center justify-between gap-1">
+                              <div className={`text-sm font-medium truncate flex items-center gap-1 min-w-0 ${apt.status === "cancelled" ? "line-through" : ""}`}>
+                                {apt.status === "confirmed" && <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />}
+                                {apt.patientName}
+                              </div>
+                              {apt.patientDob && (
+                                <div className="text-xs text-gray-500 flex-shrink-0 font-mono">
+                                  {(() => { try { const [y,m,d] = apt.patientDob.split("-"); return d && m && y ? `${d}/${m}/${y}` : apt.patientDob; } catch { return apt.patientDob; } })()}
+                                </div>
+                              )}
                             </div>
                             <div className="text-xs truncate">{format(new Date(apt.appointmentDate), "h:mm a")} - {apt.scanType}</div>
                           </div>
