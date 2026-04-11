@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
@@ -2070,6 +2070,30 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                       <div className="flex-1">
                         <div className="font-semibold text-purple-900">Draw Worksheet</div>
                         <div className="text-sm text-purple-600">Draw directly in Reporting Room using templates</div>
+                      </div>
+                    </button>
+                    <button
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors text-left group"
+                      onClick={() => {
+                        updateMutation.mutate(
+                          { id: viewingAppointment.id, data: { status: "in_progress" } },
+                          {
+                            onSuccess: () => {
+                              toast({ title: "Scan marked as in progress", description: "Complete the report from any device when ready." });
+                            },
+                          }
+                        );
+                        setViewingAppointment(null);
+                        setShowBeginStudy(false);
+                        setShowIdCheck(false);
+                      }}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center shrink-0 group-hover:bg-emerald-700 transition-colors">
+                        <Laptop className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-emerald-900">Scan in Progress — Report Later</div>
+                        <div className="text-sm text-emerald-600">Mark scan as started; complete the report from another device</div>
                       </div>
                     </button>
                   </div>
