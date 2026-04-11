@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, ChevronsUpDown } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -204,8 +202,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [emailTo, setEmailTo] = useState("");
   const [emailToName, setEmailToName] = useState("");
   const [emailCc, setEmailCc] = useState("");
-  const [emailDoctorOpen, setEmailDoctorOpen] = useState(false);
-  const [faxDoctorOpen, setFaxDoctorOpen] = useState(false);
   const [emailSubject, setEmailSubject] = useState("");
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -2806,76 +2802,45 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   Send via Email
                 </h3>
 
-                {/* Referring Doctor searchable combobox */}
-                <div className="space-y-1">
-                  <Label className="text-xs text-gray-600">Select Referring Doctor</Label>
-                  <Popover open={emailDoctorOpen} onOpenChange={setEmailDoctorOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={emailDoctorOpen}
-                        className="w-full justify-between bg-white font-normal text-sm h-9 px-3"
-                      >
-                        <span className="truncate text-left">
-                          {emailTo && emailToName
-                            ? `${emailToName} · ${emailTo}`
-                            : emailTo
-                            ? emailTo
-                            : referringDoctors.filter(d => d.email).length === 0
-                            ? "No referring doctors saved yet — enter email below"
-                            : "Choose from referring doctors…"}
-                        </span>
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="p-0 w-[420px]" align="start">
-                      <Command>
-                        <CommandInput placeholder="Search by name, practice, or email…" />
-                        <CommandList>
-                          <CommandEmpty>No matching doctors found.</CommandEmpty>
-                          <CommandGroup>
-                            {referringDoctors.filter(d => d.email).map(doc => (
-                              <CommandItem
-                                key={doc.id}
-                                value={`${doc.name} ${doc.practiceName ?? ""} ${doc.email}`}
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  setEmailTo(doc.email!);
-                                  setEmailToName(doc.name);
-                                  setEmailSubject(`Medical Report — ${distributeReport?.patientName ?? ""} — Attn: ${doc.name}`);
-                                  setEmailDoctorOpen(false);
-                                }}
-                                onSelect={() => {
-                                  setEmailTo(doc.email!);
-                                  setEmailToName(doc.name);
-                                  setEmailSubject(`Medical Report — ${distributeReport?.patientName ?? ""} — Attn: ${doc.name}`);
-                                  setEmailDoctorOpen(false);
-                                }}
-                              >
-                                <div className="flex flex-col">
-                                  <span className="font-medium">{doc.name}</span>
-                                  <span className="text-xs text-gray-400">{[doc.practiceName, doc.email].filter(Boolean).join(" · ")}</span>
-                                </div>
-                              </CommandItem>
-                            ))}
-                            <CommandItem
-                              value="__manual__"
-                              onSelect={() => {
-                                setEmailTo("");
-                                setEmailToName("");
-                                setEmailSubject(`Medical Report — ${distributeReport?.patientName ?? ""}`);
-                                setEmailDoctorOpen(false);
-                              }}
-                            >
-                              <span className="text-gray-400 text-sm italic">Clear / enter email manually…</span>
-                            </CommandItem>
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                {/* Referring Doctor select */}
+                {referringDoctors.filter(d => d.email).length > 0 && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-600">Autofill from Referring Doctor</Label>
+                    <Select
+                      onValueChange={(value) => {
+                        if (value === "__manual__") {
+                          setEmailTo("");
+                          setEmailToName("");
+                          setEmailSubject(`Medical Report — ${distributeReport?.patientName ?? ""}`);
+                        } else {
+                          const doc = referringDoctors.find(d => String(d.id) === value);
+                          if (doc) {
+                            setEmailTo(doc.email ?? "");
+                            setEmailToName(doc.name);
+                            setEmailSubject(`Medical Report — ${distributeReport?.patientName ?? ""} — Attn: ${doc.name}`);
+                          }
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="bg-white text-sm h-9">
+                        <SelectValue placeholder="Choose a doctor to autofill…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {referringDoctors.filter(d => d.email).map(doc => (
+                          <SelectItem key={doc.id} value={String(doc.id)}>
+                            <div className="flex flex-col">
+                              <span>{doc.name}</span>
+                              <span className="text-xs text-gray-400">{[doc.practiceName, doc.email].filter(Boolean).join(" · ")}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__manual__">
+                          <span className="text-gray-400 italic">Clear / enter manually…</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {/* Manual email input */}
                 <div className="grid grid-cols-2 gap-2">
@@ -2944,48 +2909,30 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   Send via Fax
                 </h3>
 
-                {/* Referring doctor fax searchable combobox */}
+                {/* Referring doctor fax select */}
                 {referringDoctors.some(d => d.fax) && (
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-600">Select Referring Doctor</Label>
-                    <Popover open={faxDoctorOpen} onOpenChange={setFaxDoctorOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={faxDoctorOpen}
-                          className="w-full justify-between bg-white font-normal text-sm h-9 px-3"
-                        >
-                          <span className="truncate text-left text-gray-500">Choose from referring doctors…</span>
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="p-0 w-[420px]" align="start">
-                        <Command>
-                          <CommandInput placeholder="Search by name, practice, or fax…" />
-                          <CommandList>
-                            <CommandEmpty>No matching doctors found.</CommandEmpty>
-                            <CommandGroup>
-                              {referringDoctors.filter(d => d.fax).map(doc => (
-                                <CommandItem
-                                  key={doc.id}
-                                  value={`${doc.name} ${doc.practiceName ?? ""} ${doc.fax}`}
-                                  onSelect={() => {
-                                    setFaxNumber(doc.fax!);
-                                    setFaxDoctorOpen(false);
-                                  }}
-                                >
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{doc.name}</span>
-                                    <span className="text-xs text-gray-400">{[doc.practiceName, doc.fax].filter(Boolean).join(" · ")}</span>
-                                  </div>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                    <Label className="text-xs text-gray-600">Autofill from Referring Doctor</Label>
+                    <Select
+                      onValueChange={(value) => {
+                        const doc = referringDoctors.find(d => String(d.id) === value);
+                        if (doc?.fax) setFaxNumber(doc.fax);
+                      }}
+                    >
+                      <SelectTrigger className="bg-white text-sm h-9">
+                        <SelectValue placeholder="Choose a doctor to autofill fax…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {referringDoctors.filter(d => d.fax).map(doc => (
+                          <SelectItem key={doc.id} value={String(doc.id)}>
+                            <div className="flex flex-col">
+                              <span>{doc.name}</span>
+                              <span className="text-xs text-gray-400">{[doc.practiceName, doc.fax].filter(Boolean).join(" · ")}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
 
