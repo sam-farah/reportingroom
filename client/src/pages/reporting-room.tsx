@@ -200,6 +200,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [distributeWorksheetDataUrl, setDistributeWorksheetDataUrl] = useState<string | null>(null);
   const [distributeCopied, setDistributeCopied] = useState(false);
   const [distributeLoading, setDistributeLoading] = useState(false);
+  const [htmlBuilt, setHtmlBuilt] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [emailToName, setEmailToName] = useState("");
   const [emailCc, setEmailCc] = useState("");
@@ -879,8 +880,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     }
   };
 
-  const handleDistribute = async (report: Report) => {
-    setDistributeLoading(true);
+  const handleDistribute = (report: Report) => {
     setDistributeReport(report);
     setDistributeCopied(false);
     setDistributeIncludeWorksheet(true);
@@ -896,6 +896,17 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     setFaxNumber("");
     setFaxSent(false);
     setFaxSending(false);
+    setHtmlBuilt(false);
+    setDistributeHtml("");
+    setDistributeHtmlWithWs("");
+    setDistributeHtmlNoWs("");
+    setDistributeWorksheetDataUrl(null);
+  };
+
+  const buildDistributeHtml = async () => {
+    if (!distributeReport) return;
+    const report = distributeReport;
+    setDistributeLoading(true);
 
     // Helper to fetch a URL and return a base64 data-URI
     const toBase64 = async (url: string): Promise<string | null> => {
@@ -1161,6 +1172,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     setDistributeHtmlWithWs(htmlWithWs);
     setDistributeHtmlNoWs(htmlNoWs);
     setDistributeHtml(htmlWithWs); // default: worksheet included
+    setHtmlBuilt(true);
     setDistributeLoading(false);
   };
 
@@ -1216,7 +1228,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   };
 
   const handleSendEmail = async () => {
-    if (!distributeReport || !emailTo || !distributeHtml) return;
+    if (!distributeReport || !emailTo) return;
+    if (!htmlBuilt) await buildDistributeHtml();
     setEmailSending(true);
     setEmailSent(false);
     try {
@@ -2784,15 +2797,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
             </DialogDescription>
           </DialogHeader>
 
-          {distributeLoading ? (
-            <div className="flex-1 flex items-center justify-center py-16 text-gray-500">
-              <div className="text-center space-y-2">
-                <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto" />
-                <p>Building report HTML…</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-y-auto pr-1">
+          <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-y-auto pr-1">
 
               {/* ── Email Section ── */}
               <div className="border border-blue-100 rounded-lg bg-blue-50/40 p-4 space-y-3">
@@ -3033,36 +3038,61 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
               )}
 
               {/* ── HTML / Preview Section ── */}
-              <div className="space-y-3">
-                {/* Preview */}
-                <div className="border rounded-lg overflow-hidden" style={{ height: 280 }}>
-                  <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Report Preview</div>
-                  <iframe
-                    srcDoc={distributeHtml}
-                    title="Report Preview"
-                    className="w-full border-0"
-                    style={{ height: 246 }}
-                    sandbox="allow-same-origin"
-                  />
-                </div>
+              <div className="border border-gray-200 rounded-lg bg-gray-50/40 p-4 space-y-3">
+                <h3 className="font-semibold text-sm text-gray-700 flex items-center gap-2">
+                  <Copy className="w-4 h-4" />
+                  Copy HTML
+                </h3>
+                {!htmlBuilt ? (
+                  <div className="text-center py-4">
+                    {distributeLoading ? (
+                      <div className="flex flex-col items-center gap-2 text-gray-500">
+                        <div className="animate-spin w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full" />
+                        <p className="text-sm">Building report HTML…</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-gray-500">Generate the report HTML to preview or copy it into your messaging app.</p>
+                        <Button onClick={buildDistributeHtml} variant="outline" className="gap-2">
+                          <Eye className="w-4 h-4" />
+                          Generate Preview &amp; HTML
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {/* Preview */}
+                    <div className="border rounded-lg overflow-hidden" style={{ height: 280 }}>
+                      <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Report Preview</div>
+                      <iframe
+                        srcDoc={distributeHtml}
+                        title="Report Preview"
+                        className="w-full border-0"
+                        style={{ height: 246 }}
+                        sandbox="allow-same-origin"
+                      />
+                    </div>
 
-                {/* Raw HTML + copy */}
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Copy HTML — paste into your messaging app</div>
-                  <textarea
-                    readOnly
-                    value={distributeHtml}
-                    className="w-full p-3 text-xs font-mono bg-white resize-none focus:outline-none"
-                    style={{ height: 100 }}
-                  />
-                </div>
+                    {/* Raw HTML + copy */}
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 border-b px-3 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Copy HTML — paste into your messaging app</div>
+                      <textarea
+                        readOnly
+                        value={distributeHtml}
+                        className="w-full p-3 text-xs font-mono bg-white resize-none focus:outline-none"
+                        style={{ height: 100 }}
+                      />
+                    </div>
 
-                <div className="flex justify-end">
-                  <Button onClick={handleCopyHtml} variant="outline" className={distributeCopied ? "border-green-400 text-green-700" : ""}>
-                    {distributeCopied ? <Check className="w-4 h-4 mr-2 text-green-600" /> : <Copy className="w-4 h-4 mr-2" />}
-                    {distributeCopied ? "Copied!" : "Copy HTML"}
-                  </Button>
-                </div>
+                    <div className="flex justify-end">
+                      <Button onClick={handleCopyHtml} variant="outline" className={distributeCopied ? "border-green-400 text-green-700" : ""}>
+                        {distributeCopied ? <Check className="w-4 h-4 mr-2 text-green-600" /> : <Copy className="w-4 h-4 mr-2" />}
+                        {distributeCopied ? "Copied!" : "Copy HTML"}
+                      </Button>
+                    </div>
+                  </>
+                )}
 
                 {/* Mark as Sent — appears after copying */}
                 {showMarkSent && (
@@ -3135,7 +3165,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                 )}
               </div>
             </div>
-          )}
         </DialogContent>
       </Dialog>
 
