@@ -1750,6 +1750,35 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   Another scan — {editingReport.patientName.split(" ")[0]}
                 </Button>
               )}
+              {!(editingReport as any).isArchived ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-gray-500 border-gray-200 hover:bg-gray-50"
+                  onClick={() => {
+                    if (confirm("Archive this workflow? It will be hidden from the main reports list.")) {
+                      archiveReportMutation.mutate(editingReport.id);
+                    }
+                  }}
+                  disabled={archiveReportMutation.isPending}
+                  title="Archive workflow"
+                >
+                  <Archive className="w-4 h-4 mr-1" />
+                  Archive
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-gray-500 border-gray-200 hover:bg-gray-50"
+                  onClick={() => archiveReportMutation.mutate(editingReport.id)}
+                  disabled={archiveReportMutation.isPending}
+                  title="Unarchive workflow"
+                >
+                  <Archive className="w-4 h-4 mr-1" />
+                  Unarchive
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
