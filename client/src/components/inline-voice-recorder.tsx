@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Mic, MicOff, Square, Volume2, Settings } from 'lucide-react';
+import { Mic, Square, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest } from '@/lib/queryClient';
 
 interface InlineVoiceRecorderProps {
   fieldName: string;
@@ -25,7 +24,8 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioLevel, setAudioLevel] = useState(0);
   const [showDeviceSelection, setShowDeviceSelection] = useState(false);
-  
+  const [noMicFound, setNoMicFound] = useState(false);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -33,6 +33,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
   const audioContextRef = useRef<AudioContext | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const isRecordingRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Get available audio devices and auto-start recording
   useEffect(() => {
@@ -46,47 +47,38 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
             deviceId: device.deviceId,
             label: device.label || `Microphone ${device.deviceId.slice(0, 5)}`
           }));
-        
+
         setAudioDevices(audioInputs);
-        if (audioInputs.length > 0 && !selectedDevice) {
+        if (audioInputs.length > 0) {
           const deviceId = audioInputs[0].deviceId;
           setSelectedDevice(deviceId);
-          // Auto-start recording after a brief delay
-          setTimeout(() => {
-            startRecordingWithDevice(deviceId);
-          }, 100);
+          setTimeout(() => startRecordingWithDevice(deviceId), 100);
+        } else {
+          setNoMicFound(true);
         }
       } catch (error) {
         console.error('Error getting audio devices:', error);
+        setNoMicFound(true);
       }
     };
-    
+
     getDevicesAndStart();
   }, []);
 
-  // Audio level monitoring - using peak detection for more responsive display
   const updateAudioLevel = () => {
     if (analyzerRef.current && isRecordingRef.current) {
       const dataArray = new Uint8Array(analyzerRef.current.frequencyBinCount);
       analyzerRef.current.getByteFrequencyData(dataArray);
-      
-      // Use peak value instead of average for more responsive display
       const peak = Math.max(...Array.from(dataArray));
-      // Also calculate RMS for speech-focused frequencies (300Hz-3400Hz range, roughly indices 5-50)
       const speechRange = dataArray.slice(5, 50);
       const rms = Math.sqrt(speechRange.reduce((sum, val) => sum + val * val, 0) / speechRange.length);
-      
-      // Combine peak and RMS for lively but accurate display
       const combinedLevel = (peak * 0.6 + rms * 0.4);
       const level = Math.min((combinedLevel / 200) * 100, 100);
-      
       setAudioLevel(level);
-      
       animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
     }
   };
 
-  // Start recording with optional device override
   const startRecordingWithDevice = async (deviceId?: string) => {
     const targetDevice = deviceId || selectedDevice;
     try {
@@ -99,65 +91,70 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      // Set up audio analysis
+
       audioContextRef.current = new AudioContext();
       const source = audioContextRef.current.createMediaStreamSource(stream);
       analyzerRef.current = audioContextRef.current.createAnalyser();
       analyzerRef.current.fftSize = 256;
       source.connect(analyzerRef.current);
-      
+
       mediaRecorderRef.current = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
       });
-      
+
       audioChunksRef.current = [];
-      
+
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
-      
+
       mediaRecorderRef.current.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
-        
-        // Stop all tracks to free up microphone
+
         stream.getTracks().forEach(track => track.stop());
-        
-        // Stop audio analysis
+
         if (audioContextRef.current?.state !== 'closed') {
           audioContextRef.current?.close();
         }
         if (animationFrameRef.current) {
           cancelAnimationFrame(animationFrameRef.current);
         }
-        
-        // Process transcription
+
+        if (audioBlob.size < 1000) {
+          toast({
+            title: "Recording too short",
+            description: "Please record for at least 1 second before stopping.",
+            variant: "destructive",
+            duration: 3000,
+          });
+          return;
+        }
+
         await processTranscription(audioBlob);
       };
-      
+
       mediaRecorderRef.current.start();
       isRecordingRef.current = true;
       setIsRecording(true);
       setRecordingTime(0);
-      
-      // Start timer
+
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
-      
-      // Start audio level monitoring
+
       updateAudioLevel();
-      
+
       toast({
         title: "🎤 Recording Started",
-        description: `Recording to ${fieldName} field - speak clearly`,
+        description: `Recording to ${fieldName} field — speak clearly`,
         duration: 2000,
       });
-      
+
     } catch (error) {
       console.error('Error starting recording:', error);
+      setNoMicFound(true);
       toast({
         title: "Recording Error",
         description: "Failed to start recording. Please check microphone permissions.",
@@ -171,64 +168,102 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       isRecordingRef.current = false;
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      
+
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       setAudioLevel(0);
-      
+
       toast({
         title: "🔄 Processing Recording",
-        description: "Converting speech to text using Whisper AI...",
+        description: "Converting speech to text using Whisper AI…",
         duration: 2000,
       });
     }
   };
 
+  const handleClose = () => {
+    // Cancel any in-flight transcription request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    // Stop microphone if still recording
+    if (mediaRecorderRef.current && isRecordingRef.current) {
+      isRecordingRef.current = false;
+      try { mediaRecorderRef.current.stop(); } catch (_) {}
+    }
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (audioContextRef.current?.state !== 'closed') {
+      audioContextRef.current?.close();
+    }
+    onClose();
+  };
+
   const processTranscription = async (audioBlob: Blob) => {
     try {
       setIsProcessing(true);
-      
+
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       formData.append('model', 'whisper-1');
-      
-      const response = await apiRequest('/api/transcribe', 'POST', formData, {
-        isFormData: true
+
+      abortControllerRef.current = new AbortController();
+      const timeoutId = setTimeout(() => abortControllerRef.current?.abort(), 30000);
+
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        signal: abortControllerRef.current.signal,
       });
-      
-      const result = await response.json();
-      
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Server error ${res.status}`);
+      }
+
+      const result = await res.json();
+
       if (result.text) {
         const cleanText = result.text.trim();
         onTranscription(cleanText, fieldName);
-        
         toast({
           title: "✅ Transcription Complete",
-          description: `Successfully added text to ${fieldName} field`,
+          description: `Added text to ${fieldName} field`,
           duration: 3000,
         });
-        
-        // Auto close after successful transcription
-        setTimeout(() => {
-          onClose();
-        }, 1000);
+        setTimeout(() => onClose(), 500);
+      } else {
+        toast({
+          title: "No speech detected",
+          description: "Nothing was transcribed. Please try again.",
+          variant: "destructive",
+          duration: 3000,
+        });
       }
-      
+
     } catch (error: any) {
-      console.error('Transcription error:', error);
-      toast({
-        title: "Transcription Failed",
-        description: error.message || "Failed to transcribe audio. Please try again.",
-        variant: "destructive"
-      });
+      if (error?.name === 'AbortError') {
+        toast({
+          title: "Transcription cancelled",
+          description: "The request was cancelled or timed out.",
+          variant: "destructive",
+          duration: 3000,
+        });
+      } else {
+        console.error('Transcription error:', error);
+        toast({
+          title: "Transcription Failed",
+          description: error.message || "Failed to transcribe audio. Please try again.",
+          variant: "destructive",
+          duration: 4000,
+        });
+      }
     } finally {
       setIsProcessing(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -238,25 +273,19 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (audioContextRef.current?.state !== 'closed') {
-        audioContextRef.current?.close();
-      }
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (audioContextRef.current?.state !== 'closed') audioContextRef.current?.close();
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, []);
 
   return (
     <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800 space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="font-medium text-sm">Voice Recording - {fieldName}</h4>
+        <h4 className="font-medium text-sm">Voice Recording — {fieldName}</h4>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -266,18 +295,21 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
           >
             <Settings className="w-4 h-4" />
           </Button>
+          {/* Close is always available — stops recording + cancels processing */}
           <Button
             variant="ghost"
             size="sm"
-            onClick={onClose}
-            disabled={isRecording || isProcessing}
+            onClick={handleClose}
           >
             ✕
           </Button>
         </div>
       </div>
 
-      {/* Device Selection */}
+      {noMicFound && (
+        <p className="text-sm text-red-600">No microphone found. Please connect a microphone and try again.</p>
+      )}
+
       {showDeviceSelection && (
         <div className="space-y-2">
           <label className="text-sm font-medium">Microphone</label>
@@ -296,25 +328,20 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
         </div>
       )}
 
-      {/* Recording Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          {/* Recording Status */}
           {isRecording && (
             <div className="flex items-center space-x-2 text-red-600">
               <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
               <span className="text-sm font-medium">RECORDING</span>
             </div>
           )}
-          
           {isProcessing && (
             <div className="flex items-center space-x-2 text-blue-600">
               <div className="animate-spin rounded-full h-3 w-3 border-2 border-blue-600 border-t-transparent"></div>
-              <span className="text-sm font-medium">TRANSCRIBING...</span>
+              <span className="text-sm font-medium">TRANSCRIBING…</span>
             </div>
           )}
-
-          {/* Recording Time */}
           {(isRecording || recordingTime > 0) && !isProcessing && (
             <span className={`font-mono text-sm ${isRecording ? 'text-red-600' : 'text-gray-600'}`}>
               {formatTime(recordingTime)}
@@ -322,9 +349,8 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
           )}
         </div>
 
-        {/* Controls */}
         <div className="flex items-center space-x-2">
-          {!isRecording && !isProcessing && (
+          {!isRecording && !isProcessing && !noMicFound && (
             <Button
               onClick={() => startRecordingWithDevice()}
               disabled={!selectedDevice}
@@ -335,7 +361,6 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
               Start
             </Button>
           )}
-          
           {isRecording && (
             <Button
               onClick={stopRecording}
@@ -344,13 +369,22 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
               className="border-red-600 text-red-600 hover:bg-red-50"
             >
               <Square className="w-4 h-4 mr-1" />
-              Stop & Transcribe
+              Stop &amp; Transcribe
+            </Button>
+          )}
+          {isProcessing && (
+            <Button
+              onClick={handleClose}
+              size="sm"
+              variant="outline"
+              className="border-gray-400 text-gray-600"
+            >
+              Cancel
             </Button>
           )}
         </div>
       </div>
 
-      {/* Audio Level Visualization */}
       {isRecording && (
         <div className="space-y-1">
           <div className="flex items-center justify-between text-xs text-gray-500">
@@ -358,7 +392,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
             <span>{Math.round(audioLevel)}%</span>
           </div>
           <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div 
+            <div
               className="h-full bg-red-500 transition-all duration-100"
               style={{ width: `${audioLevel}%` }}
             />
@@ -366,16 +400,15 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
         </div>
       )}
 
-      {/* Instructions */}
       <div className="text-xs text-gray-500">
-        {!isRecording && !isProcessing && (
-          <p>Click "Start" to begin recording. Speak clearly and click "Stop & Transcribe" when finished.</p>
+        {!isRecording && !isProcessing && !noMicFound && (
+          <p>Click "Start" to begin. Speak clearly then click "Stop &amp; Transcribe".</p>
         )}
         {isRecording && (
-          <p>Speak now... Your voice will be converted to text and added to the {fieldName} field.</p>
+          <p>Speak now… click "Stop &amp; Transcribe" when finished.</p>
         )}
         {isProcessing && (
-          <p>Processing your speech with Whisper AI. Please wait...</p>
+          <p>Processing with Whisper AI. You can cancel at any time.</p>
         )}
       </div>
     </div>
