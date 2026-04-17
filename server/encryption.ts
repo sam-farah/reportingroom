@@ -62,10 +62,14 @@ export class MedicalDataEncryption {
       const decrypted = CryptoJS.AES.decrypt(ciphertext, key);
       const result = decrypted.toString(CryptoJS.enc.Utf8);
       
-      // CryptoJS returns empty string if decryption fails (wrong key)
+      // CryptoJS returns empty string if decryption fails (wrong key / corrupted data).
+      // NEVER return the ciphertext here — doing so silently displays raw encrypted
+      // blobs to end users, who interpret them as garbled data (see incident:
+      // sonographer reported "jumbled transcription" Apr 16 2026 — was actually
+      // a key-mismatch fallback exposing ciphertext in the report editor).
       if (!result) {
-        console.warn('Decryption produced empty result - possible key mismatch, returning original');
-        return ciphertext;
+        console.error('🔴 DECRYPTION KEY MISMATCH — ciphertext could not be decrypted with the current MEDICAL_DATA_ENCRYPTION_KEY. Check that the env var matches the key used when this data was written.');
+        return '[ENCRYPTED — KEY MISMATCH]';
       }
       
       return result;
@@ -202,6 +206,14 @@ export const FieldEncryption = {
     
     this.ENCRYPTED_FIELDS.forEach(field => {
       if (encrypted[field] && typeof encrypted[field] === 'string') {
+        // IDEMPOTENCY GUARD: never re-encrypt already-encrypted data.
+        // Without this, any code path that round-trips a stale row through
+        // encryptFields() will produce double-encrypted ciphertext that the
+        // single-pass decryptFields() cannot recover.
+        if (this.isEncrypted(encrypted[field])) {
+          encrypted[`${field}_encrypted`] = true;
+          return;
+        }
         encrypted[field] = MedicalDataEncryption.encryptMedicalData(encrypted[field]);
         encrypted[`${field}_encrypted`] = true;
       }
