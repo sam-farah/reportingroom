@@ -667,22 +667,34 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (!editingReport) return;
     const { id, generatedAt, worksheetId, ...updateData } = editingReport;
 
-    // Auto-generate and store the labelled worksheet on save (when a raw worksheet exists)
+    // Auto-generate and store the labelled worksheet on save (non-fatal, max 10s)
     let labelledWorksheetId: number | undefined;
     if (editingReport.worksheetId || (editingReport as any).digitalWorksheetId) {
-      try {
+      const labelledTask = (async (): Promise<number | undefined> => {
         const canvas = await generateLabelledCanvas(editingReport);
-        if (canvas) {
-          const blob: Blob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.93));
-          const formData = new FormData();
-          formData.append("worksheet", new File([blob], `labelled-${editingReport.id}.jpg`, { type: 'image/jpeg' }));
-          const uploadRes = await fetch("/api/worksheets/upload", { method: "POST", body: formData });
-          if (uploadRes.ok) {
-            const { worksheetId: newId } = await uploadRes.json();
-            labelledWorksheetId = newId;
-          }
-        }
-      } catch { /* non-fatal — report still saves without labelled copy */ }
+        if (!canvas) return undefined;
+        const blob: Blob | null = await new Promise((resolve) => {
+          try { canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93); }
+          catch { resolve(null); }
+        });
+        if (!blob) return undefined;
+        const formData = new FormData();
+        formData.append("worksheet", new File([blob], `labelled-${editingReport.id}.jpg`, { type: 'image/jpeg' }));
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(() => ctrl.abort(), 8000);
+        try {
+          const uploadRes = await fetch("/api/worksheets/upload", { method: "POST", body: formData, signal: ctrl.signal });
+          clearTimeout(timeoutId);
+          if (!uploadRes.ok) return undefined;
+          const { worksheetId: newId } = await uploadRes.json();
+          return newId;
+        } finally { clearTimeout(timeoutId); }
+      })();
+
+      const timeoutPromise = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 10000));
+      try {
+        labelledWorksheetId = await Promise.race([labelledTask, timeoutPromise]);
+      } catch { /* swallow — save proceeds without labelled copy */ }
     }
 
     updateReportMutation.mutate({ ...updateData, ...(labelledWorksheetId ? { labelledWorksheetId } : {}) } as any);
