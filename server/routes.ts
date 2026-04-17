@@ -451,37 +451,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
-      const allApts = await storage.getAppointments(user.clinicId);
+      const allApts = (await storage.getAllAppointments()).filter(a => a.clinicId === user.clinicId);
 
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
       // Appointments with both timestamps — full wait data
-      const withWait = allApts.filter(a => a.checkedInAt && a.studyStartedAt);
-      const waitMins = withWait.map(a =>
+      const withWait = allApts.filter((a: any) => a.checkedInAt && a.studyStartedAt);
+      const waitMins = withWait.map((a: any) =>
         Math.round((new Date(a.studyStartedAt!).getTime() - new Date(a.checkedInAt!).getTime()) / 60000)
-      ).filter(m => m >= 0 && m < 300); // ignore negative/outlier values
+      ).filter((m: number) => m >= 0 && m < 300); // ignore negative/outlier values
 
-      const avgWait = waitMins.length ? Math.round(waitMins.reduce((s, m) => s + m, 0) / waitMins.length) : null;
+      const avgWait = waitMins.length ? Math.round(waitMins.reduce((s: number, m: number) => s + m, 0) / waitMins.length) : null;
       const minWait = waitMins.length ? Math.min(...waitMins) : null;
       const maxWait = waitMins.length ? Math.max(...waitMins) : null;
 
       // Today's patients currently waiting (checked_in, no study started)
-      const currentlyWaiting = allApts.filter(a => {
+      const currentlyWaiting = allApts.filter((a: any) => {
         const aptDate = new Date(a.appointmentDate);
         return a.status === 'checked_in' && !a.studyStartedAt && aptDate >= todayStart && aptDate <= todayEnd;
       });
-      const currentWaitMins = currentlyWaiting.map(a => a.checkedInAt
+      const currentWaitMins = currentlyWaiting.map((a: any) => a.checkedInAt
         ? Math.round((now.getTime() - new Date(a.checkedInAt).getTime()) / 60000)
         : null
-      ).filter((m): m is number => m !== null);
+      ).filter((m: number | null): m is number => m !== null);
       const avgCurrentWait = currentWaitMins.length
-        ? Math.round(currentWaitMins.reduce((s, m) => s + m, 0) / currentWaitMins.length)
+        ? Math.round(currentWaitMins.reduce((s: number, m: number) => s + m, 0) / currentWaitMins.length)
         : null;
 
       // Today's check-ins
-      const todayCheckins = allApts.filter(a => {
+      const todayCheckins = allApts.filter((a: any) => {
         if (!a.checkedInAt) return false;
         const d = new Date(a.checkedInAt);
         return d >= todayStart && d <= todayEnd;

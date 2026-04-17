@@ -738,7 +738,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       });
       if (!patchRes.ok) throw new Error("Failed to link worksheet to report");
 
-      setEditingReport(prev => prev ? { ...prev, worksheetId: newWorksheetId, digitalWorksheetId: undefined } : prev);
+      setEditingReport(prev => prev ? { ...prev, worksheetId: newWorksheetId, digitalWorksheetId: null } : prev);
       setIsReuploading(false);
       toast({ title: "Worksheet replaced", description: "The new worksheet has been saved to this report." });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
