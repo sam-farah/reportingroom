@@ -2601,6 +2601,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "17 Apr 2026",
+    tag: "New",
+    title: "Web referrals are now auto-saved to the patient's file",
+    detail:
+      "When a referral comes in via the website (public form or referrer portal), the system now tries to match the patient to an existing record. If a match is found, a nicely formatted copy of the request — same layout as the printed PDF — is automatically saved into that patient's documents (titled \"Scan Request REQ-XXXXX\") and synced to their folder on disk. No clicks required.\n\nIf no patient match is found, the request still lands in your Pending queue as before. The moment a staff member links it to a patient (via the \"Save to patient file\" button or by editing the request and choosing a patient), the document is auto-created at that point.\n\nDuplicate-protection: if a request is already filed for a patient, it won't create a second copy.",
+  },
+  {
+    date: "17 Apr 2026",
     tag: "Fix",
     title: "Reports no longer show jumbled/encrypted text",
     detail:
@@ -2708,7 +2715,11 @@ function ChangelogCard() {
                   </span>
                   <span className="font-medium text-sm">{entry.title}</span>
                 </div>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">{entry.detail}</p>
+                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed space-y-2">
+                  {entry.detail.split("\n\n").map((para, i) => (
+                    <p key={i}>{para}</p>
+                  ))}
+                </div>
               </div>
             </li>
           ))}
