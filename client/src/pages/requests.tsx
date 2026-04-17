@@ -264,8 +264,8 @@ export default function Requests() {
   });
 
   const saveToPatientFile = useMutation({
-    mutationFn: async ({ requestId, patientId, htmlContent }: { requestId: number; patientId: number; htmlContent: string }) => {
-      const res = await apiRequest(`/api/scan-requests/${requestId}/save-to-patient`, "POST", { patientId, htmlContent });
+    mutationFn: async ({ requestId, patientId }: { requestId: number; patientId: number; htmlContent?: string }) => {
+      const res = await apiRequest(`/api/scan-requests/${requestId}/save-to-patient`, "POST", { patientId });
       return res.json();
     },
     onSuccess: (_data, variables) => {

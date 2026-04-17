@@ -27,6 +27,7 @@ import {
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, isPdfFile } from "./services/pdfConverter";
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
+import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
 import { createBackupArchive, getBackupInfo } from "./services/backup";
 import { saveFileToDB, getFileFromDB, detectMimeType, backfillFilesToDB } from "./services/fileStorage";
 import OpenAI from "openai";
@@ -4416,6 +4417,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clinicId = req.user?.clinicId;
       if (!clinicId) return res.status(400).json({ error: "No clinic" });
       const request = await storage.createScanRequest({ ...req.body, clinicId });
+      // Auto-archive to patient file if linked to a patient
+      if (request.patientId) {
+        archiveScanRequestToPatientFile(request, request.patientId).catch((e) =>
+          console.error("Auto-archive failed:", e),
+        );
+      }
       res.status(201).json(request);
     } catch { res.status(500).json({ error: "Failed to create scan request" }); }
   });
@@ -4427,6 +4434,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getScanRequest(id);
       if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
       const updated = await storage.updateScanRequest(id, req.body);
+      // Auto-archive when a patient gets linked (or re-linked) to this request
+      if (updated && updated.patientId && updated.patientId !== existing.patientId) {
+        archiveScanRequestToPatientFile(updated, updated.patientId).catch((e) =>
+          console.error("Auto-archive failed:", e),
+        );
+      }
       res.json(updated);
     } catch { res.status(500).json({ error: "Failed to update scan request" }); }
   });
@@ -4447,10 +4460,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const clinicId = req.user?.clinicId;
       const id = parseInt(req.params.id);
-      const { patientId, htmlContent } = req.body;
+      const { patientId } = req.body;
 
-      if (!patientId || !htmlContent) {
-        return res.status(400).json({ error: "patientId and htmlContent are required" });
+      if (!patientId) {
+        return res.status(400).json({ error: "patientId is required" });
       }
 
       const existing = await storage.getScanRequest(id);
@@ -4458,25 +4471,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Scan request not found" });
       }
 
-      const filename = crypto.randomBytes(16).toString("hex");
-      const originalName = `Scan_Request_REQ-${String(id).padStart(5, "0")}.html`;
-      const filePath = path.join(uploadDir, filename);
+      const result = await archiveScanRequestToPatientFile(existing, patientId);
+      if (!result) {
+        return res.status(500).json({ error: "Failed to archive scan request" });
+      }
 
-      fs.writeFileSync(filePath, Buffer.from(htmlContent, "utf8"));
-      await saveFileToDB(filename, filePath, "text/html", originalName);
+      // Also link the request to this patient so future updates stay in sync
+      if (!existing.patientId) {
+        await storage.updateScanRequest(id, { patientId } as any).catch(() => {});
+      }
 
-      const today = new Date().toISOString().split("T")[0];
-      const document = await storage.createPatientDocument({
-        patientId,
-        title: `Scan Request REQ-${String(id).padStart(5, "0")}`,
-        filename,
-        originalName,
-        fileUrl: `/uploads/${filename}`,
-        documentDate: today,
-        notes: `Scan request for: ${(existing.scanTypes ?? []).join(", ")}`,
-      });
-
-      res.status(201).json(document);
+      res.status(201).json({ id: result.documentId, filename: result.filename });
     } catch (error) {
       console.error("Error saving scan request to patient file:", error);
       res.status(500).json({ error: "Failed to save to patient file" });
@@ -4525,8 +4530,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Simple honeypot check
       if (req.body._hp) return res.status(400).json({ error: "Invalid submission" });
 
+      // Try to match to an existing patient so we can auto-file the request
+      const matchedPatient = await storage.findMatchingPatient(
+        clinicId,
+        patientName,
+        patientDob || null,
+        patientPhone || null,
+      );
+
       const today = new Date().toISOString().split("T")[0];
-      await storage.createScanRequest({
+      const createdRequest = await storage.createScanRequest({
         clinicId,
         patientName,
         patientDob: patientDob || null,
@@ -4553,12 +4566,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         source: "web_form",
         submittedByReferrerId: null,
         referrerName: referringDoctorName || "Web Form",
-        patientUrNumber: null,
-        patientId: null,
+        patientUrNumber: matchedPatient?.urNumber ?? null,
+        patientId: matchedPatient?.id ?? null,
         referringDoctorId: null,
         scheduledAppointmentId: null,
         clinicalHistory: null,
       });
+
+      // Auto-save the request to the patient's file if we matched a patient
+      if (matchedPatient?.id) {
+        archiveScanRequestToPatientFile(createdRequest, matchedPatient.id).catch((e) =>
+          console.error("Auto-archive (web form) failed:", e),
+        );
+      }
 
       // Email notification to clinic
       if (clinic.email) {
@@ -4665,7 +4685,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create corresponding scan request
       const today = new Date().toISOString().split("T")[0];
-      await storage.createScanRequest({
+      const referrerScanRequest = await storage.createScanRequest({
         clinicId,
         patientName,
         patientDob: patientDob || null,
@@ -4688,6 +4708,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         referringDoctorId: null,
         clinicalHistory: null,
       });
+
+      // Auto-save the request to the patient's file if matched
+      if (matchedPatient?.id) {
+        archiveScanRequestToPatientFile(referrerScanRequest, matchedPatient.id).catch((e) =>
+          console.error("Auto-archive (referrer portal) failed:", e),
+        );
+      }
 
       const referrerFullNameForEmail = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim();
 
