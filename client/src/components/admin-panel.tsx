@@ -2361,6 +2361,8 @@ function BugReportsTab() {
 
   return (
     <div className="space-y-4">
+      <ChangelogCard />
+
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -2591,5 +2593,127 @@ function WaitAnalyticsPanel() {
         </>
       )}
     </div>
+  );
+}
+
+// Static changelog — update this list when shipping notable fixes/features.
+// Newest entries first. Keep descriptions plain-English for end users.
+const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
+  {
+    date: "17 Apr 2026",
+    tag: "Fix",
+    title: "Reports no longer show jumbled/encrypted text",
+    detail:
+      "Fixed an issue where some reports displayed long encrypted strings (e.g. \"U2FsdGVkX1+...\") in the patient name, findings and impression fields. The data was always safe in the database — the live app was running an older version that didn't translate it back to readable text.",
+  },
+  {
+    date: "17 Apr 2026",
+    tag: "Improve",
+    title: "Clearer warning if a report ever fails to decrypt",
+    detail:
+      "If a report's encrypted data can't be unlocked for any reason, fields now show a clear \"[ENCRYPTED — KEY MISMATCH]\" marker instead of raw gibberish, so it's instantly obvious something is wrong.",
+  },
+  {
+    date: "17 Apr 2026",
+    tag: "Fix",
+    title: "Wait-time stats on the dashboard",
+    detail:
+      "The patient wait-time metrics endpoint was throwing an error and returning no data. Now correctly calculates average, current and today's wait times per clinic.",
+  },
+  {
+    date: "16 Apr 2026",
+    tag: "Fix",
+    title: "Voice transcription no longer hangs the app",
+    detail:
+      "If voice dictation got stuck (slow network, missing microphone, etc.), users could be trapped on the recording screen. The Close and Cancel buttons are now always available, and transcription requests time out cleanly after 30 seconds.",
+  },
+  {
+    date: "16 Apr 2026",
+    tag: "Fix",
+    title: "Save no longer freezes when worksheet labelling stalls",
+    detail:
+      "Saving a report with worksheet labelling enabled could hang indefinitely if image processing got stuck. Saves now proceed within 10 seconds even if the labelled copy can't be generated.",
+  },
+  {
+    date: "16 Apr 2026",
+    tag: "Fix",
+    title: "Exit button works in fullscreen reporting",
+    detail:
+      "The confirmation prompt when exiting a report in fullscreen mode was hidden behind the editor. It now appears correctly on top.",
+  },
+  {
+    date: "15 Apr 2026",
+    tag: "New",
+    title: "Referring doctor & Copy-To auto-fill on Distribute",
+    detail:
+      "When distributing a report for a patient, the referring doctor and Copy-To details from their most recent appointment now auto-populate the email To, Name, Fax and CC fields.",
+  },
+  {
+    date: "15 Apr 2026",
+    tag: "New",
+    title: "Referring Doctor & Copy-To fields in calendar bookings",
+    detail:
+      "The booking form now captures referring doctor and Copy-To recipient details, with autofill from your saved referring doctors directory.",
+  },
+  {
+    date: "14 Apr 2026",
+    tag: "Improve",
+    title: "Wait-time tracking for patients",
+    detail:
+      "Patient check-in and study-start times are now tracked, with live amber hourglass badges on the calendar showing how long each patient has been waiting.",
+  },
+  {
+    date: "14 Apr 2026",
+    tag: "Improve",
+    title: "Distribute dialog reliability",
+    detail:
+      "Doctor selection in the Distribute dialog now uses a reliable dropdown (replacing the old combobox that occasionally failed to register selections). The HTML preview is also generated lazily to speed up the dialog.",
+  },
+];
+
+function ChangelogCard() {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? CHANGELOG : CHANGELOG.slice(0, 3);
+
+  const tagStyles: Record<string, string> = {
+    Fix: "bg-rose-100 text-rose-700 border-rose-200",
+    New: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    Improve: "bg-blue-100 text-blue-700 border-blue-200",
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base">📝 What's New</CardTitle>
+            <p className="text-xs text-gray-500 mt-1">Recent fixes and improvements to Reporting Room.</p>
+          </div>
+          {CHANGELOG.length > 3 && (
+            <Button size="sm" variant="ghost" onClick={() => setExpanded((v) => !v)}>
+              {expanded ? "Show less" : `Show all (${CHANGELOG.length})`}
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="border-t pt-4">
+        <ul className="space-y-4">
+          {visible.map((entry, idx) => (
+            <li key={idx} className="flex gap-3">
+              <div className="flex-shrink-0 w-24 text-xs text-gray-500 pt-0.5">{entry.date}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${tagStyles[entry.tag]}`}>
+                    {entry.tag.toUpperCase()}
+                  </span>
+                  <span className="font-medium text-sm">{entry.title}</span>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">{entry.detail}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }
