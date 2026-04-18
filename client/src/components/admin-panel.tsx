@@ -2600,6 +2600,34 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "18 Apr 2026",
+    tag: "New",
+    title: "Archive (and restore) patient files — with password protection",
+    detail:
+      "You can now archive a patient's file from the Edit Patient screen. Archived files are hidden from the main Patients list but remain fully searchable under a new \"Archived\" tab. Use this for test patients, deceased patients, duplicates, or anyone no longer attending.\n\nFor safety, every archive or restore now requires you to type your account password before it goes through. You can also pick a reason (Test patient / Deceased / Duplicate / Transferred / Inactive / Other) which is stored on the record for audit purposes.\n\nThe Patients screen header now shows a live count of Active vs Archived patients.",
+  },
+  {
+    date: "18 Apr 2026",
+    tag: "New",
+    title: "\"View Details\" button on each patient row",
+    detail:
+      "Each patient card on the main Patients list now has a \"View Details\" button on the right. Clicking it opens the full edit dialog showing DOB, address, phone, email, Medicare details, emergency contact, medical history, allergies, medications and notes — without having to first open the file.",
+  },
+  {
+    date: "18 Apr 2026",
+    tag: "Improve",
+    title: "Bigger PDF previews in the patient file",
+    detail:
+      "When you open a saved PDF document inside a patient's file (e.g. a scan request, referral letter, etc.), the PDF preview now expands to fill the available height of the screen instead of being stuck in a small fixed window.",
+  },
+  {
+    date: "18 Apr 2026",
+    tag: "Fix",
+    title: "Top navigation stays visible when viewing a patient file",
+    detail:
+      "Previously, opening a patient file would push the top navigation bar (Calendar, Upload, Reports, Patients, etc.) off-screen, requiring a scroll to get back to it. The patient view now fits inside the area below the nav so you can switch panels at any time.",
+  },
+  {
     date: "17 Apr 2026",
     tag: "New",
     title: "\"View Patient File\" button on scan requests",
