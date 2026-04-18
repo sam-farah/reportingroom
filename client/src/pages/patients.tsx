@@ -1235,7 +1235,18 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm truncate">{tr.studyType || "Report"}</div>
                             <div className="text-xs text-gray-500">
-                              {tr.examDate ? format(new Date(tr.examDate), "d MMM yyyy") : "—"} · Sent {tr.sentAt ? format(new Date(tr.sentAt), "d MMM yyyy") : "—"}
+                              {(() => {
+                                const safeFmt = (v: string | null | undefined) => {
+                                  if (!v) return "—";
+                                  let d = new Date(v);
+                                  if (isNaN(d.getTime())) {
+                                    const m = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(v);
+                                    if (m) d = new Date(`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`);
+                                  }
+                                  return isNaN(d.getTime()) ? "—" : format(d, "d MMM yyyy");
+                                };
+                                return <>{safeFmt(tr.examDate)} · Sent {safeFmt(tr.sentAt)}</>;
+                              })()}
                             </div>
                             <div className="flex items-center gap-1 mt-1 flex-wrap">
                               <Badge variant="outline" className="text-xs px-1.5 py-0 text-emerald-700 border-emerald-300 bg-emerald-50">
