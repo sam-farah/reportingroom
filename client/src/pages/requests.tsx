@@ -37,6 +37,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   scheduled: { label: "Scheduled", color: "bg-purple-100 text-purple-700", icon: ClipboardList },
   completed: { label: "Completed", color: "bg-green-100 text-green-700", icon: CheckCircle },
   cancelled: { label: "Cancelled", color: "bg-slate-100 text-slate-500", icon: XCircle },
+  archived: { label: "Archived", color: "bg-zinc-100 text-zinc-600", icon: FolderOpen },
 };
 
 type RequestFormData = {
@@ -426,6 +427,18 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
     mutationFn: (id: number) => apiRequest(`/api/scan-requests/${id}`, "DELETE"),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] }); toast({ title: "Request deleted" }); },
     onError: () => toast({ title: "Failed to delete request", variant: "destructive" }),
+  });
+
+  const setRequestStatus = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      apiRequest(`/api/scan-requests/${id}`, "PUT", { status }),
+    onSuccess: (_res, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
+      const label = STATUS_CONFIG[vars.status]?.label ?? vars.status;
+      toast({ title: `Marked as ${label}` });
+      setViewingRequest(null);
+    },
+    onError: () => toast({ title: "Failed to update status", variant: "destructive" }),
   });
 
   // Conflict-handling state for the schedule flow
@@ -1394,7 +1407,37 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                   <Button variant="outline" onClick={() => { setViewingRequest(null); openEditRequest(viewingRequest); }}>
                     <Edit className="w-4 h-4 mr-2" /> Edit
                   </Button>
-                  {viewingRequest.status !== "scheduled" && viewingRequest.status !== "completed" && (
+                  {viewingRequest.status !== "completed" && viewingRequest.status !== "archived" && (
+                    <Button
+                      variant="outline"
+                      className="text-green-700 border-green-300 hover:bg-green-50"
+                      disabled={setRequestStatus.isPending}
+                      onClick={() => {
+                        if (confirm("Mark this study as completed?")) {
+                          setRequestStatus.mutate({ id: viewingRequest.id, status: "completed" });
+                        }
+                      }}
+                      data-testid="button-mark-completed"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" /> Mark Completed
+                    </Button>
+                  )}
+                  {viewingRequest.status !== "archived" && (
+                    <Button
+                      variant="outline"
+                      className="text-zinc-700 border-zinc-300 hover:bg-zinc-50"
+                      disabled={setRequestStatus.isPending}
+                      onClick={() => {
+                        if (confirm("Archive this scan request? It will be hidden from active lists but remains accessible via filters.")) {
+                          setRequestStatus.mutate({ id: viewingRequest.id, status: "archived" });
+                        }
+                      }}
+                      data-testid="button-archive-request"
+                    >
+                      <FolderOpen className="w-4 h-4 mr-2" /> Archive
+                    </Button>
+                  )}
+                  {viewingRequest.status !== "scheduled" && viewingRequest.status !== "completed" && viewingRequest.status !== "archived" && (
                     <Button
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={() => {
