@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye } from "lucide-react";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
@@ -1968,6 +1968,38 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                         </div>
                       </div>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 text-blue-700 border-blue-300 hover:bg-blue-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingPatient(patient);
+                        setFormData({
+                          urNumber: patient.urNumber || "",
+                          firstName: patient.firstName || "",
+                          lastName: patient.lastName || "",
+                          dateOfBirth: patient.dateOfBirth || "",
+                          gender: patient.gender || "",
+                          phone: patient.phone || "",
+                          email: patient.email || "",
+                          address: patient.address || "",
+                          medicareNumber: (patient as any).medicareNumber || "",
+                          medicareIrn: (patient as any).medicareIrn || "",
+                          medicareExpiry: (patient as any).medicareExpiry || "",
+                          emergencyContact: (patient as any).emergencyContact || "",
+                          emergencyPhone: (patient as any).emergencyPhone || "",
+                          medicalHistory: (patient as any).medicalHistory || "",
+                          allergies: (patient as any).allergies || "",
+                          medications: (patient as any).medications || "",
+                          notes: (patient as any).notes || "",
+                        } as any);
+                        setIsDialogOpen(true);
+                      }}
+                      data-testid={`button-view-details-${patient.id}`}
+                    >
+                      <Eye className="w-4 h-4 mr-1.5" /> View Details
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
