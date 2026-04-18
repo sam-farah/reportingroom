@@ -54,23 +54,27 @@ type ViewMode = "day" | "week" | "month";
 function TasksPanel() {
   const { toast } = useToast();
   const [tab, setTab] = useState<"active" | "done">("active");
-  const [adding, setAdding] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<CalendarTask | null>(null);
   const [text, setText] = useState("");
+  const [details, setDetails] = useState("");
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const { data: tasks = [] } = useQuery<CalendarTask[]>({
     queryKey: ["/api/calendar-tasks"],
   });
 
   const create = useMutation({
-    mutationFn: (t: string) => apiRequest("/api/calendar-tasks", "POST", { text: t }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/calendar-tasks"] }); setText(""); setAdding(false); },
+    mutationFn: (data: { text: string; details: string }) => apiRequest("/api/calendar-tasks", "POST", data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/calendar-tasks"] }); closeDialog(); },
     onError: () => toast({ title: "Failed to add task", variant: "destructive" }),
   });
 
-  const toggle = useMutation({
-    mutationFn: ({ id, completed }: { id: number; completed: boolean }) =>
-      apiRequest(`/api/calendar-tasks/${id}`, "PATCH", { completed }),
+  const update = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { text?: string; details?: string | null; completed?: boolean } }) =>
+      apiRequest(`/api/calendar-tasks/${id}`, "PATCH", data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/calendar-tasks"] }),
+    onError: () => toast({ title: "Failed to update task", variant: "destructive" }),
   });
 
   const remove = useMutation({
@@ -82,101 +86,167 @@ function TasksPanel() {
   const done = tasks.filter(t => t.completed);
   const list = tab === "active" ? active : done;
 
+  const openNew = () => { setEditing(null); setText(""); setDetails(""); setDialogOpen(true); };
+  const openEdit = (t: CalendarTask) => { setEditing(t); setText(t.text); setDetails(t.details ?? ""); setDialogOpen(true); };
+  const closeDialog = () => { setDialogOpen(false); setEditing(null); setText(""); setDetails(""); };
+
   const submit = () => {
-    const t = text.trim();
-    if (!t) { setAdding(false); return; }
-    create.mutate(t);
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (editing) {
+      update.mutate({ id: editing.id, data: { text: trimmed, details: details.trim() || null } }, { onSuccess: () => closeDialog() });
+    } else {
+      create.mutate({ text: trimmed, details: details.trim() });
+    }
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 border rounded-xl shadow-sm flex flex-col flex-1 min-h-[420px]">
-      {/* Tabs */}
-      <div className="flex border-b text-xs">
-        <button
-          onClick={() => setTab("active")}
-          className={`flex-1 py-2 font-medium transition-colors ${tab === "active" ? "text-blue-700 border-b-2 border-blue-600 bg-blue-50/50" : "text-gray-500 hover:text-gray-700"}`}
-          data-testid="tab-tasks-active"
-        >
-          To do {active.length > 0 && <span className="ml-1 text-[10px] bg-blue-600 text-white rounded-full px-1.5 py-0.5">{active.length}</span>}
-        </button>
-        <button
-          onClick={() => setTab("done")}
-          className={`flex-1 py-2 font-medium transition-colors ${tab === "done" ? "text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50/50" : "text-gray-500 hover:text-gray-700"}`}
-          data-testid="tab-tasks-done"
-        >
-          Done {done.length > 0 && <span className="ml-1 text-[10px] bg-emerald-600 text-white rounded-full px-1.5 py-0.5">{done.length}</span>}
-        </button>
-      </div>
+    <>
+      <div className="bg-white dark:bg-gray-800 border rounded-xl shadow-sm flex flex-col flex-1 min-h-[420px]">
+        {/* Tabs */}
+        <div className="flex border-b text-xs">
+          <button
+            onClick={() => setTab("active")}
+            className={`flex-1 py-2 font-medium transition-colors ${tab === "active" ? "text-blue-700 border-b-2 border-blue-600 bg-blue-50/50" : "text-gray-500 hover:text-gray-700"}`}
+            data-testid="tab-tasks-active"
+          >
+            To do {active.length > 0 && <span className="ml-1 text-[10px] bg-blue-600 text-white rounded-full px-1.5 py-0.5">{active.length}</span>}
+          </button>
+          <button
+            onClick={() => setTab("done")}
+            className={`flex-1 py-2 font-medium transition-colors ${tab === "done" ? "text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50/50" : "text-gray-500 hover:text-gray-700"}`}
+            data-testid="tab-tasks-done"
+          >
+            Done {done.length > 0 && <span className="ml-1 text-[10px] bg-emerald-600 text-white rounded-full px-1.5 py-0.5">{done.length}</span>}
+          </button>
+        </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto px-2 py-1.5">
-        {list.length === 0 ? (
-          <div className="text-center text-xs text-gray-400 py-8 px-3">
-            {tab === "active" ? "No tasks yet. Tap + to add one." : "Nothing completed yet."}
-          </div>
-        ) : (
-          <ul className="space-y-1">
-            {list.map(t => (
-              <li
-                key={t.id}
-                className="group flex items-start gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700/40"
-              >
-                <Checkbox
-                  checked={!!t.completed}
-                  onCheckedChange={(v) => toggle.mutate({ id: t.id, completed: !!v })}
-                  className="mt-0.5"
-                  data-testid={`checkbox-task-${t.id}`}
-                />
-                <span className={`flex-1 text-xs leading-snug break-words ${t.completed ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"}`}>
-                  {t.text}
-                </span>
-                <button
-                  onClick={() => remove.mutate(t.id)}
-                  className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-opacity"
-                  title="Delete task"
-                  data-testid={`button-delete-task-${t.id}`}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        {/* List */}
+        <div className="flex-1 overflow-y-auto px-2 py-1.5">
+          {list.length === 0 ? (
+            <div className="text-center text-xs text-gray-400 py-8 px-3">
+              {tab === "active" ? "No tasks yet. Tap + to add one." : "Nothing completed yet."}
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {list.map(t => {
+                const expanded = expandedId === t.id;
+                const hasDetails = !!(t.details && t.details.trim());
+                return (
+                  <li
+                    key={t.id}
+                    className="group rounded hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                  >
+                    <div className="flex items-start gap-2 px-2 py-1.5">
+                      <Checkbox
+                        checked={!!t.completed}
+                        onCheckedChange={(v) => update.mutate({ id: t.id, data: { completed: !!v } })}
+                        className="mt-0.5"
+                        data-testid={`checkbox-task-${t.id}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => hasDetails ? setExpandedId(expanded ? null : t.id) : openEdit(t)}
+                        className={`flex-1 text-left text-xs leading-snug break-words ${t.completed ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"}`}
+                        title={hasDetails ? "Click to expand" : "Click to edit"}
+                        data-testid={`button-task-${t.id}`}
+                      >
+                        <span className="inline-flex items-start gap-1">
+                          <span>{t.text}</span>
+                          {hasDetails && (
+                            <ChevronRight className={`w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                          )}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => openEdit(t)}
+                        className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-blue-600 transition-opacity"
+                        title="Edit task"
+                        data-testid={`button-edit-task-${t.id}`}
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => remove.mutate(t.id)}
+                        className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-opacity"
+                        title="Delete task"
+                        data-testid={`button-delete-task-${t.id}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {expanded && hasDetails && (
+                      <div className="px-2 pb-2 pl-8 text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed border-l-2 border-blue-200 ml-3 mb-1">
+                        {t.details}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
 
-      {/* Add bar */}
-      <div className="border-t p-2">
-        {adding ? (
-          <div className="flex gap-1">
-            <Input
-              autoFocus
-              value={text}
-              onChange={e => setText(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter") { e.preventDefault(); submit(); }
-                if (e.key === "Escape") { setText(""); setAdding(false); }
-              }}
-              placeholder="New task…"
-              className="h-8 text-xs"
-              data-testid="input-new-task"
-            />
-            <Button size="sm" className="h-8 px-2" onClick={submit} disabled={create.isPending} data-testid="button-save-task">
-              Add
-            </Button>
-          </div>
-        ) : (
+        {/* Add bar */}
+        <div className="border-t p-2">
           <Button
             variant="ghost"
             size="sm"
             className="w-full justify-start text-xs text-gray-500 hover:text-gray-900 h-8"
-            onClick={() => setAdding(true)}
+            onClick={openNew}
             data-testid="button-add-task"
           >
             <Plus className="w-4 h-4 mr-1" /> Add task
           </Button>
-        )}
+        </div>
       </div>
-    </div>
+
+      {/* Add / Edit dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(v) => { if (!v) closeDialog(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Edit task" : "New task"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="task-title">Task</Label>
+              <Input
+                id="task-title"
+                autoFocus
+                value={text}
+                onChange={e => setText(e.target.value)}
+                placeholder="What needs doing?"
+                onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }}
+                className="mt-1"
+                data-testid="input-task-title"
+              />
+            </div>
+            <div>
+              <Label htmlFor="task-details">Details (optional)</Label>
+              <Textarea
+                id="task-details"
+                value={details}
+                onChange={e => setDetails(e.target.value)}
+                placeholder="Add notes, context, links…"
+                rows={5}
+                className="mt-1 text-sm"
+                data-testid="input-task-details"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <Button variant="outline" onClick={closeDialog}>Cancel</Button>
+              <Button
+                onClick={submit}
+                disabled={!text.trim() || create.isPending || update.isPending}
+                data-testid="button-save-task"
+              >
+                {create.isPending || update.isPending ? "Saving…" : editing ? "Save" : "Add task"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

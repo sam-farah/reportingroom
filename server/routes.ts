@@ -660,8 +660,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const clinicId = (req as any).user?.clinicId ?? null;
       const text = String(req.body?.text ?? "").trim();
+      const details = req.body?.details ? String(req.body.details).trim() || null : null;
       if (!text) return res.status(400).json({ error: "Text is required" });
-      const task = await storage.createCalendarTask({ clinicId, text, completed: false });
+      const task = await storage.createCalendarTask({ clinicId, text, details, completed: false });
       res.status(201).json(task);
     } catch (error) {
       console.error("Error creating calendar task:", error);
@@ -674,6 +675,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const patch: any = {};
       if (typeof req.body?.text === "string") patch.text = req.body.text;
+      if (req.body?.details !== undefined) patch.details = req.body.details ? String(req.body.details).trim() || null : null;
       if (typeof req.body?.completed === "boolean") patch.completed = req.body.completed;
       const updated = await storage.updateCalendarTask(id, patch);
       if (!updated) return res.status(404).json({ error: "Task not found" });

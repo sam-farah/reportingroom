@@ -725,6 +725,7 @@ export const calendarTasks = pgTable("calendar_tasks", {
   id: serial("id").primaryKey(),
   clinicId: integer("clinic_id").references(() => clinics.id),
   text: text("text").notNull(),
+  details: text("details"),
   completed: boolean("completed").notNull().default(false),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
