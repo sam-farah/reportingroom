@@ -110,6 +110,7 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
   const [registrationSent, setRegistrationSent] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [sendingRegistration, setSendingRegistration] = useState(false);
+  const [hoverMin, setHoverMin] = useState<number | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     appointmentDate: format(new Date(), "yyyy-MM-dd"),
     appointmentTime: "09:00",
@@ -1362,38 +1363,60 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                             className="relative overflow-y-auto"
                             style={{ maxHeight: "560px" }}
                           >
-                            <div className="relative" style={{ height: `${heightPx}px` }}>
-                              {/* Hour rows + click-to-set slots */}
+                            <div
+                              className="relative group/timeline"
+                              style={{ height: `${heightPx}px` }}
+                              onMouseMove={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const y = e.clientY - rect.top;
+                                const min = Math.max(0, Math.min(totalMinutes - 1, Math.floor(y / pxPerMin / slotMinutes) * slotMinutes));
+                                setHoverMin(min);
+                              }}
+                              onMouseLeave={() => setHoverMin(null)}
+                              onClick={(e) => {
+                                // Click anywhere on the timeline body to set time at the snapped slot
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const y = e.clientY - rect.top;
+                                const min = Math.max(0, Math.min(totalMinutes - 1, Math.floor(y / pxPerMin / slotMinutes) * slotMinutes));
+                                const hr = startHour + Math.floor(min / 60);
+                                const mm = min % 60;
+                                setScheduleForm(p => ({
+                                  ...p,
+                                  appointmentTime: `${String(hr).padStart(2, "0")}:${String(mm).padStart(2, "0")}`,
+                                }));
+                              }}
+                            >
+                              {/* Hour rows */}
                               {Array.from({ length: endHour - startHour }).map((_, i) => {
                                 const hr = startHour + i;
                                 return (
                                   <div
                                     key={hr}
-                                    className="absolute left-0 right-0 border-t border-gray-200 flex"
+                                    className="absolute left-0 right-0 border-t border-gray-200 flex pointer-events-none"
                                     style={{ top: `${i * 60 * pxPerMin}px`, height: `${60 * pxPerMin}px` }}
                                   >
                                     <div className="w-14 flex-shrink-0 text-[11px] font-mono text-gray-500 pl-2 pt-0.5">
                                       {String(hr).padStart(2, "0")}:00
                                     </div>
-                                    <div className="flex-1 grid grid-rows-4 border-l border-gray-100">
-                                      {[0, 15, 30, 45].map(min => (
-                                        <button
-                                          key={min}
-                                          type="button"
-                                          className="hover:bg-blue-50 cursor-pointer border-b border-dashed border-gray-100 last:border-b-0 transition-colors text-left"
-                                          onClick={() => setScheduleForm(p => ({
-                                            ...p,
-                                            appointmentTime: `${String(hr).padStart(2, "0")}:${String(min).padStart(2, "0")}`,
-                                          }))}
-                                          aria-label={`Set time to ${hr}:${String(min).padStart(2, "0")}`}
-                                        />
-                                      ))}
-                                    </div>
+                                    <div className="flex-1 border-l border-gray-100" />
                                   </div>
                                 );
                               })}
                               {/* Bottom border */}
-                              <div className="absolute left-0 right-0 border-t border-gray-200" style={{ top: `${heightPx}px` }} />
+                              <div className="absolute left-0 right-0 border-t border-gray-200 pointer-events-none" style={{ top: `${heightPx}px` }} />
+
+                              {/* Hover ghost — sticks to mouse, snapped to 15-min */}
+                              {hoverMin !== null && (
+                                <div
+                                  className="absolute right-1 left-16 bg-gray-100/70 border border-dashed border-gray-400 rounded text-[10px] text-gray-600 px-2 py-0.5 pointer-events-none z-20"
+                                  style={{
+                                    top: `${hoverMin * pxPerMin}px`,
+                                    height: `${Math.max(selDuration * pxPerMin, 16)}px`,
+                                  }}
+                                >
+                                  {`${String(startHour + Math.floor(hoverMin / 60)).padStart(2, "0")}:${String(hoverMin % 60).padStart(2, "0")} · ${selDuration}m`}
+                                </div>
+                              )}
 
                               {/* Existing appointments */}
                               {sortedDayAppts.map(a => {
@@ -1421,19 +1444,16 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                                 );
                               })}
 
-                              {/* Selected slot preview overlay */}
+                              {/* Selected slot — subtle line indicator on the left edge */}
                               {selStartMin >= 0 && selStartMin < totalMinutes && (
                                 <div
-                                  className="absolute right-1 left-16 bg-green-200/70 border-2 border-green-500 rounded px-2 py-0.5 text-xs pointer-events-none z-10 shadow"
+                                  className="absolute left-14 w-1 bg-green-500 rounded pointer-events-none z-10"
                                   style={{
                                     top: `${selStartMin * pxPerMin}px`,
-                                    height: `${Math.max(selDuration * pxPerMin, 18)}px`,
+                                    height: `${Math.max(selDuration * pxPerMin, 12)}px`,
                                   }}
-                                >
-                                  <div className="font-semibold text-green-900 leading-tight truncate">
-                                    NEW · {scheduleForm.appointmentTime} · {selDuration}m
-                                  </div>
-                                </div>
+                                  title={`Selected: ${scheduleForm.appointmentTime} · ${selDuration}m`}
+                                />
                               )}
                             </div>
                           </div>
