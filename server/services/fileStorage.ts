@@ -58,6 +58,11 @@ export function detectMimeType(data: Buffer): string {
   if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return "image/png";
   if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return "image/gif";
   if (data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46) return "image/webp";
+  // Text-based detection: sniff first ~512 bytes for HTML
+  const head = data.slice(0, Math.min(data.length, 512)).toString("utf8").trimStart().toLowerCase();
+  if (head.startsWith("<!doctype html") || head.startsWith("<html") || head.startsWith("<?xml") && head.includes("<html")) {
+    return "text/html; charset=utf-8";
+  }
   return "application/octet-stream";
 }
 
