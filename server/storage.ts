@@ -1059,6 +1059,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteAppointment(id: number): Promise<void> {
+    // Null out FK references first so the delete doesn't violate constraints
+    await db.update(scanRequests)
+      .set({ scheduledAppointmentId: null, status: "pending" })
+      .where(eq(scanRequests.scheduledAppointmentId, id));
     await db.delete(appointments).where(eq(appointments.id, id));
   }
 
