@@ -388,13 +388,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper: detect overlapping appointments in the same clinic
+  async function findApptConflicts(opts: {
+    clinicId?: number | null;
+    startDate: Date;
+    durationMinutes: number;
+    excludeId?: number;
+  }) {
+    const { clinicId, startDate, durationMinutes, excludeId } = opts;
+    const newStart = startDate.getTime();
+    const newEnd = newStart + (durationMinutes || 30) * 60 * 1000;
+    // Search a wide window then filter
+    const windowStart = new Date(newStart - 24 * 60 * 60 * 1000);
+    const windowEnd = new Date(newEnd + 24 * 60 * 60 * 1000);
+    const candidates = await storage.getAppointmentsByDateRange(windowStart, windowEnd);
+    return candidates.filter((a: any) => {
+      if (excludeId && a.id === excludeId) return false;
+      if (a.status === "cancelled") return false;
+      if (clinicId != null && a.clinicId != null && a.clinicId !== clinicId) return false;
+      const aStart = new Date(a.appointmentDate).getTime();
+      const aEnd = aStart + ((a.duration || 30) * 60 * 1000);
+      return aStart < newEnd && newStart < aEnd;
+    });
+  }
+
   app.post("/api/appointments", isAuthenticated, async (req, res) => {
     try {
       const userId = (req as any).user?.id ?? null;
+      const startDate = new Date(req.body.appointmentDate);
+      const force = req.body.force === true || req.query.force === "true";
+      if (!force) {
+        const conflicts = await findApptConflicts({
+          clinicId: req.body.clinicId ?? null,
+          startDate,
+          durationMinutes: parseInt(req.body.duration) || 30,
+        });
+        if (conflicts.length > 0) {
+          return res.status(409).json({
+            error: "appointment_conflict",
+            message: "This time overlaps with an existing appointment.",
+            conflicts: conflicts.map(c => ({
+              id: c.id,
+              patientName: c.patientName,
+              appointmentDate: c.appointmentDate,
+              duration: c.duration,
+              scanType: c.scanType,
+              status: c.status,
+            })),
+          });
+        }
+      }
+      const { force: _f, ...rest } = req.body;
       const appointmentData = {
-        ...req.body,
+        ...rest,
         createdBy: userId,
-        appointmentDate: new Date(req.body.appointmentDate),
+        appointmentDate: startDate,
       };
       const appointment = await storage.createAppointment(appointmentData);
       res.status(201).json(appointment);
@@ -407,9 +455,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/appointments/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const force = req.body.force === true || req.query.force === "true";
+      // Conflict check only if date or duration is changing
+      if (!force && (req.body.appointmentDate || req.body.duration)) {
+        const existing = await storage.getAppointment(id);
+        if (existing) {
+          const startDate = req.body.appointmentDate ? new Date(req.body.appointmentDate) : new Date(existing.appointmentDate);
+          const duration = req.body.duration != null ? (parseInt(req.body.duration) || 30) : (existing.duration || 30);
+          const conflicts = await findApptConflicts({
+            clinicId: req.body.clinicId ?? existing.clinicId ?? null,
+            startDate,
+            durationMinutes: duration,
+            excludeId: id,
+          });
+          if (conflicts.length > 0) {
+            return res.status(409).json({
+              error: "appointment_conflict",
+              message: "This time overlaps with an existing appointment.",
+              conflicts: conflicts.map(c => ({
+                id: c.id,
+                patientName: c.patientName,
+                appointmentDate: c.appointmentDate,
+                duration: c.duration,
+                scanType: c.scanType,
+                status: c.status,
+              })),
+            });
+          }
+        }
+      }
+      const { force: _f, ...rest } = req.body;
       const updateData: any = {
-        ...req.body,
-        appointmentDate: req.body.appointmentDate ? new Date(req.body.appointmentDate) : undefined,
+        ...rest,
+        appointmentDate: rest.appointmentDate ? new Date(rest.appointmentDate) : undefined,
       };
       // Auto-set studyStartedAt when the study first starts
       if (req.body.status === 'in_progress' || req.body.status === 'completed') {

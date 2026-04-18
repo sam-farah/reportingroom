@@ -204,11 +204,18 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
     onError: () => toast({ title: "Failed to delete request", variant: "destructive" }),
   });
 
+  // Conflict-handling state for the schedule flow
+  const [pendingConflict, setPendingConflict] = useState<{
+    conflicts: { id: number; patientName: string; appointmentDate: string; duration: number; scanType: string }[];
+    request: ScanRequest;
+    form: typeof scheduleForm;
+  } | null>(null);
+
   const scheduleAppointment = useMutation({
-    mutationFn: async ({ request, form }: { request: ScanRequest; form: typeof scheduleForm }) => {
+    mutationFn: async ({ request, form, force }: { request: ScanRequest; form: typeof scheduleForm; force?: boolean }) => {
       const [datePart] = form.appointmentDate.split("T");
       const appointmentDate = new Date(`${datePart}T${form.appointmentTime}:00`);
-      const apptRes = await apiRequest("/api/appointments", "POST", {
+      const body = {
         clinicId: request.clinicId,
         patientName: request.patientName,
         patientDob: request.patientDob || null,
@@ -222,7 +229,25 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
         sonographerId: form.sonographerId ? parseInt(form.sonographerId) : null,
         notes: form.notes || null,
         status: "scheduled",
+        force: !!force,
+      };
+      const apptRes = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
       });
+      if (apptRes.status === 409) {
+        const conflictBody = await apptRes.json();
+        const err = new Error("appointment_conflict") as any;
+        err.conflicts = conflictBody.conflicts || [];
+        err.isConflict = true;
+        throw err;
+      }
+      if (!apptRes.ok) {
+        const txt = await apptRes.text();
+        throw new Error(txt || `Failed (${apptRes.status})`);
+      }
       const appt = await apptRes.json();
       await apiRequest(`/api/scan-requests/${request.id}`, "PUT", {
         status: "scheduled",
@@ -236,9 +261,16 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
       setSchedulingRequest(null);
       setViewingRequest(null);
       setViewingStep("details");
+      setPendingConflict(null);
       toast({ title: "Appointment scheduled", description: "The request has been marked as scheduled." });
     },
-    onError: () => toast({ title: "Failed to schedule appointment", variant: "destructive" }),
+    onError: (err: any, vars) => {
+      if (err?.isConflict) {
+        setPendingConflict({ conflicts: err.conflicts, request: vars.request, form: vars.form });
+        return;
+      }
+      toast({ title: "Failed to schedule appointment", variant: "destructive" });
+    },
   });
 
   const saveToPatientFile = useMutation({
@@ -1360,6 +1392,54 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
         </DialogContent>
       </Dialog>
 
+      {/* ── CONFLICT WARNING DIALOG ── */}
+      <Dialog open={!!pendingConflict} onOpenChange={v => { if (!v) setPendingConflict(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertCircle className="w-5 h-5" /> Time slot already booked
+            </DialogTitle>
+          </DialogHeader>
+          {pendingConflict && (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-700">
+                The time you picked overlaps with {pendingConflict.conflicts.length === 1 ? "an existing appointment" : `${pendingConflict.conflicts.length} existing appointments`}:
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg divide-y divide-amber-200">
+                {pendingConflict.conflicts.map(c => {
+                  const t = new Date(c.appointmentDate);
+                  return (
+                    <div key={c.id} className="p-2.5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-amber-800">{format(t, "HH:mm")}</span>
+                        <span className="font-medium text-amber-900">{c.patientName}</span>
+                        <span className="text-xs text-amber-600 ml-auto">{c.duration}m</span>
+                      </div>
+                      {c.scanType && <p className="text-xs text-amber-700 mt-0.5">{c.scanType}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500">
+                Pick a different time, or override and double-book this slot anyway.
+              </p>
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <Button variant="outline" onClick={() => setPendingConflict(null)} data-testid="button-pick-different-time">
+                  Pick a different time
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => scheduleAppointment.mutate({ request: pendingConflict.request, form: pendingConflict.form, force: true })}
+                  disabled={scheduleAppointment.isPending}
+                  data-testid="button-override-conflict"
+                >
+                  {scheduleAppointment.isPending ? "Booking…" : "Book anyway"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

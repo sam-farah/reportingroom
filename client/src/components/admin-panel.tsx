@@ -2601,6 +2601,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "18 Apr 2026",
+    tag: "Fix",
+    title: "Double-booking protection on the calendar",
+    detail:
+      "The system would previously let you schedule two patients on top of each other without any warning. Now, whenever you create or edit an appointment — from the calendar, from the booking dialog, or by scheduling off a scan request — the server checks for time overlaps with other appointments in your clinic.\n\nIf the slot you picked clashes with one or more existing appointments, a warning popup appears showing exactly which patients are already booked at that time, with their start time, scan type, and duration. You can then either pick a different time, or click \"Book anyway\" to override and double-book deliberately. Cancelled appointments are ignored.",
+  },
+  {
+    date: "18 Apr 2026",
     tag: "Improve",
     title: "Side-by-side scheduling from Scan Requests",
     detail:

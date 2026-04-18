@@ -494,36 +494,81 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     },
   });
 
+  // Conflict-handling state for create/update
+  const [conflictPrompt, setConflictPrompt] = useState<{
+    conflicts: { id: number; patientName: string; appointmentDate: string; duration: number; scanType: string }[];
+    mode: "create" | "update";
+    data: any;
+    id?: number;
+  } | null>(null);
+
+  const apptFetch = async (url: string, method: "POST" | "PUT", data: any) => {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    if (res.status === 409) {
+      const body = await res.json();
+      const err = new Error("appointment_conflict") as any;
+      err.isConflict = true;
+      err.conflicts = body.conflicts || [];
+      throw err;
+    }
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || `Failed (${res.status})`);
+    }
+    return res;
+  };
+
   const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return await apiRequest("/api/appointments", "POST", data);
-    },
+    mutationFn: async (data: any) => apptFetch("/api/appointments", "POST", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       toast({ title: "Success", description: "Appointment created successfully" });
       resetForm();
       setIsBookingDialogOpen(false);
+      setConflictPrompt(null);
     },
-    onError: (error: any) => {
+    onError: (error: any, vars) => {
+      if (error?.isConflict) {
+        setConflictPrompt({ conflicts: error.conflicts, mode: "create", data: vars });
+        return;
+      }
       toast({ title: "Error", description: error.message || "Failed to create appointment", variant: "destructive" });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      return await apiRequest(`/api/appointments/${id}`, "PUT", data);
-    },
+    mutationFn: async ({ id, data }: { id: number; data: any }) => apptFetch(`/api/appointments/${id}`, "PUT", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       toast({ title: "Success", description: "Appointment updated successfully" });
       resetForm();
       setEditingAppointment(null);
       setIsBookingDialogOpen(false);
+      setConflictPrompt(null);
     },
-    onError: (error: any) => {
+    onError: (error: any, vars) => {
+      if (error?.isConflict) {
+        setConflictPrompt({ conflicts: error.conflicts, mode: "update", data: vars.data, id: vars.id });
+        return;
+      }
       toast({ title: "Error", description: error.message || "Failed to update appointment", variant: "destructive" });
     },
   });
+
+  const confirmOverride = () => {
+    if (!conflictPrompt) return;
+    const data = { ...conflictPrompt.data, force: true };
+    if (conflictPrompt.mode === "create") {
+      createMutation.mutate(data);
+    } else if (conflictPrompt.id != null) {
+      updateMutation.mutate({ id: conflictPrompt.id, data });
+    }
+  };
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -2853,6 +2898,53 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 </div>
               );
             })()}
+          </DialogContent>
+        </Dialog>
+
+        {/* Conflict warning dialog */}
+        <Dialog open={!!conflictPrompt} onOpenChange={v => { if (!v) setConflictPrompt(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-amber-700">
+                <CalendarX2 className="w-5 h-5" /> Time slot already booked
+              </DialogTitle>
+            </DialogHeader>
+            {conflictPrompt && (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-700">
+                  This time overlaps with {conflictPrompt.conflicts.length === 1 ? "an existing appointment" : `${conflictPrompt.conflicts.length} existing appointments`}:
+                </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg divide-y divide-amber-200">
+                  {conflictPrompt.conflicts.map(c => {
+                    const t = new Date(c.appointmentDate);
+                    return (
+                      <div key={c.id} className="p-2.5 text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-semibold text-amber-800">{format(t, "HH:mm")}</span>
+                          <span className="font-medium text-amber-900">{c.patientName}</span>
+                          <span className="text-xs text-amber-600 ml-auto">{c.duration}m</span>
+                        </div>
+                        {c.scanType && <p className="text-xs text-amber-700 mt-0.5">{c.scanType}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500">Pick a different time, or override and double-book this slot anyway.</p>
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <Button variant="outline" onClick={() => setConflictPrompt(null)} data-testid="button-cancel-conflict">
+                    Pick a different time
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={confirmOverride}
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                    data-testid="button-override-conflict"
+                  >
+                    {(createMutation.isPending || updateMutation.isPending) ? "Booking…" : "Book anyway"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 
