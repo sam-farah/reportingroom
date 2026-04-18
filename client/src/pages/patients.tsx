@@ -757,18 +757,33 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     if (selectedDocument?.type === 'transmittedPdf') {
       const title = selectedDocument.meta?.title || 'Transmitted Report';
       const sentAt = selectedDocument.meta?.sentAt;
+      const pdfUrl = `/api/distributions/${selectedDocument.id}/pdf`;
       return (
-        <div className="h-full overflow-auto">
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Send className="w-4 h-4 text-emerald-600" />
-              <h2 className="font-semibold text-gray-800 dark:text-gray-200">{title}</h2>
+        <div className="h-full flex flex-col">
+          <div className="flex items-center justify-between gap-2 p-3 border-b bg-white dark:bg-gray-800">
+            <div className="flex items-center gap-2 min-w-0">
+              <Send className="w-4 h-4 text-emerald-600 shrink-0" />
+              <h2 className="font-semibold text-gray-800 dark:text-gray-200 truncate">{title}</h2>
               {sentAt && (
-                <span className="text-xs text-gray-500">· Sent {safeDateFormat(sentAt, "d MMM yyyy, h:mm a")}</span>
+                <span className="text-xs text-gray-500 shrink-0">· Sent {safeDateFormat(sentAt, "d MMM yyyy, h:mm a")}</span>
               )}
             </div>
-            <PdfViewer url={`/api/distributions/${selectedDocument.id}/pdf`} title={title} />
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50 shrink-0"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open in new tab
+            </a>
           </div>
+          <iframe
+            src={pdfUrl}
+            title={title}
+            className="flex-1 w-full bg-white"
+            style={{ minHeight: 600, border: 0 }}
+          />
         </div>
       );
     }
@@ -1110,25 +1125,6 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (selectedDocument?.type === 'transmittedPdf') {
-      const title = selectedDocument.meta?.title || 'Transmitted Report';
-      const sentAt = selectedDocument.meta?.sentAt;
-      return (
-        <div className="h-full overflow-auto">
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Send className="w-4 h-4 text-emerald-600" />
-              <h2 className="font-semibold text-gray-800 dark:text-gray-200">{title}</h2>
-              {sentAt && (
-                <span className="text-xs text-gray-500">· Sent {safeDateFormat(sentAt, "d MMM yyyy, h:mm a")}</span>
-              )}
-            </div>
-            <PdfViewer url={`/api/distributions/${selectedDocument.id}/pdf`} title={title} />
           </div>
         </div>
       );
