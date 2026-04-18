@@ -1313,49 +1313,6 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                   {/* ── RIGHT: Patient match / linking ── */}
                   <div className="space-y-3">
                     <PatientMatchAudit requestId={viewingRequest.id} onOpenPatient={onOpenPatient} />
-
-                {/* ── Save to Patient File section ── */}
-                {showPatientPicker && (
-                  <div className="border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-2">
-                    <p className="text-sm font-semibold text-blue-800">Select patient to save under:</p>
-                    <Input
-                      placeholder="Search patients…"
-                      value={savePatientSearch}
-                      onChange={e => setSavePatientSearch(e.target.value)}
-                      className="h-8 text-sm"
-                      autoFocus
-                    />
-                    {savePatientSearch.trim().length >= 2 && (
-                      <div className="max-h-36 overflow-y-auto border rounded bg-white shadow-sm">
-                        {savePatientResults.length > 0 ? savePatientResults.map(p => (
-                          <button
-                            key={p.id}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between border-b last:border-0"
-                            disabled={saveToPatientFile.isPending}
-                            onClick={() => {
-                              saveToPatientFile.mutate({
-                                requestId: viewingRequest.id,
-                                patientId: p.id,
-                                htmlContent: buildRequestHtml(viewingRequest),
-                              });
-                            }}
-                          >
-                            <span>{p.firstName} {p.lastName}</span>
-                            {p.urNumber && <span className="font-mono text-xs text-blue-600 bg-blue-50 border border-blue-200 px-1.5 rounded">UR {p.urNumber}</span>}
-                          </button>
-                        )) : (
-                          <p className="text-sm text-gray-400 px-3 py-2">No patients found</p>
-                        )}
-                      </div>
-                    )}
-                    {savePatientSearch.trim().length > 0 && savePatientSearch.trim().length < 2 && (
-                      <p className="text-xs text-gray-400">Type at least 2 characters to search</p>
-                    )}
-                    <Button variant="ghost" size="sm" className="text-xs text-gray-500" onClick={() => { setShowPatientPicker(false); setSavePatientSearch(""); }}>
-                      Cancel
-                    </Button>
-                  </div>
-                )}
                   </div>
                 </div>
 
@@ -1377,33 +1334,6 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                   <Button variant="outline" onClick={() => generateRequestPDF(viewingRequest)}>
                     <Printer className="w-4 h-4 mr-2" /> Print PDF
                   </Button>
-                  {savedRequestIds.has(viewingRequest.id) ? (
-                    <Button variant="outline" disabled className="text-green-600 border-green-300">
-                      <CheckCheck className="w-4 h-4 mr-2" /> Saved to File
-                    </Button>
-                  ) : viewingRequest.patientId ? (
-                    <Button
-                      variant="outline"
-                      className="text-blue-700 border-blue-300 hover:bg-blue-50"
-                      disabled={saveToPatientFile.isPending}
-                      onClick={() => saveToPatientFile.mutate({
-                        requestId: viewingRequest.id,
-                        patientId: viewingRequest.patientId!,
-                        htmlContent: buildRequestHtml(viewingRequest),
-                      })}
-                    >
-                      <FolderOpen className="w-4 h-4 mr-2" />
-                      {saveToPatientFile.isPending ? "Saving…" : "Save to Patient File"}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      className="text-blue-700 border-blue-300 hover:bg-blue-50"
-                      onClick={() => { setShowPatientPicker(true); setSavePatientSearch(""); }}
-                    >
-                      <FolderOpen className="w-4 h-4 mr-2" /> Save to Patient File
-                    </Button>
-                  )}
                   <Button variant="outline" onClick={() => { setViewingRequest(null); openEditRequest(viewingRequest); }}>
                     <Edit className="w-4 h-4 mr-2" /> Edit
                   </Button>
