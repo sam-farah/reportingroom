@@ -1107,7 +1107,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
 
   if (selectedPatient) {
     return (
-      <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
+      <div className="h-[calc(100vh-5.5rem)] flex flex-col bg-gray-100 dark:bg-gray-900">
         {/* Patient Header Bar */}
         <div className="bg-white dark:bg-gray-800 border-b shadow-sm px-3 py-2 md:px-4 md:py-3">
           {/* Mobile header */}
