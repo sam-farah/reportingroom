@@ -2602,6 +2602,13 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "17 Apr 2026",
     tag: "New",
+    title: "\"View Patient File\" button on scan requests",
+    detail:
+      "When viewing a scan request that's linked to a patient, a new \"View Patient File\" button now opens the patient's full record in one click — including their reports, worksheets, appointments, documents and notes. The button only appears once a patient is linked to the request.",
+  },
+  {
+    date: "17 Apr 2026",
+    tag: "New",
     title: "Web referrals are now auto-saved to the patient's file",
     detail:
       "When a referral comes in via the website (public form or referrer portal), the system now tries to match the patient to an existing record. If a match is found, a nicely formatted copy of the request — same layout as the printed PDF — is automatically saved into that patient's documents (titled \"Scan Request REQ-XXXXX\") and synced to their folder on disk. No clicks required.\n\nIf no patient match is found, the request still lands in your Pending queue as before. The moment a staff member links it to a patient (via the \"Save to patient file\" button or by editing the request and choosing a patient), the document is auto-created at that point.\n\nDuplicate-protection: if a request is already filed for a patient, it won't create a second copy.",

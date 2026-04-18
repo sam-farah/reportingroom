@@ -97,7 +97,7 @@ const blankDoctor = (): DoctorFormData => ({
   notes: "",
 });
 
-export default function Requests() {
+export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId: number) => void } = {}) {
   const { toast } = useToast();
 
   // ── Requests state ────────────────────────────────────────────────
@@ -1145,6 +1145,19 @@ export default function Requests() {
 
                 <div className="flex justify-end gap-2 pt-2 border-t flex-wrap">
                   <Button variant="outline" onClick={() => setViewingRequest(null)}>Close</Button>
+                  {viewingRequest.patientId && onOpenPatient && (
+                    <Button
+                      variant="outline"
+                      className="text-indigo-700 border-indigo-300 hover:bg-indigo-50"
+                      onClick={() => {
+                        const pid = viewingRequest.patientId!;
+                        setViewingRequest(null);
+                        onOpenPatient(pid);
+                      }}
+                    >
+                      <User className="w-4 h-4 mr-2" /> View Patient File
+                    </Button>
+                  )}
                   <Button variant="outline" onClick={() => generateRequestPDF(viewingRequest)}>
                     <Printer className="w-4 h-4 mr-2" /> Print PDF
                   </Button>

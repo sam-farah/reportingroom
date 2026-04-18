@@ -217,7 +217,7 @@ export default function Dashboard() {
       ) : activePanel === "patients" ? (
         <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
       ) : activePanel === "requests" ? (
-        <Requests />
+        <Requests onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }} />
       ) : activePanel === "contacts" ? (
         <Contacts />
       ) : activePanel === "templates" ? (
