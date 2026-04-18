@@ -324,6 +324,8 @@ export const patients = pgTable("patients", {
   notes: text("notes"),
   clinicId: integer("clinic_id").references(() => clinics.id),
   isActive: boolean("is_active").notNull().default(true),
+  archivedAt: timestamp("archived_at"),
+  archivedReason: text("archived_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

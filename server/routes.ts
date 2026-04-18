@@ -917,6 +917,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Archive a patient file (deceased / test patient / etc).
+  // Requires the user's password to be confirmed.
+  app.post("/api/patients/:id/archive", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { password, reason } = req.body as { password?: string; reason?: string };
+      if (!password) return res.status(400).json({ error: "Password is required to archive" });
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ error: "Unable to verify your account" });
+      }
+      const ok = await bcrypt.compare(password, user.passwordHash);
+      if (!ok) return res.status(401).json({ error: "Incorrect password" });
+
+      const patient = await storage.getPatient(id);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+
+      const updated = await storage.updatePatient(id, {
+        isActive: false,
+        archivedAt: new Date(),
+        archivedReason: reason || null,
+      } as any);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error archiving patient:", error);
+      res.status(500).json({ error: "Failed to archive patient" });
+    }
+  });
+
+  // Restore an archived patient. Also requires password.
+  app.post("/api/patients/:id/unarchive", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { password } = req.body as { password?: string };
+      if (!password) return res.status(400).json({ error: "Password is required to restore" });
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ error: "Unable to verify your account" });
+      }
+      const ok = await bcrypt.compare(password, user.passwordHash);
+      if (!ok) return res.status(401).json({ error: "Incorrect password" });
+
+      const updated = await storage.updatePatient(id, {
+        isActive: true,
+        archivedAt: null,
+        archivedReason: null,
+      } as any);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error restoring patient:", error);
+      res.status(500).json({ error: "Failed to restore patient" });
+    }
+  });
+
   // Patient self-registration: send registration form link
   app.post("/api/patients/:id/send-registration", isAuthenticated, async (req, res) => {
     try {

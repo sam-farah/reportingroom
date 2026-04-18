@@ -139,6 +139,11 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
   const [newNoteContent, setNewNoteContent] = useState("");
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [showNotesDialog, setShowNotesDialog] = useState(false);
+  const [viewMode, setViewMode] = useState<"active" | "archived">("active");
+  const [archiveModal, setArchiveModal] = useState<{ patient: Patient; mode: "archive" | "restore" } | null>(null);
+  const [archivePassword, setArchivePassword] = useState("");
+  const [archiveReason, setArchiveReason] = useState("");
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     urNumber: "",
@@ -442,6 +447,36 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to update patient", variant: "destructive" });
     },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async ({ id, mode, password, reason }: { id: number; mode: "archive" | "restore"; password: string; reason?: string }) => {
+      const res = await apiRequest(
+        `/api/patients/${id}/${mode === "archive" ? "archive" : "unarchive"}`,
+        "POST",
+        mode === "archive" ? { password, reason } : { password },
+      );
+      return res.json();
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+      toast({
+        title: vars.mode === "archive" ? "Patient archived" : "Patient restored",
+        description: vars.mode === "archive"
+          ? "The patient file has been moved to archives."
+          : "The patient has been restored to active records.",
+      });
+      setArchiveModal(null);
+      setArchivePassword("");
+      setArchiveReason("");
+      setIsDialogOpen(false);
+      setEditingPatient(null);
+      setSelectedPatient(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Could not complete", description: error?.message || "Failed", variant: "destructive" });
+    },
+    onSettled: () => setArchiveSubmitting(false),
   });
 
   const deleteMutation = useMutation({
@@ -1890,13 +1925,132 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   <Textarea value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} rows={2} />
                 </div>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>Cancel</Button>
-                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingPatient ? "Update" : "Add Patient"}
-                </Button>
+              <div className="flex flex-wrap justify-between gap-2 pt-2 border-t">
+                <div>
+                  {editingPatient && editingPatient.isActive !== false && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-red-700 border-red-300 hover:bg-red-50"
+                      onClick={() => {
+                        setArchivePassword("");
+                        setArchiveReason("");
+                        setArchiveModal({ patient: editingPatient, mode: "archive" });
+                      }}
+                      data-testid="button-archive-patient"
+                    >
+                      <Archive className="w-4 h-4 mr-2" /> Archive Patient
+                    </Button>
+                  )}
+                  {editingPatient && editingPatient.isActive === false && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                      onClick={() => {
+                        setArchivePassword("");
+                        setArchiveReason("");
+                        setArchiveModal({ patient: editingPatient, mode: "restore" });
+                      }}
+                      data-testid="button-restore-patient"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" /> Restore Patient
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>Cancel</Button>
+                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                    {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingPatient ? "Update" : "Add Patient"}
+                  </Button>
+                </div>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Archive / Restore confirmation with password */}
+        <Dialog open={!!archiveModal} onOpenChange={(open) => { if (!open) { setArchiveModal(null); setArchivePassword(""); setArchiveReason(""); } }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {archiveModal?.mode === "archive" ? "Archive patient file" : "Restore patient file"}
+              </DialogTitle>
+            </DialogHeader>
+            {archiveModal && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!archivePassword) return;
+                  setArchiveSubmitting(true);
+                  archiveMutation.mutate({
+                    id: archiveModal.patient.id,
+                    mode: archiveModal.mode,
+                    password: archivePassword,
+                    reason: archiveReason,
+                  });
+                }}
+                className="space-y-4"
+              >
+                <div className={`text-sm rounded-md p-3 border ${archiveModal.mode === "archive" ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-emerald-50 border-emerald-200 text-emerald-900"}`}>
+                  {archiveModal.mode === "archive" ? (
+                    <>You're about to archive <strong>{archiveModal.patient.firstName} {archiveModal.patient.lastName}</strong>. The file will be hidden from the active patient list but can still be searched in the Archived tab and restored at any time.</>
+                  ) : (
+                    <>You're about to restore <strong>{archiveModal.patient.firstName} {archiveModal.patient.lastName}</strong> back to the active patient list.</>
+                  )}
+                </div>
+
+                {archiveModal.mode === "archive" && (
+                  <div>
+                    <Label htmlFor="archive-reason">Reason (optional)</Label>
+                    <Select value={archiveReason} onValueChange={setArchiveReason}>
+                      <SelectTrigger className="mt-1" data-testid="select-archive-reason">
+                        <SelectValue placeholder="Select a reason..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Test patient">Test patient</SelectItem>
+                        <SelectItem value="Deceased">Deceased</SelectItem>
+                        <SelectItem value="Duplicate record">Duplicate record</SelectItem>
+                        <SelectItem value="Patient transferred care">Patient transferred care</SelectItem>
+                        <SelectItem value="Inactive / no longer attending">Inactive / no longer attending</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="archive-password">Confirm with your password</Label>
+                  <Input
+                    id="archive-password"
+                    type="password"
+                    autoComplete="current-password"
+                    className="mt-1"
+                    value={archivePassword}
+                    onChange={(e) => setArchivePassword(e.target.value)}
+                    placeholder="Your account password"
+                    autoFocus
+                    data-testid="input-archive-password"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => { setArchiveModal(null); setArchivePassword(""); setArchiveReason(""); }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={!archivePassword || archiveSubmitting || archiveMutation.isPending}
+                    className={archiveModal.mode === "archive" ? "bg-red-600 hover:bg-red-700 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+                    data-testid="button-confirm-archive"
+                  >
+                    {archiveSubmitting || archiveMutation.isPending
+                      ? "Working..."
+                      : archiveModal.mode === "archive" ? "Archive Patient" : "Restore Patient"}
+                  </Button>
+                </div>
+              </form>
+            )}
           </DialogContent>
         </Dialog>
       </div>
@@ -1917,12 +2071,40 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
           </Button>
         </div>
 
+        {(() => {
+          const activeCount = patients.filter(p => p.isActive !== false).length;
+          const archivedCount = patients.filter(p => p.isActive === false).length;
+          return (
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setViewMode("active")}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${viewMode === "active" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+                data-testid="tab-active-patients"
+              >
+                Active
+                <span className={`px-1.5 py-0 rounded text-xs font-mono ${viewMode === "active" ? "bg-white/20" : "bg-gray-100"}`}>{activeCount}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("archived")}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${viewMode === "archived" ? "bg-gray-600 text-white border-gray-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+                data-testid="tab-archived-patients"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                Archived
+                <span className={`px-1.5 py-0 rounded text-xs font-mono ${viewMode === "archived" ? "bg-white/20" : "bg-gray-100"}`}>{archivedCount}</span>
+              </button>
+            </div>
+          );
+        })()}
+
         <Card className="mb-6">
           <CardContent className="pt-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Search patients by name, phone, or email..."
+                placeholder={viewMode === "archived" ? "Search archived patients..." : "Search patients by name, phone, or email..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -1945,7 +2127,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
           </Card>
         ) : (
           <div className="grid gap-4">
-            {patients.filter(p => p.isActive !== false).map((patient) => (
+            {patients.filter(p => viewMode === "archived" ? p.isActive === false : p.isActive !== false).map((patient) => (
               <Card 
                 key={patient.id} 
                 className="cursor-pointer hover:shadow-md transition-shadow"
