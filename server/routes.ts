@@ -4623,6 +4623,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch { res.status(500).json({ error: "Failed to fetch scan request" }); }
   });
 
+  // Patient-match audit for a scan request: shows whether it was linked, and similar candidates
+  app.get("/api/scan-requests/:id/match-audit", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const id = parseInt(req.params.id);
+      const request = await storage.getScanRequest(id);
+      if (!request || request.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+
+      const linkedPatient = request.patientId ? await storage.getPatient(request.patientId) : null;
+      const allPatients = (await storage.getAllPatients()).filter((p) => p.clinicId === clinicId);
+
+      const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+      const reqName = norm(request.patientName || "");
+      const reqDob = (request.patientDob || "").trim();
+      const reqPhoneDigits = (request.patientPhone || "").replace(/\D/g, "");
+
+      // Levenshtein distance (small strings, fine)
+      const lev = (a: string, b: string): number => {
+        if (a === b) return 0;
+        if (!a.length) return b.length;
+        if (!b.length) return a.length;
+        const v0 = new Array(b.length + 1).fill(0).map((_, i) => i);
+        const v1 = new Array(b.length + 1).fill(0);
+        for (let i = 0; i < a.length; i++) {
+          v1[0] = i + 1;
+          for (let j = 0; j < b.length; j++) {
+            const cost = a[i] === b[j] ? 0 : 1;
+            v1[j + 1] = Math.min(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost);
+          }
+          for (let j = 0; j <= b.length; j++) v0[j] = v1[j];
+        }
+        return v1[b.length];
+      };
+
+      const candidates = allPatients
+        .filter((p) => !linkedPatient || p.id !== linkedPatient.id)
+        .map((p) => {
+          const pName = norm(`${p.firstName} ${p.lastName}`);
+          const pPhoneDigits = (p.phone || "").replace(/\D/g, "");
+          const reasons: string[] = [];
+          let score = 0;
+
+          if (pName === reqName) { reasons.push("Name match"); score += 5; }
+          else if (reqName.length > 2 && pName.length > 2) {
+            const dist = lev(pName, reqName);
+            const maxLen = Math.max(pName.length, reqName.length);
+            if (dist <= 2 || dist / maxLen <= 0.2) {
+              reasons.push(`Similar name (${dist} char diff)`);
+              score += 2;
+            }
+          }
+          if (reqDob && p.dateOfBirth === reqDob) { reasons.push("DOB match"); score += 4; }
+          if (reqPhoneDigits.length >= 8 && pPhoneDigits === reqPhoneDigits) { reasons.push("Phone match"); score += 4; }
+          if (request.patientEmail && p.email && p.email.toLowerCase() === request.patientEmail.toLowerCase()) {
+            reasons.push("Email match"); score += 3;
+          }
+
+          return { patient: p, reasons, score };
+        })
+        .filter((c) => c.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map((c) => ({
+          id: c.patient.id,
+          urNumber: c.patient.urNumber,
+          firstName: c.patient.firstName,
+          lastName: c.patient.lastName,
+          dateOfBirth: c.patient.dateOfBirth,
+          phone: c.patient.phone,
+          email: c.patient.email,
+          reasons: c.reasons,
+          score: c.score,
+        }));
+
+      const isExternal = request.source === "web_form" || request.source === "referrer_portal";
+
+      res.json({
+        source: request.source,
+        isExternal,
+        linkedPatient: linkedPatient ? {
+          id: linkedPatient.id,
+          urNumber: linkedPatient.urNumber,
+          firstName: linkedPatient.firstName,
+          lastName: linkedPatient.lastName,
+          dateOfBirth: linkedPatient.dateOfBirth,
+          phone: linkedPatient.phone,
+          email: linkedPatient.email,
+        } : null,
+        wasAutoMatched: !!linkedPatient && isExternal,
+        candidates,
+        requestSnapshot: {
+          patientName: request.patientName,
+          patientDob: request.patientDob,
+          patientPhone: request.patientPhone,
+          patientEmail: request.patientEmail,
+        },
+      });
+    } catch (err) {
+      console.error("match-audit error:", err);
+      res.status(500).json({ error: "Failed to compute match audit" });
+    }
+  });
+
   app.post("/api/scan-requests", isAuthenticated, async (req: any, res) => {
     try {
       const clinicId = req.user?.clinicId;

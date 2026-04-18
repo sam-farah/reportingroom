@@ -18,7 +18,8 @@ import {
   Plus, Search, Edit, Trash2, User, Phone, Mail, Stethoscope,
   ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
   MapPin, Hash, Building2, ChevronRight, X, Printer, Globe, CalendarPlus,
-  FolderOpen, CheckCheck, Send, Mailbox, ShieldCheck, ArrowUpDown, CalendarDays
+  FolderOpen, CheckCheck, Send, Mailbox, ShieldCheck, ArrowUpDown, CalendarDays,
+  UserCheck, Users, Link2
 } from "lucide-react";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment } from "@shared/schema";
@@ -75,6 +76,113 @@ const blankRequest = (): RequestFormData => ({
   notes: "",
   requestDate: format(new Date(), "yyyy-MM-dd"),
 });
+
+interface MatchAuditCandidate {
+  id: number;
+  urNumber: string | null;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string | null;
+  phone: string | null;
+  email: string | null;
+  reasons: string[];
+  score: number;
+}
+interface MatchAudit {
+  source: string;
+  isExternal: boolean;
+  linkedPatient: { id: number; urNumber: string | null; firstName: string; lastName: string; dateOfBirth: string | null; phone: string | null; email: string | null } | null;
+  wasAutoMatched: boolean;
+  candidates: MatchAuditCandidate[];
+  requestSnapshot: { patientName: string; patientDob: string | null; patientPhone: string | null; patientEmail: string | null };
+}
+
+function PatientMatchAudit({ requestId }: { requestId: number }) {
+  const { data, isLoading } = useQuery<MatchAudit>({ queryKey: ["/api/scan-requests", requestId, "match-audit"] });
+
+  if (isLoading || !data) {
+    return (
+      <div className="border rounded-lg p-3 bg-gray-50 text-xs text-gray-400">Checking patient matching…</div>
+    );
+  }
+
+  const { linkedPatient, wasAutoMatched, isExternal, candidates } = data;
+
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      <div className={`px-3 py-2 flex items-center gap-2 ${linkedPatient ? "bg-emerald-50 border-b border-emerald-100" : "bg-amber-50 border-b border-amber-100"}`}>
+        {linkedPatient ? <UserCheck className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-amber-600" />}
+        <p className={`text-xs font-semibold uppercase tracking-wide ${linkedPatient ? "text-emerald-800" : "text-amber-800"}`}>
+          Patient Match Audit
+        </p>
+      </div>
+
+      <div className="p-3 space-y-3 bg-white">
+        {linkedPatient ? (
+          <div>
+            <p className="text-xs text-gray-500 mb-1">
+              {wasAutoMatched
+                ? "✓ Auto-matched to existing patient (name + DOB or name + phone)"
+                : isExternal
+                  ? "✓ Linked to existing patient"
+                  : "✓ Linked to patient (selected when request was created)"}
+            </p>
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded p-2">
+              <span className="font-semibold text-sm">{linkedPatient.firstName} {linkedPatient.lastName}</span>
+              {linkedPatient.urNumber && (
+                <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {linkedPatient.urNumber}</span>
+              )}
+              {linkedPatient.dateOfBirth && <span className="text-xs text-gray-600">DOB: {linkedPatient.dateOfBirth}</span>}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+              {isExternal
+                ? "⚠ No patient linked. The system did not find a matching patient (requires exact name + DOB or name + phone). No new patient was auto-created."
+                : "⚠ No patient linked yet."}
+            </p>
+          </div>
+        )}
+
+        {candidates.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+              <Users className="w-3 h-3" />
+              Possible {linkedPatient ? "alternatives" : "matches"} found
+            </p>
+            <div className="space-y-1.5">
+              {candidates.map((c) => (
+                <div key={c.id} className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded p-2">
+                  <Link2 className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm">{c.firstName} {c.lastName}</span>
+                      {c.urNumber && (
+                        <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {c.urNumber}</span>
+                      )}
+                      {c.dateOfBirth && <span className="text-xs text-gray-500">DOB: {c.dateOfBirth}</span>}
+                      {c.phone && <span className="text-xs text-gray-500">{c.phone}</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {c.reasons.map((r) => (
+                        <span key={r} className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">{r}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {candidates.length === 0 && !linkedPatient && (
+          <p className="text-xs text-gray-400 italic">No similar patients found in your clinic.</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId: number) => void } = {}) {
   const { toast } = useToast();
@@ -1075,6 +1183,9 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                     <p className="text-sm text-gray-700">{viewingRequest.notes}</p>
                   </div>
                 )}
+
+                {/* ── Patient Match Audit ── */}
+                <PatientMatchAudit requestId={viewingRequest.id} />
 
                 {/* ── Save to Patient File section ── */}
                 {showPatientPicker && (
