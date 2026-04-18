@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Mic, Square, RefreshCw } from 'lucide-react';
+import { Mic, Square, RefreshCw, Pause, Play } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AudioMeter from '@/components/audio-meter';
 
@@ -19,6 +19,7 @@ interface AudioDevice {
 export default function InlineVoiceRecorder({ fieldName, onTranscription, onClose }: InlineVoiceRecorderProps) {
   const { toast } = useToast();
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
@@ -27,15 +28,34 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const isRecordingRef = useRef<boolean>(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Hard-release the mic and all audio plumbing
+  const releaseMic = () => {
+    try { sourceRef.current?.disconnect(); } catch (_) {}
+    sourceRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
+      streamRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      try { audioContextRef.current.close(); } catch (_) {}
+    }
+    audioContextRef.current = null;
+    setAnalyser(null);
+  };
+
   const refreshDevices = async () => {
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Briefly request mic permission so labels are populated, then immediately release
+      const probeStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      probeStream.getTracks().forEach(t => t.stop());
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices
         .filter(device => device.kind === 'audioinput' && device.deviceId !== 'default')
@@ -52,14 +72,12 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
     }
   };
 
-  // Get available audio devices and auto-start recording
+  // On mount: enumerate devices and let the user pick — do NOT auto-start
   useEffect(() => {
     (async () => {
       const audioInputs = await refreshDevices();
       if (audioInputs.length > 0) {
-        const deviceId = audioInputs[0].deviceId;
-        setSelectedDevice(deviceId);
-        setTimeout(() => startRecordingWithDevice(deviceId), 100);
+        setSelectedDevice(audioInputs[0].deviceId);
       } else {
         setNoMicFound(true);
       }
@@ -69,6 +87,8 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
 
   const startRecordingWithDevice = async (deviceId?: string) => {
     const targetDevice = deviceId || selectedDevice;
+    // Make sure no leftover stream is hogging the mic
+    releaseMic();
     try {
       const constraints = {
         audio: {
@@ -79,38 +99,35 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
 
-      audioContextRef.current = new AudioContext();
-      const source = audioContextRef.current.createMediaStreamSource(stream);
-      const an = audioContextRef.current.createAnalyser();
+      const ctx = new AudioContext();
+      audioContextRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      sourceRef.current = source;
+      const an = ctx.createAnalyser();
       an.fftSize = 1024;
       an.smoothingTimeConstant = 0.6;
       source.connect(an);
       setAnalyser(an);
 
-      mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      mediaRecorderRef.current.onstop = async () => {
+      recorder.onstop = async () => {
+        // Always release the mic on stop, regardless of why we stopped
+        releaseMic();
+
+        // If we were stopped just to switch devices or were closed, don't transcribe
+        if (!isRecordingRef.current) return;
+        isRecordingRef.current = false;
+
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
-
-        stream.getTracks().forEach(track => track.stop());
-
-        setAnalyser(null);
-        if (audioContextRef.current?.state !== 'closed') {
-          audioContextRef.current?.close();
-        }
-        audioContextRef.current = null;
-
         if (audioBlob.size < 1000) {
           toast({
             title: "Recording too short",
@@ -120,19 +137,19 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
           });
           return;
         }
-
         await processTranscription(audioBlob);
       };
 
-      mediaRecorderRef.current.start();
+      recorder.start();
       isRecordingRef.current = true;
       setIsRecording(true);
+      setIsPaused(false);
       setRecordingTime(0);
 
+      if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
-
 
       toast({
         title: "🎤 Recording Started",
@@ -142,6 +159,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
 
     } catch (error) {
       console.error('Error starting recording:', error);
+      releaseMic();
       setNoMicFound(true);
       toast({
         title: "Recording Error",
@@ -151,13 +169,34 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      isRecordingRef.current = false;
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try { mediaRecorderRef.current.pause(); } catch (_) {}
+      setIsPaused(true);
       if (timerRef.current) clearInterval(timerRef.current);
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+      try { mediaRecorderRef.current.resume(); } catch (_) {}
+      setIsPaused(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && (mediaRecorderRef.current.state === 'recording' || mediaRecorderRef.current.state === 'paused')) {
+      // Keep isRecordingRef true so onstop handler knows to transcribe
+      try { mediaRecorderRef.current.stop(); } catch (_) {}
+      setIsRecording(false);
+      setIsPaused(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      // Belt-and-braces: release the mic immediately so the browser's mic indicator turns off
+      releaseMic();
 
       toast({
         title: "🔄 Processing Recording",
@@ -167,22 +206,36 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
     }
   };
 
-  const handleClose = () => {
-    // Cancel any in-flight transcription request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+  const handleDeviceChange = (newDeviceId: string) => {
+    if (isRecording) {
+      // Discard the in-progress recording and restart fresh on the new mic
+      isRecordingRef.current = false; // skip transcription in onstop
+      try { mediaRecorderRef.current?.stop(); } catch (_) {}
+      releaseMic();
+      audioChunksRef.current = [];
+      setSelectedDevice(newDeviceId);
+      setIsRecording(false);
+      setIsPaused(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRecordingTime(0);
+      toast({
+        title: "Microphone changed",
+        description: "Recording was reset. Click Start to begin again on the new mic.",
+        duration: 3000,
+      });
+    } else {
+      setSelectedDevice(newDeviceId);
     }
-    // Stop microphone if still recording
-    if (mediaRecorderRef.current && isRecordingRef.current) {
-      isRecordingRef.current = false;
+  };
+
+  const handleClose = () => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    isRecordingRef.current = false;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try { mediaRecorderRef.current.stop(); } catch (_) {}
     }
     if (timerRef.current) clearInterval(timerRef.current);
-    setAnalyser(null);
-    if (audioContextRef.current?.state !== 'closed') {
-      audioContextRef.current?.close();
-    }
-    audioContextRef.current = null;
+    releaseMic();
     onClose();
   };
 
@@ -260,12 +313,18 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Cleanup on unmount — make sure the mic is fully released
   useEffect(() => {
     return () => {
+      isRecordingRef.current = false;
       if (abortControllerRef.current) abortControllerRef.current.abort();
-      if (audioContextRef.current?.state !== 'closed') audioContextRef.current?.close();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try { mediaRecorderRef.current.stop(); } catch (_) {}
+      }
       if (timerRef.current) clearInterval(timerRef.current);
+      releaseMic();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -275,7 +334,6 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
           <Mic className="w-3.5 h-3.5" />
           Voice Recording — {fieldName}
         </h4>
-        {/* Close is always available — stops recording + cancels processing */}
         <Button variant="ghost" size="sm" onClick={handleClose}>
           ✕
         </Button>
@@ -294,14 +352,14 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
               variant="ghost"
               size="sm"
               className="h-6 px-1.5 text-[11px] text-gray-500"
-              disabled={isRecording}
+              disabled={isRecording && !isPaused}
               onClick={refreshDevices}
             >
               <RefreshCw className="w-3 h-3 mr-1" /> Refresh
             </Button>
           </div>
-          <Select value={selectedDevice} onValueChange={setSelectedDevice} disabled={isRecording}>
-            <SelectTrigger className="h-8 text-sm">
+          <Select value={selectedDevice} onValueChange={handleDeviceChange} disabled={isRecording && !isPaused}>
+            <SelectTrigger className="h-8 text-sm" data-testid="select-mic-device">
               <SelectValue placeholder="Select microphone" />
             </SelectTrigger>
             <SelectContent>
@@ -312,15 +370,27 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
               ))}
             </SelectContent>
           </Select>
+          {!isRecording && !isProcessing && (
+            <p className="text-[11px] text-gray-500">Pick your microphone, then click Start.</p>
+          )}
+          {isPaused && (
+            <p className="text-[11px] text-amber-600">Paused — pick a different mic to switch (this resets the recording).</p>
+          )}
         </div>
       )}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          {isRecording && (
+          {isRecording && !isPaused && (
             <div className="flex items-center space-x-2 text-red-600">
               <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
               <span className="text-sm font-medium">RECORDING</span>
+            </div>
+          )}
+          {isRecording && isPaused && (
+            <div className="flex items-center space-x-2 text-amber-600">
+              <Pause className="w-3 h-3" />
+              <span className="text-sm font-medium">PAUSED</span>
             </div>
           )}
           {isProcessing && (
@@ -330,7 +400,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
             </div>
           )}
           {(isRecording || recordingTime > 0) && !isProcessing && (
-            <span className={`font-mono text-sm ${isRecording ? 'text-red-600' : 'text-gray-600'}`}>
+            <span className={`font-mono text-sm ${isRecording && !isPaused ? 'text-red-600' : isPaused ? 'text-amber-600' : 'text-gray-600'}`}>
               {formatTime(recordingTime)}
             </span>
           )}
@@ -343,9 +413,34 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
               disabled={!selectedDevice}
               size="sm"
               className="bg-red-600 hover:bg-red-700 text-white"
+              data-testid="button-start-recording"
             >
               <Mic className="w-4 h-4 mr-1" />
               Start
+            </Button>
+          )}
+          {isRecording && !isPaused && (
+            <Button
+              onClick={pauseRecording}
+              size="sm"
+              variant="outline"
+              className="border-amber-600 text-amber-700 hover:bg-amber-50"
+              data-testid="button-pause-recording"
+            >
+              <Pause className="w-4 h-4 mr-1" />
+              Pause
+            </Button>
+          )}
+          {isRecording && isPaused && (
+            <Button
+              onClick={resumeRecording}
+              size="sm"
+              variant="outline"
+              className="border-green-600 text-green-700 hover:bg-green-50"
+              data-testid="button-resume-recording"
+            >
+              <Play className="w-4 h-4 mr-1" />
+              Resume
             </Button>
           )}
           {isRecording && (
@@ -354,6 +449,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
               size="sm"
               variant="outline"
               className="border-red-600 text-red-600 hover:bg-red-50"
+              data-testid="button-stop-recording"
             >
               <Square className="w-4 h-4 mr-1" />
               Stop &amp; Transcribe
@@ -372,16 +468,19 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
         </div>
       </div>
 
-      {isRecording && (
-        <AudioMeter analyser={analyser} active={isRecording} height={56} bars={36} />
+      {isRecording && !isPaused && (
+        <AudioMeter analyser={analyser} active={isRecording && !isPaused} height={56} bars={36} />
       )}
 
       <div className="text-xs text-gray-500">
         {!isRecording && !isProcessing && !noMicFound && (
-          <p>Click "Start" to begin. Speak clearly then click "Stop &amp; Transcribe".</p>
+          <p>Pick a microphone above, then click "Start". Speak clearly then click "Stop &amp; Transcribe".</p>
         )}
-        {isRecording && (
-          <p>Speak now… click "Stop &amp; Transcribe" when finished.</p>
+        {isRecording && !isPaused && (
+          <p>Speak now… click "Pause" to swap microphones or "Stop &amp; Transcribe" when finished.</p>
+        )}
+        {isPaused && (
+          <p>Recording is paused. Click Resume to continue, or change microphone to start over.</p>
         )}
         {isProcessing && (
           <p>Processing with Whisper AI. You can cancel at any time.</p>
