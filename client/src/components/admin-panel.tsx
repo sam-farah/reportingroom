@@ -2601,6 +2601,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "18 Apr 2026",
+    tag: "New",
+    title: "To-do list on the calendar page",
+    detail:
+      "A simple shared task list now sits in the calendar sidebar, directly under the mini date picker. It has two tabs — \"To do\" for active items and \"Done\" for completed ones — with a count badge on each. Tap the + button at the bottom to add a new task, hit Enter to save, or Escape to cancel. Tick the checkbox to mark a task done (it slides over to the Done tab); hover any task to reveal a delete button. The list is shared across everyone in the clinic.",
+  },
+  {
+    date: "18 Apr 2026",
     tag: "Improve",
     title: "Referring doctors consolidated under Contacts",
     detail:

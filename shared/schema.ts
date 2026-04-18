@@ -720,6 +720,20 @@ export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 
+// Simple to-do list shown in the calendar sidebar
+export const calendarTasks = pgTable("calendar_tasks", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  text: text("text").notNull(),
+  completed: boolean("completed").notNull().default(false),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCalendarTaskSchema = createInsertSchema(calendarTasks).omit({ id: true, createdAt: true, completedAt: true });
+export type CalendarTask = typeof calendarTasks.$inferSelect;
+export type InsertCalendarTask = z.infer<typeof insertCalendarTaskSchema>;
+
 // Report distribution log
 export const reportDistributions = pgTable("report_distributions", {
   id: serial("id").primaryKey(),

@@ -70,6 +70,9 @@ import {
   calendarEvents,
   type CalendarEvent,
   type InsertCalendarEvent,
+  calendarTasks,
+  type CalendarTask,
+  type InsertCalendarTask,
   reportDistributions,
   type ReportDistribution,
   type InsertReportDistribution,
@@ -215,6 +218,12 @@ export interface IStorage {
   createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent>;
   updateCalendarEvent(id: number, event: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
   deleteCalendarEvent(id: number): Promise<void>;
+
+  // Calendar task (to-do) operations
+  getCalendarTasks(clinicId: number): Promise<CalendarTask[]>;
+  createCalendarTask(task: InsertCalendarTask): Promise<CalendarTask>;
+  updateCalendarTask(id: number, task: Partial<InsertCalendarTask> & { completed?: boolean }): Promise<CalendarTask | undefined>;
+  deleteCalendarTask(id: number): Promise<void>;
 
   // Patient operations
   getAllPatients(): Promise<Patient[]>;
@@ -1079,6 +1088,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCalendarEvent(id: number): Promise<void> {
     await db.delete(calendarEvents).where(eq(calendarEvents.id, id));
+  }
+
+  // Calendar task operations
+  async getCalendarTasks(clinicId: number): Promise<CalendarTask[]> {
+    return await db
+      .select()
+      .from(calendarTasks)
+      .where(eq(calendarTasks.clinicId, clinicId))
+      .orderBy(desc(calendarTasks.createdAt));
+  }
+
+  async createCalendarTask(task: InsertCalendarTask): Promise<CalendarTask> {
+    const [created] = await db.insert(calendarTasks).values(task).returning();
+    return created;
+  }
+
+  async updateCalendarTask(id: number, task: Partial<InsertCalendarTask> & { completed?: boolean }): Promise<CalendarTask | undefined> {
+    const patch: any = { ...task };
+    if (typeof task.completed === "boolean") {
+      patch.completedAt = task.completed ? new Date() : null;
+    }
+    const [updated] = await db.update(calendarTasks).set(patch).where(eq(calendarTasks.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCalendarTask(id: number): Promise<void> {
+    await db.delete(calendarTasks).where(eq(calendarTasks.id, id));
   }
 
   // Patient operations

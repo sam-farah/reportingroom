@@ -643,6 +643,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Calendar Tasks (to-do list shown in calendar sidebar)
+  app.get("/api/calendar-tasks", isAuthenticated, async (req, res) => {
+    try {
+      const clinicId = (req as any).user?.clinicId;
+      if (!clinicId) return res.json([]);
+      const tasks = await storage.getCalendarTasks(clinicId);
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error fetching calendar tasks:", error);
+      res.status(500).json({ error: "Failed to fetch tasks" });
+    }
+  });
+
+  app.post("/api/calendar-tasks", isAuthenticated, async (req, res) => {
+    try {
+      const clinicId = (req as any).user?.clinicId ?? null;
+      const text = String(req.body?.text ?? "").trim();
+      if (!text) return res.status(400).json({ error: "Text is required" });
+      const task = await storage.createCalendarTask({ clinicId, text, completed: false });
+      res.status(201).json(task);
+    } catch (error) {
+      console.error("Error creating calendar task:", error);
+      res.status(500).json({ error: "Failed to create task" });
+    }
+  });
+
+  app.patch("/api/calendar-tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const patch: any = {};
+      if (typeof req.body?.text === "string") patch.text = req.body.text;
+      if (typeof req.body?.completed === "boolean") patch.completed = req.body.completed;
+      const updated = await storage.updateCalendarTask(id, patch);
+      if (!updated) return res.status(404).json({ error: "Task not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating calendar task:", error);
+      res.status(500).json({ error: "Failed to update task" });
+    }
+  });
+
+  app.delete("/api/calendar-tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCalendarTask(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting calendar task:", error);
+      res.status(500).json({ error: "Failed to delete task" });
+    }
+  });
+
   // Patients API
   app.get("/api/patients", isAuthenticated, async (req, res) => {
     try {

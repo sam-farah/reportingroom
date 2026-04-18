@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, addYears, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
-import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent, ReminderLog } from "@shared/schema";
+import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent, ReminderLog, CalendarTask } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
 function parseReferralNotes(notes: string | null | undefined): { referrerName: string | null; cleanNotes: string | null } {
@@ -50,6 +50,135 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 type ViewMode = "day" | "week" | "month";
+
+function TasksPanel() {
+  const { toast } = useToast();
+  const [tab, setTab] = useState<"active" | "done">("active");
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+
+  const { data: tasks = [] } = useQuery<CalendarTask[]>({
+    queryKey: ["/api/calendar-tasks"],
+  });
+
+  const create = useMutation({
+    mutationFn: (t: string) => apiRequest("/api/calendar-tasks", "POST", { text: t }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/calendar-tasks"] }); setText(""); setAdding(false); },
+    onError: () => toast({ title: "Failed to add task", variant: "destructive" }),
+  });
+
+  const toggle = useMutation({
+    mutationFn: ({ id, completed }: { id: number; completed: boolean }) =>
+      apiRequest(`/api/calendar-tasks/${id}`, "PATCH", { completed }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/calendar-tasks"] }),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/calendar-tasks/${id}`, "DELETE"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/calendar-tasks"] }),
+  });
+
+  const active = tasks.filter(t => !t.completed);
+  const done = tasks.filter(t => t.completed);
+  const list = tab === "active" ? active : done;
+
+  const submit = () => {
+    const t = text.trim();
+    if (!t) { setAdding(false); return; }
+    create.mutate(t);
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 border rounded-xl shadow-sm flex flex-col h-[420px]">
+      {/* Tabs */}
+      <div className="flex border-b text-xs">
+        <button
+          onClick={() => setTab("active")}
+          className={`flex-1 py-2 font-medium transition-colors ${tab === "active" ? "text-blue-700 border-b-2 border-blue-600 bg-blue-50/50" : "text-gray-500 hover:text-gray-700"}`}
+          data-testid="tab-tasks-active"
+        >
+          To do {active.length > 0 && <span className="ml-1 text-[10px] bg-blue-600 text-white rounded-full px-1.5 py-0.5">{active.length}</span>}
+        </button>
+        <button
+          onClick={() => setTab("done")}
+          className={`flex-1 py-2 font-medium transition-colors ${tab === "done" ? "text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50/50" : "text-gray-500 hover:text-gray-700"}`}
+          data-testid="tab-tasks-done"
+        >
+          Done {done.length > 0 && <span className="ml-1 text-[10px] bg-emerald-600 text-white rounded-full px-1.5 py-0.5">{done.length}</span>}
+        </button>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto px-2 py-1.5">
+        {list.length === 0 ? (
+          <div className="text-center text-xs text-gray-400 py-8 px-3">
+            {tab === "active" ? "No tasks yet. Tap + to add one." : "Nothing completed yet."}
+          </div>
+        ) : (
+          <ul className="space-y-1">
+            {list.map(t => (
+              <li
+                key={t.id}
+                className="group flex items-start gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700/40"
+              >
+                <Checkbox
+                  checked={!!t.completed}
+                  onCheckedChange={(v) => toggle.mutate({ id: t.id, completed: !!v })}
+                  className="mt-0.5"
+                  data-testid={`checkbox-task-${t.id}`}
+                />
+                <span className={`flex-1 text-xs leading-snug break-words ${t.completed ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"}`}>
+                  {t.text}
+                </span>
+                <button
+                  onClick={() => remove.mutate(t.id)}
+                  className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-opacity"
+                  title="Delete task"
+                  data-testid={`button-delete-task-${t.id}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Add bar */}
+      <div className="border-t p-2">
+        {adding ? (
+          <div className="flex gap-1">
+            <Input
+              autoFocus
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") { e.preventDefault(); submit(); }
+                if (e.key === "Escape") { setText(""); setAdding(false); }
+              }}
+              placeholder="New task…"
+              className="h-8 text-xs"
+              data-testid="input-new-task"
+            />
+            <Button size="sm" className="h-8 px-2" onClick={submit} disabled={create.isPending} data-testid="button-save-task">
+              Add
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-xs text-gray-500 hover:text-gray-900 h-8"
+            onClick={() => setAdding(true)}
+            data-testid="button-add-task"
+          >
+            <Plus className="w-4 h-4 mr-1" /> Add task
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string, tab?: "upload" | "draw") => void }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -992,8 +1121,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
         </div>
 
         <div className="flex gap-4 items-start">
-          {/* Mini-calendar sidebar — desktop only */}
-          <div className="hidden md:flex flex-col gap-2 flex-shrink-0">
+          {/* Mini-calendar + Tasks sidebar — desktop only */}
+          <div className="hidden md:flex flex-col gap-3 flex-shrink-0 w-[260px]">
             <div className="bg-white dark:bg-gray-800 border rounded-xl shadow-sm p-2">
               <CalendarPicker
                 mode="single"
@@ -1012,6 +1141,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 </Button>
               </div>
             </div>
+            <TasksPanel />
           </div>
 
           {/* Main calendar card */}
