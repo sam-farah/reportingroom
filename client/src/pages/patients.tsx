@@ -1141,9 +1141,10 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
               )}
               {isHtml && (
                 <iframe
+                  key={`html-${patientDoc.id}`}
                   src={patientDoc.fileUrl}
                   title={patientDoc.title}
-                  className="w-full rounded-lg border shadow"
+                  className="w-full rounded-lg border shadow bg-white"
                   style={{ height: '70vh', minHeight: 500 }}
                   sandbox="allow-same-origin"
                 />
