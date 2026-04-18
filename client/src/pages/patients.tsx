@@ -219,7 +219,7 @@ function formatDob(dob: string | null | undefined): string {
   return dob;
 }
 
-export default function Patients({ initialPatientId, onPatientOpened }: { initialPatientId?: number; onPatientOpened?: () => void } = {}) {
+export default function Patients({ initialPatientId, initialEditPatientId, onPatientOpened }: { initialPatientId?: number; initialEditPatientId?: number; onPatientOpened?: () => void } = {}) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -281,6 +281,17 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       }
     }
   }, [patients, initialPatientId]);
+
+  useEffect(() => {
+    if (initialEditPatientId && patients.length > 0) {
+      const match = patients.find(p => p.id === initialEditPatientId);
+      if (match) {
+        handleEdit(match);
+        onPatientOpened?.();
+      }
+    }
+     
+  }, [patients, initialEditPatientId]);
 
   const { data: patientWorksheets = [] } = useQuery<Worksheet[]>({
     queryKey: ["/api/patients", selectedPatient?.id, "worksheets"],

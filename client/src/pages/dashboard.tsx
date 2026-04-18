@@ -57,6 +57,7 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const [activePanel, setActivePanel] = useState<Panel>("calendar");
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
+  const [openPatientEditId, setOpenPatientEditId] = useState<number | null>(null);
   const [dicomDialogOpen, setDicomDialogOpen] = useState(false);
   const [dicomPendingPath, setDicomPendingPath] = useState<string>("/ui/app/");
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
@@ -215,9 +216,12 @@ export default function Dashboard() {
           onBeginStudy={(patientId, patientName, tab) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setPreLinkedTab(tab ?? "upload"); setActivePanel(tab === "draw" ? "draw" : "user"); }}
         />
       ) : activePanel === "patients" ? (
-        <Patients initialPatientId={openPatientId ?? undefined} onPatientOpened={() => setOpenPatientId(null)} />
+        <Patients initialPatientId={openPatientId ?? undefined} initialEditPatientId={openPatientEditId ?? undefined} onPatientOpened={() => { setOpenPatientId(null); setOpenPatientEditId(null); }} />
       ) : activePanel === "requests" ? (
-        <Requests onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }} />
+        <Requests
+          onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}
+          onOpenPatientDetails={(patientId) => { setOpenPatientEditId(patientId); setActivePanel("patients"); }}
+        />
       ) : activePanel === "contacts" ? (
         <Contacts />
       ) : activePanel === "templates" ? (

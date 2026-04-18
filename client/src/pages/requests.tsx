@@ -19,7 +19,7 @@ import {
   ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
   MapPin, Hash, Building2, ChevronRight, X, Printer, Globe, CalendarPlus,
   FolderOpen, CheckCheck, Send, Mailbox, ShieldCheck, ArrowUpDown, CalendarDays,
-  UserCheck, Users, Link2, UserPlus
+  UserCheck, Users, Link2, UserPlus, UserCog
 } from "lucide-react";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment } from "@shared/schema";
@@ -98,7 +98,7 @@ interface MatchAudit {
   requestSnapshot: { patientName: string; patientDob: string | null; patientPhone: string | null; patientEmail: string | null };
 }
 
-function PatientMatchAudit({ requestId, onOpenPatient }: { requestId: number; onOpenPatient?: (patientId: number) => void }) {
+function PatientMatchAudit({ requestId, onOpenPatient, onOpenPatientDetails }: { requestId: number; onOpenPatient?: (patientId: number) => void; onOpenPatientDetails?: (patientId: number) => void }) {
   const { toast } = useToast();
   const { data, isLoading } = useQuery<MatchAudit>({ queryKey: ["/api/scan-requests", requestId, "match-audit"] });
 
@@ -225,17 +225,33 @@ function PatientMatchAudit({ requestId, onOpenPatient }: { requestId: number; on
           </div>
         )}
 
-        {linkedPatient && onOpenPatient && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs"
-            onClick={() => onOpenPatient(linkedPatient.id)}
-            data-testid="button-open-linked-patient"
-          >
-            <FolderOpen className="w-3 h-3 mr-1" />
-            Open patient file
-          </Button>
+        {linkedPatient && (onOpenPatient || onOpenPatientDetails) && (
+          <div className="flex flex-col gap-1.5 items-start">
+            {onOpenPatient && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => onOpenPatient(linkedPatient.id)}
+                data-testid="button-open-linked-patient"
+              >
+                <FolderOpen className="w-3 h-3 mr-1" />
+                Open patient file
+              </Button>
+            )}
+            {onOpenPatientDetails && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => onOpenPatientDetails(linkedPatient.id)}
+                data-testid="button-open-linked-patient-details"
+              >
+                <UserCog className="w-3 h-3 mr-1" />
+                Open patient details
+              </Button>
+            )}
+          </div>
         )}
 
         {candidates.length > 0 && (
@@ -293,7 +309,7 @@ function PatientMatchAudit({ requestId, onOpenPatient }: { requestId: number; on
   );
 }
 
-export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId: number) => void } = {}) {
+export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOpenPatient?: (patientId: number) => void; onOpenPatientDetails?: (patientId: number) => void } = {}) {
   const { toast } = useToast();
 
   // ── Requests state ────────────────────────────────────────────────
@@ -1312,7 +1328,7 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
 
                   {/* ── RIGHT: Patient match / linking ── */}
                   <div className="space-y-3">
-                    <PatientMatchAudit requestId={viewingRequest.id} onOpenPatient={onOpenPatient} />
+                    <PatientMatchAudit requestId={viewingRequest.id} onOpenPatient={onOpenPatient} onOpenPatientDetails={onOpenPatientDetails} />
                   </div>
                 </div>
 
