@@ -947,7 +947,7 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
 
       {/* ── REQUEST VIEW DIALOG ── */}
       <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); setShowPatientPicker(false); setSavePatientSearch(""); } }}>
-        <DialogContent className={`${viewingStep === "schedule" ? "max-w-6xl" : "max-w-lg"} max-h-[90vh] overflow-y-auto transition-all`}>
+        <DialogContent className={`${viewingStep === "schedule" ? "max-w-[1400px] w-[95vw]" : "max-w-lg"} max-h-[92vh] overflow-y-auto transition-all`}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {viewingStep === "schedule" ? (
@@ -1265,7 +1265,7 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
 
                   <div className="grid grid-cols-1 md:grid-cols-[auto_minmax(0,1fr)] gap-3">
                     {/* Visual calendar picker */}
-                    <div className="border rounded-lg p-1.5 bg-white">
+                    <div className="border rounded-lg p-1.5 bg-white self-start">
                       <CalendarPicker
                         mode="single"
                         selected={selectedDate}
@@ -1274,25 +1274,108 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                       />
                     </div>
 
-                    {/* Day's appointments preview */}
-                    <div className="border rounded-lg bg-gray-50 p-2 flex flex-col min-h-[260px]">
-                      <p className="text-xs font-semibold text-gray-600 mb-1.5 px-1">
-                        {format(selectedDate, "EEEE d MMM")} — {sortedDayAppts.length} booked
-                      </p>
-                      <div className="flex-1 overflow-y-auto max-h-[260px] space-y-1">
-                        {sortedDayAppts.length === 0 ? (
-                          <p className="text-xs text-gray-400 italic text-center py-6">No appointments yet — day is wide open.</p>
-                        ) : sortedDayAppts.map(a => {
-                          const t = new Date(a.appointmentDate);
-                          return (
-                            <div key={a.id} className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs flex items-center gap-2">
-                              <span className="font-mono font-semibold text-blue-700 w-12 flex-shrink-0">{format(t, "HH:mm")}</span>
-                              <span className="flex-1 truncate text-gray-700">{a.patientName}</span>
-                              <span className="text-[10px] text-gray-400 flex-shrink-0">{a.duration}m</span>
-                            </div>
-                          );
-                        })}
+                    {/* Full day-view timeline */}
+                    <div className="border rounded-lg bg-white flex flex-col">
+                      <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between rounded-t-lg">
+                        <p className="text-sm font-semibold text-gray-700">
+                          {format(selectedDate, "EEEE d MMM yyyy")}
+                        </p>
+                        <span className="text-xs text-gray-500">{sortedDayAppts.length} booked · click a slot to set time</span>
                       </div>
+                      {(() => {
+                        const startHour = 7;
+                        const endHour = 19;
+                        const pxPerMin = 1.2; // 72px / hour
+                        const totalMinutes = (endHour - startHour) * 60;
+                        const heightPx = totalMinutes * pxPerMin;
+                        const slotMinutes = 15;
+                        const selTimeParts = scheduleForm.appointmentTime?.split(":") ?? [];
+                        const selStartMin = selTimeParts.length === 2
+                          ? (parseInt(selTimeParts[0]) - startHour) * 60 + parseInt(selTimeParts[1])
+                          : -1;
+                        const selDuration = parseInt(scheduleForm.duration || "30");
+                        return (
+                          <div
+                            className="relative overflow-y-auto"
+                            style={{ maxHeight: "560px" }}
+                          >
+                            <div className="relative" style={{ height: `${heightPx}px` }}>
+                              {/* Hour rows + click-to-set slots */}
+                              {Array.from({ length: endHour - startHour }).map((_, i) => {
+                                const hr = startHour + i;
+                                return (
+                                  <div
+                                    key={hr}
+                                    className="absolute left-0 right-0 border-t border-gray-200 flex"
+                                    style={{ top: `${i * 60 * pxPerMin}px`, height: `${60 * pxPerMin}px` }}
+                                  >
+                                    <div className="w-14 flex-shrink-0 text-[11px] font-mono text-gray-500 pl-2 pt-0.5">
+                                      {String(hr).padStart(2, "0")}:00
+                                    </div>
+                                    <div className="flex-1 grid grid-rows-4 border-l border-gray-100">
+                                      {[0, 15, 30, 45].map(min => (
+                                        <button
+                                          key={min}
+                                          type="button"
+                                          className="hover:bg-blue-50 cursor-pointer border-b border-dashed border-gray-100 last:border-b-0 transition-colors text-left"
+                                          onClick={() => setScheduleForm(p => ({
+                                            ...p,
+                                            appointmentTime: `${String(hr).padStart(2, "0")}:${String(min).padStart(2, "0")}`,
+                                          }))}
+                                          aria-label={`Set time to ${hr}:${String(min).padStart(2, "0")}`}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {/* Bottom border */}
+                              <div className="absolute left-0 right-0 border-t border-gray-200" style={{ top: `${heightPx}px` }} />
+
+                              {/* Existing appointments */}
+                              {sortedDayAppts.map(a => {
+                                const t = new Date(a.appointmentDate);
+                                const minsFromStart = (t.getHours() - startHour) * 60 + t.getMinutes();
+                                if (minsFromStart < 0 || minsFromStart >= totalMinutes) return null;
+                                const top = minsFromStart * pxPerMin;
+                                const h = Math.max((a.duration || 30) * pxPerMin, 18);
+                                return (
+                                  <div
+                                    key={a.id}
+                                    className="absolute right-1 left-16 bg-blue-100 border border-blue-300 rounded px-2 py-0.5 text-xs overflow-hidden shadow-sm"
+                                    style={{ top: `${top}px`, height: `${h}px` }}
+                                    title={`${format(t, "HH:mm")} · ${a.patientName} · ${a.duration}m${a.scanType ? " · " + a.scanType : ""}`}
+                                  >
+                                    <div className="font-semibold text-blue-900 truncate leading-tight">
+                                      {format(t, "HH:mm")} {a.patientName}
+                                    </div>
+                                    {h > 28 && (
+                                      <div className="text-[10px] text-blue-700 truncate leading-tight">
+                                        {a.duration}m {a.scanType ? "· " + a.scanType : ""}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+
+                              {/* Selected slot preview overlay */}
+                              {selStartMin >= 0 && selStartMin < totalMinutes && (
+                                <div
+                                  className="absolute right-1 left-16 bg-green-200/70 border-2 border-green-500 rounded px-2 py-0.5 text-xs pointer-events-none z-10 shadow"
+                                  style={{
+                                    top: `${selStartMin * pxPerMin}px`,
+                                    height: `${Math.max(selDuration * pxPerMin, 18)}px`,
+                                  }}
+                                >
+                                  <div className="font-semibold text-green-900 leading-tight truncate">
+                                    NEW · {scheduleForm.appointmentTime} · {selDuration}m
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
