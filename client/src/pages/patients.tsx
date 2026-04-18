@@ -114,7 +114,7 @@ function PdfViewer({ url, title, originalName }: { url: string; title: string; o
         src={blobUrl}
         type="application/pdf"
         className="w-full rounded-lg border bg-white"
-        style={{ height: "650px" }}
+        style={{ height: "calc(100vh - 16rem)", minHeight: "650px" }}
       />
     </div>
   );
