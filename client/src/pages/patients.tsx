@@ -135,6 +135,70 @@ function PdfViewer({ url, title, originalName }: { url: string; title: string; o
   );
 }
 
+function TransmittedPdfPreview({ distributionId, title, sentAt, pdfUrl }: { distributionId: number; title: string; sentAt?: string | null; pdfUrl: string }) {
+  const [images, setImages] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setImages(null);
+    fetch(`/api/distributions/${distributionId}/pdf-images`, { credentials: "include" })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed (${r.status})`);
+        return r.json();
+      })
+      .then((data) => setImages(data.images || []))
+      .catch((e) => setError(e.message || "Could not render PDF"))
+      .finally(() => setLoading(false));
+  }, [distributionId]);
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between gap-2 p-3 border-b bg-white dark:bg-gray-800">
+        <div className="flex items-center gap-2 min-w-0">
+          <Send className="w-4 h-4 text-emerald-600 shrink-0" />
+          <h2 className="font-semibold text-gray-800 dark:text-gray-200 truncate">{title}</h2>
+          {sentAt && (
+            <span className="text-xs text-gray-500 shrink-0">· Sent {safeDateFormat(sentAt, "d MMM yyyy, h:mm a")}</span>
+          )}
+        </div>
+        <a
+          href={pdfUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50 shrink-0"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Open PDF
+        </a>
+      </div>
+      <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-900 p-4">
+        {loading && (
+          <div className="flex items-center justify-center h-40 text-gray-500">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-3" />
+            Rendering PDF...
+          </div>
+        )}
+        {error && (
+          <div className="text-center text-sm text-red-600 py-8">{error}</div>
+        )}
+        {!loading && !error && images && images.length === 0 && (
+          <div className="text-center text-sm text-gray-500 py-8">No pages found</div>
+        )}
+        {!loading && images && images.length > 0 && (
+          <div className="space-y-4 max-w-4xl mx-auto">
+            {images.map((src, i) => (
+              <img key={i} src={src} alt={`Page ${i + 1}`} className="w-full rounded shadow border bg-white" />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatDob(dob: string | null | undefined): string {
   if (!dob) return "";
   const m = dob.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -759,32 +823,12 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       const sentAt = selectedDocument.meta?.sentAt;
       const pdfUrl = `/api/distributions/${selectedDocument.id}/pdf`;
       return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center justify-between gap-2 p-3 border-b bg-white dark:bg-gray-800">
-            <div className="flex items-center gap-2 min-w-0">
-              <Send className="w-4 h-4 text-emerald-600 shrink-0" />
-              <h2 className="font-semibold text-gray-800 dark:text-gray-200 truncate">{title}</h2>
-              {sentAt && (
-                <span className="text-xs text-gray-500 shrink-0">· Sent {safeDateFormat(sentAt, "d MMM yyyy, h:mm a")}</span>
-              )}
-            </div>
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-lg hover:bg-gray-50 shrink-0"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Open in new tab
-            </a>
-          </div>
-          <iframe
-            src={pdfUrl}
-            title={title}
-            className="flex-1 w-full bg-white"
-            style={{ minHeight: 600, border: 0 }}
-          />
-        </div>
+        <TransmittedPdfPreview
+          distributionId={selectedDocument.id}
+          title={title}
+          sentAt={sentAt}
+          pdfUrl={pdfUrl}
+        />
       );
     }
     const doc = getSelectedDocumentData();

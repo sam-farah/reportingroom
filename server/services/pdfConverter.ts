@@ -60,6 +60,37 @@ export async function convertPdfToImage(pdfPath: string): Promise<string> {
   }
 }
 
+export async function convertPdfToImages(pdfPath: string, maxPages: number = 20): Promise<string[]> {
+  if (!fs.existsSync(pdfPath)) {
+    throw new Error('PDF file not found');
+  }
+
+  const tempPrefix = pdfPath + '_pgs';
+  const dir = path.dirname(tempPrefix);
+  const baseName = path.basename(tempPrefix);
+
+  try {
+    const cmd = `"${PDFTOPPM}" -r 150 -png -f 1 -l ${maxPages} "${pdfPath}" "${tempPrefix}"`;
+    await execAsync(cmd);
+
+    const files = fs.readdirSync(dir)
+      .filter((f) => f.startsWith(baseName) && f.endsWith('.png'))
+      .sort();
+
+    const images = files.map((f) => fs.readFileSync(path.join(dir, f)).toString('base64'));
+
+    files.forEach((f) => { try { fs.unlinkSync(path.join(dir, f)); } catch {} });
+
+    return images;
+  } catch (err) {
+    const files = fs.readdirSync(dir).filter((f) => f.startsWith(baseName) && f.endsWith('.png'));
+    files.forEach((f) => { try { fs.unlinkSync(path.join(dir, f)); } catch {} });
+    throw new Error(
+      `Failed to convert PDF to images: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
 export function isPdfFile(filename: string): boolean {
   return path.extname(filename).toLowerCase() === '.pdf';
 }
