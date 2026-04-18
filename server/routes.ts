@@ -3591,10 +3591,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (fs.existsSync(filePath)) {
       try {
         const fd = fs.openSync(filePath, 'r');
-        const magic = Buffer.alloc(8);
-        fs.readSync(fd, magic, 0, 8, 0);
+        const magic = Buffer.alloc(512);
+        const bytesRead = fs.readSync(fd, magic, 0, 512, 0);
         fs.closeSync(fd);
-        res.setHeader('Content-Type', detectMimeType(magic));
+        res.setHeader('Content-Type', detectMimeType(magic.slice(0, bytesRead)));
         return res.sendFile(filePath);
       } catch {
         return res.sendFile(filePath);
