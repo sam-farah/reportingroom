@@ -1320,43 +1320,6 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    {physicians.length > 0 && (
-                      <div>
-                        <Label className="text-xs">Physician</Label>
-                        <Select
-                          value={scheduleForm.physicianId || "__none"}
-                          onValueChange={v => setScheduleForm(p => ({ ...p, physicianId: v === "__none" ? "" : v }))}
-                        >
-                          <SelectTrigger className="mt-1"><SelectValue placeholder="Select physician (optional)" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none">None</SelectItem>
-                            {physicians.map(ph => (
-                              <SelectItem key={ph.id} value={String(ph.id)}>{ph.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    {sonographers.length > 0 && (
-                      <div>
-                        <Label className="text-xs">Sonographer</Label>
-                        <Select
-                          value={scheduleForm.sonographerId || "__none"}
-                          onValueChange={v => setScheduleForm(p => ({ ...p, sonographerId: v === "__none" ? "" : v }))}
-                        >
-                          <SelectTrigger className="mt-1"><SelectValue placeholder="Select sonographer (optional)" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none">None</SelectItem>
-                            {sonographers.map(s => (
-                              <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-
                   <div>
                     <Label className="text-xs">Notes</Label>
                     <Textarea
