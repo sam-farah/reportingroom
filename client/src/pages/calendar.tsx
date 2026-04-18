@@ -89,7 +89,7 @@ function TasksPanel() {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 border rounded-xl shadow-sm flex flex-col h-[420px]">
+    <div className="bg-white dark:bg-gray-800 border rounded-xl shadow-sm flex flex-col flex-1 min-h-[420px]">
       {/* Tabs */}
       <div className="flex border-b text-xs">
         <button
@@ -1120,9 +1120,9 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
           </div>
         </div>
 
-        <div className="flex gap-4 items-start">
+        <div className="flex gap-4 items-stretch">
           {/* Mini-calendar + Tasks sidebar — desktop only */}
-          <div className="hidden md:flex flex-col gap-3 flex-shrink-0 w-[260px]">
+          <div className="hidden md:flex flex-col gap-3 flex-shrink-0 w-[260px] self-stretch">
             <div className="bg-white dark:bg-gray-800 border rounded-xl shadow-sm p-2">
               <CalendarPicker
                 mode="single"
