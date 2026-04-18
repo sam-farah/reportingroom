@@ -1241,42 +1241,40 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                   </div>
                 ) : (
                   <div className="divide-y">
-                    {transmittedReports.map((tr) => (
-                      <div key={tr.distributionId} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                        <div className="flex items-start gap-3">
-                          <div className="p-2 rounded bg-emerald-100 text-emerald-600 flex-shrink-0">
-                            <Send className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">{tr.studyType || "Report"}</div>
-                            <div className="text-xs text-gray-500">
-                              {safeDateFormat(tr.examDate, "d MMM yyyy")} · Sent {safeDateFormat(tr.sentAt, "d MMM yyyy")}
+                    {transmittedReports.map((tr) => {
+                      const isSelected = selectedDocument?.type === 'report' && selectedDocument?.id === tr.reportId;
+                      return (
+                        <div
+                          key={tr.distributionId}
+                          onClick={() => setSelectedDocument({ type: 'report', id: tr.reportId })}
+                          className={`p-3 cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-emerald-50 dark:bg-emerald-900/30 border-l-4 border-emerald-500'
+                              : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded bg-emerald-100 text-emerald-600 flex-shrink-0">
+                              <Send className="w-4 h-4" />
                             </div>
-                            <div className="flex items-center gap-1 mt-1 flex-wrap">
-                              <Badge variant="outline" className="text-xs px-1.5 py-0 text-emerald-700 border-emerald-300 bg-emerald-50">
-                                {tr.method === "copy_html" ? "copy" : tr.method}
-                              </Badge>
-                              {tr.recipientName && (
-                                <span className="text-xs text-gray-500 truncate">→ {tr.recipientName}</span>
-                              )}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">{tr.studyType || "Report"}</div>
+                              <div className="text-xs text-gray-500">
+                                {safeDateFormat(tr.examDate, "d MMM yyyy")} · Sent {safeDateFormat(tr.sentAt, "d MMM yyyy")}
+                              </div>
+                              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                <Badge variant="outline" className="text-xs px-1.5 py-0 text-emerald-700 border-emerald-300 bg-emerald-50">
+                                  {tr.method === "copy_html" ? "copy" : tr.method}
+                                </Badge>
+                                {tr.recipientName && (
+                                  <span className="text-xs text-gray-500 truncate">→ {tr.recipientName}</span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                          {tr.hasPdf ? (
-                            <a
-                              href={`/api/distributions/${tr.distributionId}/pdf`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex-shrink-0 p-1.5 rounded text-emerald-600 hover:bg-emerald-100 transition-colors"
-                              title="View transmitted PDF"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
-                          ) : (
-                            <span className="flex-shrink-0 text-xs text-gray-400 italic">no PDF</span>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )
               ) : historyTab === 'active' ? (
