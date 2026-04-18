@@ -19,7 +19,7 @@ import {
   ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
   MapPin, Hash, Building2, ChevronRight, X, Printer, Globe, CalendarPlus,
   FolderOpen, CheckCheck, Send, Mailbox, ShieldCheck, ArrowUpDown, CalendarDays,
-  UserCheck, Users, Link2
+  UserCheck, Users, Link2, UserPlus
 } from "lucide-react";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment } from "@shared/schema";
@@ -97,18 +97,23 @@ interface MatchAudit {
   requestSnapshot: { patientName: string; patientDob: string | null; patientPhone: string | null; patientEmail: string | null };
 }
 
-function PatientMatchAudit({ requestId }: { requestId: number }) {
+function PatientMatchAudit({ requestId, onOpenPatient }: { requestId: number; onOpenPatient?: (patientId: number) => void }) {
   const { toast } = useToast();
   const { data, isLoading } = useQuery<MatchAudit>({ queryKey: ["/api/scan-requests", requestId, "match-audit"] });
 
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/scan-requests", requestId, "match-audit"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/scan-requests", requestId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+  };
+
   const linkMutation = useMutation({
     mutationFn: async (patientId: number | null) => {
-      return apiRequest("PUT", `/api/scan-requests/${requestId}`, { patientId });
+      return apiRequest(`/api/scan-requests/${requestId}`, "PUT", { patientId });
     },
     onSuccess: (_, patientId) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests", requestId, "match-audit"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests", requestId] });
+      invalidateAll();
       toast({
         title: patientId === null ? "Patient unlinked" : "Patient linked",
         description: patientId === null
@@ -117,6 +122,25 @@ function PatientMatchAudit({ requestId }: { requestId: number }) {
       });
     },
     onError: () => toast({ title: "Failed to update link", variant: "destructive" }),
+  });
+
+  const createPatientMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(`/api/scan-requests/${requestId}/create-patient`, "POST");
+      return res.json() as Promise<{ patient: { id: number; urNumber: string | null; firstName: string; lastName: string } }>;
+    },
+    onSuccess: (result) => {
+      invalidateAll();
+      toast({
+        title: "Patient file created",
+        description: `New patient ${result.patient.firstName} ${result.patient.lastName}${result.patient.urNumber ? ` (UR ${result.patient.urNumber})` : ""} created and linked.`,
+      });
+    },
+    onError: (err: any) => toast({
+      title: "Could not create patient",
+      description: err?.message || "Try again",
+      variant: "destructive",
+    }),
   });
 
   if (isLoading || !data) {
@@ -170,13 +194,47 @@ function PatientMatchAudit({ requestId }: { requestId: number }) {
             </div>
           </div>
         ) : (
-          <div>
+          <div className="space-y-2">
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
               {isExternal
-                ? "⚠ No patient linked. The system did not find a matching patient (requires exact name + DOB or name + phone). No new patient was auto-created."
+                ? "⚠ No patient linked. The system did not find a matching patient (requires exact name + DOB or name + phone). No new patient file has been created — your approval is required before one is added."
                 : "⚠ No patient linked yet."}
             </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+                disabled={createPatientMutation.isPending || !data.requestSnapshot.patientDob}
+                onClick={() => {
+                  const snap = data.requestSnapshot;
+                  if (confirm(`Create a new patient file for "${snap.patientName}" (DOB ${snap.patientDob}) and link it to this request?`)) {
+                    createPatientMutation.mutate();
+                  }
+                }}
+                data-testid="button-create-patient-from-request"
+              >
+                <UserPlus className="w-3.5 h-3.5 mr-1" />
+                {createPatientMutation.isPending ? "Creating…" : "Create New Patient File"}
+              </Button>
+              {!data.requestSnapshot.patientDob && (
+                <p className="text-[11px] text-amber-700 self-center">Date of birth missing — edit the request to add one before creating a patient file.</p>
+              )}
+            </div>
           </div>
+        )}
+
+        {linkedPatient && onOpenPatient && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => onOpenPatient(linkedPatient.id)}
+            data-testid="button-open-linked-patient"
+          >
+            <FolderOpen className="w-3 h-3 mr-1" />
+            Open patient file
+          </Button>
         )}
 
         {candidates.length > 0 && (
@@ -1119,7 +1177,7 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
 
       {/* ── REQUEST VIEW DIALOG ── */}
       <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); setShowPatientPicker(false); setSavePatientSearch(""); setLastScheduledAppt(null); setReminderSent(false); setRegistrationSent(false); setEditableEmail(""); } }}>
-        <DialogContent className={`${viewingStep === "schedule" ? "max-w-[1400px] w-[95vw]" : viewingStep === "scheduled" ? "max-w-2xl" : "max-w-lg"} max-h-[92vh] overflow-y-auto transition-all`}>
+        <DialogContent className={`${viewingStep === "schedule" ? "max-w-[1400px] w-[95vw]" : viewingStep === "scheduled" ? "max-w-2xl" : "max-w-5xl w-[95vw]"} max-h-[92vh] overflow-y-auto transition-all`}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {viewingStep === "schedule" ? (
@@ -1150,6 +1208,10 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                   <Badge className={stsCfg.color}>{stsCfg.label}</Badge>
                   <span className="text-sm text-gray-400 ml-auto">{viewingRequest.requestDate}</span>
                 </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-5">
+                  {/* ── LEFT: Scan details / clinical info ── */}
+                  <div className="space-y-3 lg:border-r lg:pr-5">
                 <div className="bg-gray-50 rounded-lg p-3 space-y-1">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Patient</p>
                   <div className="flex items-center gap-2">
@@ -1233,9 +1295,11 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                     <p className="text-sm text-gray-700">{viewingRequest.notes}</p>
                   </div>
                 )}
+                  </div>
 
-                {/* ── Patient Match Audit ── */}
-                <PatientMatchAudit requestId={viewingRequest.id} />
+                  {/* ── RIGHT: Patient match / linking ── */}
+                  <div className="space-y-3">
+                    <PatientMatchAudit requestId={viewingRequest.id} onOpenPatient={onOpenPatient} />
 
                 {/* ── Save to Patient File section ── */}
                 {showPatientPicker && (
@@ -1279,6 +1343,8 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                     </Button>
                   </div>
                 )}
+                  </div>
+                </div>
 
                 <div className="flex justify-end gap-2 pt-2 border-t flex-wrap">
                   <Button variant="outline" onClick={() => setViewingRequest(null)}>Close</Button>

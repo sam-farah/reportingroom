@@ -4726,6 +4726,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create a new patient from a scan request and link it
+  app.post("/api/scan-requests/:id/create-patient", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const id = parseInt(req.params.id);
+      const request = await storage.getScanRequest(id);
+      if (!request || request.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+
+      if (!request.patientDob) {
+        return res.status(400).json({ error: "Cannot create patient: date of birth is missing on this request. Please edit the request to add a DOB first." });
+      }
+
+      const fullName = (request.patientName || "").trim();
+      if (!fullName) return res.status(400).json({ error: "Patient name is missing" });
+      const parts = fullName.split(/\s+/);
+      const firstName = parts[0];
+      const lastName = parts.slice(1).join(" ") || parts[0];
+
+      const newPatient = await storage.createPatient({
+        firstName,
+        lastName,
+        dateOfBirth: request.patientDob,
+        phone: request.patientPhone || null,
+        email: request.patientEmail || null,
+        clinicId,
+      } as any);
+
+      const updated = await storage.updateScanRequest(id, {
+        patientId: newPatient.id,
+        patientUrNumber: newPatient.urNumber,
+      });
+      if (updated) {
+        archiveScanRequestToPatientFile(updated, newPatient.id).catch((e) =>
+          console.error("Auto-archive (create-patient) failed:", e),
+        );
+      }
+
+      res.json({ patient: newPatient, request: updated });
+    } catch (err) {
+      console.error("create-patient from scan request error:", err);
+      res.status(500).json({ error: "Failed to create patient" });
+    }
+  });
+
   app.post("/api/scan-requests", isAuthenticated, async (req: any, res) => {
     try {
       const clinicId = req.user?.clinicId;
