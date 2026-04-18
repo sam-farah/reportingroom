@@ -1243,13 +1243,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 mode="single"
                 selected={currentDate}
                 onSelect={(date) => { if (date) setCurrentDate(date); }}
-                className="rounded-md p-1.5"
+                className="rounded-md p-2"
                 classNames={{
-                  head_cell: "text-muted-foreground rounded-md w-7 font-normal text-[0.7rem]",
-                  cell: "h-7 w-7 text-center text-xs p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                  day: "h-7 w-7 p-0 font-normal text-xs aria-selected:opacity-100 hover:bg-accent rounded-md",
-                  caption_label: "text-xs font-medium",
-                  nav_button: "h-6 w-6 bg-transparent p-0 opacity-50 hover:opacity-100 inline-flex items-center justify-center rounded-md border border-input",
+                  head_cell: "text-muted-foreground rounded-md w-8 font-normal text-[0.75rem]",
+                  cell: "h-8 w-8 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+                  day: "h-8 w-8 p-0 font-normal text-sm aria-selected:opacity-100 hover:bg-accent rounded-md",
                 }}
               />
               <div className="px-2 pb-1">
