@@ -205,7 +205,7 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
-      setAudioLevel(0);
+
       
       toast({
         title: "🔄 Processing Recording",

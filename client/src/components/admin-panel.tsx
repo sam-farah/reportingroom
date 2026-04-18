@@ -2601,6 +2601,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "18 Apr 2026",
+    tag: "Improve",
+    title: "Voice dictation: pro-grade level meter and clearer mic picker",
+    detail:
+      "The dictation interface has been redesigned. The plain red/blue progress bar is replaced with a proper studio-style level meter — animated frequency bars on a dark panel, colour zones (green / amber / red), a peak-hold marker, and a flashing CLIP warning when the input is too hot.\n\nLive status text now tells you what is actually happening: \"Live\", \"Too loud — back off the mic\", or \"No audio detected — check your mic\". A numeric percentage and peak reading sit alongside.\n\nThe microphone picker is now always visible (no more hidden settings cog), with a Refresh button to detect newly plugged-in headsets. In the popup dictation modal, the meter runs as a live preview before you hit Start — switch microphones in the dropdown and you'll see the bars react immediately, so you can confirm the right device is picking up your voice.",
+  },
+  {
+    date: "18 Apr 2026",
     tag: "New",
     title: "Preferred report-delivery method on every referring doctor",
     detail:
