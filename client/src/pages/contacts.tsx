@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Search, Edit, Trash2, Phone, Mail, MapPin, Hash, Building2, FileText, Stethoscope } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Search, Edit, Trash2, Phone, Mail, Stethoscope, Building2, ArrowUpDown } from "lucide-react";
 import type { ReferringDoctor } from "@shared/schema";
+import { DeliveryBadge } from "@/components/delivery-badge";
 
 type FormData = {
   name: string;
@@ -20,16 +21,23 @@ type FormData = {
   email: string;
   address: string;
   notes: string;
+  preferredReportDelivery: string;
+  preferredReportDeliveryNote: string;
 };
 
 const blank = (): FormData => ({
   name: "", practiceName: "", providerNumber: "",
   phone: "", fax: "", email: "", address: "", notes: "",
+  preferredReportDelivery: "", preferredReportDeliveryNote: "",
 });
+
+type SortKey = "name" | "practice" | "provider" | "delivery";
 
 export default function Contacts() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [deliveryFilter, setDeliveryFilter] = useState<string>("all");
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "name", dir: "asc" });
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<ReferringDoctor | null>(null);
   const [form, setForm] = useState<FormData>(blank());
@@ -60,7 +68,18 @@ export default function Contacts() {
   const openNew = () => { setEditing(null); setForm(blank()); setIsOpen(true); };
   const openEdit = (d: ReferringDoctor) => {
     setEditing(d);
-    setForm({ name: d.name, practiceName: d.practiceName ?? "", providerNumber: d.providerNumber ?? "", phone: d.phone ?? "", fax: d.fax ?? "", email: d.email ?? "", address: d.address ?? "", notes: d.notes ?? "" });
+    setForm({
+      name: d.name,
+      practiceName: d.practiceName ?? "",
+      providerNumber: d.providerNumber ?? "",
+      phone: d.phone ?? "",
+      fax: d.fax ?? "",
+      email: d.email ?? "",
+      address: d.address ?? "",
+      notes: d.notes ?? "",
+      preferredReportDelivery: (d as any).preferredReportDelivery ?? "",
+      preferredReportDeliveryNote: (d as any).preferredReportDeliveryNote ?? "",
+    });
     setIsOpen(true);
   };
   const close = () => { setIsOpen(false); setEditing(null); };
@@ -72,14 +91,41 @@ export default function Contacts() {
     else createMutation.mutate(form);
   };
 
-  const filtered = doctors.filter(d =>
-    !search ||
-    d.name.toLowerCase().includes(search.toLowerCase()) ||
-    (d.practiceName ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (d.providerNumber ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (d.phone ?? "").includes(search) ||
-    (d.email ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const toggleSort = (key: SortKey) => {
+    setSort(prev => prev.key === key
+      ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+      : { key, dir: "asc" });
+  };
+
+  const filtered = (() => {
+    const q = search.trim().toLowerCase();
+    const list = doctors.filter(d => {
+      const matchSearch = !q ||
+        d.name.toLowerCase().includes(q) ||
+        (d.practiceName ?? "").toLowerCase().includes(q) ||
+        (d.providerNumber ?? "").toLowerCase().includes(q) ||
+        (d.email ?? "").toLowerCase().includes(q) ||
+        (d.phone ?? "").includes(search);
+      const matchDelivery = deliveryFilter === "all" ||
+        (deliveryFilter === "none" ? !((d as any).preferredReportDelivery) : (d as any).preferredReportDelivery === deliveryFilter);
+      return matchSearch && matchDelivery;
+    });
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const get = (d: ReferringDoctor): string => {
+      switch (sort.key) {
+        case "practice": return (d.practiceName ?? "").toLowerCase();
+        case "provider": return (d.providerNumber ?? "").toLowerCase();
+        case "delivery": return ((d as any).preferredReportDelivery ?? "zzz").toLowerCase();
+        default: return d.name.toLowerCase();
+      }
+    };
+    return [...list].sort((a, b) => {
+      const av = get(a), bv = get(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+  })();
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -93,97 +139,122 @@ export default function Contacts() {
         </Button>
       </div>
 
-      <div className="relative mb-5">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <Input
-          className="pl-9"
-          placeholder="Search by name, practice, provider number, phone or email…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            className="pl-9"
+            placeholder="Search by name, practice, provider, phone, email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
+          <SelectTrigger className="w-full sm:w-56"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All delivery preferences</SelectItem>
+            <SelectItem value="secure_messaging">Secure Messaging</SelectItem>
+            <SelectItem value="email">Email</SelectItem>
+            <SelectItem value="fax">Fax</SelectItem>
+            <SelectItem value="post">Post</SelectItem>
+            <SelectItem value="other">Other</SelectItem>
+            <SelectItem value="none">No preference set</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-20 text-gray-400">Loading…</div>
+        <div className="text-center py-16 text-gray-400">Loading…</div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-20">
+        <div className="text-center py-16">
           <Stethoscope className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">
-            {search ? "No contacts match your search" : "No contacts saved yet"}
+          <p className="text-gray-500">
+            {doctors.length === 0 ? "No contacts saved yet" : "No contacts match your filters"}
           </p>
-          {!search && (
+          {doctors.length === 0 && (
             <Button variant="outline" className="mt-4" onClick={openNew}>
               <Plus className="w-4 h-4 mr-2" /> Add first contact
             </Button>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(d => (
-            <Card key={d.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 dark:text-gray-100">{d.name}</p>
-                    {d.practiceName && (
-                      <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
-                        <Building2 className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate">{d.practiceName}</span>
-                      </p>
-                    )}
-                    {d.providerNumber && (
-                      <p className="text-sm text-blue-600 flex items-center gap-1 mt-0.5">
-                        <Hash className="w-3 h-3 flex-shrink-0" />
-                        {d.providerNumber}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex gap-1 ml-2 flex-shrink-0">
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(d)}>
-                      <Edit className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="sm" variant="ghost"
-                      className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
-                      onClick={() => { if (confirm(`Delete ${d.name}?`)) deleteMutation.mutate(d.id); }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-1 text-xs text-gray-500">
-                  {d.phone && (
-                    <p className="flex items-center gap-1.5">
-                      <Phone className="w-3 h-3 flex-shrink-0" />
-                      <a href={`tel:${d.phone}`} className="hover:text-gray-700">{d.phone}</a>
-                    </p>
-                  )}
-                  {d.fax && (
-                    <p className="flex items-center gap-1.5">
-                      <FileText className="w-3 h-3 flex-shrink-0" />
-                      Fax: {d.fax}
-                    </p>
-                  )}
-                  {d.email && (
-                    <p className="flex items-center gap-1.5">
-                      <Mail className="w-3 h-3 flex-shrink-0" />
-                      <a href={`mailto:${d.email}`} className="hover:text-gray-700 truncate">{d.email}</a>
-                    </p>
-                  )}
-                  {d.address && (
-                    <p className="flex items-start gap-1.5">
-                      <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                      <span>{d.address}</span>
-                    </p>
-                  )}
-                  {d.notes && (
-                    <p className="text-gray-400 italic mt-1 line-clamp-2">{d.notes}</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <>
+          <div className="text-xs text-gray-500 mb-2">
+            Showing <span className="font-semibold text-gray-700">{filtered.length}</span> of {doctors.length} contacts
+          </div>
+          <div className="border rounded-lg overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-semibold">
+                      <button className="inline-flex items-center gap-1 hover:text-gray-900" onClick={() => toggleSort("name")}>
+                        Doctor <ArrowUpDown className="w-3 h-3 opacity-50" />
+                      </button>
+                    </th>
+                    <th className="text-left px-3 py-2 font-semibold hidden md:table-cell">
+                      <button className="inline-flex items-center gap-1 hover:text-gray-900" onClick={() => toggleSort("practice")}>
+                        Practice <ArrowUpDown className="w-3 h-3 opacity-50" />
+                      </button>
+                    </th>
+                    <th className="text-left px-3 py-2 font-semibold hidden lg:table-cell">
+                      <button className="inline-flex items-center gap-1 hover:text-gray-900" onClick={() => toggleSort("provider")}>
+                        Provider # <ArrowUpDown className="w-3 h-3 opacity-50" />
+                      </button>
+                    </th>
+                    <th className="text-left px-3 py-2 font-semibold hidden lg:table-cell">Contact</th>
+                    <th className="text-left px-3 py-2 font-semibold">
+                      <button className="inline-flex items-center gap-1 hover:text-gray-900" onClick={() => toggleSort("delivery")}>
+                        Report Delivery <ArrowUpDown className="w-3 h-3 opacity-50" />
+                      </button>
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold w-24">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filtered.map(d => {
+                    const delivery = (d as any).preferredReportDelivery as string | null | undefined;
+                    const deliveryNote = (d as any).preferredReportDeliveryNote as string | null | undefined;
+                    return (
+                      <tr key={d.id} className="hover:bg-blue-50/50 cursor-pointer" onClick={() => openEdit(d)}>
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-gray-900">{d.name}</div>
+                          {d.practiceName && <div className="text-xs text-gray-500 md:hidden flex items-center gap-1"><Building2 className="w-3 h-3" />{d.practiceName}</div>}
+                        </td>
+                        <td className="px-3 py-2 hidden md:table-cell text-gray-700">
+                          {d.practiceName || <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 hidden lg:table-cell font-mono text-xs text-gray-600">
+                          {d.providerNumber || <span className="text-gray-300 font-sans">—</span>}
+                        </td>
+                        <td className="px-3 py-2 hidden lg:table-cell text-xs text-gray-600">
+                          <div className="flex flex-col gap-0.5">
+                            {d.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{d.phone}</span>}
+                            {d.email && <span className="flex items-center gap-1 truncate max-w-[180px]"><Mail className="w-3 h-3" />{d.email}</span>}
+                            {!d.phone && !d.email && <span className="text-gray-300">—</span>}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          {delivery ? (
+                            <DeliveryBadge method={delivery} note={deliveryNote} />
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">No preference</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
+                          <div className="inline-flex gap-0.5">
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(d)}><Edit className="w-3.5 h-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => { if (confirm(`Delete ${d.name}?`)) deleteMutation.mutate(d.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Add / Edit dialog */}
@@ -221,6 +292,34 @@ export default function Contacts() {
               <div className="col-span-2">
                 <Label>Address</Label>
                 <Input value={form.address} onChange={e => f("address", e.target.value)} placeholder="123 Main St, Sydney NSW 2000" className="mt-1" />
+              </div>
+              <div className="col-span-2">
+                <Label>Preferred Report Delivery</Label>
+                <Select
+                  value={form.preferredReportDelivery || "__none"}
+                  onValueChange={v => setForm(p => ({ ...p, preferredReportDelivery: v === "__none" ? "" : v, preferredReportDeliveryNote: v === "other" ? p.preferredReportDeliveryNote : "" }))}
+                >
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="No preference" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No preference</SelectItem>
+                    <SelectItem value="secure_messaging">Secure Messaging</SelectItem>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="fax">Fax</SelectItem>
+                    <SelectItem value="post">Post</SelectItem>
+                    <SelectItem value="other">Other (specify)</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.preferredReportDelivery === "other" && (
+                  <Input
+                    className="mt-2"
+                    placeholder="Specify delivery method..."
+                    value={form.preferredReportDeliveryNote}
+                    onChange={e => f("preferredReportDeliveryNote", e.target.value)}
+                  />
+                )}
+                <p className="text-[11px] text-gray-500 mt-1">
+                  How this doctor prefers to receive completed reports.
+                </p>
               </div>
               <div className="col-span-2">
                 <Label>Notes</Label>

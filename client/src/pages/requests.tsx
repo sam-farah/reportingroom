@@ -10,8 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DeliveryBadge } from "@/components/delivery-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Plus, Search, Edit, Trash2, User, Phone, Mail, Stethoscope,
@@ -37,27 +37,6 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   cancelled: { label: "Cancelled", color: "bg-slate-100 text-slate-500", icon: XCircle },
 };
 
-const DELIVERY_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  secure_messaging: { label: "Secure Messaging", color: "bg-emerald-100 text-emerald-700 border-emerald-200", icon: ShieldCheck },
-  email:            { label: "Email",            color: "bg-blue-100 text-blue-700 border-blue-200",          icon: Mail },
-  fax:              { label: "Fax",              color: "bg-purple-100 text-purple-700 border-purple-200",    icon: Send },
-  post:             { label: "Post",             color: "bg-amber-100 text-amber-700 border-amber-200",       icon: Mailbox },
-  other:            { label: "Other",            color: "bg-slate-100 text-slate-700 border-slate-200",       icon: AlertCircle },
-};
-
-function DeliveryBadge({ method, note }: { method?: string | null; note?: string | null }) {
-  if (!method) return null;
-  const cfg = DELIVERY_CONFIG[method] ?? DELIVERY_CONFIG.other;
-  const Icon = cfg.icon;
-  const label = method === "other" && note ? note : cfg.label;
-  return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[11px] font-medium ${cfg.color}`} title={`Preferred report delivery: ${label}`}>
-      <Icon className="w-3 h-3" />
-      {label}
-    </span>
-  );
-}
-
 type RequestFormData = {
   patientId: number | null;
   referringDoctorId: number | null;
@@ -75,19 +54,6 @@ type RequestFormData = {
   status: string;
   notes: string;
   requestDate: string;
-};
-
-type DoctorFormData = {
-  name: string;
-  practiceName: string;
-  providerNumber: string;
-  phone: string;
-  fax: string;
-  email: string;
-  address: string;
-  notes: string;
-  preferredReportDelivery: string;
-  preferredReportDeliveryNote: string;
 };
 
 const blankRequest = (): RequestFormData => ({
@@ -109,19 +75,6 @@ const blankRequest = (): RequestFormData => ({
   requestDate: format(new Date(), "yyyy-MM-dd"),
 });
 
-const blankDoctor = (): DoctorFormData => ({
-  name: "",
-  practiceName: "",
-  providerNumber: "",
-  phone: "",
-  fax: "",
-  email: "",
-  address: "",
-  notes: "",
-  preferredReportDelivery: "",
-  preferredReportDeliveryNote: "",
-});
-
 export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId: number) => void } = {}) {
   const { toast } = useToast();
 
@@ -140,14 +93,6 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
   // Referring doctor search within request form
   const [doctorSearchQuery, setDoctorSearchQuery] = useState("");
   const [showDoctorResults, setShowDoctorResults] = useState(false);
-
-  // ── Referring doctors state ───────────────────────────────────────
-  const [doctorSearch, setDoctorSearch] = useState("");
-  const [isDoctorOpen, setIsDoctorOpen] = useState(false);
-  const [editingDoctor, setEditingDoctor] = useState<ReferringDoctor | null>(null);
-  const [doctorForm, setDoctorForm] = useState<DoctorFormData>(blankDoctor());
-  const [doctorSort, setDoctorSort] = useState<{ key: "name" | "practice" | "provider" | "delivery"; dir: "asc" | "desc" }>({ key: "name", dir: "asc" });
-  const [doctorDeliveryFilter, setDoctorDeliveryFilter] = useState<string>("all");
 
   // ── Save-to-patient state ─────────────────────────────────────────
   const [showPatientPicker, setShowPatientPicker] = useState(false);
@@ -234,25 +179,6 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
     onError: () => toast({ title: "Failed to delete request", variant: "destructive" }),
   });
 
-  // ── Doctor mutations ──────────────────────────────────────────────
-  const createDoctor = useMutation({
-    mutationFn: (data: DoctorFormData) => apiRequest("/api/referring-doctors", "POST", data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] }); setIsDoctorOpen(false); toast({ title: "Referring doctor saved" }); },
-    onError: () => toast({ title: "Failed to save doctor", variant: "destructive" }),
-  });
-
-  const updateDoctor = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<DoctorFormData> }) => apiRequest(`/api/referring-doctors/${id}`, "PUT", data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] }); setIsDoctorOpen(false); setEditingDoctor(null); toast({ title: "Doctor updated" }); },
-    onError: () => toast({ title: "Failed to update doctor", variant: "destructive" }),
-  });
-
-  const deleteDoctor = useMutation({
-    mutationFn: (id: number) => apiRequest(`/api/referring-doctors/${id}`, "DELETE"),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] }); toast({ title: "Doctor deleted" }); },
-    onError: () => toast({ title: "Failed to delete doctor", variant: "destructive" }),
-  });
-
   const scheduleAppointment = useMutation({
     mutationFn: async ({ request, form }: { request: ScanRequest; form: typeof scheduleForm }) => {
       const [datePart] = form.appointmentDate.split("T");
@@ -337,34 +263,10 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
     setIsRequestOpen(true);
   };
 
-  const openNewDoctor = () => { setEditingDoctor(null); setDoctorForm(blankDoctor()); setIsDoctorOpen(true); };
-  const openEditDoctor = (d: ReferringDoctor) => {
-    setEditingDoctor(d);
-    setDoctorForm({
-      name: d.name,
-      practiceName: d.practiceName ?? "",
-      providerNumber: d.providerNumber ?? "",
-      phone: d.phone ?? "",
-      fax: d.fax ?? "",
-      email: d.email ?? "",
-      address: d.address ?? "",
-      notes: d.notes ?? "",
-      preferredReportDelivery: (d as any).preferredReportDelivery ?? "",
-      preferredReportDeliveryNote: (d as any).preferredReportDeliveryNote ?? "",
-    });
-    setIsDoctorOpen(true);
-  };
-
   const handleSubmitRequest = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingRequest) updateRequest.mutate({ id: editingRequest.id, data: requestForm });
     else createRequest.mutate(requestForm);
-  };
-
-  const handleSubmitDoctor = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingDoctor) updateDoctor.mutate({ id: editingDoctor.id, data: doctorForm });
-    else createDoctor.mutate(doctorForm);
   };
 
   const selectPatient = (p: Patient) => {
@@ -683,65 +585,14 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
     return matchSearch && matchStatus;
   });
 
-  const filteredDoctors = (() => {
-    const q = doctorSearch.trim().toLowerCase();
-    let list = referringDoctors.filter(d => {
-      const matchSearch = !q ||
-        d.name.toLowerCase().includes(q) ||
-        (d.practiceName ?? "").toLowerCase().includes(q) ||
-        (d.providerNumber ?? "").toLowerCase().includes(q) ||
-        (d.email ?? "").toLowerCase().includes(q) ||
-        (d.phone ?? "").toLowerCase().includes(q);
-      const matchDelivery = doctorDeliveryFilter === "all" ||
-        (doctorDeliveryFilter === "none" ? !((d as any).preferredReportDelivery) : (d as any).preferredReportDelivery === doctorDeliveryFilter);
-      return matchSearch && matchDelivery;
-    });
-    const dir = doctorSort.dir === "asc" ? 1 : -1;
-    const get = (d: ReferringDoctor): string => {
-      switch (doctorSort.key) {
-        case "practice": return (d.practiceName ?? "").toLowerCase();
-        case "provider": return (d.providerNumber ?? "").toLowerCase();
-        case "delivery": return ((d as any).preferredReportDelivery ?? "zzz").toLowerCase();
-        default: return d.name.toLowerCase();
-      }
-    };
-    return [...list].sort((a, b) => {
-      const av = get(a), bv = get(b);
-      if (av < bv) return -1 * dir;
-      if (av > bv) return 1 * dir;
-      return 0;
-    });
-  })();
-
-  const toggleDoctorSort = (key: typeof doctorSort.key) => {
-    setDoctorSort(prev => prev.key === key
-      ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
-      : { key, dir: "asc" });
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Scan Requests</h1>
-        <p className="text-gray-500 mt-1">Manage electronic referrals and referring doctors</p>
+        <p className="text-gray-500 mt-1">Manage electronic referrals</p>
       </div>
 
-      <Tabs defaultValue="requests">
-        <TabsList className="mb-6">
-          <TabsTrigger value="requests" className="flex items-center gap-2">
-            <ClipboardList className="w-4 h-4" /> Requests
-            {requests.filter(r => r.status === "pending").length > 0 && (
-              <Badge className="ml-1 bg-blue-600 text-white text-xs">{requests.filter(r => r.status === "pending").length}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="doctors" className="flex items-center gap-2">
-            <Stethoscope className="w-4 h-4" /> Referring Doctors
-            <Badge variant="outline" className="ml-1 text-xs">{referringDoctors.length}</Badge>
-          </TabsTrigger>
-        </TabsList>
-
-        {/* ── REQUESTS TAB ── */}
-        <TabsContent value="requests">
+      <div>
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -840,123 +691,8 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
               })}
             </div>
           )}
-        </TabsContent>
+        </div>
 
-        {/* ── REFERRING DOCTORS TAB ── */}
-        <TabsContent value="doctors">
-          <div className="flex flex-col sm:flex-row gap-3 mb-4">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input className="pl-9" placeholder="Search by name, practice, provider, phone, email..." value={doctorSearch} onChange={e => setDoctorSearch(e.target.value)} />
-            </div>
-            <Select value={doctorDeliveryFilter} onValueChange={setDoctorDeliveryFilter}>
-              <SelectTrigger className="w-full sm:w-56"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All delivery preferences</SelectItem>
-                <SelectItem value="secure_messaging">Secure Messaging</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="fax">Fax</SelectItem>
-                <SelectItem value="post">Post</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-                <SelectItem value="none">No preference set</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={openNewDoctor}>
-              <Plus className="w-4 h-4 mr-2" /> Add Doctor
-            </Button>
-          </div>
-
-          {docLoading ? (
-            <div className="text-center py-16 text-gray-400">Loading...</div>
-          ) : filteredDoctors.length === 0 ? (
-            <div className="text-center py-16">
-              <Stethoscope className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-              <p className="text-gray-500">{referringDoctors.length === 0 ? "No referring doctors saved yet" : "No doctors match your filters"}</p>
-              {referringDoctors.length === 0 && (
-                <Button variant="outline" className="mt-4" onClick={openNewDoctor}><Plus className="w-4 h-4 mr-2" /> Add first doctor</Button>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="text-xs text-gray-500 mb-2">
-                Showing <span className="font-semibold text-gray-700">{filteredDoctors.length}</span> of {referringDoctors.length} doctors
-              </div>
-              <div className="border rounded-lg overflow-hidden bg-white">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-semibold">
-                          <button className="inline-flex items-center gap-1 hover:text-gray-900" onClick={() => toggleDoctorSort("name")}>
-                            Doctor <ArrowUpDown className="w-3 h-3 opacity-50" />
-                          </button>
-                        </th>
-                        <th className="text-left px-3 py-2 font-semibold hidden md:table-cell">
-                          <button className="inline-flex items-center gap-1 hover:text-gray-900" onClick={() => toggleDoctorSort("practice")}>
-                            Practice <ArrowUpDown className="w-3 h-3 opacity-50" />
-                          </button>
-                        </th>
-                        <th className="text-left px-3 py-2 font-semibold hidden lg:table-cell">
-                          <button className="inline-flex items-center gap-1 hover:text-gray-900" onClick={() => toggleDoctorSort("provider")}>
-                            Provider # <ArrowUpDown className="w-3 h-3 opacity-50" />
-                          </button>
-                        </th>
-                        <th className="text-left px-3 py-2 font-semibold hidden lg:table-cell">Contact</th>
-                        <th className="text-left px-3 py-2 font-semibold">
-                          <button className="inline-flex items-center gap-1 hover:text-gray-900" onClick={() => toggleDoctorSort("delivery")}>
-                            Report Delivery <ArrowUpDown className="w-3 h-3 opacity-50" />
-                          </button>
-                        </th>
-                        <th className="text-right px-3 py-2 font-semibold w-24">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {filteredDoctors.map(d => {
-                        const delivery = (d as any).preferredReportDelivery as string | null | undefined;
-                        const deliveryNote = (d as any).preferredReportDeliveryNote as string | null | undefined;
-                        return (
-                          <tr key={d.id} className="hover:bg-blue-50/50 cursor-pointer" onClick={() => openEditDoctor(d)}>
-                            <td className="px-3 py-2">
-                              <div className="font-medium text-gray-900">{d.name}</div>
-                              {d.practiceName && <div className="text-xs text-gray-500 md:hidden flex items-center gap-1"><Building2 className="w-3 h-3" />{d.practiceName}</div>}
-                            </td>
-                            <td className="px-3 py-2 hidden md:table-cell text-gray-700">
-                              {d.practiceName || <span className="text-gray-300">—</span>}
-                            </td>
-                            <td className="px-3 py-2 hidden lg:table-cell font-mono text-xs text-gray-600">
-                              {d.providerNumber || <span className="text-gray-300 font-sans">—</span>}
-                            </td>
-                            <td className="px-3 py-2 hidden lg:table-cell text-xs text-gray-600">
-                              <div className="flex flex-col gap-0.5">
-                                {d.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{d.phone}</span>}
-                                {d.email && <span className="flex items-center gap-1 truncate max-w-[180px]"><Mail className="w-3 h-3" />{d.email}</span>}
-                                {!d.phone && !d.email && <span className="text-gray-300">—</span>}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2">
-                              {delivery ? (
-                                <DeliveryBadge method={delivery} note={deliveryNote} />
-                              ) : (
-                                <span className="text-xs text-gray-400 italic">No preference</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
-                              <div className="inline-flex gap-0.5">
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditDoctor(d)}><Edit className="w-3.5 h-3.5" /></Button>
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700" onClick={() => { if (confirm(`Delete ${d.name}?`)) deleteDoctor.mutate(d.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          )}
-        </TabsContent>
-      </Tabs>
 
       {/* ── REQUEST FORM DIALOG ── */}
       <Dialog open={isRequestOpen} onOpenChange={v => { if (!v) { setIsRequestOpen(false); setEditingRequest(null); } }}>
@@ -1494,84 +1230,6 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
         </DialogContent>
       </Dialog>
 
-      {/* ── REFERRING DOCTOR FORM DIALOG ── */}
-      <Dialog open={isDoctorOpen} onOpenChange={v => { if (!v) { setIsDoctorOpen(false); setEditingDoctor(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingDoctor ? "Edit Referring Doctor" : "Add Referring Doctor"}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmitDoctor} className="space-y-4">
-            <div>
-              <Label>Full Name *</Label>
-              <Input value={doctorForm.name} onChange={e => setDoctorForm(p => ({ ...p, name: e.target.value }))} required placeholder="Dr. John Smith" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Practice / Organisation</Label>
-                <Input value={doctorForm.practiceName} onChange={e => setDoctorForm(p => ({ ...p, practiceName: e.target.value }))} placeholder="City Medical Centre" />
-              </div>
-              <div>
-                <Label>Provider Number</Label>
-                <Input value={doctorForm.providerNumber} onChange={e => setDoctorForm(p => ({ ...p, providerNumber: e.target.value }))} placeholder="2029764K" />
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <Input value={doctorForm.phone} onChange={e => setDoctorForm(p => ({ ...p, phone: e.target.value }))} placeholder="02 9999 0000" />
-              </div>
-              <div>
-                <Label>Fax</Label>
-                <Input value={doctorForm.fax} onChange={e => setDoctorForm(p => ({ ...p, fax: e.target.value }))} placeholder="02 9999 0001" />
-              </div>
-              <div className="col-span-2">
-                <Label>Email</Label>
-                <Input type="email" value={doctorForm.email} onChange={e => setDoctorForm(p => ({ ...p, email: e.target.value }))} />
-              </div>
-              <div className="col-span-2">
-                <Label>Address</Label>
-                <Input value={doctorForm.address} onChange={e => setDoctorForm(p => ({ ...p, address: e.target.value }))} placeholder="123 Main St, Sydney NSW 2000" />
-              </div>
-              <div className="col-span-2">
-                <Label>Preferred Report Delivery</Label>
-                <Select
-                  value={doctorForm.preferredReportDelivery || "__none"}
-                  onValueChange={v => setDoctorForm(p => ({ ...p, preferredReportDelivery: v === "__none" ? "" : v, preferredReportDeliveryNote: v === "other" ? p.preferredReportDeliveryNote : "" }))}
-                >
-                  <SelectTrigger><SelectValue placeholder="No preference" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">No preference</SelectItem>
-                    <SelectItem value="secure_messaging">Secure Messaging</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="fax">Fax</SelectItem>
-                    <SelectItem value="post">Post</SelectItem>
-                    <SelectItem value="other">Other (specify)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {doctorForm.preferredReportDelivery === "other" && (
-                  <Input
-                    className="mt-2"
-                    placeholder="Specify delivery method..."
-                    value={doctorForm.preferredReportDeliveryNote}
-                    onChange={e => setDoctorForm(p => ({ ...p, preferredReportDeliveryNote: e.target.value }))}
-                  />
-                )}
-                <p className="text-[11px] text-gray-500 mt-1">
-                  How this doctor prefers to receive completed reports. Auto-populated when they submit a request.
-                </p>
-              </div>
-              <div className="col-span-2">
-                <Label>Notes</Label>
-                <Textarea value={doctorForm.notes} onChange={e => setDoctorForm(p => ({ ...p, notes: e.target.value }))} rows={2} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-2 border-t">
-              <Button type="button" variant="outline" onClick={() => { setIsDoctorOpen(false); setEditingDoctor(null); }}>Cancel</Button>
-              <Button type="submit" disabled={createDoctor.isPending || updateDoctor.isPending}>
-                {createDoctor.isPending || updateDoctor.isPending ? "Saving..." : editingDoctor ? "Update" : "Add Doctor"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
 
     </div>
   );

@@ -2602,6 +2602,13 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "18 Apr 2026",
     tag: "Improve",
+    title: "Referring doctors consolidated under Contacts",
+    detail:
+      "The Referring Doctors directory used to live in two places — under Scan Requests and under Contacts. That was confusing and meant you could never quite tell which list was authoritative. The directory now lives in a single home: the Contacts page.\n\nThe Contacts page has been upgraded to use the new sortable, filterable table layout (sort by name, practice, provider number, or delivery preference; filter by delivery method; search across name / practice / provider / phone / email). The Preferred Report Delivery setting is also editable directly from the Contacts edit dialog. The redundant tab on the Scan Requests page has been removed.",
+  },
+  {
+    date: "18 Apr 2026",
+    tag: "Improve",
     title: "Voice dictation: pro-grade level meter and clearer mic picker",
     detail:
       "The dictation interface has been redesigned. The plain red/blue progress bar is replaced with a proper studio-style level meter — animated frequency bars on a dark panel, colour zones (green / amber / red), a peak-hold marker, and a flashing CLIP warning when the input is too hot.\n\nLive status text now tells you what is actually happening: \"Live\", \"Too loud — back off the mic\", or \"No audio detected — check your mic\". A numeric percentage and peak reading sit alongside.\n\nThe microphone picker is now always visible (no more hidden settings cog), with a Refresh button to detect newly plugged-in headsets. In the popup dictation modal, the meter runs as a live preview before you hit Start — switch microphones in the dropdown and you'll see the bars react immediately, so you can confirm the right device is picking up your voice.",
