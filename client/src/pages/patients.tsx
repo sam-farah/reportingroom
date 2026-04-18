@@ -154,6 +154,19 @@ function TransmittedPdfPreview({ distributionId, title, sentAt, pdfUrl }: { dist
       .finally(() => setLoading(false));
   }, [distributionId]);
 
+  const openPdfInNewTab = async () => {
+    try {
+      const r = await fetch(pdfUrl, { credentials: "include" });
+      if (!r.ok) throw new Error(`Failed (${r.status})`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e: any) {
+      alert(e.message || "Could not open PDF");
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between gap-2 p-3 border-b bg-white dark:bg-gray-800">
