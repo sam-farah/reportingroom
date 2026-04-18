@@ -149,7 +149,7 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment' | 'document' | 'note'; id: number } | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<{ type: 'report' | 'worksheet' | 'digitalWorksheet' | 'appointment' | 'document' | 'note' | 'transmittedPdf'; id: number; meta?: { title?: string; sentAt?: string | null } } | null>(null);
   const [showPatientInfo, setShowPatientInfo] = useState(false);
   const [newNoteContent, setNewNoteContent] = useState("");
   const [isAddingNote, setIsAddingNote] = useState(false);
@@ -1097,6 +1097,25 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
       );
     }
 
+    if (selectedDocument?.type === 'transmittedPdf') {
+      const title = selectedDocument.meta?.title || 'Transmitted Report';
+      const sentAt = selectedDocument.meta?.sentAt;
+      return (
+        <div className="h-full overflow-auto">
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Send className="w-4 h-4 text-emerald-600" />
+              <h2 className="font-semibold text-gray-800 dark:text-gray-200">{title}</h2>
+              {sentAt && (
+                <span className="text-xs text-gray-500">· Sent {safeDateFormat(sentAt, "d MMM yyyy, h:mm a")}</span>
+              )}
+            </div>
+            <PdfViewer url={`/api/distributions/${selectedDocument.id}/pdf`} title={title} />
+          </div>
+        </div>
+      );
+    }
+
     if (selectedDocument?.type === 'note') {
       const note = doc as PatientNote;
       return (
@@ -1242,11 +1261,23 @@ export default function Patients({ initialPatientId, onPatientOpened }: { initia
                 ) : (
                   <div className="divide-y">
                     {transmittedReports.map((tr) => {
-                      const isSelected = selectedDocument?.type === 'report' && selectedDocument?.id === tr.reportId;
+                      const isSelected = tr.hasPdf
+                        ? selectedDocument?.type === 'transmittedPdf' && selectedDocument?.id === tr.distributionId
+                        : selectedDocument?.type === 'report' && selectedDocument?.id === tr.reportId;
                       return (
                         <div
                           key={tr.distributionId}
-                          onClick={() => setSelectedDocument({ type: 'report', id: tr.reportId })}
+                          onClick={() => {
+                            if (tr.hasPdf) {
+                              setSelectedDocument({
+                                type: 'transmittedPdf',
+                                id: tr.distributionId,
+                                meta: { title: tr.studyType || 'Transmitted Report', sentAt: tr.sentAt },
+                              });
+                            } else {
+                              setSelectedDocument({ type: 'report', id: tr.reportId });
+                            }
+                          }}
                           className={`p-3 cursor-pointer transition-colors ${
                             isSelected
                               ? 'bg-emerald-50 dark:bg-emerald-900/30 border-l-4 border-emerald-500'
