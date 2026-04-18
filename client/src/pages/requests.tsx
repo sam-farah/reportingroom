@@ -102,7 +102,14 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
 
   // ── Scheduling state ──────────────────────────────────────────────
   const [schedulingRequest, setSchedulingRequest] = useState<ScanRequest | null>(null); // kept for mutation compat
-  const [viewingStep, setViewingStep] = useState<"details" | "schedule">("details");
+  const [viewingStep, setViewingStep] = useState<"details" | "schedule" | "scheduled">("details");
+  const [editableEmail, setEditableEmail] = useState<string>("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [lastScheduledAppt, setLastScheduledAppt] = useState<{ id: number; patientEmail: string | null; patientId: number | null } | null>(null);
+  const [reminderSent, setReminderSent] = useState(false);
+  const [registrationSent, setRegistrationSent] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [sendingRegistration, setSendingRegistration] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
     appointmentDate: format(new Date(), "yyyy-MM-dd"),
     appointmentTime: "09:00",
@@ -255,13 +262,19 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
       });
       return appt;
     },
-    onSuccess: () => {
+    onSuccess: (appt: any, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       setSchedulingRequest(null);
-      setViewingRequest(null);
-      setViewingStep("details");
       setPendingConflict(null);
+      setLastScheduledAppt({
+        id: appt.id,
+        patientEmail: appt.patientEmail ?? vars.request.patientEmail ?? null,
+        patientId: appt.patientId ?? vars.request.patientId ?? null,
+      });
+      setReminderSent(false);
+      setRegistrationSent(false);
+      setViewingStep("scheduled");
       toast({ title: "Appointment scheduled", description: "The request has been marked as scheduled." });
     },
     onError: (err: any, vars) => {
@@ -946,8 +959,8 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
       </Dialog>
 
       {/* ── REQUEST VIEW DIALOG ── */}
-      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); setShowPatientPicker(false); setSavePatientSearch(""); } }}>
-        <DialogContent className={`${viewingStep === "schedule" ? "max-w-[1400px] w-[95vw]" : "max-w-lg"} max-h-[92vh] overflow-y-auto transition-all`}>
+      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); setShowPatientPicker(false); setSavePatientSearch(""); setLastScheduledAppt(null); setReminderSent(false); setRegistrationSent(false); setEditableEmail(""); } }}>
+        <DialogContent className={`${viewingStep === "schedule" ? "max-w-[1400px] w-[95vw]" : viewingStep === "scheduled" ? "max-w-2xl" : "max-w-lg"} max-h-[92vh] overflow-y-auto transition-all`}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {viewingStep === "schedule" ? (
@@ -960,6 +973,8 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                   </button>
                   <CalendarPlus className="w-5 h-5 text-blue-600" /> Schedule Appointment
                 </>
+              ) : viewingStep === "scheduled" ? (
+                <><CalendarPlus className="w-5 h-5 text-green-600" /> Appointment Booked</>
               ) : (
                 <><ClipboardList className="w-5 h-5 text-blue-600" /> Scan Request Details</>
               )}
@@ -1203,7 +1218,55 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                     </div>
                     {viewingRequest.patientDob && <p className="text-xs text-blue-700">DOB: {viewingRequest.patientDob}</p>}
                     {viewingRequest.patientPhone && <p className="text-xs text-blue-700 flex items-center gap-1"><Phone className="w-3 h-3" />{viewingRequest.patientPhone}</p>}
-                    {viewingRequest.patientEmail && <p className="text-xs text-blue-700 flex items-center gap-1"><Mail className="w-3 h-3" />{viewingRequest.patientEmail}</p>}
+                    {viewingRequest.patientEmail ? (
+                      <p className="text-xs text-blue-700 flex items-center gap-1"><Mail className="w-3 h-3" />{viewingRequest.patientEmail}</p>
+                    ) : (
+                      <div className="pt-1.5 mt-1.5 border-t border-blue-200 space-y-1">
+                        <Label className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide flex items-center gap-1">
+                          <Mail className="w-3 h-3" /> Add patient email (optional)
+                        </Label>
+                        <div className="flex gap-1.5">
+                          <Input
+                            type="email"
+                            placeholder="patient@example.com"
+                            value={editableEmail}
+                            onChange={e => setEditableEmail(e.target.value)}
+                            className="h-7 text-xs flex-1 bg-white"
+                            data-testid="input-add-patient-email"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            disabled={savingEmail || !editableEmail.includes("@")}
+                            onClick={async () => {
+                              if (!viewingRequest || !editableEmail.includes("@")) return;
+                              setSavingEmail(true);
+                              try {
+                                await apiRequest(`/api/scan-requests/${viewingRequest.id}`, "PUT", { patientEmail: editableEmail });
+                                if (viewingRequest.patientId) {
+                                  await apiRequest(`/api/patients/${viewingRequest.patientId}`, "PUT", { email: editableEmail });
+                                  queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+                                }
+                                queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
+                                // Patch local viewing copy so the rest of the dialog (and the schedule mutation) sees the new email
+                                setViewingRequest({ ...viewingRequest, patientEmail: editableEmail });
+                                toast({ title: "Email saved", description: viewingRequest.patientId ? "Updated on the request and the patient file." : "Saved on this request." });
+                                setEditableEmail("");
+                              } catch (err: any) {
+                                toast({ title: "Failed to save email", description: err?.message || "Try again", variant: "destructive" });
+                              } finally {
+                                setSavingEmail(false);
+                              }
+                            }}
+                            data-testid="button-save-patient-email"
+                          >
+                            {savingEmail ? "…" : "Save"}
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-blue-600/80">Needed to send reminders and registration link.</p>
+                      </div>
+                    )}
                   </div>
 
                   {viewingRequest.referringDoctorName && (
@@ -1431,6 +1494,217 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
                       {scheduleAppointment.isPending ? "Scheduling..." : "Confirm & Schedule"}
                     </Button>
                   </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {viewingRequest && viewingStep === "scheduled" && lastScheduledAppt && (() => {
+            const apptDate = scheduleForm.appointmentDate && scheduleForm.appointmentTime
+              ? new Date(`${scheduleForm.appointmentDate}T${scheduleForm.appointmentTime}:00`)
+              : null;
+            const email = lastScheduledAppt.patientEmail || viewingRequest.patientEmail || "";
+            const hasEmail = !!email && email.includes("@");
+            return (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center flex-shrink-0 font-bold">✓</div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-green-900">Appointment scheduled</h3>
+                    <p className="text-sm text-green-800 mt-0.5">
+                      <strong>{viewingRequest.patientName}</strong>
+                      {apptDate && <> · {format(apptDate, "EEE d MMM yyyy 'at' HH:mm")}</>}
+                      {scheduleForm.duration && <> · {scheduleForm.duration} min</>}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-gray-700">Send to the patient</p>
+
+                  {!hasEmail && (
+                    <div className="border rounded-lg p-3 bg-amber-50 border-amber-200 space-y-2">
+                      <p className="text-xs text-amber-800">
+                        <strong>No email on file.</strong> Add the patient's email so we can send the reminder and registration link.
+                      </p>
+                      <div className="flex gap-2">
+                        <Input
+                          type="email"
+                          placeholder="patient@example.com"
+                          value={editableEmail}
+                          onChange={e => setEditableEmail(e.target.value)}
+                          className="h-8 text-sm flex-1 bg-white"
+                          data-testid="input-scheduled-add-email"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={savingEmail || !editableEmail.includes("@")}
+                          onClick={async () => {
+                            if (!editableEmail.includes("@")) return;
+                            setSavingEmail(true);
+                            try {
+                              // Update appointment so reminder uses it
+                              await apiRequest(`/api/appointments/${lastScheduledAppt.id}`, "PUT", { patientEmail: editableEmail, force: true });
+                              // Update request
+                              await apiRequest(`/api/scan-requests/${viewingRequest.id}`, "PUT", { patientEmail: editableEmail });
+                              // Update or create patient
+                              let patientId = lastScheduledAppt.patientId;
+                              if (patientId) {
+                                await apiRequest(`/api/patients/${patientId}`, "PUT", { email: editableEmail });
+                              } else {
+                                const nameParts = (viewingRequest.patientName || "").trim().split(/\s+/);
+                                const firstName = nameParts[0] || viewingRequest.patientName || "Patient";
+                                const lastName = nameParts.slice(1).join(" ") || "—";
+                                const created = await (await apiRequest(`/api/patients`, "POST", {
+                                  firstName, lastName,
+                                  dateOfBirth: viewingRequest.patientDob || null,
+                                  phone: viewingRequest.patientPhone || null,
+                                  email: editableEmail,
+                                  urNumber: viewingRequest.patientUrNumber || null,
+                                })).json();
+                                patientId = created?.id ?? null;
+                                if (patientId) {
+                                  await apiRequest(`/api/scan-requests/${viewingRequest.id}`, "PUT", { patientId });
+                                  await apiRequest(`/api/appointments/${lastScheduledAppt.id}`, "PUT", { patientId, force: true });
+                                }
+                              }
+                              setLastScheduledAppt({ ...lastScheduledAppt, patientEmail: editableEmail, patientId });
+                              setViewingRequest({ ...viewingRequest, patientEmail: editableEmail, patientId: patientId ?? viewingRequest.patientId });
+                              queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+                              queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
+                              queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+                              toast({ title: "Email saved", description: "You can now send reminders and the registration link." });
+                              setEditableEmail("");
+                            } catch (err: any) {
+                              toast({ title: "Failed to save email", description: err?.message || "Try again", variant: "destructive" });
+                            } finally {
+                              setSavingEmail(false);
+                            }
+                          }}
+                          data-testid="button-scheduled-save-email"
+                        >
+                          {savingEmail ? "Saving…" : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {hasEmail && (
+                    <p className="text-xs text-gray-500">Sending to <strong className="text-gray-700">{email}</strong></p>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Reminder */}
+                    <div className={`border rounded-lg p-4 ${reminderSent ? "bg-green-50 border-green-200" : "bg-white"}`}>
+                      <div className="flex items-start gap-2 mb-2">
+                        <Mail className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-sm">Appointment reminder</h4>
+                          <p className="text-xs text-gray-500 mt-0.5">Date, time, location and prep instructions for the {(viewingRequest.scanTypes ?? [])[0] || "scan"}.</p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        variant={reminderSent ? "outline" : "default"}
+                        disabled={!hasEmail || sendingReminder || reminderSent}
+                        onClick={async () => {
+                          setSendingReminder(true);
+                          try {
+                            const res = await fetch(`/api/appointments/${lastScheduledAppt.id}/send-reminder`, { method: "POST", credentials: "include" });
+                            if (!res.ok) {
+                              const txt = await res.text();
+                              throw new Error(txt || `Failed (${res.status})`);
+                            }
+                            setReminderSent(true);
+                            toast({ title: "Reminder sent", description: `Sent to ${email}` });
+                          } catch (err: any) {
+                            toast({ title: "Failed to send reminder", description: err?.message || "Try again", variant: "destructive" });
+                          } finally {
+                            setSendingReminder(false);
+                          }
+                        }}
+                        data-testid="button-send-appt-reminder"
+                      >
+                        {reminderSent ? "✓ Reminder sent" : sendingReminder ? "Sending…" : "Send reminder"}
+                      </Button>
+                    </div>
+
+                    {/* Registration link */}
+                    <div className={`border rounded-lg p-4 ${registrationSent ? "bg-green-50 border-green-200" : "bg-white"}`}>
+                      <div className="flex items-start gap-2 mb-2">
+                        <Mail className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-sm">Registration link</h4>
+                          <p className="text-xs text-gray-500 mt-0.5">Lets the patient fill in DOB, address, Medicare card and history. Saves straight onto the patient file.</p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        variant={registrationSent ? "outline" : "default"}
+                        disabled={!hasEmail || sendingRegistration || registrationSent}
+                        onClick={async () => {
+                          setSendingRegistration(true);
+                          try {
+                            // Ensure a patient record exists so registration data has somewhere to land
+                            let patientId = lastScheduledAppt.patientId;
+                            if (!patientId) {
+                              const nameParts = (viewingRequest.patientName || "").trim().split(/\s+/);
+                              const firstName = nameParts[0] || viewingRequest.patientName || "Patient";
+                              const lastName = nameParts.slice(1).join(" ") || "—";
+                              const created = await (await apiRequest(`/api/patients`, "POST", {
+                                firstName, lastName,
+                                dateOfBirth: viewingRequest.patientDob || null,
+                                phone: viewingRequest.patientPhone || null,
+                                email: email,
+                                urNumber: viewingRequest.patientUrNumber || null,
+                              })).json();
+                              patientId = created?.id;
+                              if (patientId) {
+                                await apiRequest(`/api/scan-requests/${viewingRequest.id}`, "PUT", { patientId });
+                                await apiRequest(`/api/appointments/${lastScheduledAppt.id}`, "PUT", { patientId, force: true });
+                                setLastScheduledAppt({ ...lastScheduledAppt, patientId });
+                                queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+                              }
+                            }
+                            if (!patientId) throw new Error("Could not create patient record");
+                            const res = await fetch(`/api/patients/${patientId}/send-registration`, { method: "POST", credentials: "include" });
+                            if (!res.ok) {
+                              const txt = await res.text();
+                              throw new Error(txt || `Failed (${res.status})`);
+                            }
+                            setRegistrationSent(true);
+                            toast({ title: "Registration link sent", description: `Sent to ${email}` });
+                          } catch (err: any) {
+                            toast({ title: "Failed to send registration link", description: err?.message || "Try again", variant: "destructive" });
+                          } finally {
+                            setSendingRegistration(false);
+                          }
+                        }}
+                        data-testid="button-send-registration-link"
+                      >
+                        {registrationSent ? "✓ Registration sent" : sendingRegistration ? "Sending…" : "Send registration link"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-3 border-t">
+                  <Button
+                    onClick={() => {
+                      setViewingRequest(null);
+                      setViewingStep("details");
+                      setLastScheduledAppt(null);
+                      setReminderSent(false);
+                      setRegistrationSent(false);
+                      setEditableEmail("");
+                    }}
+                    data-testid="button-done-scheduled"
+                  >
+                    Done
+                  </Button>
                 </div>
               </div>
             );

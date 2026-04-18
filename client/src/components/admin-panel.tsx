@@ -2600,6 +2600,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "19 Apr 2026",
+    tag: "New",
+    title: "Send reminders & registration link straight after booking from a Request",
+    detail:
+      "When you schedule an appointment from the Requests page, the dialog now stays open and shows a confirmation step with two one-click actions:\n\n• Send appointment reminder — emails the patient with date, time, location and the prep instructions for the scan.\n• Send registration link — emails the patient a secure link to fill in their details (DOB, address, Medicare card, history). Anything they submit lands straight on their patient file.\n\nIf the referring doctor didn't include the patient's email, you can now add it inline (both on the patient summary panel during booking, and again on the confirmation step). Saving the email updates the request, the appointment, and the patient file all at once. If the request wasn't linked to an existing patient, sending the registration link will auto-create the patient record so future scans, reports and bookings stay tied together.",
+  },
+  {
     date: "18 Apr 2026",
     tag: "Fix",
     title: "Dictation: mic now properly released, plus pause and mic switch",
