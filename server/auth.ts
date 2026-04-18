@@ -45,6 +45,29 @@ export async function setupAuth(app: Express) {
   app.set("trust proxy", true);
   app.use(getSession());
 
+  // Add `Partitioned` attribute to session cookies so they survive inside
+  // third-party iframe contexts (Replit workspace preview, embedded demos, etc).
+  // Browsers (Chrome/Edge/Safari) increasingly require Partitioned for cookies
+  // sent from iframes under cross-site cookie restrictions. Only applied when
+  // we're already setting SameSite=None; Secure (i.e. on HTTPS).
+  app.use((req, res, next) => {
+    const origSetHeader = res.setHeader.bind(res);
+    res.setHeader = function (name: string, value: any) {
+      if (name.toLowerCase() === "set-cookie" && value) {
+        const transform = (v: string) => {
+          if (typeof v === "string" && /SameSite=None/i.test(v) && !/Partitioned/i.test(v)) {
+            return v + "; Partitioned";
+          }
+          return v;
+        };
+        if (Array.isArray(value)) value = value.map(transform);
+        else value = transform(value as string);
+      }
+      return origSetHeader(name, value);
+    } as any;
+    next();
+  });
+
   app.post("/api/auth/register", async (req, res) => {
     try {
       const { email, password, firstName, lastName } = req.body;
