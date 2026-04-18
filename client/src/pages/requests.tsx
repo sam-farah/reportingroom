@@ -98,7 +98,26 @@ interface MatchAudit {
 }
 
 function PatientMatchAudit({ requestId }: { requestId: number }) {
+  const { toast } = useToast();
   const { data, isLoading } = useQuery<MatchAudit>({ queryKey: ["/api/scan-requests", requestId, "match-audit"] });
+
+  const linkMutation = useMutation({
+    mutationFn: async (patientId: number | null) => {
+      return apiRequest("PUT", `/api/scan-requests/${requestId}`, { patientId });
+    },
+    onSuccess: (_, patientId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests", requestId, "match-audit"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests", requestId] });
+      toast({
+        title: patientId === null ? "Patient unlinked" : "Patient linked",
+        description: patientId === null
+          ? "Scan request is no longer linked to a patient."
+          : "Scan request linked and archived to the patient file.",
+      });
+    },
+    onError: () => toast({ title: "Failed to update link", variant: "destructive" }),
+  });
 
   if (isLoading || !data) {
     return (
@@ -133,6 +152,21 @@ function PatientMatchAudit({ requestId }: { requestId: number }) {
                 <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {linkedPatient.urNumber}</span>
               )}
               {linkedPatient.dateOfBirth && <span className="text-xs text-gray-600">DOB: {linkedPatient.dateOfBirth}</span>}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                disabled={linkMutation.isPending}
+                onClick={() => {
+                  if (confirm("Unlink this patient from the scan request?")) {
+                    linkMutation.mutate(null);
+                  }
+                }}
+                data-testid="button-unlink-patient"
+              >
+                <X className="w-3 h-3 mr-1" />
+                Unlink
+              </Button>
             </div>
           </div>
         ) : (
@@ -170,6 +204,22 @@ function PatientMatchAudit({ requestId }: { requestId: number }) {
                       ))}
                     </div>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 shrink-0"
+                    disabled={linkMutation.isPending}
+                    onClick={() => {
+                      const verb = linkedPatient ? "Re-link" : "Link";
+                      if (confirm(`${verb} this scan request to ${c.firstName} ${c.lastName}${c.urNumber ? ` (UR ${c.urNumber})` : ""}?`)) {
+                        linkMutation.mutate(c.id);
+                      }
+                    }}
+                    data-testid={`button-link-candidate-${c.id}`}
+                  >
+                    <CheckCheck className="w-3 h-3 mr-1" />
+                    {linkedPatient ? "Re-link" : "Link"}
+                  </Button>
                 </div>
               ))}
             </div>
