@@ -657,6 +657,10 @@ export const referringDoctors = pgTable("referring_doctors", {
   email: varchar("email", { length: 200 }),
   address: text("address"),
   notes: text("notes"),
+  // Doctor's preferred way of receiving completed reports.
+  // Values: "secure_messaging" | "email" | "fax" | "post" | "other" | null
+  preferredReportDelivery: varchar("preferred_report_delivery", { length: 40 }),
+  preferredReportDeliveryNote: text("preferred_report_delivery_note"),
 });
 
 export const insertReferringDoctorSchema = createInsertSchema(referringDoctors).omit({ id: true });
@@ -687,6 +691,9 @@ export const scanRequests = pgTable("scan_requests", {
   source: varchar("source", { length: 20 }).notNull().default("internal"),
   submittedByReferrerId: varchar("submitted_by_referrer_id", { length: 36 }),
   referrerName: varchar("referrer_name", { length: 200 }),
+  // Per-request preferred report delivery method as captured on the form.
+  preferredReportDelivery: varchar("preferred_report_delivery", { length: 40 }),
+  preferredReportDeliveryNote: text("preferred_report_delivery_note"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

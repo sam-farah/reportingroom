@@ -2602,6 +2602,20 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "18 Apr 2026",
     tag: "New",
+    title: "Preferred report-delivery method on every referring doctor",
+    detail:
+      "Each referring doctor now has a \"Preferred Report Delivery\" setting (Secure Messaging, Email, Fax, Post, or Other). It is captured automatically the first time a doctor submits a request through the public web referral form — whatever they choose under \"Method to receive results\" is saved as their default for next time.\n\nThe preference shows up as a colour-coded badge in the Requests list, the Request details dialog, and the Referring Doctors list, so whoever is sending the report can see at a glance how this doctor wants it delivered. You can also set or change it manually any time from the doctor's edit screen.",
+  },
+  {
+    date: "18 Apr 2026",
+    tag: "Improve",
+    title: "Referring Doctors tab now scales to thousands of records",
+    detail:
+      "Replaced the old card grid with a dense, sortable, filterable table. You can sort by name, practice, provider number, or delivery preference, filter by delivery method, and search across name / practice / provider / phone / email. The new layout shows many more doctors per screen and stays responsive even with very large directories. Click any row to edit the doctor.",
+  },
+  {
+    date: "18 Apr 2026",
+    tag: "New",
     title: "Archive (and restore) patient files — with password protection",
     detail:
       "You can now archive a patient's file from the Edit Patient screen. Archived files are hidden from the main Patients list but remain fully searchable under a new \"Archived\" tab. Use this for test patients, deceased patients, duplicates, or anyone no longer attending.\n\nFor safety, every archive or restore now requires you to type your account password before it goes through. You can also pick a reason (Test patient / Deceased / Duplicate / Transferred / Inactive / Other) which is stored on the record for audit purposes.\n\nThe Patients screen header now shows a live count of Active vs Archived patients.",

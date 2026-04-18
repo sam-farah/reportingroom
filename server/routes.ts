@@ -4594,6 +4594,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientPhone || null,
       );
 
+      // Normalise the chosen results delivery method into a stable token
+      const normaliseDelivery = (raw: string | undefined | null): string | null => {
+        if (!raw) return null;
+        const r = raw.toLowerCase();
+        if (r.includes("secure")) return "secure_messaging";
+        if (r.includes("email")) return "email";
+        if (r.includes("fax")) return "fax";
+        if (r.includes("post") || r.includes("mail")) return "post";
+        return "other";
+      };
+      const deliveryToken = normaliseDelivery(resultMethod);
+      const deliveryNote = resultMethod === "Other" && resultMethodOther ? resultMethodOther : null;
+
+      // If we can match the referring doctor, record/update their saved preference
+      let matchedDoctorId: number | null = null;
+      if (referringDoctorName && deliveryToken) {
+        try {
+          const existingDoctors = await storage.getReferringDoctors(clinicId);
+          const match = existingDoctors.find(d => {
+            if (referringDoctorProviderNumber && d.providerNumber && d.providerNumber.trim() === referringDoctorProviderNumber.trim()) return true;
+            if (d.name?.trim().toLowerCase() === referringDoctorName.trim().toLowerCase()) return true;
+            return false;
+          });
+          if (match) {
+            matchedDoctorId = match.id;
+            await storage.updateReferringDoctor(match.id, {
+              preferredReportDelivery: deliveryToken,
+              preferredReportDeliveryNote: deliveryNote,
+            } as any);
+          }
+        } catch (e) {
+          console.error("Failed to update doctor preference from web form:", e);
+        }
+      }
+
       const today = new Date().toISOString().split("T")[0];
       const createdRequest = await storage.createScanRequest({
         clinicId,
@@ -4610,10 +4645,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const parts: string[] = [];
           if (referringDoctorPractice) parts.push(`Referring practice: ${referringDoctorPractice}`);
           if (referringDoctorPhone) parts.push(`Referring doctor phone: ${referringDoctorPhone}`);
-          if (resultMethod) {
-            const method = resultMethod === "Other" && resultMethodOther ? `Other – ${resultMethodOther}` : resultMethod;
-            parts.push(`Results delivery: ${method}`);
-          }
           if (notes) parts.push(notes);
           return parts.length > 0 ? parts.join(". ") : null;
         })(),
@@ -4624,9 +4655,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         referrerName: referringDoctorName || "Web Form",
         patientUrNumber: matchedPatient?.urNumber ?? null,
         patientId: matchedPatient?.id ?? null,
-        referringDoctorId: null,
+        referringDoctorId: matchedDoctorId,
         scheduledAppointmentId: null,
         clinicalHistory: null,
+        preferredReportDelivery: deliveryToken,
+        preferredReportDeliveryNote: deliveryNote,
       });
 
       // Auto-save the request to the patient's file if we matched a patient
