@@ -2,10 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mic, MicOff, Square, Play, Settings, Volume2 } from 'lucide-react';
+import { Mic, Square, Play, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
+import AudioMeter from '@/components/audio-meter';
 
 interface VoiceDictationProps {
   onTranscription: (text: string, append: boolean) => void;
@@ -31,72 +32,92 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [recordingTime, setRecordingTime] = useState(0);
-  const [audioLevel, setAudioLevel] = useState(0);
   const [recordedAudio, setRecordedAudio] = useState<string | null>(null);
   
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const analyzerRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const previewStreamRef = useRef<MediaStream | null>(null);
 
-  // Get available audio devices
-  useEffect(() => {
-    const getDevices = async () => {
-      try {
-        // First request permission
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices
-          .filter(device => device.kind === 'audioinput' && device.deviceId !== 'default')
-          .map(device => ({
-            deviceId: device.deviceId,
-            label: device.label || `Microphone ${device.deviceId.slice(0, 5)}`
-          }));
-        
-        setAudioDevices(audioInputs);
-        if (audioInputs.length > 0 && !selectedDevice) {
-          setSelectedDevice(audioInputs[0].deviceId);
-        }
-      } catch (error) {
-        console.error('Error getting audio devices:', error);
-        toast({
-          title: "Microphone Access",
-          description: "Unable to access microphones. Please check permissions.",
-          variant: "destructive"
-        });
+  const stopPreview = () => {
+    if (previewStreamRef.current) {
+      previewStreamRef.current.getTracks().forEach(t => t.stop());
+      previewStreamRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => {});
+    }
+    audioContextRef.current = null;
+    setAnalyser(null);
+  };
+
+  const refreshDevices = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices
+        .filter(d => d.kind === 'audioinput' && d.deviceId !== 'default')
+        .map(d => ({ deviceId: d.deviceId, label: d.label || `Microphone ${d.deviceId.slice(0, 5)}` }));
+      setAudioDevices(audioInputs);
+      if (audioInputs.length > 0 && !selectedDevice) {
+        setSelectedDevice(audioInputs[0].deviceId);
       }
-    };
-
-    if (isOpen) {
-      getDevices();
-    }
-  }, [isOpen, selectedDevice, toast]);
-
-  // Audio level monitoring
-  const updateAudioLevel = () => {
-    if (!analyzerRef.current) return;
-    
-    const analyzer = analyzerRef.current;
-    const bufferLength = analyzer.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    
-    analyzer.getByteFrequencyData(dataArray);
-    
-    // Calculate average volume level
-    let sum = 0;
-    for (let i = 0; i < bufferLength; i++) {
-      sum += dataArray[i];
-    }
-    const average = sum / bufferLength;
-    setAudioLevel(Math.min(100, (average / 128) * 100));
-    
-    if (isRecording) {
-      animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+    } catch (error) {
+      console.error('Error getting audio devices:', error);
+      toast({
+        title: 'Microphone Access',
+        description: 'Unable to access microphones. Please check permissions.',
+        variant: 'destructive',
+      });
     }
   };
+
+  // Get available audio devices when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      refreshDevices();
+    } else {
+      stopPreview();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Live preview meter (without recording) so the user can see their mic working
+  // before they hit Start, and verify the picker actually changed input.
+  useEffect(() => {
+    if (!isOpen || !selectedDevice || isRecording) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: selectedDevice } },
+          video: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        previewStreamRef.current = stream;
+        const ctx = new AudioContext();
+        audioContextRef.current = ctx;
+        const src = ctx.createMediaStreamSource(stream);
+        const an = ctx.createAnalyser();
+        an.fftSize = 1024;
+        an.smoothingTimeConstant = 0.6;
+        src.connect(an);
+        setAnalyser(an);
+      } catch (err) {
+        console.error('Preview error', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stopPreview();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, selectedDevice, isRecording]);
 
   const startRecording = async () => {
     try {
@@ -109,14 +130,19 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
         video: false
       };
       
+      // Tear down any preview meter before opening the recording stream
+      stopPreview();
+
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      // Set up audio analysis
+
+      // Set up audio analysis (shared with the live meter)
       audioContextRef.current = new AudioContext();
       const source = audioContextRef.current.createMediaStreamSource(stream);
-      analyzerRef.current = audioContextRef.current.createAnalyser();
-      analyzerRef.current.fftSize = 256;
-      source.connect(analyzerRef.current);
+      const an = audioContextRef.current.createAnalyser();
+      an.fftSize = 1024;
+      an.smoothingTimeConstant = 0.6;
+      source.connect(an);
+      setAnalyser(an);
       
       mediaRecorderRef.current = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
@@ -132,32 +158,28 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
         const audioUrl = URL.createObjectURL(audioBlob);
         setRecordedAudio(audioUrl);
-        
+
         // Stop all tracks to free up microphone
         stream.getTracks().forEach(track => track.stop());
-        
+
         // Stop audio analysis
+        setAnalyser(null);
         if (audioContextRef.current?.state !== 'closed') {
           audioContextRef.current?.close();
         }
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-        }
-        
+        audioContextRef.current = null;
+
         // Process transcription
         await processTranscription(audioBlob);
       };
-      
+
       mediaRecorderRef.current.start();
       setIsRecording(true);
-      
+
       // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
-      
-      // Start audio level monitoring
-      updateAudioLevel();
       
       toast({
         title: "🎤 Recording Started",
@@ -179,15 +201,10 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      
+
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
-      
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      
       setAudioLevel(0);
       
       toast({
@@ -261,14 +278,12 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      if (audioContextRef.current?.state !== 'closed') {
-        audioContextRef.current?.close();
-      }
+      stopPreview();
       if (recordedAudio) {
         URL.revokeObjectURL(recordedAudio);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordedAudio]);
 
   if (!isOpen) return null;
@@ -290,7 +305,22 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
         <CardContent className="space-y-4">
           {/* Microphone Selection */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Microphone</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <Mic className="w-3.5 h-3.5" /> Microphone
+              </label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-gray-500"
+                disabled={isRecording}
+                onClick={refreshDevices}
+                data-testid="button-refresh-mics"
+              >
+                <RefreshCw className="w-3 h-3 mr-1" /> Refresh
+              </Button>
+            </div>
             <Select value={selectedDevice} onValueChange={setSelectedDevice} disabled={isRecording}>
               <SelectTrigger data-testid="select-microphone">
                 <SelectValue placeholder="Select microphone" />
@@ -303,26 +333,21 @@ export default function VoiceDictation({ onTranscription, isOpen, onClose, targe
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-[11px] text-gray-500">
+              Tap on the meter to confirm your mic is picking up sound before recording.
+            </p>
           </div>
+
+          {/* Live audio meter — works in preview AND recording */}
+          <AudioMeter
+            analyser={analyser}
+            active={!!analyser}
+            height={68}
+            bars={42}
+          />
 
           {/* Recording Controls */}
           <div className="flex flex-col items-center space-y-4">
-            {/* Audio Level Indicator */}
-            {isRecording && (
-              <div className="w-full">
-                <div className="flex items-center space-x-2">
-                  <Volume2 className="w-4 h-4 text-gray-500" />
-                  <div className="flex-1 bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-500 h-2 rounded-full transition-all duration-100"
-                      style={{ width: `${audioLevel}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-500">{Math.round(audioLevel)}%</span>
-                </div>
-              </div>
-            )}
-
             {/* Recording Time */}
             {(isRecording || recordingTime > 0) && (
               <div className="text-lg font-mono font-semibold">

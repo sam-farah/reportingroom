@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Mic, Square, Settings } from 'lucide-react';
+import { Mic, Square, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import AudioMeter from '@/components/audio-meter';
 
 interface InlineVoiceRecorderProps {
   fieldName: string;
@@ -22,62 +23,49 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
   const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [recordingTime, setRecordingTime] = useState(0);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [showDeviceSelection, setShowDeviceSelection] = useState(false);
   const [noMicFound, setNoMicFound] = useState(false);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const analyzerRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
   const isRecordingRef = useRef<boolean>(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Get available audio devices and auto-start recording
-  useEffect(() => {
-    const getDevicesAndStart = async () => {
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices
-          .filter(device => device.kind === 'audioinput' && device.deviceId !== 'default')
-          .map(device => ({
-            deviceId: device.deviceId,
-            label: device.label || `Microphone ${device.deviceId.slice(0, 5)}`
-          }));
-
-        setAudioDevices(audioInputs);
-        if (audioInputs.length > 0) {
-          const deviceId = audioInputs[0].deviceId;
-          setSelectedDevice(deviceId);
-          setTimeout(() => startRecordingWithDevice(deviceId), 100);
-        } else {
-          setNoMicFound(true);
-        }
-      } catch (error) {
-        console.error('Error getting audio devices:', error);
-        setNoMicFound(true);
-      }
-    };
-
-    getDevicesAndStart();
-  }, []);
-
-  const updateAudioLevel = () => {
-    if (analyzerRef.current && isRecordingRef.current) {
-      const dataArray = new Uint8Array(analyzerRef.current.frequencyBinCount);
-      analyzerRef.current.getByteFrequencyData(dataArray);
-      const peak = Math.max(...Array.from(dataArray));
-      const speechRange = dataArray.slice(5, 50);
-      const rms = Math.sqrt(speechRange.reduce((sum, val) => sum + val * val, 0) / speechRange.length);
-      const combinedLevel = (peak * 0.6 + rms * 0.4);
-      const level = Math.min((combinedLevel / 200) * 100, 100);
-      setAudioLevel(level);
-      animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+  const refreshDevices = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices
+        .filter(device => device.kind === 'audioinput' && device.deviceId !== 'default')
+        .map(device => ({
+          deviceId: device.deviceId,
+          label: device.label || `Microphone ${device.deviceId.slice(0, 5)}`,
+        }));
+      setAudioDevices(audioInputs);
+      return audioInputs;
+    } catch (error) {
+      console.error('Error getting audio devices:', error);
+      setNoMicFound(true);
+      return [];
     }
   };
+
+  // Get available audio devices and auto-start recording
+  useEffect(() => {
+    (async () => {
+      const audioInputs = await refreshDevices();
+      if (audioInputs.length > 0) {
+        const deviceId = audioInputs[0].deviceId;
+        setSelectedDevice(deviceId);
+        setTimeout(() => startRecordingWithDevice(deviceId), 100);
+      } else {
+        setNoMicFound(true);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startRecordingWithDevice = async (deviceId?: string) => {
     const targetDevice = deviceId || selectedDevice;
@@ -94,9 +82,11 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
 
       audioContextRef.current = new AudioContext();
       const source = audioContextRef.current.createMediaStreamSource(stream);
-      analyzerRef.current = audioContextRef.current.createAnalyser();
-      analyzerRef.current.fftSize = 256;
-      source.connect(analyzerRef.current);
+      const an = audioContextRef.current.createAnalyser();
+      an.fftSize = 1024;
+      an.smoothingTimeConstant = 0.6;
+      source.connect(an);
+      setAnalyser(an);
 
       mediaRecorderRef.current = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
@@ -115,12 +105,11 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
 
         stream.getTracks().forEach(track => track.stop());
 
+        setAnalyser(null);
         if (audioContextRef.current?.state !== 'closed') {
           audioContextRef.current?.close();
         }
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-        }
+        audioContextRef.current = null;
 
         if (audioBlob.size < 1000) {
           toast({
@@ -144,7 +133,6 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-      updateAudioLevel();
 
       toast({
         title: "🎤 Recording Started",
@@ -170,8 +158,6 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       setIsRecording(false);
 
       if (timerRef.current) clearInterval(timerRef.current);
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      setAudioLevel(0);
 
       toast({
         title: "🔄 Processing Recording",
@@ -192,10 +178,11 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       try { mediaRecorderRef.current.stop(); } catch (_) {}
     }
     if (timerRef.current) clearInterval(timerRef.current);
-    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    setAnalyser(null);
     if (audioContextRef.current?.state !== 'closed') {
       audioContextRef.current?.close();
     }
+    audioContextRef.current = null;
     onClose();
   };
 
@@ -278,43 +265,43 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       if (abortControllerRef.current) abortControllerRef.current.abort();
       if (audioContextRef.current?.state !== 'closed') audioContextRef.current?.close();
       if (timerRef.current) clearInterval(timerRef.current);
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, []);
 
   return (
     <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800 space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="font-medium text-sm">Voice Recording — {fieldName}</h4>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowDeviceSelection(!showDeviceSelection)}
-            disabled={isRecording}
-          >
-            <Settings className="w-4 h-4" />
-          </Button>
-          {/* Close is always available — stops recording + cancels processing */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClose}
-          >
-            ✕
-          </Button>
-        </div>
+        <h4 className="font-medium text-sm flex items-center gap-1.5">
+          <Mic className="w-3.5 h-3.5" />
+          Voice Recording — {fieldName}
+        </h4>
+        {/* Close is always available — stops recording + cancels processing */}
+        <Button variant="ghost" size="sm" onClick={handleClose}>
+          ✕
+        </Button>
       </div>
 
       {noMicFound && (
         <p className="text-sm text-red-600">No microphone found. Please connect a microphone and try again.</p>
       )}
 
-      {showDeviceSelection && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Microphone</label>
+      {!noMicFound && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">Input device</label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-1.5 text-[11px] text-gray-500"
+              disabled={isRecording}
+              onClick={refreshDevices}
+            >
+              <RefreshCw className="w-3 h-3 mr-1" /> Refresh
+            </Button>
+          </div>
           <Select value={selectedDevice} onValueChange={setSelectedDevice} disabled={isRecording}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-sm">
               <SelectValue placeholder="Select microphone" />
             </SelectTrigger>
             <SelectContent>
@@ -386,18 +373,7 @@ export default function InlineVoiceRecorder({ fieldName, onTranscription, onClos
       </div>
 
       {isRecording && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>Audio Level</span>
-            <span>{Math.round(audioLevel)}%</span>
-          </div>
-          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-red-500 transition-all duration-100"
-              style={{ width: `${audioLevel}%` }}
-            />
-          </div>
-        </div>
+        <AudioMeter analyser={analyser} active={isRecording} height={56} bars={36} />
       )}
 
       <div className="text-xs text-gray-500">
