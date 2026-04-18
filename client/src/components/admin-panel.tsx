@@ -2601,6 +2601,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "18 Apr 2026",
+    tag: "Improve",
+    title: "Side-by-side scheduling from Scan Requests",
+    detail:
+      "Scheduling an appointment off a scan request used to take you through a single-column wizard that hid the patient's details. Now, when you click \"Schedule Appointment\" on a request, the popup expands to show two panels side by side: the patient and request summary stays on the left so you can keep referring to it, and a calendar booking panel slides in on the right.\n\nThe right panel has a visual month calendar — click a date to switch — plus a live preview of every appointment already booked on the chosen day, so you can see what's free at a glance. Pick a time, duration, physician, and sonographer, then hit Confirm & Schedule. There's also a new \"Email Registration Form\" button on the left panel: if the patient is on file with an email address, you can re-send them the patient registration form straight from this screen.",
+  },
+  {
+    date: "18 Apr 2026",
     tag: "New",
     title: "To-do list on the calendar page",
     detail:

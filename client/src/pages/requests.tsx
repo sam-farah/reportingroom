@@ -13,14 +13,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliveryBadge } from "@/components/delivery-badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import {
   Plus, Search, Edit, Trash2, User, Phone, Mail, Stethoscope,
   ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
   MapPin, Hash, Building2, ChevronRight, X, Printer, Globe, CalendarPlus,
-  FolderOpen, CheckCheck, Send, Mailbox, ShieldCheck, ArrowUpDown
+  FolderOpen, CheckCheck, Send, Mailbox, ShieldCheck, ArrowUpDown, CalendarDays
 } from "lucide-react";
-import { format } from "date-fns";
-import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer } from "@shared/schema";
+import { format, parseISO, startOfDay, endOfDay } from "date-fns";
+import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
 const URGENCY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -109,6 +110,30 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
     physicianId: "",
     sonographerId: "",
     notes: "",
+  });
+
+  // Day's appointments for the selected booking date
+  const { data: dayAppointments = [] } = useQuery<Appointment[]>({
+    queryKey: ["/api/appointments", "by-date", scheduleForm.appointmentDate],
+    queryFn: async () => {
+      if (!scheduleForm.appointmentDate) return [];
+      const start = startOfDay(parseISO(scheduleForm.appointmentDate)).toISOString();
+      const end = endOfDay(parseISO(scheduleForm.appointmentDate)).toISOString();
+      const r = await fetch(`/api/appointments?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: viewingStep === "schedule" && !!scheduleForm.appointmentDate,
+  });
+
+  // Send registration form to patient on a request
+  const sendRegistrationMutation = useMutation({
+    mutationFn: async (patientId: number) => {
+      const res = await apiRequest(`/api/patients/${patientId}/send-registration`, "POST");
+      return res.json();
+    },
+    onSuccess: () => toast({ title: "Registration form sent", description: "The patient will receive an email shortly." }),
+    onError: (err: any) => toast({ title: "Failed to send", description: err?.message || "Could not send registration email", variant: "destructive" }),
   });
 
   // ── Queries ───────────────────────────────────────────────────────
@@ -890,7 +915,7 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
 
       {/* ── REQUEST VIEW DIALOG ── */}
       <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); setShowPatientPicker(false); setSavePatientSearch(""); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className={`${viewingStep === "schedule" ? "max-w-6xl" : "max-w-lg"} max-h-[90vh] overflow-y-auto transition-all`}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {viewingStep === "schedule" ? (
@@ -1122,111 +1147,216 @@ export default function Requests({ onOpenPatient }: { onOpenPatient?: (patientId
             );
           })()}
 
-          {viewingRequest && viewingStep === "schedule" && (
-            <div className="space-y-4">
-              {/* Patient/scan summary stays visible at top */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm">
-                <p className="font-semibold text-blue-800">{viewingRequest.patientName}</p>
-                <p className="text-blue-600 text-xs">{(viewingRequest.scanTypes ?? []).join(", ")}</p>
-                {viewingRequest.clinicalIndication && (
-                  <p className="text-blue-600 text-xs mt-0.5 italic">{viewingRequest.clinicalIndication}</p>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Date *</Label>
-                  <Input
-                    type="date"
-                    value={scheduleForm.appointmentDate}
-                    onChange={e => setScheduleForm(p => ({ ...p, appointmentDate: e.target.value }))}
-                    className="mt-1"
-                    required
-                  />
+          {viewingRequest && viewingStep === "schedule" && (() => {
+            const urgCfg = URGENCY_CONFIG[viewingRequest.urgency] ?? URGENCY_CONFIG.routine;
+            const selectedDate = scheduleForm.appointmentDate ? parseISO(scheduleForm.appointmentDate) : new Date();
+            const sortedDayAppts = [...dayAppointments]
+              .filter(a => a.status !== "cancelled")
+              .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime());
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-5">
+                {/* ── LEFT: Patient / request summary ── */}
+                <div className="space-y-3 lg:border-r lg:pr-5">
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge className={urgCfg.color}>{urgCfg.label}</Badge>
+                    <span className="text-xs text-gray-400 ml-auto">{viewingRequest.requestDate}</span>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1">
+                    <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide">Patient</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-blue-900">{viewingRequest.patientName}</p>
+                      {viewingRequest.patientUrNumber && (
+                        <span className="font-mono font-bold text-blue-700 bg-white border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {viewingRequest.patientUrNumber}</span>
+                      )}
+                    </div>
+                    {viewingRequest.patientDob && <p className="text-xs text-blue-700">DOB: {viewingRequest.patientDob}</p>}
+                    {viewingRequest.patientPhone && <p className="text-xs text-blue-700 flex items-center gap-1"><Phone className="w-3 h-3" />{viewingRequest.patientPhone}</p>}
+                    {viewingRequest.patientEmail && <p className="text-xs text-blue-700 flex items-center gap-1"><Mail className="w-3 h-3" />{viewingRequest.patientEmail}</p>}
+                  </div>
+
+                  {viewingRequest.referringDoctorName && (
+                    <div className="bg-gray-50 rounded-lg p-3 space-y-0.5">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Referring Doctor</p>
+                      <p className="text-sm font-medium">{viewingRequest.referringDoctorName}</p>
+                      {viewingRequest.referringDoctorProviderNumber && <p className="text-xs text-gray-500">Provider #: {viewingRequest.referringDoctorProviderNumber}</p>}
+                    </div>
+                  )}
+
+                  {(viewingRequest.scanTypes ?? []).length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Scan Types</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(viewingRequest.scanTypes ?? []).map(t => <span key={t} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">{t}</span>)}
+                      </div>
+                    </div>
+                  )}
+                  {viewingRequest.clinicalIndication && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Clinical Indication</p>
+                      <p className="text-xs text-gray-700">{viewingRequest.clinicalIndication}</p>
+                    </div>
+                  )}
+                  {viewingRequest.clinicalHistory && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Clinical History</p>
+                      <p className="text-xs text-gray-700">{viewingRequest.clinicalHistory}</p>
+                    </div>
+                  )}
+                  {viewingRequest.notes && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Notes</p>
+                      <p className="text-xs text-gray-700">{viewingRequest.notes}</p>
+                    </div>
+                  )}
+
+                  {viewingRequest.patientId && viewingRequest.patientEmail && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-blue-700 border-blue-300 hover:bg-blue-50"
+                      disabled={sendRegistrationMutation.isPending}
+                      onClick={() => sendRegistrationMutation.mutate(viewingRequest.patientId!)}
+                      data-testid="button-send-registration-schedule"
+                    >
+                      <Mail className="w-3.5 h-3.5 mr-1.5" />
+                      {sendRegistrationMutation.isPending ? "Sending…" : "Email Registration Form"}
+                    </Button>
+                  )}
                 </div>
-                <div>
-                  <Label className="text-xs">Time *</Label>
-                  <Input
-                    type="time"
-                    value={scheduleForm.appointmentTime}
-                    onChange={e => setScheduleForm(p => ({ ...p, appointmentTime: e.target.value }))}
-                    className="mt-1"
-                    required
-                  />
+
+                {/* ── RIGHT: Calendar booking ── */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <CalendarDays className="w-4 h-4 text-blue-600" />
+                    Pick a date &amp; time
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-[auto_minmax(0,1fr)] gap-3">
+                    {/* Visual calendar picker */}
+                    <div className="border rounded-lg p-1.5 bg-white">
+                      <CalendarPicker
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={(d) => d && setScheduleForm(p => ({ ...p, appointmentDate: format(d, "yyyy-MM-dd") }))}
+                        weekStartsOn={1}
+                      />
+                    </div>
+
+                    {/* Day's appointments preview */}
+                    <div className="border rounded-lg bg-gray-50 p-2 flex flex-col min-h-[260px]">
+                      <p className="text-xs font-semibold text-gray-600 mb-1.5 px-1">
+                        {format(selectedDate, "EEEE d MMM")} — {sortedDayAppts.length} booked
+                      </p>
+                      <div className="flex-1 overflow-y-auto max-h-[260px] space-y-1">
+                        {sortedDayAppts.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic text-center py-6">No appointments yet — day is wide open.</p>
+                        ) : sortedDayAppts.map(a => {
+                          const t = new Date(a.appointmentDate);
+                          return (
+                            <div key={a.id} className="bg-white border border-gray-200 rounded px-2 py-1.5 text-xs flex items-center gap-2">
+                              <span className="font-mono font-semibold text-blue-700 w-12 flex-shrink-0">{format(t, "HH:mm")}</span>
+                              <span className="flex-1 truncate text-gray-700">{a.patientName}</span>
+                              <span className="text-[10px] text-gray-400 flex-shrink-0">{a.duration}m</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Time *</Label>
+                      <Input
+                        type="time"
+                        value={scheduleForm.appointmentTime}
+                        onChange={e => setScheduleForm(p => ({ ...p, appointmentTime: e.target.value }))}
+                        className="mt-1"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Duration (minutes)</Label>
+                      <Select value={scheduleForm.duration} onValueChange={v => setScheduleForm(p => ({ ...p, duration: v }))}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {["15","20","30","45","60","75","90","120"].map(d => (
+                            <SelectItem key={d} value={d}>{d} min</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {physicians.length > 0 && (
+                      <div>
+                        <Label className="text-xs">Physician</Label>
+                        <Select
+                          value={scheduleForm.physicianId || "__none"}
+                          onValueChange={v => setScheduleForm(p => ({ ...p, physicianId: v === "__none" ? "" : v }))}
+                        >
+                          <SelectTrigger className="mt-1"><SelectValue placeholder="Select physician (optional)" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none">None</SelectItem>
+                            {physicians.map(ph => (
+                              <SelectItem key={ph.id} value={String(ph.id)}>{ph.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {sonographers.length > 0 && (
+                      <div>
+                        <Label className="text-xs">Sonographer</Label>
+                        <Select
+                          value={scheduleForm.sonographerId || "__none"}
+                          onValueChange={v => setScheduleForm(p => ({ ...p, sonographerId: v === "__none" ? "" : v }))}
+                        >
+                          <SelectTrigger className="mt-1"><SelectValue placeholder="Select sonographer (optional)" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none">None</SelectItem>
+                            {sonographers.map(s => (
+                              <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-xs">Notes</Label>
+                    <Textarea
+                      value={scheduleForm.notes}
+                      onChange={e => setScheduleForm(p => ({ ...p, notes: e.target.value }))}
+                      rows={2}
+                      className="mt-1"
+                      placeholder="Optional internal notes"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-3 border-t">
+                    <Button variant="outline" onClick={() => {
+                      setViewingStep("details");
+                      requestAnimationFrame(() => {
+                        const dlg = document.querySelector('[role="dialog"]');
+                        if (dlg) dlg.scrollTop = 0;
+                      });
+                    }}>← Back to details</Button>
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      disabled={scheduleAppointment.isPending || !scheduleForm.appointmentDate || !scheduleForm.appointmentTime}
+                      onClick={() => scheduleAppointment.mutate({ request: viewingRequest, form: scheduleForm })}
+                      data-testid="button-confirm-schedule"
+                    >
+                      {scheduleAppointment.isPending ? "Scheduling..." : "Confirm & Schedule"}
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <div>
-                <Label className="text-xs">Duration (minutes)</Label>
-                <Select value={scheduleForm.duration} onValueChange={v => setScheduleForm(p => ({ ...p, duration: v }))}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {["15","20","30","45","60","75","90","120"].map(d => (
-                      <SelectItem key={d} value={d}>{d} min</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {physicians.length > 0 && (
-                <div>
-                  <Label className="text-xs">Physician</Label>
-                  <Select
-                    value={scheduleForm.physicianId || "__none"}
-                    onValueChange={v => setScheduleForm(p => ({ ...p, physicianId: v === "__none" ? "" : v }))}
-                  >
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select physician (optional)" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none">None</SelectItem>
-                      {physicians.map(ph => (
-                        <SelectItem key={ph.id} value={String(ph.id)}>{ph.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {sonographers.length > 0 && (
-                <div>
-                  <Label className="text-xs">Sonographer</Label>
-                  <Select
-                    value={scheduleForm.sonographerId || "__none"}
-                    onValueChange={v => setScheduleForm(p => ({ ...p, sonographerId: v === "__none" ? "" : v }))}
-                  >
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select sonographer (optional)" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none">None</SelectItem>
-                      {sonographers.map(s => (
-                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div>
-                <Label className="text-xs">Notes</Label>
-                <Textarea
-                  value={scheduleForm.notes}
-                  onChange={e => setScheduleForm(p => ({ ...p, notes: e.target.value }))}
-                  rows={2}
-                  className="mt-1"
-                  placeholder="Optional internal notes"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2 border-t">
-                <Button variant="outline" onClick={() => {
-                  setViewingStep("details");
-                  requestAnimationFrame(() => {
-                    const dlg = document.querySelector('[role="dialog"]');
-                    if (dlg) dlg.scrollTop = 0;
-                  });
-                }}>← Back</Button>
-                <Button
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                  disabled={scheduleAppointment.isPending || !scheduleForm.appointmentDate || !scheduleForm.appointmentTime}
-                  onClick={() => scheduleAppointment.mutate({ request: viewingRequest, form: scheduleForm })}
-                >
-                  {scheduleAppointment.isPending ? "Scheduling..." : "Confirm & Schedule"}
-                </Button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
