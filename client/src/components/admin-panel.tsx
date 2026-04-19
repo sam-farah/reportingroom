@@ -2790,7 +2790,7 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   },
 ];
 
-function ChangelogCard() {
+export function ChangelogCard() {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? CHANGELOG : CHANGELOG.slice(0, 3);
 

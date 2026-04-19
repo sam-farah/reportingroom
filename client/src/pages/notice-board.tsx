@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type { NoticeBoardPost, NoticeBoardComment, NoticeBoardAttachment } from "@shared/schema";
+import { TasksPanel } from "@/pages/calendar";
+import { ChangelogCard } from "@/components/admin-panel";
 
 function formatBytes(bytes: number | null | undefined) {
   if (!bytes) return "";
@@ -143,7 +145,9 @@ export default function NoticeBoard() {
   const pinnedCount = posts.filter(p => p.pinned).length;
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-4">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
+        <div className="space-y-4 min-w-0">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -213,6 +217,14 @@ export default function NoticeBoard() {
           ))}
         </div>
       )}
+
+        </div>
+
+        <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+          <TasksPanel />
+          <ChangelogCard />
+        </aside>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) resetForm(); }}>
         <DialogContent className="max-w-2xl">

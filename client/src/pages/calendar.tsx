@@ -51,7 +51,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 type ViewMode = "day" | "week" | "month";
 
-function TasksPanel() {
+export function TasksPanel() {
   const { toast } = useToast();
   const [tab, setTab] = useState<"active" | "done">("active");
   const [dialogOpen, setDialogOpen] = useState(false);
