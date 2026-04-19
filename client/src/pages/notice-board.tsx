@@ -250,7 +250,9 @@ export default function NoticeBoard() {
 
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           <TasksPanel />
-          <ChangelogCard />
+          <div className="max-h-[420px] overflow-y-auto rounded-lg border bg-white text-xs [&_.text-base]:text-sm">
+            <ChangelogCard />
+          </div>
         </aside>
       </div>
 
