@@ -72,10 +72,13 @@ import {
   type InsertCalendarEvent,
   noticeBoardPosts,
   noticeBoardComments,
+  noticeBoardAttachments,
   type NoticeBoardPost,
   type InsertNoticeBoardPost,
   type NoticeBoardComment,
   type InsertNoticeBoardComment,
+  type NoticeBoardAttachment,
+  type InsertNoticeBoardAttachment,
   calendarTasks,
   type CalendarTask,
   type InsertCalendarTask,
@@ -239,6 +242,10 @@ export interface IStorage {
   getNoticeBoardComments(postId: number): Promise<NoticeBoardComment[]>;
   createNoticeBoardComment(comment: InsertNoticeBoardComment): Promise<NoticeBoardComment>;
   deleteNoticeBoardComment(id: number): Promise<void>;
+  getNoticeBoardAttachments(postId: number): Promise<NoticeBoardAttachment[]>;
+  getNoticeBoardAttachment(id: number): Promise<NoticeBoardAttachment | undefined>;
+  createNoticeBoardAttachment(att: InsertNoticeBoardAttachment): Promise<NoticeBoardAttachment>;
+  deleteNoticeBoardAttachment(id: number): Promise<void>;
 
   // Patient operations
   getAllPatients(): Promise<Patient[]>;
@@ -1178,6 +1185,28 @@ export class DatabaseStorage implements IStorage {
 
   async deleteNoticeBoardComment(id: number): Promise<void> {
     await db.delete(noticeBoardComments).where(eq(noticeBoardComments.id, id));
+  }
+
+  async getNoticeBoardAttachments(postId: number): Promise<NoticeBoardAttachment[]> {
+    return await db
+      .select()
+      .from(noticeBoardAttachments)
+      .where(eq(noticeBoardAttachments.postId, postId))
+      .orderBy(noticeBoardAttachments.createdAt);
+  }
+
+  async getNoticeBoardAttachment(id: number): Promise<NoticeBoardAttachment | undefined> {
+    const [a] = await db.select().from(noticeBoardAttachments).where(eq(noticeBoardAttachments.id, id));
+    return a;
+  }
+
+  async createNoticeBoardAttachment(att: InsertNoticeBoardAttachment): Promise<NoticeBoardAttachment> {
+    const [created] = await db.insert(noticeBoardAttachments).values(att).returning();
+    return created;
+  }
+
+  async deleteNoticeBoardAttachment(id: number): Promise<void> {
+    await db.delete(noticeBoardAttachments).where(eq(noticeBoardAttachments.id, id));
   }
 
   // Patient operations

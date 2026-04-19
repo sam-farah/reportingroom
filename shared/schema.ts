@@ -764,6 +764,22 @@ export const insertNoticeBoardCommentSchema = createInsertSchema(noticeBoardComm
 export type NoticeBoardComment = typeof noticeBoardComments.$inferSelect;
 export type InsertNoticeBoardComment = z.infer<typeof insertNoticeBoardCommentSchema>;
 
+export const noticeBoardAttachments = pgTable("notice_board_attachments", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").notNull().references(() => noticeBoardPosts.id, { onDelete: "cascade" }),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  originalName: varchar("original_name", { length: 255 }).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  sizeBytes: integer("size_bytes"),
+  fileUrl: varchar("file_url", { length: 500 }).notNull(),
+  uploadedBy: varchar("uploaded_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertNoticeBoardAttachmentSchema = createInsertSchema(noticeBoardAttachments).omit({ id: true, createdAt: true });
+export type NoticeBoardAttachment = typeof noticeBoardAttachments.$inferSelect;
+export type InsertNoticeBoardAttachment = z.infer<typeof insertNoticeBoardAttachmentSchema>;
+
 // Report distribution log
 export const reportDistributions = pgTable("report_distributions", {
   id: serial("id").primaryKey(),

@@ -14,10 +14,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import {
   Pin, MessageSquare, Plus, Edit, Trash2, Send, Megaphone,
-  AlertCircle, Wrench, PartyPopper, BookOpen, X
+  AlertCircle, Wrench, PartyPopper, BookOpen, X, Paperclip,
+  FileText, Image as ImageIcon, Download, Upload
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
-import type { NoticeBoardPost, NoticeBoardComment } from "@shared/schema";
+import type { NoticeBoardPost, NoticeBoardComment, NoticeBoardAttachment } from "@shared/schema";
+
+function formatBytes(bytes: number | null | undefined) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 interface StaffMember {
   id: string;
@@ -53,6 +61,8 @@ export default function NoticeBoard() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<NoticeBoardPost | null>(null);
   const [form, setForm] = useState({ title: "", body: "", category: "general", pinned: false });
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const { data: posts = [], isLoading } = useQuery<NoticeBoardPost[]>({ queryKey: ["/api/notice-board"] });
   const { data: staff = [] } = useQuery<StaffMember[]>({ queryKey: ["/api/staff"] });
@@ -60,6 +70,23 @@ export default function NoticeBoard() {
   const resetForm = () => {
     setEditing(null);
     setForm({ title: "", body: "", category: "general", pinned: false });
+    setPendingFiles([]);
+  };
+
+  const uploadAttachments = async (postId: number, files: File[]) => {
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/notice-board/${postId}/attachments`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `Failed to upload ${file.name}`);
+      }
+    }
   };
 
   const openCreate = () => { resetForm(); setDialogOpen(true); };
@@ -71,8 +98,24 @@ export default function NoticeBoard() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (editing) return apiRequest(`/api/notice-board/${editing.id}`, "PATCH", form);
-      return apiRequest("/api/notice-board", "POST", form);
+      let postId: number;
+      if (editing) {
+        await apiRequest(`/api/notice-board/${editing.id}`, "PATCH", form);
+        postId = editing.id;
+      } else {
+        const res = await apiRequest("/api/notice-board", "POST", form);
+        const created = await res.json();
+        postId = created.id;
+      }
+      if (pendingFiles.length > 0) {
+        setUploading(true);
+        try {
+          await uploadAttachments(postId, pendingFiles);
+        } finally {
+          setUploading(false);
+        }
+        queryClient.invalidateQueries({ queryKey: ["/api/notice-board", postId, "attachments"] });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notice-board"] });
@@ -226,10 +269,49 @@ export default function NoticeBoard() {
                 data-testid="textarea-notice-body"
               />
             </div>
+            <div>
+              <Label className="flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attachments</Label>
+              <div className="mt-1 space-y-2">
+                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-md py-3 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 text-sm text-gray-600">
+                  <Upload className="w-4 h-4" />
+                  <span>Click to add files (images, PDFs — max 10MB each)</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      setPendingFiles(prev => [...prev, ...files]);
+                      e.target.value = "";
+                    }}
+                    data-testid="input-notice-attachments"
+                  />
+                </label>
+                {pendingFiles.length > 0 && (
+                  <ul className="space-y-1">
+                    {pendingFiles.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2 text-sm bg-gray-50 border rounded px-2 py-1">
+                        {f.type.startsWith("image/") ? <ImageIcon className="w-3.5 h-3.5 text-blue-500" /> : <FileText className="w-3.5 h-3.5 text-gray-500" />}
+                        <span className="flex-1 truncate">{f.name}</span>
+                        <span className="text-xs text-gray-400">{formatBytes(f.size)}</span>
+                        <button
+                          type="button"
+                          className="text-gray-400 hover:text-red-600"
+                          onClick={() => setPendingFiles(prev => prev.filter((_, idx) => idx !== i))}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-notice">
-                {saveMutation.isPending ? "Saving…" : editing ? "Save Changes" : "Post Notice"}
+              <Button type="submit" disabled={saveMutation.isPending || uploading} data-testid="button-save-notice">
+                {uploading ? "Uploading…" : saveMutation.isPending ? "Saving…" : editing ? "Save Changes" : "Post Notice"}
               </Button>
             </div>
           </form>
@@ -258,6 +340,32 @@ function NoticePostCard({
   const { data: comments = [] } = useQuery<NoticeBoardComment[]>({
     queryKey: ["/api/notice-board", post.id, "comments"],
     enabled: showComments,
+  });
+
+  const { data: attachments = [] } = useQuery<NoticeBoardAttachment[]>({
+    queryKey: ["/api/notice-board", post.id, "attachments"],
+  });
+
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest(`/api/notice-board/attachments/${id}`, "DELETE"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notice-board", post.id, "attachments"] }),
+  });
+
+  const addAttachmentsMutation = useMutation({
+    mutationFn: async (files: File[]) => {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(`/api/notice-board/${post.id}/attachments`, {
+          method: "POST", body: fd, credentials: "include",
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.error || `Failed to upload ${file.name}`);
+        }
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notice-board", post.id, "attachments"] }),
   });
 
   const commentMutation = useMutation({
@@ -310,7 +418,66 @@ function NoticePostCard({
           </div>
         </div>
         <p className="text-sm whitespace-pre-wrap text-gray-700">{post.body}</p>
-        <div className="pt-1">
+
+        {attachments.length > 0 && (
+          <div className="space-y-1.5 pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {attachments.filter(a => a.mimeType.startsWith("image/")).map(a => (
+                <a
+                  key={a.id}
+                  href={a.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block relative group rounded border bg-gray-50 overflow-hidden hover:border-blue-400"
+                  data-testid={`attachment-image-${a.id}`}
+                >
+                  <img src={a.fileUrl} alt={a.originalName} className="w-full h-32 object-cover" />
+                  {isAuthor && (
+                    <button
+                      className="absolute top-1 right-1 bg-white/90 rounded-full p-0.5 opacity-0 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (confirm(`Delete attachment "${a.originalName}"?`)) deleteAttachmentMutation.mutate(a.id);
+                      }}
+                    >
+                      <X className="w-3 h-3 text-red-600" />
+                    </button>
+                  )}
+                </a>
+              ))}
+            </div>
+            <ul className="space-y-1">
+              {attachments.filter(a => !a.mimeType.startsWith("image/")).map(a => (
+                <li key={a.id} className="flex items-center gap-2 bg-gray-50 border rounded px-2 py-1.5 text-sm">
+                  <FileText className="w-4 h-4 text-gray-500 shrink-0" />
+                  <a
+                    href={a.fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 truncate text-blue-700 hover:underline"
+                    data-testid={`attachment-file-${a.id}`}
+                  >
+                    {a.originalName}
+                  </a>
+                  <span className="text-xs text-gray-400">{formatBytes(a.sizeBytes)}</span>
+                  <a href={a.fileUrl} download={a.originalName} className="text-gray-500 hover:text-gray-700">
+                    <Download className="w-3.5 h-3.5" />
+                  </a>
+                  {isAuthor && (
+                    <button
+                      className="text-gray-400 hover:text-red-600"
+                      onClick={() => { if (confirm(`Delete attachment "${a.originalName}"?`)) deleteAttachmentMutation.mutate(a.id); }}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="pt-1 flex items-center gap-1 flex-wrap">
           <Button
             variant="ghost"
             size="sm"
@@ -319,8 +486,30 @@ function NoticePostCard({
             data-testid={`button-comments-${post.id}`}
           >
             <MessageSquare className="w-3.5 h-3.5 mr-1" />
-            {showComments ? "Hide comments" : "Comments"}
+            {showComments ? "Hide comments" : `Comments${comments.length ? ` (${comments.length})` : ""}`}
           </Button>
+          {isAuthor && (
+            <label className="cursor-pointer">
+              <Button asChild variant="ghost" size="sm" className="h-7 text-xs text-gray-500">
+                <span>
+                  <Paperclip className="w-3.5 h-3.5 mr-1" />
+                  {addAttachmentsMutation.isPending ? "Uploading…" : "Add attachment"}
+                </span>
+              </Button>
+              <input
+                type="file"
+                multiple
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length > 0) addAttachmentsMutation.mutate(files);
+                  e.target.value = "";
+                }}
+                data-testid={`input-add-attachment-${post.id}`}
+              />
+            </label>
+          )}
         </div>
         {showComments && (
           <div className="border-t pt-2 space-y-2">

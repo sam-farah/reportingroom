@@ -871,6 +871,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/notice-board/:id/attachments", isAuthenticated, async (req, res) => {
+    try {
+      const postId = parseInt(req.params.id);
+      const atts = await storage.getNoticeBoardAttachments(postId);
+      res.json(atts);
+    } catch (error) {
+      console.error("Error fetching notice attachments:", error);
+      res.status(500).json({ error: "Failed to fetch attachments" });
+    }
+  });
+
+  app.post("/api/notice-board/:id/attachments", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      const postId = parseInt(req.params.id);
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
+      const user = (req as any).user;
+      saveFileToDB(file.filename, file.path, file.mimetype, file.originalname).catch(console.error);
+      const att = await storage.createNoticeBoardAttachment({
+        postId,
+        filename: file.filename,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        fileUrl: `/uploads/${file.filename}`,
+        uploadedBy: user?.id ?? null,
+      });
+      res.status(201).json(att);
+    } catch (error) {
+      console.error("Error uploading notice attachment:", error);
+      res.status(500).json({ error: "Failed to upload attachment" });
+    }
+  });
+
+  app.delete("/api/notice-board/attachments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteNoticeBoardAttachment(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting notice attachment:", error);
+      res.status(500).json({ error: "Failed to delete attachment" });
+    }
+  });
+
   // Patients API
   app.get("/api/patients", isAuthenticated, async (req, res) => {
     try {
