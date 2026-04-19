@@ -250,6 +250,177 @@ export function TasksPanel() {
   );
 }
 
+function PatientApptSearchDialog({
+  open, onOpenChange, onJumpTo,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onJumpTo?: (date: Date, appointment: Appointment) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Patient | null>(null);
+
+  const { data: results = [], isFetching } = useQuery<Patient[]>({
+    queryKey: ["/api/patients", "search", search],
+    queryFn: async () => {
+      if (!search || search.length < 2) return [];
+      const res = await fetch(`/api/patients?search=${encodeURIComponent(search)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: search.length >= 2,
+  });
+
+  const { data: appts = [], isLoading: apptsLoading } = useQuery<Appointment[]>({
+    queryKey: ["/api/patients", selected?.id, "appointments"],
+    queryFn: async () => {
+      if (!selected) return [];
+      const res = await fetch(`/api/patients/${selected.id}/appointments`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selected,
+  });
+
+  const now = Date.now();
+  const upcoming = appts
+    .filter(a => a.status !== "cancelled" && new Date(a.appointmentDate).getTime() >= now - 60 * 60 * 1000)
+    .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime());
+  const past = appts
+    .filter(a => new Date(a.appointmentDate).getTime() < now - 60 * 60 * 1000)
+    .sort((a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime());
+
+  const reset = () => { setSearch(""); setSelected(null); };
+
+  const renderAppt = (a: Appointment, faded = false) => (
+    <li key={a.id}>
+      <button
+        type="button"
+        onClick={() => { onJumpTo?.(new Date(a.appointmentDate), a); onOpenChange(false); reset(); }}
+        className={`w-full text-left p-3 rounded-lg border bg-white hover:border-blue-400 hover:bg-blue-50/50 transition-colors ${faded ? "opacity-70" : ""}`}
+        data-testid={`button-appt-jump-${a.id}`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-gray-900">
+              {format(new Date(a.appointmentDate), "EEE d MMM yyyy")} · {a.appointmentTime}
+            </div>
+            <div className="text-xs text-gray-600 mt-0.5 truncate">{a.scanType}</div>
+            {a.notes && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{a.notes}</div>}
+          </div>
+          <Badge variant="outline" className="text-[10px] capitalize">{a.status}</Badge>
+        </div>
+      </button>
+    </li>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) reset(); }}>
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Search className="w-4 h-4" /> Find Patient Appointments
+          </DialogTitle>
+        </DialogHeader>
+
+        {!selected ? (
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="appt-search">Search by name, UR number, phone or email</Label>
+              <Input
+                id="appt-search"
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Type at least 2 characters…"
+                className="mt-1"
+                data-testid="input-patient-appt-search"
+              />
+            </div>
+            {search.length >= 2 && (
+              <div className="border rounded-md max-h-72 overflow-y-auto">
+                {isFetching ? (
+                  <div className="p-4 text-sm text-gray-500 text-center">Searching…</div>
+                ) : results.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-500 text-center">No patients found.</div>
+                ) : (
+                  <ul className="divide-y">
+                    {results.map(p => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelected(p)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                          data-testid={`button-pick-patient-${p.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium truncate">{p.firstName} {p.lastName}</div>
+                              <div className="text-xs text-gray-500 truncate">
+                                {p.dateOfBirth && `DOB ${p.dateOfBirth}`}
+                                {p.phone && ` · ${p.phone}`}
+                              </div>
+                            </div>
+                            {p.urNumber && <Badge variant="secondary" className="text-[10px] shrink-0">UR {p.urNumber}</Badge>}
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">{selected.firstName} {selected.lastName}</div>
+                <div className="text-xs text-gray-600">
+                  {selected.urNumber && <span>UR {selected.urNumber}</span>}
+                  {selected.dateOfBirth && <span> · DOB {selected.dateOfBirth}</span>}
+                  {selected.phone && <span> · {selected.phone}</span>}
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setSelected(null)} data-testid="button-change-patient">
+                <X className="w-4 h-4 mr-1" /> Change
+              </Button>
+            </div>
+
+            {apptsLoading ? (
+              <div className="text-sm text-gray-500 py-6 text-center">Loading appointments…</div>
+            ) : (
+              <>
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Upcoming ({upcoming.length})
+                  </h3>
+                  {upcoming.length === 0 ? (
+                    <div className="text-sm text-gray-500 italic bg-gray-50 border border-dashed rounded-md p-4 text-center">
+                      No upcoming appointments
+                    </div>
+                  ) : (
+                    <ul className="space-y-2">{upcoming.map(a => renderAppt(a))}</ul>
+                  )}
+                </div>
+
+                {past.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 mt-3">
+                      Past ({past.length})
+                    </h3>
+                    <ul className="space-y-2 max-h-56 overflow-y-auto pr-1">{past.slice(0, 20).map(a => renderAppt(a, true))}</ul>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string, tab?: "upload" | "draw") => void }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -266,6 +437,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [desktopDatePickerOpen, setDesktopDatePickerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [bookingMode, setBookingMode] = useState<"appointment" | "event">("appointment");
+  const [apptSearchOpen, setApptSearchOpen] = useState(false);
 
   // Keep isMobile in sync with window width and lock view mode on small screens
   useEffect(() => {
@@ -1210,6 +1382,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
             <p className="text-gray-600 dark:text-gray-400">Manage patient bookings and appointments</p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setApptSearchOpen(true)} data-testid="button-open-appt-search">
+              <Search className="w-4 h-4 mr-2" />
+              Find Appointments
+            </Button>
             <Button variant="outline" onClick={() => openNewEventDialog()}>
               <CalendarX2 className="w-4 h-4 mr-2" />
               Add Event
@@ -1225,6 +1401,9 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
         <div className="flex md:hidden justify-between items-center mb-3">
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">Calendar</h1>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setApptSearchOpen(true)} data-testid="button-open-appt-search-mobile">
+              <Search className="w-4 h-4" />
+            </Button>
             <Button variant="outline" size="sm" onClick={() => openNewEventDialog()}>
               <CalendarX2 className="w-4 h-4" />
             </Button>
@@ -1648,6 +1827,17 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
         </Card>
           </div> {/* end flex-1 main calendar card */}
         </div> {/* end flex sidebar+card container */}
+
+        <PatientApptSearchDialog
+          open={apptSearchOpen}
+          onOpenChange={setApptSearchOpen}
+          onJumpTo={(date, appt) => {
+            setCurrentDate(date);
+            setSelectedDate(date);
+            setViewMode("day");
+            setTimeout(() => setViewingAppointment(appt), 50);
+          }}
+        />
 
         <Dialog open={isBookingDialogOpen} onOpenChange={(open) => { setIsBookingDialogOpen(open); if (!open) { resetForm(); setEditingAppointment(null); setBookingMode("appointment"); } }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
