@@ -18,6 +18,7 @@ import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, addYears, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent, ReminderLog, CalendarTask } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
+import { Badge } from "@/components/ui/badge";
 
 function parseReferralNotes(notes: string | null | undefined): { referrerName: string | null; cleanNotes: string | null } {
   if (!notes) return { referrerName: null, cleanNotes: null };
