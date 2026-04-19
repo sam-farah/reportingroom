@@ -383,9 +383,6 @@ function PatientApptSearchDialog({
                   {selected.phone && <span> · {selected.phone}</span>}
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setSelected(null)} data-testid="button-change-patient">
-                <X className="w-4 h-4 mr-1" /> Change
-              </Button>
             </div>
 
             {apptsLoading ? (
@@ -1832,11 +1829,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
         <PatientApptSearchDialog
           open={apptSearchOpen}
           onOpenChange={setApptSearchOpen}
-          onJumpTo={(date, appt) => {
+          onJumpTo={(date) => {
             setCurrentDate(date);
             setSelectedDate(date);
-            setViewMode("day");
-            setTimeout(() => setViewingAppointment(appt), 50);
+            if (viewMode === "month") setViewMode("week");
           }}
         />
 
