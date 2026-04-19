@@ -31,7 +31,6 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "patients",       label: "Patients",  icon: UserCircle },
   { id: "requests",       label: "Requests",  icon: ClipboardList },
   { id: "contacts",       label: "Contacts",  icon: BookUser },
-  { id: "notice-board",   label: "Notices",   icon: Megaphone },
   { id: "dicom",          label: "DICOM",     icon: ScanLine },
   { id: "staff",          label: "Team",      icon: Users, adminOnly: true },
   { id: "admin",          label: "Admin",     icon: Settings },
@@ -93,6 +92,15 @@ export default function Dashboard() {
   });
   const pendingRequestsCount = (scanRequests ?? []).filter(r => r.status === "pending").length;
 
+  const { data: noticePosts } = useQuery<{ pinned: boolean; createdAt: string }[]>({
+    queryKey: ["/api/notice-board"],
+    retry: false,
+  });
+  const recentSince = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const noticeBadgeCount = (noticePosts ?? []).filter(
+    p => p.pinned || (p.createdAt && new Date(p.createdAt).getTime() > recentSince)
+  ).length;
+
   const visibleNav = NAV_ITEMS.filter(item => !item.adminOnly || isOwnerOrAdmin);
 
   return (
@@ -131,6 +139,27 @@ export default function Dashboard() {
             >
               <Monitor className="w-3.5 h-3.5 mr-1" />Kiosk
             </Button>
+
+            <button
+              onClick={() => setActivePanel("notice-board")}
+              title="Notice Board"
+              className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all ${
+                activePanel === "notice-board"
+                  ? "bg-amber-100 text-amber-700 ring-2 ring-amber-300"
+                  : "text-gray-500 hover:bg-amber-50 hover:text-amber-600"
+              }`}
+              data-testid="button-notices"
+            >
+              <Megaphone className="w-4 h-4" />
+              {noticeBadgeCount > 0 && (
+                <>
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center leading-none ring-2 ring-white">
+                    {noticeBadgeCount > 99 ? "99+" : noticeBadgeCount}
+                  </span>
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-amber-400 animate-ping opacity-60" />
+                </>
+              )}
+            </button>
 
             <div className="hidden sm:flex items-center gap-1.5">
               <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
