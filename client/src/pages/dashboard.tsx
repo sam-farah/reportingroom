@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,8 +19,9 @@ import Contacts from "./contacts";
 import Draw from "./draw";
 import Templates from "./templates";
 import HelpCentre from "./help-centre";
+import NoticeBoard from "./notice-board";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board";
 
 const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",  icon: CalendarIcon },
@@ -30,6 +31,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "patients",       label: "Patients",  icon: UserCircle },
   { id: "requests",       label: "Requests",  icon: ClipboardList },
   { id: "contacts",       label: "Contacts",  icon: BookUser },
+  { id: "notice-board",   label: "Notices",   icon: Megaphone },
   { id: "dicom",          label: "DICOM",     icon: ScanLine },
   { id: "staff",          label: "Team",      icon: Users, adminOnly: true },
   { id: "admin",          label: "Admin",     icon: Settings },
@@ -50,6 +52,7 @@ const PAGE_TITLES: Record<Panel, string> = {
   "admin":          "Admin Panel",
   "help":           "Help Centre",
   "dicom":          "DICOM Viewer",
+  "notice-board":   "Notice Board",
 };
 
 export default function Dashboard() {
@@ -230,6 +233,8 @@ export default function Dashboard() {
         <AdminPanel onNavigateToTemplates={() => setActivePanel("templates")} />
       ) : activePanel === "help" ? (
         <HelpCentre />
+      ) : activePanel === "notice-board" ? (
+        <NoticeBoard />
       ) : activePanel === "dicom" ? (
         <div className="p-8 max-w-2xl mx-auto w-full" style={{ paddingTop: "48px" }}>
           {/* Header */}

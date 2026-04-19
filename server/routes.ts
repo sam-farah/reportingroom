@@ -776,6 +776,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Notice Board API
+  app.get("/api/notice-board", isAuthenticated, async (req, res) => {
+    try {
+      const clinicId = (req as any).user?.clinicId;
+      if (!clinicId) return res.json([]);
+      const posts = await storage.getNoticeBoardPosts(clinicId);
+      res.json(posts);
+    } catch (error) {
+      console.error("Error fetching notice board posts:", error);
+      res.status(500).json({ error: "Failed to fetch notice board posts" });
+    }
+  });
+
+  app.post("/api/notice-board", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const clinicId = user?.clinicId ?? null;
+      const authorId = user?.id ?? null;
+      const title = String(req.body?.title ?? "").trim();
+      const body = String(req.body?.body ?? "").trim();
+      const category = String(req.body?.category ?? "general").trim() || "general";
+      const pinned = !!req.body?.pinned;
+      if (!title || !body) return res.status(400).json({ error: "Title and body are required" });
+      const post = await storage.createNoticeBoardPost({ clinicId, authorId, title, body, category, pinned });
+      res.status(201).json(post);
+    } catch (error) {
+      console.error("Error creating notice board post:", error);
+      res.status(500).json({ error: "Failed to create notice board post" });
+    }
+  });
+
+  app.patch("/api/notice-board/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const patch: any = {};
+      if (typeof req.body?.title === "string") patch.title = req.body.title.trim();
+      if (typeof req.body?.body === "string") patch.body = req.body.body.trim();
+      if (typeof req.body?.category === "string") patch.category = req.body.category.trim() || "general";
+      if (typeof req.body?.pinned === "boolean") patch.pinned = req.body.pinned;
+      const updated = await storage.updateNoticeBoardPost(id, patch);
+      if (!updated) return res.status(404).json({ error: "Post not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating notice board post:", error);
+      res.status(500).json({ error: "Failed to update notice board post" });
+    }
+  });
+
+  app.delete("/api/notice-board/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteNoticeBoardPost(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting notice board post:", error);
+      res.status(500).json({ error: "Failed to delete notice board post" });
+    }
+  });
+
+  app.get("/api/notice-board/:id/comments", isAuthenticated, async (req, res) => {
+    try {
+      const postId = parseInt(req.params.id);
+      const comments = await storage.getNoticeBoardComments(postId);
+      res.json(comments);
+    } catch (error) {
+      console.error("Error fetching notice board comments:", error);
+      res.status(500).json({ error: "Failed to fetch comments" });
+    }
+  });
+
+  app.post("/api/notice-board/:id/comments", isAuthenticated, async (req, res) => {
+    try {
+      const postId = parseInt(req.params.id);
+      const user = (req as any).user;
+      const body = String(req.body?.body ?? "").trim();
+      if (!body) return res.status(400).json({ error: "Body is required" });
+      const comment = await storage.createNoticeBoardComment({ postId, authorId: user?.id ?? null, body });
+      res.status(201).json(comment);
+    } catch (error) {
+      console.error("Error creating notice board comment:", error);
+      res.status(500).json({ error: "Failed to create comment" });
+    }
+  });
+
+  app.delete("/api/notice-board/comments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteNoticeBoardComment(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting notice board comment:", error);
+      res.status(500).json({ error: "Failed to delete comment" });
+    }
+  });
+
   // Patients API
   app.get("/api/patients", isAuthenticated, async (req, res) => {
     try {

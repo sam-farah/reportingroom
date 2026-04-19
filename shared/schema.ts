@@ -735,6 +735,35 @@ export const insertCalendarTaskSchema = createInsertSchema(calendarTasks).omit({
 export type CalendarTask = typeof calendarTasks.$inferSelect;
 export type InsertCalendarTask = z.infer<typeof insertCalendarTaskSchema>;
 
+// Notice Board (clinic intranet announcements)
+export const noticeBoardPosts = pgTable("notice_board_posts", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  authorId: varchar("author_id").references(() => users.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body").notNull(),
+  category: varchar("category", { length: 50 }).notNull().default("general"),
+  pinned: boolean("pinned").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertNoticeBoardPostSchema = createInsertSchema(noticeBoardPosts).omit({ id: true, createdAt: true, updatedAt: true });
+export type NoticeBoardPost = typeof noticeBoardPosts.$inferSelect;
+export type InsertNoticeBoardPost = z.infer<typeof insertNoticeBoardPostSchema>;
+
+export const noticeBoardComments = pgTable("notice_board_comments", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").notNull().references(() => noticeBoardPosts.id, { onDelete: "cascade" }),
+  authorId: varchar("author_id").references(() => users.id),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertNoticeBoardCommentSchema = createInsertSchema(noticeBoardComments).omit({ id: true, createdAt: true });
+export type NoticeBoardComment = typeof noticeBoardComments.$inferSelect;
+export type InsertNoticeBoardComment = z.infer<typeof insertNoticeBoardCommentSchema>;
+
 // Report distribution log
 export const reportDistributions = pgTable("report_distributions", {
   id: serial("id").primaryKey(),

@@ -70,6 +70,12 @@ import {
   calendarEvents,
   type CalendarEvent,
   type InsertCalendarEvent,
+  noticeBoardPosts,
+  noticeBoardComments,
+  type NoticeBoardPost,
+  type InsertNoticeBoardPost,
+  type NoticeBoardComment,
+  type InsertNoticeBoardComment,
   calendarTasks,
   type CalendarTask,
   type InsertCalendarTask,
@@ -224,6 +230,15 @@ export interface IStorage {
   createCalendarTask(task: InsertCalendarTask): Promise<CalendarTask>;
   updateCalendarTask(id: number, task: Partial<InsertCalendarTask> & { completed?: boolean }): Promise<CalendarTask | undefined>;
   deleteCalendarTask(id: number): Promise<void>;
+
+  // Notice board operations
+  getNoticeBoardPosts(clinicId: number): Promise<NoticeBoardPost[]>;
+  createNoticeBoardPost(post: InsertNoticeBoardPost): Promise<NoticeBoardPost>;
+  updateNoticeBoardPost(id: number, post: Partial<InsertNoticeBoardPost>): Promise<NoticeBoardPost | undefined>;
+  deleteNoticeBoardPost(id: number): Promise<void>;
+  getNoticeBoardComments(postId: number): Promise<NoticeBoardComment[]>;
+  createNoticeBoardComment(comment: InsertNoticeBoardComment): Promise<NoticeBoardComment>;
+  deleteNoticeBoardComment(id: number): Promise<void>;
 
   // Patient operations
   getAllPatients(): Promise<Patient[]>;
@@ -1119,6 +1134,50 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCalendarTask(id: number): Promise<void> {
     await db.delete(calendarTasks).where(eq(calendarTasks.id, id));
+  }
+
+  // Notice board operations
+  async getNoticeBoardPosts(clinicId: number): Promise<NoticeBoardPost[]> {
+    return await db
+      .select()
+      .from(noticeBoardPosts)
+      .where(eq(noticeBoardPosts.clinicId, clinicId))
+      .orderBy(desc(noticeBoardPosts.pinned), desc(noticeBoardPosts.createdAt));
+  }
+
+  async createNoticeBoardPost(post: InsertNoticeBoardPost): Promise<NoticeBoardPost> {
+    const [created] = await db.insert(noticeBoardPosts).values(post).returning();
+    return created;
+  }
+
+  async updateNoticeBoardPost(id: number, post: Partial<InsertNoticeBoardPost>): Promise<NoticeBoardPost | undefined> {
+    const [updated] = await db
+      .update(noticeBoardPosts)
+      .set({ ...post, updatedAt: new Date() })
+      .where(eq(noticeBoardPosts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteNoticeBoardPost(id: number): Promise<void> {
+    await db.delete(noticeBoardPosts).where(eq(noticeBoardPosts.id, id));
+  }
+
+  async getNoticeBoardComments(postId: number): Promise<NoticeBoardComment[]> {
+    return await db
+      .select()
+      .from(noticeBoardComments)
+      .where(eq(noticeBoardComments.postId, postId))
+      .orderBy(noticeBoardComments.createdAt);
+  }
+
+  async createNoticeBoardComment(comment: InsertNoticeBoardComment): Promise<NoticeBoardComment> {
+    const [created] = await db.insert(noticeBoardComments).values(comment).returning();
+    return created;
+  }
+
+  async deleteNoticeBoardComment(id: number): Promise<void> {
+    await db.delete(noticeBoardComments).where(eq(noticeBoardComments.id, id));
   }
 
   // Patient operations

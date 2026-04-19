@@ -92,6 +92,14 @@ Preferred communication style: Simple, everyday language.
 - **Reschedule button** in the appointment viewing dialog opens the edit form (same as Edit but labeled for rescheduling)
 - API: `GET/POST /api/calendar-events`, `PUT/DELETE /api/calendar-events/:id`
 
+#### Notice Board (Internal Intranet)
+- **Tables**: `notice_board_posts` (clinic-scoped announcements with `title`, `body`, `category`, `pinned`, `authorId`) and `notice_board_comments` (threaded replies, cascade-delete with parent post).
+- **Categories**: general, important, policy, maintenance, social — each with its own colour and icon.
+- **Pinning**: any staff member can pin/unpin a notice; pinned posts sort above non-pinned and get an amber highlight.
+- **Authorship**: edit/delete restricted to the author; comments respect the same rule. All staff can comment.
+- **Page**: `/` → Notices nav item (Megaphone icon). Filter chips per category with live counts.
+- **API**: `GET/POST /api/notice-board`, `PATCH/DELETE /api/notice-board/:id`, `GET/POST /api/notice-board/:id/comments`, `DELETE /api/notice-board/comments/:id`.
+
 #### Report Distribution Log
 - **Table**: `report_distributions` — tracks every distribution event per report
 - **Fields**: `reportId`, `clinicId`, `method` (`email` | `copy_html`), `recipientName`, `recipientEmail`, `notes`, `sentAt`, `confirmedAt`, `confirmedBy`
