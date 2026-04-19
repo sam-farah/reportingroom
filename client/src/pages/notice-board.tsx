@@ -15,12 +15,40 @@ import { Switch } from "@/components/ui/switch";
 import {
   Pin, MessageSquare, Plus, Edit, Trash2, Send, Megaphone,
   AlertCircle, Wrench, PartyPopper, BookOpen, X, Paperclip,
-  FileText, Image as ImageIcon, Download, Upload
+  FileText, Image as ImageIcon, Download, Upload, Video
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type { NoticeBoardPost, NoticeBoardComment, NoticeBoardAttachment } from "@shared/schema";
 import { TasksPanel } from "@/pages/calendar";
 import { ChangelogCard } from "@/components/admin-panel";
+
+const URL_REGEX = /(https?:\/\/[^\s<>]+[^\s<>.,;:!?)\]'"])/gi;
+
+function detectMeetingProvider(url: string): { name: string; color: string } | null {
+  const u = url.toLowerCase();
+  if (u.includes("teams.microsoft.com") || u.includes("teams.live.com")) return { name: "Microsoft Teams", color: "bg-indigo-600 hover:bg-indigo-700" };
+  if (u.includes("zoom.us") || u.includes("zoom.com")) return { name: "Zoom", color: "bg-blue-600 hover:bg-blue-700" };
+  if (u.includes("meet.google.com")) return { name: "Google Meet", color: "bg-emerald-600 hover:bg-emerald-700" };
+  if (u.includes("webex.com")) return { name: "Webex", color: "bg-teal-600 hover:bg-teal-700" };
+  if (u.includes("whereby.com")) return { name: "Whereby", color: "bg-rose-600 hover:bg-rose-700" };
+  return null;
+}
+
+function renderBodyWithLinks(body: string) {
+  const parts: (string | { url: string })[] = [];
+  let lastIndex = 0;
+  for (const m of body.matchAll(URL_REGEX)) {
+    if (m.index! > lastIndex) parts.push(body.slice(lastIndex, m.index));
+    parts.push({ url: m[0] });
+    lastIndex = m.index! + m[0].length;
+  }
+  if (lastIndex < body.length) parts.push(body.slice(lastIndex));
+  return parts.map((p, i) =>
+    typeof p === "string"
+      ? <span key={i}>{p}</span>
+      : <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline break-all">{p.url}</a>
+  );
+}
 
 function formatBytes(bytes: number | null | undefined) {
   if (!bytes) return "";
@@ -429,7 +457,26 @@ function NoticePostCard({
             )}
           </div>
         </div>
-        <p className="text-sm whitespace-pre-wrap text-gray-700">{post.body}</p>
+        <p className="text-sm whitespace-pre-wrap text-gray-700">{renderBodyWithLinks(post.body)}</p>
+
+        {(() => {
+          const meetingMatch = Array.from(post.body.matchAll(URL_REGEX))
+            .map(m => ({ url: m[0], provider: detectMeetingProvider(m[0]) }))
+            .find(x => x.provider !== null);
+          if (!meetingMatch) return null;
+          return (
+            <a
+              href={meetingMatch.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-white text-sm font-medium shadow-sm transition-colors ${meetingMatch.provider!.color}`}
+              data-testid={`button-join-meeting-${post.id}`}
+            >
+              <Video className="w-4 h-4" />
+              Join {meetingMatch.provider!.name} meeting
+            </a>
+          );
+        })()}
 
         {attachments.length > 0 && (
           <div className="space-y-1.5 pt-1">
