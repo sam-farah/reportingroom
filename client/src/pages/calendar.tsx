@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal } from "lucide-react";
 import jsPDF from "jspdf";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
@@ -2877,9 +2877,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                         `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
                       )?.id ?? null;
                   return (
-                    <div className="pt-4 border-t space-y-2">
-                      {/* Top row: status actions */}
-                      <div className="flex gap-2 flex-wrap">
+                    <div className="pt-4 border-t">
+                      <div className="flex gap-2 flex-wrap items-center">
                         {viewingAppointment.status === "scheduled" && (
                           <Button
                             variant="outline"
@@ -2914,71 +2913,77 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           className="text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50"
                           onClick={() => handleEditAppointment(viewingAppointment)}
                         >
-                          <CalendarClock className="w-4 h-4 mr-1" />
-                          Reschedule
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleEditAppointment(viewingAppointment)}>
                           <Edit className="w-4 h-4 mr-1" />
-                          Edit
+                          Edit / Reschedule
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-emerald-600 hover:text-emerald-700 border-emerald-200 hover:bg-emerald-50"
-                          disabled={!viewingAppointment.patientEmail || sendReminderMutation.isPending}
-                          title={!viewingAppointment.patientEmail ? "No email address on file for this patient" : "Send appointment reminder email"}
-                          onClick={() => sendReminderMutation.mutate(viewingAppointment.id)}
-                        >
-                          <Mail className="w-4 h-4 mr-1" />
-                          {sendReminderMutation.isPending ? "Sending…" : "Send Reminder"}
-                        </Button>
-                        {isSameDay(new Date(viewingAppointment.appointmentDate), new Date()) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-amber-700 hover:text-amber-800 border-amber-300 hover:bg-amber-50"
-                            onClick={async () => {
-                              const resolvedPatient = viewingAppointment.patientId
-                                ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
-                                : allCalendarPatients.find(pt =>
-                                    `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
-                                  );
-                              const physician = viewingAppointment.physicianId
-                                ? physicians.find(p => p.id === viewingAppointment.physicianId)
-                                : physicians[0];
-                              try {
-                                await generateAttendanceCertificate({
-                                  appointment: viewingAppointment,
-                                  patient: resolvedPatient || null,
-                                  clinic: clinicData || null,
-                                  physician: physician || null,
-                                });
-                                toast({ title: "Certificate generated", description: "Attendance certificate downloaded." });
-                              } catch (err: any) {
-                                toast({ title: "Error", description: err?.message || "Failed to generate certificate", variant: "destructive" });
-                              }
-                            }}
-                            data-testid="button-attendance-certificate"
-                          >
-                            <FileText className="w-4 h-4 mr-1" />
-                            Attendance Certificate
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700 ml-auto"
-                          onClick={() => {
-                            if (confirm("Are you sure you want to delete this appointment?")) {
-                              deleteMutation.mutate(viewingAppointment.id);
-                            }
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Delete
-                        </Button>
-                      </div>
 
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm" className="ml-auto" data-testid="button-more-actions">
+                              <MoreHorizontal className="w-4 h-4 mr-1" />
+                              More
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-56 p-1">
+                            <button
+                              type="button"
+                              disabled={!viewingAppointment.patientEmail || sendReminderMutation.isPending}
+                              title={!viewingAppointment.patientEmail ? "No email address on file for this patient" : "Send appointment reminder email"}
+                              onClick={() => sendReminderMutation.mutate(viewingAppointment.id)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-md hover:bg-accent text-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              data-testid="menu-send-reminder"
+                            >
+                              <Mail className="w-4 h-4" />
+                              {sendReminderMutation.isPending ? "Sending…" : "Send Reminder"}
+                            </button>
+                            {isSameDay(new Date(viewingAppointment.appointmentDate), new Date()) && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const resolvedPatient = viewingAppointment.patientId
+                                    ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
+                                    : allCalendarPatients.find(pt =>
+                                        `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
+                                      );
+                                  const physician = viewingAppointment.physicianId
+                                    ? physicians.find(p => p.id === viewingAppointment.physicianId)
+                                    : physicians[0];
+                                  try {
+                                    await generateAttendanceCertificate({
+                                      appointment: viewingAppointment,
+                                      patient: resolvedPatient || null,
+                                      clinic: clinicData || null,
+                                      physician: physician || null,
+                                    });
+                                    toast({ title: "Certificate generated", description: "Attendance certificate downloaded." });
+                                  } catch (err: any) {
+                                    toast({ title: "Error", description: err?.message || "Failed to generate certificate", variant: "destructive" });
+                                  }
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-md hover:bg-accent text-amber-700"
+                                data-testid="menu-attendance-certificate"
+                              >
+                                <FileText className="w-4 h-4" />
+                                Attendance Certificate
+                              </button>
+                            )}
+                            <div className="my-1 border-t" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm("Are you sure you want to delete this appointment?")) {
+                                  deleteMutation.mutate(viewingAppointment.id);
+                                }
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-md hover:bg-red-50 text-red-600"
+                              data-testid="menu-delete-appointment"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete Appointment
+                            </button>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </div>
                   );
                 })()}
