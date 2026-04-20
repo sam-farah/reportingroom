@@ -901,6 +901,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Email an attendance certificate PDF (generated client-side) to the patient on the appointment.
+  app.post("/api/appointments/:id/email-attendance-certificate", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { pdfBase64, filename } = req.body || {};
+      if (!pdfBase64 || typeof pdfBase64 !== "string") {
+        return res.status(400).json({ error: "Missing certificate PDF" });
+      }
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) return res.status(404).json({ error: "Appointment not found" });
+      if (!appointment.patientEmail) return res.status(400).json({ error: "No email address on file for this patient" });
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic) return res.status(404).json({ error: "Clinic not found" });
+
+      const sgMod = await import("@sendgrid/mail");
+      const sg = (sgMod as any).default || sgMod;
+      const FROM_EMAIL = "admin@nexusvascularimaging.com";
+
+      const safeFilename = (filename && typeof filename === "string")
+        ? filename.replace(/[^a-zA-Z0-9._-]/g, "_")
+        : `Attendance_Certificate_${id}.pdf`;
+
+      await sg.send({
+        to: { email: appointment.patientEmail, name: appointment.patientName },
+        from: { email: FROM_EMAIL, name: clinic.name || "Nexus Vascular Imaging" },
+        subject: `Attendance Certificate — ${appointment.patientName}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; color: #1a1a2e;">
+            <div style="background: #f0f7ff; border-radius: 8px; padding: 16px 24px; margin-bottom: 20px; border-left: 4px solid #0066cc;">
+              <p style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: #003d99;">${clinic.name || "Nexus Vascular Imaging"}</p>
+              <p style="margin: 0; font-size: 13px; color: #555;">
+                Dear ${appointment.patientName},<br/><br/>
+                Please find attached your attendance certificate for your recent appointment.
+              </p>
+            </div>
+            <p style="font-size: 12px; color: #888;">If you have any questions, please reply to this email or contact our office.</p>
+          </div>
+        `,
+        attachments: [{
+          content: pdfBase64,
+          filename: safeFilename,
+          type: "application/pdf",
+          disposition: "attachment",
+        }],
+      });
+
+      res.json({ success: true, sentTo: appointment.patientEmail });
+    } catch (error: any) {
+      console.error("Email attendance certificate error:", error?.response?.body || error);
+      res.status(500).json({ error: error?.message || "Failed to email certificate" });
+    }
+  });
+
   // Email open tracking pixel
   app.get("/api/reminders/:token/pixel.gif", async (req, res) => {
     try {

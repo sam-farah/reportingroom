@@ -55,16 +55,14 @@ async function generateAttendanceCertificate(opts: {
   patient: any | null;
   clinic: any | null;
   physician: any | null;
-}): Promise<void> {
+}): Promise<{ blob: Blob; base64: string; filename: string }> {
   const { appointment, patient, clinic, physician } = opts;
   const apptDate = new Date(appointment.appointmentDate);
   const today = new Date();
-  const tomorrow = new Date(apptDate);
-  tomorrow.setDate(tomorrow.getDate() + 1);
 
   const dateLong = `${ordinalSuffix(today.getDate())} ${format(today, "MMMM yyyy")}`;
-  const fromDate = format(apptDate, "dd/MM/yyyy");
-  const toDate = format(tomorrow, "dd/MM/yyyy");
+  const apptDateLong = `${ordinalSuffix(apptDate.getDate())} ${format(apptDate, "MMMM yyyy")}`;
+  const generatedAt = format(today, "d MMM yyyy 'at' h:mm a");
 
   const fullName = patient
     ? `${patient.firstName} ${patient.lastName}`
@@ -118,7 +116,7 @@ async function generateAttendanceCertificate(opts: {
   if (phoneDisplay) { pdf.text(`Mob: ${phoneDisplay}`, margin, y); y += 6; }
 
   y += 10;
-  const body = `This letter is to certify that ${fullName} required time off work to recover from a medical condition from ${fromDate} and ${toDate} inclusive.`;
+  const body = `This letter is to certify that ${fullName} needed time off to attend a medical appointment on ${apptDateLong}.`;
   const bodyLines = pdf.splitTextToSize(body, pageW - margin * 2);
   pdf.text(bodyLines, margin, y);
   y += bodyLines.length * 6 + 14;
@@ -152,11 +150,20 @@ async function generateAttendanceCertificate(opts: {
   if (clinic?.name) { pdf.text(clinic.name, margin, fy); fy += 6; }
   if (clinic?.phone) { pdf.text(`Ph: ${clinic.phone}`, margin, fy); fy += 6; }
   if (clinic?.fax) { pdf.text(`Fax: ${clinic.fax}`, margin, fy); fy += 6; }
-  if (clinic?.email) { pdf.text(`Email: ${clinic.email}`, margin, fy); fy += 6; }
+  pdf.text(`Email: admin@nexusvascularimaging.com.au`, margin, fy); fy += 6;
   if (clinic?.website) { pdf.text(`Website: ${clinic.website}`, margin, fy); fy += 6; }
 
+  // Generated timestamp footer (bottom-right, small grey)
+  pdf.setFontSize(8);
+  pdf.setTextColor(140, 140, 140);
+  pdf.text(`Generated: ${generatedAt}`, pageW - margin, 287, { align: "right" });
+
   const safeName = (fullName || "patient").replace(/[^a-z0-9]+/gi, "_");
-  pdf.save(`Attendance_Certificate_${safeName}_${format(apptDate, "yyyy-MM-dd")}.pdf`);
+  const filename = `Attendance_Certificate_${safeName}_${format(apptDate, "yyyy-MM-dd")}.pdf`;
+  const blob = pdf.output("blob");
+  const dataUri = pdf.output("datauristring");
+  const base64 = dataUri.split(",")[1] || "";
+  return { blob, base64, filename };
 }
 
 function parseReferralNotes(notes: string | null | undefined): { referrerName: string | null; cleanNotes: string | null } {
@@ -567,6 +574,15 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
+  const [certificateDialog, setCertificateDialog] = useState<{
+    appointment: Appointment;
+    blob: Blob;
+    base64: string;
+    filename: string;
+    saved: boolean;
+  } | null>(null);
+  const [generatingCertificate, setGeneratingCertificate] = useState(false);
+  const [emailingCertificate, setEmailingCertificate] = useState(false);
   const [showBeginStudy, setShowBeginStudy] = useState(false);
   const [showIdCheck, setShowIdCheck] = useState(false);
   const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
@@ -2939,32 +2955,62 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                             {isSameDay(new Date(viewingAppointment.appointmentDate), new Date()) && (
                               <button
                                 type="button"
+                                disabled={generatingCertificate}
                                 onClick={async () => {
-                                  const resolvedPatient = viewingAppointment.patientId
-                                    ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
+                                  if (generatingCertificate) return;
+                                  setGeneratingCertificate(true);
+                                  const apt = viewingAppointment;
+                                  const resolvedPatient = apt.patientId
+                                    ? allCalendarPatients.find(pt => pt.id === apt.patientId)
                                     : allCalendarPatients.find(pt =>
-                                        `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
+                                        `${pt.firstName} ${pt.lastName}`.toLowerCase() === (apt.patientName || "").toLowerCase()
                                       );
-                                  const physician = viewingAppointment.physicianId
-                                    ? physicians.find(p => p.id === viewingAppointment.physicianId)
+                                  const physician = apt.physicianId
+                                    ? physicians.find(p => p.id === apt.physicianId)
                                     : physicians[0];
                                   try {
-                                    await generateAttendanceCertificate({
-                                      appointment: viewingAppointment,
+                                    const cert = await generateAttendanceCertificate({
+                                      appointment: apt,
                                       patient: resolvedPatient || null,
                                       clinic: clinicData || null,
                                       physician: physician || null,
                                     });
-                                    toast({ title: "Certificate generated", description: "Attendance certificate downloaded." });
+
+                                    // Save to patient file (if we have a patient ID)
+                                    let saved = false;
+                                    if (resolvedPatient?.id) {
+                                      try {
+                                        const fd = new FormData();
+                                        fd.append("file", cert.blob, cert.filename);
+                                        fd.append("title", "Attendance Certificate");
+                                        fd.append("documentDate", new Date().toISOString().split("T")[0]);
+                                        const r = await fetch(`/api/patients/${resolvedPatient.id}/documents`, {
+                                          method: "POST",
+                                          body: fd,
+                                          credentials: "include",
+                                        });
+                                        if (r.ok) saved = true;
+                                      } catch { /* swallow */ }
+                                    }
+
+                                    setCertificateDialog({
+                                      appointment: apt,
+                                      blob: cert.blob,
+                                      base64: cert.base64,
+                                      filename: cert.filename,
+                                      saved,
+                                    });
                                   } catch (err: any) {
                                     toast({ title: "Error", description: err?.message || "Failed to generate certificate", variant: "destructive" });
+                                  } finally {
+                                    setGeneratingCertificate(false);
                                   }
                                 }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-md hover:bg-accent text-amber-700"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-md hover:bg-accent text-amber-700 disabled:opacity-50"
                                 data-testid="menu-attendance-certificate"
                               >
                                 <FileText className="w-4 h-4" />
-                                Attendance Certificate
+                                {generatingCertificate ? "Generating…" : "Attendance Certificate"}
                               </button>
                             )}
                             <div className="my-1 border-t" />
@@ -3045,6 +3091,93 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   ) : null;
                 })()}
                 </>)}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Attendance Certificate — Download or Email */}
+        <Dialog open={!!certificateDialog} onOpenChange={(open) => { if (!open) setCertificateDialog(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-amber-700" />
+                Attendance Certificate Ready
+              </DialogTitle>
+            </DialogHeader>
+            {certificateDialog && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Certificate generated for <strong>{certificateDialog.appointment.patientName}</strong>.
+                  {certificateDialog.saved && (
+                    <span className="block text-emerald-700 mt-1">✓ Saved to patient file.</span>
+                  )}
+                  {!certificateDialog.saved && (
+                    <span className="block text-amber-700 mt-1">Note: could not save to patient file (no linked patient).</span>
+                  )}
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  <Button
+                    onClick={() => {
+                      const url = URL.createObjectURL(certificateDialog.blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = certificateDialog.filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    }}
+                    className="w-full"
+                    data-testid="button-download-certificate"
+                  >
+                    <FileUp className="w-4 h-4 mr-2 rotate-180" />
+                    Download PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={!certificateDialog.appointment.patientEmail || emailingCertificate}
+                    title={!certificateDialog.appointment.patientEmail ? "No email address on file for this patient" : "Email the certificate to the patient"}
+                    onClick={async () => {
+                      if (!certificateDialog) return;
+                      setEmailingCertificate(true);
+                      try {
+                        const res = await fetch(
+                          `/api/appointments/${certificateDialog.appointment.id}/email-attendance-certificate`,
+                          {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({
+                              pdfBase64: certificateDialog.base64,
+                              filename: certificateDialog.filename,
+                            }),
+                          },
+                        );
+                        if (!res.ok) {
+                          const err = await res.json().catch(() => ({}));
+                          throw new Error(err.error || "Failed to send");
+                        }
+                        const data = await res.json();
+                        toast({ title: "Email sent", description: `Certificate emailed to ${data.sentTo}` });
+                        setCertificateDialog(null);
+                      } catch (err: any) {
+                        toast({ title: "Email failed", description: err?.message || "Could not send email", variant: "destructive" });
+                      } finally {
+                        setEmailingCertificate(false);
+                      }
+                    }}
+                    className="w-full text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                    data-testid="button-email-certificate"
+                  >
+                    <Mail className="w-4 h-4 mr-2" />
+                    {emailingCertificate
+                      ? "Sending…"
+                      : certificateDialog.appointment.patientEmail
+                        ? `Email to ${certificateDialog.appointment.patientEmail}`
+                        : "Email to Patient (no email on file)"}
+                  </Button>
+                </div>
               </div>
             )}
           </DialogContent>
