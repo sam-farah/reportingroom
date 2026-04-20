@@ -577,6 +577,8 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
         `Patient: ${patientName}`,
         patient.dateOfBirth ? `DOB: ${fmtDate(patient.dateOfBirth as any)}` : null,
         (patient as any).urNumber ? `UR: ${(patient as any).urNumber}` : null,
+        (patient as any).medicareNumber ? `Medicare: ${(patient as any).medicareNumber}` : null,
+        (patient as any).phone ? `Phone: ${(patient as any).phone}` : null,
         `Document: ${title}`,
         `Date: ${fmtDate(documentDate)}`,
       ].filter(Boolean) as string[];
