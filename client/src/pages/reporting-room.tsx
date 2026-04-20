@@ -2868,7 +2868,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
       {/* ── Distribute Dialog ── */}
       <Dialog open={!!distributeReport} onOpenChange={(open) => { if (!open) setDistributeReport(null); }}>
-        <DialogContent className="max-w-5xl w-full max-h-[92vh] flex flex-col">
+        <DialogContent className="max-w-[95vw] xl:max-w-[1400px] w-full max-h-[95vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Share2 className="w-5 h-5 text-blue-600" />
@@ -2879,6 +2879,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
             </DialogDescription>
           </DialogHeader>
 
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 flex-1 min-h-0">
           <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-y-auto pr-1">
 
               {/* ── Email Section ── */}
@@ -3198,6 +3199,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                 )}
               </div>
             </div>
+
+            {/* ── Right: Condensed Patient File ── */}
+            <PatientSummaryPanel patientId={distributeReport?.patientId ?? null} />
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -3223,5 +3228,176 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       </AlertDialog>
 
     </div>
+  );
+}
+
+// Condensed patient file panel shown on the right of the Distribute dialog.
+// Surfaces critical information staff should know before sending the report.
+function PatientSummaryPanel({ patientId }: { patientId: number | null }) {
+  const enabled = !!patientId;
+  const { data: patient } = useQuery<any>({
+    queryKey: ["/api/patients", patientId],
+    enabled,
+    retry: false,
+  });
+  const { data: notes = [] } = useQuery<any[]>({
+    queryKey: ["/api/patients", patientId, "notes"],
+    enabled,
+    retry: false,
+  });
+  const { data: documents = [] } = useQuery<any[]>({
+    queryKey: ["/api/patients", patientId, "documents"],
+    enabled,
+    retry: false,
+  });
+  const { data: appointments = [] } = useQuery<any[]>({
+    queryKey: ["/api/patients", patientId, "appointments"],
+    enabled,
+    retry: false,
+  });
+
+  if (!patientId) {
+    return (
+      <aside className="border rounded-lg bg-gray-50 p-4 text-sm text-gray-500 lg:overflow-y-auto">
+        No patient linked to this report — patient summary not available.
+      </aside>
+    );
+  }
+
+  const fullName = patient ? `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim() : "";
+  const allergies = (patient?.allergies || "").trim();
+  const history = (patient?.medicalHistory || "").trim();
+  const generalNotes = (patient?.notes || "").trim();
+  const hasCritical = !!allergies;
+
+  const recentDocs = [...documents]
+    .sort((a, b) => new Date(b.documentDate || b.createdAt || 0).getTime() - new Date(a.documentDate || a.createdAt || 0).getTime())
+    .slice(0, 5);
+  const recentNotes = [...notes]
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+    .slice(0, 5);
+  const recentAppts = [...appointments]
+    .sort((a, b) => new Date(b.appointmentDate || 0).getTime() - new Date(a.appointmentDate || 0).getTime())
+    .slice(0, 5);
+
+  return (
+    <aside className="border rounded-lg bg-white flex flex-col min-h-0 lg:overflow-y-auto" data-testid="distribute-patient-panel">
+      <div className="sticky top-0 bg-white border-b px-4 py-3 z-10">
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-gray-500" />
+          <h3 className="font-semibold text-sm text-gray-800">Patient File</h3>
+          {patient?.urNumber && (
+            <span className="ml-auto text-[10px] font-mono px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+              UR {patient.urNumber}
+            </span>
+          )}
+        </div>
+        {patient && (
+          <div className="mt-1">
+            <p className="text-sm font-medium text-gray-900">{fullName}</p>
+            <p className="text-xs text-gray-500">
+              {[
+                patient.dateOfBirth && `DOB ${patient.dateOfBirth}`,
+                patient.gender,
+                patient.phone,
+              ].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 space-y-4 text-sm">
+        {hasCritical && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-red-700 mb-1">⚠ Allergies</p>
+            <p className="text-sm text-red-900 whitespace-pre-wrap">{allergies}</p>
+          </div>
+        )}
+
+        {history && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Medical History</p>
+            <p className="text-sm text-gray-800 whitespace-pre-wrap line-clamp-6">{history}</p>
+          </div>
+        )}
+
+        {generalNotes && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">General Notes</p>
+            <p className="text-sm text-gray-800 whitespace-pre-wrap line-clamp-6">{generalNotes}</p>
+          </div>
+        )}
+
+        {patient?.referringPhysician && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Referring Physician</p>
+            <p className="text-sm text-gray-800">{patient.referringPhysician}</p>
+          </div>
+        )}
+
+        {(patient?.emergencyContactName || patient?.emergencyContactPhone) && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Emergency Contact</p>
+            <p className="text-sm text-gray-800">
+              {patient.emergencyContactName}
+              {patient.emergencyContactPhone && ` — ${patient.emergencyContactPhone}`}
+            </p>
+          </div>
+        )}
+
+        {recentNotes.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Recent Patient Notes</p>
+            <ul className="space-y-2">
+              {recentNotes.map((n) => (
+                <li key={n.id} className="text-xs border-l-2 border-amber-300 pl-2">
+                  <p className="text-gray-800 whitespace-pre-wrap line-clamp-4">{n.note || n.content || ""}</p>
+                  <p className="text-gray-400 mt-0.5">
+                    {n.createdAt && format(new Date(n.createdAt), "d MMM yyyy")}
+                    {n.authorName && ` · ${n.authorName}`}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {recentAppts.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Recent Appointments</p>
+            <ul className="space-y-1">
+              {recentAppts.map((a) => (
+                <li key={a.id} className="text-xs text-gray-700 flex justify-between gap-2">
+                  <span className="truncate">{a.scanType || "Appointment"}</span>
+                  <span className="text-gray-400 flex-shrink-0">
+                    {a.appointmentDate && format(new Date(a.appointmentDate), "d MMM yyyy")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {recentDocs.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Recent Documents</p>
+            <ul className="space-y-1">
+              {recentDocs.map((d) => (
+                <li key={d.id} className="text-xs text-gray-700 flex justify-between gap-2">
+                  <span className="truncate">{d.title || d.originalName}</span>
+                  <span className="text-gray-400 flex-shrink-0">
+                    {d.documentDate && format(new Date(d.documentDate), "d MMM yyyy")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {!hasCritical && !history && !generalNotes && recentNotes.length === 0 && (
+          <p className="text-xs text-gray-400 italic">No critical notes on file.</p>
+        )}
+      </div>
+    </aside>
   );
 }

@@ -2617,6 +2617,34 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "20 Apr 2026",
+    tag: "Improve",
+    title: "Distribute Report dialog — wider layout with patient file on the right",
+    detail:
+      "The Distribute Report dialog now opens at almost full screen width and shows a condensed patient file on the right-hand side so you can see critical information at a glance before sending a report out.\n\nThe right panel surfaces:\n\n• UR number, name, DOB, gender and phone in the header.\n• Allergies highlighted in red — flagged at the top so they're impossible to miss.\n• Medical history and general patient notes.\n• Referring physician and emergency contact.\n• The five most recent patient notes, appointments and documents on file.\n\nIf the report isn't linked to a patient (e.g. quick one-off reports), the panel shows a friendly note instead.",
+  },
+  {
+    date: "20 Apr 2026",
+    tag: "New",
+    title: "Kiosk consent form with on-screen signature",
+    detail:
+      "Patients checking in via the kiosk are now asked to read and sign a clinic consent form before check-in completes.\n\nHow it works:\n\n• Admin → Clinic Settings has a new \"Kiosk Consent Wording\" textarea where you write the consent text patients will see.\n• At the kiosk, after the patient confirms their details, the consent screen appears full-screen with the wording in a scrollable panel and a signature pad below it.\n• When they sign and tap Confirm, the system generates a tidy A4 PDF (with your clinic logo, the patient's name + UR number, the consent text, the signature image and the date) and saves it straight to the patient's file under Documents.\n• Check-in only completes once consent is captured, so you have a signed record on file for every visit.",
+  },
+  {
+    date: "20 Apr 2026",
+    tag: "Improve",
+    title: "Cleaner appointment dialog with a tidier action menu",
+    detail:
+      "The appointment detail dialog has been cleaned up. Edit and Reschedule used to be two separate buttons that did the same thing — they're now a single Edit / Reschedule button.\n\nLess-frequent actions (Send Reminder, Attendance Certificate, Delete) are tucked away under a \"More\" menu, with Delete separated by a divider so it's harder to hit by accident.",
+  },
+  {
+    date: "20 Apr 2026",
+    tag: "New",
+    title: "Attendance certificates — auto-saved to file, downloadable, emailable",
+    detail:
+      "Generating an attendance certificate from the calendar is now a one-stop action.\n\nWhen you click Attendance Certificate on an appointment:\n\n• The certificate is generated as a clean A4 PDF using the new wording (\"…needed time off to attend a medical appointment on <date>.\") with your clinic email in the footer and a faint Generated timestamp.\n• It's automatically saved to the patient's file under Documents — no extra step.\n• A small dialog then offers two buttons: Download PDF and Email to <patientEmail> (the email button is disabled if no email is on file).\n• Clicking Email sends the PDF straight to the patient via email.",
+  },
+  {
     date: "19 Apr 2026",
     tag: "New",
     title: "Notice Board — internal announcements with attachments",
