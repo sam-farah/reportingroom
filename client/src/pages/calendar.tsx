@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal } from "lucide-react";
 import jsPDF from "jspdf";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, addYears, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
@@ -2933,30 +2934,29 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           Edit / Reschedule
                         </Button>
 
-                        <Popover>
-                          <PopoverTrigger asChild>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button variant="outline" size="sm" className="ml-auto" data-testid="button-more-actions">
                               <MoreHorizontal className="w-4 h-4 mr-1" />
                               More
                             </Button>
-                          </PopoverTrigger>
-                          <PopoverContent align="end" className="w-56 p-1">
-                            <button
-                              type="button"
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
                               disabled={!viewingAppointment.patientEmail || sendReminderMutation.isPending}
                               title={!viewingAppointment.patientEmail ? "No email address on file for this patient" : "Send appointment reminder email"}
-                              onClick={() => sendReminderMutation.mutate(viewingAppointment.id)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-md hover:bg-accent text-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              onSelect={(e) => { e.preventDefault(); sendReminderMutation.mutate(viewingAppointment.id); }}
+                              className="text-emerald-700 focus:text-emerald-700"
                               data-testid="menu-send-reminder"
                             >
-                              <Mail className="w-4 h-4" />
+                              <Mail className="w-4 h-4 mr-2" />
                               {sendReminderMutation.isPending ? "Sending…" : "Send Reminder"}
-                            </button>
+                            </DropdownMenuItem>
                             {isSameDay(new Date(viewingAppointment.appointmentDate), new Date()) && (
-                              <button
-                                type="button"
+                              <DropdownMenuItem
                                 disabled={generatingCertificate}
-                                onClick={async () => {
+                                onSelect={async (e) => {
+                                  e.preventDefault();
                                   if (generatingCertificate) return;
                                   setGeneratingCertificate(true);
                                   const apt = viewingAppointment;
@@ -3006,29 +3006,29 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                     setGeneratingCertificate(false);
                                   }
                                 }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-md hover:bg-accent text-amber-700 disabled:opacity-50"
+                                className="text-amber-700 focus:text-amber-700"
                                 data-testid="menu-attendance-certificate"
                               >
-                                <FileText className="w-4 h-4" />
+                                <FileText className="w-4 h-4 mr-2" />
                                 {generatingCertificate ? "Generating…" : "Attendance Certificate"}
-                              </button>
+                              </DropdownMenuItem>
                             )}
-                            <div className="my-1 border-t" />
-                            <button
-                              type="button"
-                              onClick={() => {
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault();
                                 if (confirm("Are you sure you want to delete this appointment?")) {
                                   deleteMutation.mutate(viewingAppointment.id);
                                 }
                               }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-md hover:bg-red-50 text-red-600"
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
                               data-testid="menu-delete-appointment"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4 mr-2" />
                               Delete Appointment
-                            </button>
-                          </PopoverContent>
-                        </Popover>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   );
