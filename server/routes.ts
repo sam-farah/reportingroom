@@ -165,6 +165,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Public: check whether the patient linked to this appointment has completed registration.
+  // If not, return a registration URL (reusing an existing pending token if still valid, otherwise creating a fresh one).
+  app.get("/api/kiosk/registration-status/:appointmentId", async (req, res) => {
+    try {
+      const id = parseInt(req.params.appointmentId);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid appointment ID" });
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) return res.status(404).json({ error: "Appointment not found" });
+
+      // Resolve a patient record. Prefer the explicit link; fall back to a name match within the clinic.
+      let patient = null as any;
+      if (appointment.patientId) {
+        patient = await storage.getPatient(appointment.patientId);
+      }
+      if (!patient) {
+        const all = await storage.getAllPatients().catch(() => [] as any[]);
+        patient = all.find((p: any) =>
+          (!appointment.clinicId || p.clinicId === appointment.clinicId) &&
+          `${p.firstName} ${p.lastName}`.toLowerCase() === (appointment.patientName || "").toLowerCase()
+        ) || null;
+      }
+
+      if (!patient) {
+        return res.json({ registered: false, hasPatient: false });
+      }
+
+      const latest = await storage.getLatestPatientRegistrationToken(patient.id);
+      const completedRegistration = latest?.status === "completed";
+      const hasCoreFields = !!(patient.address && patient.emergencyContactName);
+      const registered = completedRegistration || hasCoreFields;
+
+      if (registered) {
+        return res.json({ registered: true, hasPatient: true });
+      }
+
+      // Reuse an unexpired pending token if available; otherwise create one
+      let token = (latest && latest.status === "pending" && new Date() < latest.expiresAt) ? latest.token : null;
+      if (!token) {
+        const crypto = await import("crypto");
+        token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        await storage.createPatientRegistrationToken(patient.id, appointment.clinicId!, token, expiresAt);
+      }
+
+      const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const registrationUrl = `${host}/patient-registration/${token}`;
+      res.json({ registered: false, hasPatient: true, registrationUrl, token });
+    } catch (error) {
+      console.error("Kiosk registration-status error:", error);
+      res.status(500).json({ error: "Failed to check registration status" });
+    }
+  });
+
   app.post("/api/kiosk/checkin/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);

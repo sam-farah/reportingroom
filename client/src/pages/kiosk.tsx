@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, CheckCircle, Clock, ArrowLeft, UserCheck } from "lucide-react";
+import { Search, CheckCircle, Clock, ArrowLeft, UserCheck, ClipboardList, QrCode, X } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +26,13 @@ interface KioskSettings {
   kioskBackgroundColor: string | null;
 }
 
+interface RegistrationStatus {
+  registered: boolean;
+  hasPatient: boolean;
+  registrationUrl?: string;
+  token?: string;
+}
+
 export default function Kiosk() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -34,6 +42,9 @@ export default function Kiosk() {
   const [checkedIn, setCheckedIn] = useState<number | null>(null);
   const [checkingIn, setCheckingIn] = useState<number | null>(null);
   const [settings, setSettings] = useState<KioskSettings | null>(null);
+  const [regStatus, setRegStatus] = useState<Record<number, RegistrationStatus>>({});
+  const [registerFor, setRegisterFor] = useState<{ apt: KioskAppointment; status: RegistrationStatus } | null>(null);
+  const [registerMode, setRegisterMode] = useState<"qr" | "form" | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -50,6 +61,7 @@ export default function Kiosk() {
 
     if (searchName.trim().length === 0) {
       setAppointments([]);
+      setRegStatus({});
       return;
     }
 
@@ -61,6 +73,47 @@ export default function Kiosk() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [searchName]);
+
+  // When appointments load, fetch registration status for each one in parallel
+  useEffect(() => {
+    if (appointments.length === 0) return;
+    appointments.forEach(async (apt) => {
+      if (regStatus[apt.id]) return;
+      try {
+        const res = await fetch(`/api/kiosk/registration-status/${apt.id}`);
+        if (res.ok) {
+          const data: RegistrationStatus = await res.json();
+          setRegStatus(prev => ({ ...prev, [apt.id]: data }));
+        }
+      } catch {}
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointments]);
+
+  // While the registration dialog is open, poll for completion to auto-advance to check-in
+  useEffect(() => {
+    if (!registerFor) return;
+    const aptId = registerFor.apt.id;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/kiosk/registration-status/${aptId}`);
+        if (res.ok) {
+          const data: RegistrationStatus = await res.json();
+          setRegStatus(prev => ({ ...prev, [aptId]: data }));
+          if (data.registered) {
+            clearInterval(interval);
+            setRegisterFor(null);
+            setRegisterMode(null);
+            toast({
+              title: "Registration complete",
+              description: "Thank you. You can now check in.",
+            });
+          }
+        }
+      } catch {}
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [registerFor, toast]);
 
   const searchAppointments = async (query: string) => {
     setSearching(true);
@@ -92,6 +145,7 @@ export default function Kiosk() {
           setCheckedIn(null);
           setSearchName("");
           setAppointments([]);
+          setRegStatus({});
           inputRef.current?.focus();
         }, 5000);
       } else {
@@ -139,6 +193,81 @@ export default function Kiosk() {
           <p className="text-sm text-gray-400 mt-8">
             This screen will reset automatically...
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Registration screen — full takeover when patient picks a registration method
+  if (registerFor && registerMode) {
+    const url = registerFor.status.registrationUrl;
+    return (
+      <div className="min-h-screen flex flex-col" style={bgStyle}>
+        <div className="p-4 flex justify-between items-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setRegisterFor(null); setRegisterMode(null); }}
+            className="text-gray-500 hover:text-gray-700"
+            data-testid="button-back-to-checkin"
+          >
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            Back
+          </Button>
+          <span className="text-sm text-gray-500">Registration for {registerFor.apt.patientName}</span>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 pb-16">
+          {registerMode === "qr" && url && (
+            <div className="text-center max-w-xl">
+              <div className="mb-8">
+                <QrCode className="w-12 h-12 text-teal-600 mx-auto mb-4" />
+                <h1 className="text-4xl font-bold text-gray-800 mb-3">Scan to Register</h1>
+                <p className="text-lg text-gray-500">
+                  Open your phone camera and point it at the QR code.<br />
+                  Complete the form on your phone.
+                </p>
+              </div>
+              <div className="bg-white p-8 rounded-3xl shadow-lg inline-block">
+                <QRCodeSVG value={url} size={320} level="M" includeMargin={false} />
+              </div>
+              <p className="text-sm text-gray-400 mt-6 break-all px-4">{url}</p>
+              <p className="text-base text-gray-500 mt-6">
+                This screen will continue automatically once you finish on your phone.
+              </p>
+              <div className="mt-6">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => setRegisterMode("form")}
+                  className="text-lg"
+                >
+                  Use this screen instead
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {registerMode === "form" && url && (
+            <div className="w-full max-w-3xl flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-lg text-gray-600">
+                  Please complete the registration form below.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => setRegisterMode("qr")}
+                >
+                  <QrCode className="w-4 h-4 mr-1" /> Show QR instead
+                </Button>
+              </div>
+              <iframe
+                src={url}
+                className="flex-1 w-full bg-white rounded-2xl shadow-lg border border-gray-200"
+                title="Patient Registration"
+              />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -211,50 +340,91 @@ export default function Kiosk() {
               <p className="text-lg text-gray-500 mb-4">
                 {appointments.length} appointment{appointments.length !== 1 ? 's' : ''} found for today
               </p>
-              {appointments.map((apt) => (
-                <div
-                  key={apt.id}
-                  className="bg-white rounded-2xl p-6 shadow-md flex items-center justify-between hover:shadow-lg transition-shadow"
-                >
-                  <div className="text-left">
-                    <h3 className="text-2xl font-semibold text-gray-800">
-                      {apt.patientName}
-                    </h3>
-                    <div className="flex items-center gap-4 mt-2 text-gray-500">
-                      <span className="flex items-center gap-1 text-lg">
-                        <Clock className="w-5 h-5" />
-                        {format(new Date(apt.appointmentDate), "h:mm a")}
-                      </span>
-                      {apt.scanType && (
-                        <span className="text-lg">{apt.scanType}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    {apt.status === 'checked_in' ? (
-                      <div className="flex items-center gap-2 text-green-600 text-lg font-medium px-6 py-3">
-                        <CheckCircle className="w-6 h-6" />
-                        Already Checked In
+              {appointments.map((apt) => {
+                const status = regStatus[apt.id];
+                const needsRegistration = status && !status.registered;
+                return (
+                  <div
+                    key={apt.id}
+                    className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition-shadow"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="text-left min-w-0">
+                        <h3 className="text-2xl font-semibold text-gray-800 truncate">
+                          {apt.patientName}
+                        </h3>
+                        <div className="flex items-center gap-4 mt-2 text-gray-500 flex-wrap">
+                          <span className="flex items-center gap-1 text-lg">
+                            <Clock className="w-5 h-5" />
+                            {format(new Date(apt.appointmentDate), "h:mm a")}
+                          </span>
+                          {apt.scanType && (
+                            <span className="text-lg">{apt.scanType}</span>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <Button
-                        onClick={() => handleCheckIn(apt.id)}
-                        disabled={checkingIn === apt.id}
-                        className="bg-teal-600 hover:bg-teal-700 text-white text-xl px-8 py-6 rounded-xl h-auto"
-                      >
-                        {checkingIn === apt.id ? (
-                          "Checking In..."
+                      <div className="shrink-0">
+                        {apt.status === 'checked_in' ? (
+                          <div className="flex items-center gap-2 text-green-600 text-lg font-medium px-6 py-3">
+                            <CheckCircle className="w-6 h-6" />
+                            Already Checked In
+                          </div>
                         ) : (
-                          <>
-                            <CheckCircle className="w-6 h-6 mr-2" />
-                            Check In
-                          </>
+                          <Button
+                            onClick={() => handleCheckIn(apt.id)}
+                            disabled={checkingIn === apt.id}
+                            className="bg-teal-600 hover:bg-teal-700 text-white text-xl px-8 py-6 rounded-xl h-auto"
+                          >
+                            {checkingIn === apt.id ? (
+                              "Checking In..."
+                            ) : (
+                              <>
+                                <CheckCircle className="w-6 h-6 mr-2" />
+                                Check In
+                              </>
+                            )}
+                          </Button>
                         )}
-                      </Button>
+                      </div>
+                    </div>
+
+                    {needsRegistration && status?.registrationUrl && apt.status !== 'checked_in' && (
+                      <div className="mt-5 p-5 rounded-xl bg-amber-50 border-2 border-amber-200 text-left">
+                        <div className="flex items-start gap-3 mb-4">
+                          <ClipboardList className="w-7 h-7 text-amber-700 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-lg font-semibold text-amber-900">
+                              Please complete your registration first
+                            </p>
+                            <p className="text-base text-amber-800 mt-1">
+                              We don't have all your details on file yet. It only takes a minute.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Button
+                            onClick={() => { setRegisterFor({ apt, status }); setRegisterMode("form"); }}
+                            className="flex-1 bg-amber-600 hover:bg-amber-700 text-white text-lg py-5 rounded-xl h-auto"
+                            data-testid={`button-register-form-${apt.id}`}
+                          >
+                            <ClipboardList className="w-5 h-5 mr-2" />
+                            Register on this screen
+                          </Button>
+                          <Button
+                            onClick={() => { setRegisterFor({ apt, status }); setRegisterMode("qr"); }}
+                            variant="outline"
+                            className="flex-1 border-2 border-amber-300 text-amber-800 hover:bg-amber-100 text-lg py-5 rounded-xl h-auto"
+                            data-testid={`button-register-qr-${apt.id}`}
+                          >
+                            <QrCode className="w-5 h-5 mr-2" />
+                            Scan QR with my phone
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
