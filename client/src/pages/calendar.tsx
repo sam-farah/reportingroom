@@ -38,6 +38,41 @@ async function fetchAsDataUrl(url: string): Promise<string | null> {
   }
 }
 
+// Downscale + recompress an image data URL via canvas. Used to keep PDFs small
+// when embedding logos/signatures (jsPDF embeds raw bytes otherwise).
+async function downscaleImage(
+  dataUrl: string,
+  maxDim: number,
+  type: "image/jpeg" | "image/png" = "image/jpeg",
+  quality = 0.85,
+  background?: string,
+): Promise<string> {
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL(type, quality);
+  } catch {
+    return dataUrl;
+  }
+}
+
 function ordinalSuffix(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
@@ -76,10 +111,14 @@ async function generateAttendanceCertificate(opts: {
   const addressLine1 = patient?.address || "";
   const cityState = [patient?.city, patient?.state, patient?.zipCode].filter(Boolean).join(" ");
 
-  const logoDataUrl = clinic?.logoUrl ? await fetchAsDataUrl("/api/clinic/logo") : null;
-  const sigDataUrl = physician?.signatureUrl ? await fetchAsDataUrl(physician.signatureUrl) : null;
+  const logoRaw = clinic?.logoUrl ? await fetchAsDataUrl("/api/clinic/logo") : null;
+  const sigRaw = physician?.signatureUrl ? await fetchAsDataUrl(physician.signatureUrl) : null;
+  // Downscale + recompress to keep PDF small. Logo flattens onto white as JPEG.
+  // Signature keeps transparency as PNG but is small in pixels.
+  const logoDataUrl = logoRaw ? await downscaleImage(logoRaw, 600, "image/jpeg", 0.85, "#ffffff") : null;
+  const sigDataUrl = sigRaw ? await downscaleImage(sigRaw, 500, "image/png", 0.9) : null;
 
-  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
   const pageW = 210;
   const margin = 22;
 
