@@ -2618,6 +2618,20 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "20 Apr 2026",
+    tag: "Fix",
+    title: "Attendance certificate now reliably saves to the patient file",
+    detail:
+      "Previously, generating an attendance certificate sometimes failed silently to save to the patient file even when the appointment was clearly linked to a patient. Patient lookup happened on the browser using the loaded patient list and stumbled on small differences like extra spaces in names.\n\nNow:\n\n• The PDF is sent straight to the server, which uses the appointment's actual linked patient from the database — no more guesswork.\n• If the appointment has no linked patient, the server falls back to a name + DOB match within your clinic.\n• If linking still fails, you'll now see a clear toast explaining why instead of the action silently doing nothing.",
+  },
+  {
+    date: "20 Apr 2026",
+    tag: "Improve",
+    title: "Appointment More menu — clicks now register correctly",
+    detail:
+      "The More menu in the appointment detail dialog (Send Reminder, Attendance Certificate, Delete) was using a popover that sometimes let clicks fall through to the buttons underneath. It's now built on a proper menu component, so each item activates exactly the action you click.",
+  },
+  {
+    date: "20 Apr 2026",
     tag: "Improve",
     title: "Distribute Report dialog — wider layout with patient file on the right",
     detail:

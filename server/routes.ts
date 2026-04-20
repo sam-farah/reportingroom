@@ -902,6 +902,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Email an attendance certificate PDF (generated client-side) to the patient on the appointment.
+  app.post("/api/appointments/:id/save-attendance-certificate", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { pdfBase64, filename } = req.body || {};
+      if (!pdfBase64 || typeof pdfBase64 !== "string") {
+        return res.status(400).json({ error: "Missing certificate PDF" });
+      }
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) return res.status(404).json({ error: "Appointment not found" });
+
+      // Resolve patient: prefer appointment.patientId, fallback to name+dob match within the clinic
+      let patientId: number | null = appointment.patientId ?? null;
+      if (!patientId) {
+        const user = await storage.getUser(req.session.userId!);
+        if (user?.clinicId) {
+          const candidates = await storage.getPatients(user.clinicId);
+          const norm = (s: string | null | undefined) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+          const aptName = norm(appointment.patientName);
+          const aptDob = norm(appointment.patientDob);
+          const match = candidates.find(p =>
+            norm(`${p.firstName} ${p.lastName}`) === aptName
+            && (!aptDob || norm(p.dateOfBirth) === aptDob)
+          ) || candidates.find(p => norm(`${p.firstName} ${p.lastName}`) === aptName);
+          if (match) patientId = match.id;
+        }
+      }
+
+      if (!patientId) {
+        return res.status(404).json({ error: "Could not link a patient file to this appointment" });
+      }
+
+      const buffer = Buffer.from(pdfBase64, "base64");
+      const originalName = (filename && typeof filename === "string")
+        ? filename.replace(/[^a-zA-Z0-9._-]/g, "_")
+        : `Attendance_Certificate_${id}.pdf`;
+      const storedFilename = `cert-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`;
+      const uploadsDir = path.join(process.cwd(), "uploads");
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      const outPath = path.join(uploadsDir, storedFilename);
+      fs.writeFileSync(outPath, buffer);
+      saveFileToDB(storedFilename, outPath, "application/pdf", originalName).catch(console.error);
+
+      const document = await storage.createPatientDocument({
+        patientId,
+        title: "Attendance Certificate",
+        filename: storedFilename,
+        originalName,
+        fileUrl: `/uploads/${storedFilename}`,
+        documentDate: new Date().toISOString().split("T")[0],
+      });
+
+      res.json({ success: true, patientId, documentId: document?.id });
+    } catch (error: any) {
+      console.error("Save attendance certificate error:", error);
+      res.status(500).json({ error: error?.message || "Failed to save certificate" });
+    }
+  });
+
   app.post("/api/appointments/:id/email-attendance-certificate", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);

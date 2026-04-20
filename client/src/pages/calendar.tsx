@@ -2960,19 +2960,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                   if (generatingCertificate) return;
                                   setGeneratingCertificate(true);
                                   const apt = viewingAppointment;
-                                  const normalize = (s: string) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
-                                  const aptNameNorm = normalize(apt.patientName || "");
-                                  const aptDobNorm = normalize(apt.patientDob || "");
-                                  const resolvedPatient = (apt.patientId
+                                  // Patient resolution for in-memory display only (e.g. address on cert).
+                                  // The actual save-to-file lookup is done server-side using apt.patientId.
+                                  const resolvedPatient = apt.patientId
                                     ? allCalendarPatients.find(pt => pt.id === apt.patientId)
-                                    : undefined)
-                                    || allCalendarPatients.find(pt =>
-                                        normalize(`${pt.firstName} ${pt.lastName}`) === aptNameNorm
-                                        && (!aptDobNorm || normalize(pt.dateOfBirth || "") === aptDobNorm)
-                                      )
-                                    || allCalendarPatients.find(pt =>
-                                        normalize(`${pt.firstName} ${pt.lastName}`) === aptNameNorm
-                                      );
+                                    : undefined;
                                   const physician = apt.physicianId
                                     ? physicians.find(p => p.id === apt.physicianId)
                                     : physicians[0];
@@ -2984,21 +2976,34 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                       physician: physician || null,
                                     });
 
-                                    // Save to patient file (if we have a patient ID)
+                                    // Save to patient file — server resolves the patient by appointment ID.
                                     let saved = false;
-                                    if (resolvedPatient?.id) {
-                                      try {
-                                        const fd = new FormData();
-                                        fd.append("file", cert.blob, cert.filename);
-                                        fd.append("title", "Attendance Certificate");
-                                        fd.append("documentDate", new Date().toISOString().split("T")[0]);
-                                        const r = await fetch(`/api/patients/${resolvedPatient.id}/documents`, {
-                                          method: "POST",
-                                          body: fd,
-                                          credentials: "include",
+                                    try {
+                                      const r = await fetch(`/api/appointments/${apt.id}/save-attendance-certificate`, {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        credentials: "include",
+                                        body: JSON.stringify({
+                                          pdfBase64: cert.base64,
+                                          filename: cert.filename,
+                                        }),
+                                      });
+                                      if (r.ok) {
+                                        saved = true;
+                                      } else {
+                                        const err = await r.json().catch(() => ({}));
+                                        toast({
+                                          title: "Could not save to patient file",
+                                          description: err?.error || "Patient could not be linked to this appointment",
+                                          variant: "destructive",
                                         });
-                                        if (r.ok) saved = true;
-                                      } catch { /* swallow */ }
+                                      }
+                                    } catch (saveErr: any) {
+                                      toast({
+                                        title: "Could not save to patient file",
+                                        description: saveErr?.message || "Network error",
+                                        variant: "destructive",
+                                      });
                                     }
 
                                     setCertificateDialog({
