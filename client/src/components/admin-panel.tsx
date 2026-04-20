@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image, CheckCircle, Loader2 } from "lucide-react";
+import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image, CheckCircle, Loader2, Star } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -174,6 +175,17 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
       toast({ title: "Deleted", description: "Blank worksheet removed." });
     },
   });
+
+  const updateBlankWorksheetMutation = useMutation({
+    mutationFn: (vars: { id: number; patch: Partial<{ name: string; description: string; category: string; isPinned: boolean }> }) =>
+      apiRequest(`/api/worksheet-templates/${vars.id}`, "PATCH", vars.patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/worksheet-templates"] });
+    },
+  });
+
+  const [editingWorksheet, setEditingWorksheet] = useState<WorksheetTemplate | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "", category: "" });
 
   const handleUploadBlankWorksheet = async () => {
     if (!wsFile || !wsName || !wsCategory) return;
@@ -2038,32 +2050,128 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                   <p className="text-xs mt-1">Upload one above to make it available in the Draw section.</p>
                 </div>
               ) : (
+                <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {blankWorksheets.map((ws) => (
-                    <div key={ws.id} className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-                      <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center overflow-hidden">
-                        <img src={ws.imageUrl} alt={ws.name} className="w-full h-full object-contain" />
-                      </div>
-                      <div className="p-3">
-                        <p className="font-semibold text-sm text-gray-900 truncate">{ws.name}</p>
-                        {ws.description && <p className="text-xs text-gray-500 mt-0.5 truncate">{ws.description}</p>}
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{ws.category}</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 h-7 px-2"
-                            onClick={() => {
-                              if (confirm(`Remove "${ws.name}"?`)) deleteBlankWorksheetMutation.mutate(ws.id);
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                  {[...blankWorksheets]
+                    .sort((a, b) => {
+                      const ap = (a as any).isPinned ? 1 : 0;
+                      const bp = (b as any).isPinned ? 1 : 0;
+                      if (ap !== bp) return bp - ap;
+                      return (a.name || '').localeCompare(b.name || '');
+                    })
+                    .map((ws) => {
+                      const pinned = !!(ws as any).isPinned;
+                      return (
+                        <div
+                          key={ws.id}
+                          className={`border rounded-lg overflow-hidden hover:shadow-md transition-shadow ${pinned ? 'ring-2 ring-amber-300 bg-amber-50/40' : ''}`}
+                        >
+                          <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center overflow-hidden relative">
+                            <img src={ws.imageUrl} alt={ws.name} className="w-full h-full object-contain" />
+                            <button
+                              type="button"
+                              title={pinned ? 'Unpin from favourites' : 'Pin as favourite'}
+                              onClick={() => updateBlankWorksheetMutation.mutate({ id: ws.id, patch: { isPinned: !pinned } })}
+                              className={`absolute top-2 right-2 rounded-full p-1.5 shadow-sm border transition-colors ${
+                                pinned
+                                  ? 'bg-amber-400 border-amber-500 text-white hover:bg-amber-500'
+                                  : 'bg-white/90 border-gray-200 text-gray-500 hover:text-amber-600 hover:border-amber-300'
+                              }`}
+                            >
+                              <Star className={`w-3.5 h-3.5 ${pinned ? 'fill-white' : ''}`} />
+                            </button>
+                          </div>
+                          <div className="p-3">
+                            <p className="font-semibold text-sm text-gray-900 truncate flex items-center gap-1.5">
+                              {pinned && <Star className="w-3 h-3 fill-amber-500 text-amber-500 shrink-0" />}
+                              <span className="truncate">{ws.name}</span>
+                            </p>
+                            {ws.description && <p className="text-xs text-gray-500 mt-0.5 truncate">{ws.description}</p>}
+                            <div className="flex items-center justify-between mt-2 gap-1">
+                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full truncate">{ws.category}</span>
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-gray-600 hover:text-blue-700 hover:bg-blue-50"
+                                  onClick={() => {
+                                    setEditingWorksheet(ws);
+                                    setEditForm({
+                                      name: ws.name || '',
+                                      description: ws.description || '',
+                                      category: ws.category || '',
+                                    });
+                                  }}
+                                  title="Edit"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-red-500 hover:text-red-700 hover:bg-red-50 h-7 px-2"
+                                  onClick={() => {
+                                    if (confirm(`Remove "${ws.name}"?`)) deleteBlankWorksheetMutation.mutate(ws.id);
+                                  }}
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
+                      );
+                    })}
+                </div>
+
+                <Dialog open={!!editingWorksheet} onOpenChange={(o) => { if (!o) setEditingWorksheet(null); }}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Edit Blank Worksheet</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <label className="text-sm font-medium">Name</label>
+                        <Input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">Description</label>
+                        <Input value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} placeholder="Optional" />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">Category</label>
+                        <Input value={editForm.category} onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))} placeholder="e.g. vascular" />
                       </div>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex justify-end gap-2 pt-3">
+                      <Button variant="outline" onClick={() => setEditingWorksheet(null)}>Cancel</Button>
+                      <Button
+                        onClick={async () => {
+                          if (!editingWorksheet) return;
+                          if (!editForm.name.trim() || !editForm.category.trim()) {
+                            toast({ title: 'Name and category are required', variant: 'destructive' });
+                            return;
+                          }
+                          await updateBlankWorksheetMutation.mutateAsync({
+                            id: editingWorksheet.id,
+                            patch: {
+                              name: editForm.name.trim(),
+                              description: editForm.description.trim(),
+                              category: editForm.category.trim(),
+                            },
+                          });
+                          toast({ title: 'Updated', description: 'Worksheet details saved.' });
+                          setEditingWorksheet(null);
+                        }}
+                        disabled={updateBlankWorksheetMutation.isPending}
+                      >
+                        {updateBlankWorksheetMutation.isPending ? 'Saving…' : 'Save'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                </>
               )}
             </CardContent>
           </Card>

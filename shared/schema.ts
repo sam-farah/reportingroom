@@ -218,6 +218,7 @@ export const worksheetTemplates = pgTable("worksheet_templates", {
   originalFilename: text("original_filename").notNull(),
   userId: text("user_id"), // Optional: for user-specific templates
   isDefault: boolean("is_default").notNull().default(false),
+  isPinned: boolean("is_pinned").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

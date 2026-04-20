@@ -3854,6 +3854,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/worksheet-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, description, category, isPinned } = req.body ?? {};
+      const patch: any = {};
+      if (typeof name === 'string') patch.name = name;
+      if (typeof description === 'string' || description === null) patch.description = description;
+      if (typeof category === 'string') patch.category = category;
+      if (typeof isPinned === 'boolean') patch.isPinned = isPinned;
+      const updated = await storage.updateWorksheetTemplate(id, patch);
+      if (!updated) return res.status(404).json({ message: 'Worksheet not found' });
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating worksheet template:', error);
+      res.status(500).json({ message: 'Failed to update worksheet template' });
+    }
+  });
+
   app.delete("/api/worksheet-templates/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
