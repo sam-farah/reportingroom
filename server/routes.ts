@@ -35,6 +35,7 @@ import OpenAI from "openai";
 import { createReadStream } from "fs";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import sharp from "sharp";
 import { sendPatientPortalInvitationEmail, sendPortalPasswordResetEmail } from "./email";
 
 // Configure multer for file uploads
@@ -124,6 +125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         kioskInstructions: clinic.kioskInstructions || defaults.kioskInstructions,
         kioskSuccessMessage: clinic.kioskSuccessMessage || defaults.kioskSuccessMessage,
         kioskBackgroundColor: clinic.kioskBackgroundColor || null,
+        kioskConsentText: (clinic as any).kioskConsentText || null,
       });
     } catch (error) {
       console.error("Kiosk settings error:", error);
@@ -215,6 +217,222 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Kiosk registration-status error:", error);
       res.status(500).json({ error: "Failed to check registration status" });
+    }
+  });
+
+  // Submit signed consent — generates a labelled patient document, saves it, then completes check-in.
+  app.post("/api/kiosk/consent/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid appointment ID" });
+      const { signatureDataUrl, consentText } = req.body || {};
+      if (!signatureDataUrl || typeof signatureDataUrl !== "string" || !signatureDataUrl.startsWith("data:image/")) {
+        return res.status(400).json({ error: "Signature is required" });
+      }
+      if (!consentText || typeof consentText !== "string") {
+        return res.status(400).json({ error: "Consent text is required" });
+      }
+
+      const appointment = await storage.getAppointment(id);
+      if (!appointment) return res.status(404).json({ error: "Appointment not found" });
+
+      // Resolve patient (linked or by name within clinic)
+      let patient: any = null;
+      if (appointment.patientId) patient = await storage.getPatient(appointment.patientId);
+      if (!patient) {
+        const all = await storage.getAllPatients().catch(() => [] as any[]);
+        patient = all.find((p: any) =>
+          (!appointment.clinicId || p.clinicId === appointment.clinicId) &&
+          `${p.firstName} ${p.lastName}`.toLowerCase() === (appointment.patientName || "").toLowerCase()
+        ) || null;
+      }
+      if (!patient) return res.status(404).json({ error: "Patient record not found" });
+
+      const clinic = appointment.clinicId ? await storage.getClinic(appointment.clinicId) : null;
+
+      // Build the labelled consent image (A4) using sharp + SVG.
+      const DPI = 200;
+      const A4_W = Math.round((210 / 25.4) * DPI);
+      const A4_H = Math.round((297 / 25.4) * DPI);
+      const HEADER_H = Math.round(A4_H * 0.12);
+      const PAD = Math.round(A4_W * 0.04);
+      const PRIMARY = "#0066cc";
+
+      // Logo
+      let logoBuf: Buffer | null = null;
+      let logoDims = { w: 0, h: 0 };
+      const logoUrl = clinic?.kioskLogoUrl || clinic?.logoUrl;
+      if (logoUrl) {
+        const fname = logoUrl.replace(/^\/uploads\//, "");
+        try {
+          const blob = await getFileFromDB(fname);
+          if (blob) {
+            const meta = await sharp(blob.data).metadata();
+            const maxH = HEADER_H - PAD;
+            const maxW = Math.round(A4_W * 0.18);
+            const scale = Math.min(maxW / (meta.width || 1), maxH / (meta.height || 1), 1);
+            logoDims = { w: Math.round((meta.width || 0) * scale), h: Math.round((meta.height || 0) * scale) };
+            logoBuf = await sharp(blob.data).resize(logoDims.w, logoDims.h).png().toBuffer();
+          }
+        } catch { /* logo optional */ }
+      }
+
+      const fmtDate = (d: any) => {
+        if (!d) return "";
+        if (typeof d === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
+        const dt = new Date(d);
+        if (isNaN(dt.getTime())) return String(d);
+        const dd = String(dt.getDate()).padStart(2, "0");
+        const mm = String(dt.getMonth() + 1).padStart(2, "0");
+        return `${dd}/${mm}/${dt.getFullYear()}`;
+      };
+      const today = new Date();
+      const todayStr = fmtDate(today);
+      const patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
+      const headerLines = [
+        `Patient: ${patientName}`,
+        patient.dateOfBirth ? `DOB: ${fmtDate(patient.dateOfBirth)}` : null,
+        patient.urNumber ? `UR: ${patient.urNumber}` : null,
+        patient.medicareNumber ? `Medicare: ${patient.medicareNumber}` : null,
+        patient.phone ? `Phone: ${String(patient.phone).trim()}` : null,
+        `Document: Consent Form`,
+        `Date: ${todayStr}`,
+      ].filter(Boolean) as string[];
+
+      const escape = (s: string) =>
+        String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      const headerFontSize = Math.round(A4_W * 0.0135);
+      const headerLineH = headerFontSize + Math.round(headerFontSize * 0.45);
+      const textStartX = PAD + (logoBuf ? logoDims.w + Math.round(A4_W * 0.015) : 0);
+      const half = Math.ceil(headerLines.length / 2);
+      const left = headerLines.slice(0, half);
+      const right = headerLines.slice(half);
+      const textY = Math.round((HEADER_H - half * headerLineH) / 2 + headerFontSize);
+      const colW = Math.round((A4_W - textStartX - PAD) / 2);
+      const renderCol = (lines: string[], x: number) =>
+        lines.map((l, i) =>
+          `<text x="${x}" y="${textY + i * headerLineH}" font-family="Arial, sans-serif" font-size="${headerFontSize}" fill="#333333">${escape(l)}</text>`,
+        ).join("");
+      const lineThk = Math.max(2, Math.round(A4_W * 0.003));
+
+      // Body: title + consent text wrapped + signature
+      const bodyTop = HEADER_H + Math.round(A4_W * 0.04);
+      const bodyW = A4_W - PAD * 2;
+      const bodyFontSize = Math.round(A4_W * 0.014);
+      const bodyLineH = Math.round(bodyFontSize * 1.5);
+      const titleSize = Math.round(A4_W * 0.024);
+
+      // Word-wrap consent text
+      const charPx = bodyFontSize * 0.55;
+      const maxCharsPerLine = Math.floor(bodyW / charPx);
+      const wrapText = (text: string): string[] => {
+        const out: string[] = [];
+        for (const para of text.split(/\r?\n/)) {
+          if (!para.trim()) { out.push(""); continue; }
+          const words = para.split(/\s+/);
+          let line = "";
+          for (const w of words) {
+            const candidate = line ? `${line} ${w}` : w;
+            if (candidate.length > maxCharsPerLine) {
+              if (line) out.push(line);
+              line = w;
+            } else {
+              line = candidate;
+            }
+          }
+          if (line) out.push(line);
+        }
+        return out;
+      };
+      const wrapped = wrapText(consentText);
+
+      const bodyTextY = bodyTop + titleSize + Math.round(A4_W * 0.025);
+      const bodyEndY = bodyTextY + wrapped.length * bodyLineH;
+
+      // Signature placement
+      const sigBoxY = Math.min(bodyEndY + Math.round(A4_W * 0.04), A4_H - Math.round(A4_W * 0.16));
+      const sigBoxH = Math.round(A4_W * 0.1);
+      const sigLabelY = sigBoxY - Math.round(A4_W * 0.012);
+
+      const bodyLinesSvg = wrapped.map((l, i) =>
+        `<text x="${PAD}" y="${bodyTextY + i * bodyLineH}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#222222">${escape(l)}</text>`,
+      ).join("");
+
+      const svg = `<svg width="${A4_W}" height="${A4_H}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="${A4_W}" height="${A4_H}" fill="#ffffff"/>
+        ${renderCol(left, textStartX)}
+        ${renderCol(right, textStartX + colW)}
+        <line x1="0" y1="${HEADER_H - Math.floor(lineThk / 2)}" x2="${A4_W}" y2="${HEADER_H - Math.floor(lineThk / 2)}" stroke="${PRIMARY}" stroke-width="${lineThk}"/>
+        <text x="${PAD}" y="${bodyTop + titleSize}" font-family="Arial, sans-serif" font-size="${titleSize}" font-weight="bold" fill="#111111">Patient Consent</text>
+        ${bodyLinesSvg}
+        <text x="${PAD}" y="${sigLabelY}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Patient signature:</text>
+        <line x1="${PAD}" y1="${sigBoxY + sigBoxH}" x2="${PAD + Math.round(A4_W * 0.5)}" y2="${sigBoxY + sigBoxH}" stroke="#333333" stroke-width="2"/>
+        <text x="${PAD + Math.round(A4_W * 0.55)}" y="${sigBoxY + sigBoxH - 6}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Date: ${todayStr}</text>
+      </svg>`;
+
+      // Decode signature image
+      const sigB64 = signatureDataUrl.split(",")[1];
+      const sigBuffer = Buffer.from(sigB64, "base64");
+      const sigMeta = await sharp(sigBuffer).metadata();
+      const sigMaxW = Math.round(A4_W * 0.5);
+      const sigMaxH = sigBoxH - 4;
+      const sigScale = Math.min(sigMaxW / (sigMeta.width || 1), sigMaxH / (sigMeta.height || 1), 1);
+      const sigW = Math.round((sigMeta.width || 0) * sigScale);
+      const sigH = Math.round((sigMeta.height || 0) * sigScale);
+      const sigResized = await sharp(sigBuffer)
+        .resize(sigW, sigH, { fit: "inside" })
+        .flatten({ background: "#ffffff" })
+        .png()
+        .toBuffer();
+
+      const composites: sharp.OverlayOptions[] = [];
+      if (logoBuf) {
+        composites.push({
+          input: logoBuf,
+          left: PAD,
+          top: Math.round((HEADER_H - logoDims.h) / 2),
+        });
+      }
+      composites.push({ input: sigResized, left: PAD, top: sigBoxY + (sigBoxH - sigH) });
+
+      const finalImg = await sharp(Buffer.from(svg))
+        .composite(composites)
+        .jpeg({ quality: 92 })
+        .toBuffer();
+
+      // Persist file (disk + DB blob)
+      const newFilename = crypto.randomBytes(16).toString("hex");
+      const uploadsDir = path.join(process.cwd(), "uploads");
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      const outPath = path.join(uploadsDir, newFilename);
+      fs.writeFileSync(outPath, finalImg);
+      saveFileToDB(newFilename, outPath, "image/jpeg", `consent-${id}.jpg`).catch(console.error);
+
+      const isoDate = today.toISOString().slice(0, 10);
+      await storage.createPatientDocument({
+        patientId: patient.id,
+        title: "Consent Form",
+        documentDate: isoDate,
+        fileUrl: `/uploads/${newFilename}`,
+        filename: newFilename,
+        originalName: `consent-${patientName.replace(/\s+/g, "-")}-${isoDate}.jpg`,
+        notes: null,
+      } as any);
+
+      // Now perform the check-in
+      const updated = await storage.updateAppointment(id, {
+        status: "checked_in",
+        checkedInAt: new Date(),
+      });
+
+      res.json({
+        success: true,
+        appointment: { id: updated?.id, patientName: updated?.patientName, status: updated?.status },
+      });
+    } catch (error) {
+      console.error("Kiosk consent error:", error);
+      res.status(500).json({ error: "Failed to save consent" });
     }
   });
 
@@ -3195,12 +3413,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No clinic associated" });
       }
 
-      const { kioskWelcomeText, kioskInstructions, kioskSuccessMessage, kioskBackgroundColor } = req.body;
+      const { kioskWelcomeText, kioskInstructions, kioskSuccessMessage, kioskBackgroundColor, kioskConsentText } = req.body;
       await storage.updateClinic(user.clinicId, {
         kioskWelcomeText: kioskWelcomeText || null,
         kioskInstructions: kioskInstructions || null,
         kioskSuccessMessage: kioskSuccessMessage || null,
         kioskBackgroundColor: kioskBackgroundColor || null,
+        kioskConsentText: kioskConsentText || null,
       } as any);
 
       const clinic = await storage.getClinic(user.clinicId);

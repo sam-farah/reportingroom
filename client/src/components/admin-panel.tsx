@@ -232,6 +232,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
   const [kioskInstructions, setKioskInstructions] = useState("");
   const [kioskSuccessMessage, setKioskSuccessMessage] = useState("");
   const [kioskBackgroundColor, setKioskBackgroundColor] = useState("");
+  const [kioskConsentText, setKioskConsentText] = useState("");
   const [kioskSettingsLoaded, setKioskSettingsLoaded] = useState(false);
 
   const { data: clinic } = useQuery<Clinic>({
@@ -244,6 +245,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
       setKioskInstructions(clinic.kioskInstructions || "");
       setKioskSuccessMessage(clinic.kioskSuccessMessage || "");
       setKioskBackgroundColor(clinic.kioskBackgroundColor || "");
+      setKioskConsentText((clinic as any).kioskConsentText || "");
       setKioskSettingsLoaded(true);
     }
   }, [clinic, kioskSettingsLoaded]);
@@ -300,6 +302,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
         kioskInstructions,
         kioskSuccessMessage,
         kioskBackgroundColor,
+        kioskConsentText,
       });
     },
     onSuccess: () => {
@@ -1831,6 +1834,20 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                   rows={2}
                 />
                 <p className="text-xs text-muted-foreground">Message shown after a patient successfully checks in</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="kioskConsentText">Patient Consent Wording</Label>
+                <Textarea
+                  id="kioskConsentText"
+                  value={kioskConsentText}
+                  onChange={(e) => setKioskConsentText(e.target.value)}
+                  placeholder="e.g. I consent to the ultrasound examination being performed today. I understand the procedure has been explained to me, and I am free to ask questions or withdraw consent at any time."
+                  rows={8}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Shown on the kiosk after check-in. The patient must read and sign before check-in completes.
+                  Leave blank to skip the consent step entirely.
+                </p>
               </div>
 
               <Button

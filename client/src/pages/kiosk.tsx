@@ -24,6 +24,7 @@ interface KioskSettings {
   kioskInstructions: string;
   kioskSuccessMessage: string;
   kioskBackgroundColor: string | null;
+  kioskConsentText: string | null;
 }
 
 interface RegistrationStatus {
@@ -45,8 +46,15 @@ export default function Kiosk() {
   const [regStatus, setRegStatus] = useState<Record<number, RegistrationStatus>>({});
   const [registerFor, setRegisterFor] = useState<{ apt: KioskAppointment; status: RegistrationStatus } | null>(null);
   const [registerMode, setRegisterMode] = useState<"qr" | "form" | null>(null);
+  const [consentFor, setConsentFor] = useState<KioskAppointment | null>(null);
+  const [consentScrolled, setConsentScrolled] = useState(false);
+  const [signatureEmpty, setSignatureEmpty] = useState(true);
+  const [submittingConsent, setSubmittingConsent] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sigCanvasRef = useRef<HTMLCanvasElement>(null);
+  const sigDrawing = useRef(false);
+  const sigLastPt = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -131,6 +139,16 @@ export default function Kiosk() {
   };
 
   const handleCheckIn = async (appointmentId: number) => {
+    // If clinic has configured consent wording, route through consent screen first.
+    if (settings?.kioskConsentText && settings.kioskConsentText.trim()) {
+      const apt = appointments.find(a => a.id === appointmentId);
+      if (apt) {
+        setConsentFor(apt);
+        setConsentScrolled(false);
+        setSignatureEmpty(true);
+        return;
+      }
+    }
     setCheckingIn(appointmentId);
     try {
       const res = await fetch(`/api/kiosk/checkin/${appointmentId}`, { method: 'POST' });
@@ -193,6 +211,164 @@ export default function Kiosk() {
           <p className="text-sm text-gray-400 mt-8">
             This screen will reset automatically...
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Signature pad helpers
+  const getSigCtx = () => sigCanvasRef.current?.getContext("2d") || null;
+  const sigPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const c = sigCanvasRef.current!;
+    const r = c.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) / r.width) * c.width, y: ((e.clientY - r.top) / r.height) * c.height };
+  };
+  const sigStart = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    sigDrawing.current = true;
+    sigLastPt.current = sigPos(e);
+  };
+  const sigMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!sigDrawing.current) return;
+    const ctx = getSigCtx();
+    if (!ctx || !sigLastPt.current) return;
+    const p = sigPos(e);
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(sigLastPt.current.x, sigLastPt.current.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    sigLastPt.current = p;
+    if (signatureEmpty) setSignatureEmpty(false);
+  };
+  const sigEnd = () => { sigDrawing.current = false; sigLastPt.current = null; };
+  const sigClear = () => {
+    const c = sigCanvasRef.current;
+    const ctx = getSigCtx();
+    if (c && ctx) {
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    setSignatureEmpty(true);
+  };
+
+  const submitConsent = async () => {
+    if (!consentFor || !sigCanvasRef.current || signatureEmpty || submittingConsent) return;
+    setSubmittingConsent(true);
+    try {
+      const dataUrl = sigCanvasRef.current.toDataURL("image/png");
+      const res = await fetch(`/api/kiosk/consent/${consentFor.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signatureDataUrl: dataUrl,
+          consentText: settings?.kioskConsentText || "",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Consent failed", description: err.error || "Please try again.", variant: "destructive" });
+        setSubmittingConsent(false);
+        return;
+      }
+      const aptId = consentFor.id;
+      setConsentFor(null);
+      setSignatureEmpty(true);
+      setCheckedIn(aptId);
+      toast({ title: "Checked In", description: "Thank you. You have been checked in." });
+      setTimeout(() => {
+        setCheckedIn(null);
+        setSearchTerm("");
+        setAppointments([]);
+        inputRef.current?.focus();
+      }, 5000);
+    } catch (e) {
+      toast({ title: "Error", description: "Could not submit consent.", variant: "destructive" });
+    } finally {
+      setSubmittingConsent(false);
+    }
+  };
+
+  // Consent screen — full takeover when consent wording is configured
+  if (consentFor) {
+    return (
+      <div className="min-h-screen flex flex-col" style={bgStyle}>
+        <div className="p-4 flex justify-between items-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setConsentFor(null); setSignatureEmpty(true); }}
+            className="text-gray-500 hover:text-gray-700"
+            data-testid="button-cancel-consent"
+          >
+            ← Back
+          </Button>
+          {settings?.kioskLogoUrl && (
+            <img src={settings.kioskLogoUrl} alt="Clinic logo" className="h-12 object-contain" />
+          )}
+          <div className="w-16" />
+        </div>
+        <div className="flex-1 flex items-center justify-center px-4 pb-8">
+          <Card className="w-full max-w-3xl shadow-2xl">
+            <CardContent className="p-8 space-y-6">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Patient Consent</h1>
+                <p className="text-gray-600 mt-1">
+                  {consentFor.patientName} — please read the consent below and sign to complete check-in.
+                </p>
+              </div>
+              <div
+                className="border rounded-lg p-5 bg-gray-50 max-h-72 overflow-y-auto whitespace-pre-wrap text-gray-800 text-base leading-relaxed"
+                onScroll={(e) => {
+                  const t = e.currentTarget;
+                  if (t.scrollTop + t.clientHeight >= t.scrollHeight - 8) setConsentScrolled(true);
+                }}
+                data-testid="text-consent-body"
+              >
+                {settings?.kioskConsentText}
+              </div>
+              {!consentScrolled && (
+                <p className="text-sm text-amber-600 text-center">Please scroll to the end of the consent text.</p>
+              )}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700">Patient signature</label>
+                  <Button variant="outline" size="sm" onClick={sigClear} data-testid="button-clear-signature">
+                    Clear
+                  </Button>
+                </div>
+                <canvas
+                  ref={(el) => {
+                    sigCanvasRef.current = el;
+                    if (el && !el.dataset.init) {
+                      el.width = 900;
+                      el.height = 220;
+                      const ctx = el.getContext("2d");
+                      if (ctx) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, el.width, el.height); }
+                      el.dataset.init = "1";
+                    }
+                  }}
+                  onPointerDown={sigStart}
+                  onPointerMove={sigMove}
+                  onPointerUp={sigEnd}
+                  onPointerLeave={sigEnd}
+                  className="w-full h-48 border-2 border-dashed border-gray-300 rounded-lg bg-white touch-none cursor-crosshair"
+                  data-testid="canvas-signature"
+                />
+              </div>
+              <Button
+                onClick={submitConsent}
+                disabled={!consentScrolled || signatureEmpty || submittingConsent}
+                className="w-full h-14 text-lg"
+                data-testid="button-submit-consent"
+              >
+                {submittingConsent ? "Submitting…" : "I Agree & Check In"}
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
