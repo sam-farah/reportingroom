@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import TextShortcuts from "@/components/text-shortcuts";
+import { Link } from "wouter";
 
 function formatDobAU(dob: string | null | undefined): string {
   if (!dob) return "";
@@ -665,7 +666,22 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
   const handleSaveReport = () => {
     if (!editingReport) return;
-    const { id, generatedAt, worksheetId, ...updateData } = editingReport;
+
+    // Send only the user-editable fields — avoids passing stale timestamps / read-only metadata
+    // that Drizzle would reject when updating the row.
+    const updateData: Record<string, any> = {
+      patientName: editingReport.patientName,
+      patientUrNumber: (editingReport as any).patientUrNumber ?? null,
+      patientDob: editingReport.patientDob,
+      examDate: editingReport.examDate,
+      studyType: editingReport.studyType,
+      indication: editingReport.indication,
+      findings: editingReport.findings,
+      impression: editingReport.impression,
+      physicianId: editingReport.physicianId ?? null,
+      sonographerId: (editingReport as any).sonographerId ?? null,
+      patientId: (editingReport as any).patientId ?? null,
+    };
 
     // Save the report immediately so the user gets instant feedback.
     updateReportMutation.mutate(updateData as any);
@@ -2046,7 +2062,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
                 {/* Reporting Doctor */}
                 <div className="space-y-2">
-                  <Label htmlFor="fullscreen-physicianId">Reporting Doctor</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="fullscreen-physicianId">Reporting Doctor</Label>
+                    <Link href="/admin?tab=physicians" className="text-xs text-blue-600 hover:underline">
+                      Manage doctors →
+                    </Link>
+                  </div>
                   <Select
                     value={editingReport.physicianId ? String(editingReport.physicianId) : "none"}
                     onValueChange={(v) => updateEditingReport('physicianId', v === "none" ? null : parseInt(v))}
@@ -2435,7 +2456,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
                 {/* Reporting Doctor */}
                 <div className="space-y-2">
-                  <Label htmlFor="physicianId">Reporting Doctor</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="physicianId">Reporting Doctor</Label>
+                    <Link href="/admin?tab=physicians" className="text-xs text-blue-600 hover:underline">
+                      Manage doctors →
+                    </Link>
+                  </div>
                   <Select
                     value={editingReport.physicianId ? String(editingReport.physicianId) : "none"}
                     onValueChange={(v) => updateEditingReport('physicianId', v === "none" ? null : parseInt(v))}
