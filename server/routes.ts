@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql as drizzleSql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
 import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation } from "./email";
 import multer from "multer";
@@ -4491,42 +4491,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // System monitoring endpoints
   app.get("/api/admin/system-stats", isAuthenticated, isWebmaster, async (req, res) => {
     try {
-      // Calculate system statistics
-      const allReports = await storage.getAllReports();
-      const allWorksheets = await storage.getAllWorksheets();
-      const allUsers = await storage.getAllUsers();
-      
-      // Get current month data
-      const currentMonth = new Date();
-      const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-      const reportsThisMonth = allReports.filter(r => new Date(r.generatedAt) >= firstDayOfMonth).length;
-      
-      // Calculate storage approximations (in GB)
-      const avgReportSize = 0.002; // ~2MB per report
-      const avgWorksheetSize = 0.005; // ~5MB per worksheet
-      const reportDataSize = (allReports.length * avgReportSize).toFixed(2);
-      const worksheetFilesSize = (allWorksheets.length * avgWorksheetSize).toFixed(2);
-      const userDataSize = (allUsers.length * 0.001).toFixed(2); // ~1MB per user
-      
-      const totalSize = parseFloat(reportDataSize) + parseFloat(worksheetFilesSize) + parseFloat(userDataSize);
-      
-      const stats = {
-        databaseSize: totalSize.toFixed(2),
-        monthlyGrowth: '15', // Placeholder - would be calculated from historical data
-        activeUsers: allUsers.filter(u => u.joinedAt && new Date(u.joinedAt) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).length,
-        totalReports: allReports.length,
-        reportsThisMonth,
-        reportDataSize,
-        worksheetFilesSize,
-        userDataSize,
-        reportDataPercent: totalSize > 0 ? Math.round((parseFloat(reportDataSize) / totalSize) * 100) : 0,
-        worksheetFilesPercent: totalSize > 0 ? Math.round((parseFloat(worksheetFilesSize) / totalSize) * 100) : 0,
-        userDataPercent: totalSize > 0 ? Math.round((parseFloat(userDataSize) / totalSize) * 100) : 0,
-        avgResponseTime: '145',
-        apiSuccessRate: '98.7',
-        encryptionOverhead: '12'
+      const now = Date.now();
+      const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const firstDayOfLastMonth = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
+      const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+      // Real database byte sizes via pg_total_relation_size (includes indexes + TOAST blobs)
+      const sizeRows: any = await db.execute(drizzleSql`
+        SELECT
+          pg_database_size(current_database())::bigint AS db_total,
+          COALESCE(pg_total_relation_size('reports'), 0)::bigint AS reports_size,
+          COALESCE(pg_total_relation_size('worksheets'), 0)::bigint AS worksheets_size,
+          COALESCE(pg_total_relation_size('file_blobs'), 0)::bigint AS file_blobs_size,
+          COALESCE(pg_total_relation_size('patient_documents'), 0)::bigint AS patient_documents_size,
+          COALESCE(pg_total_relation_size('users'), 0)::bigint AS users_size,
+          COALESCE(pg_total_relation_size('patients'), 0)::bigint AS patients_size,
+          COALESCE(pg_total_relation_size('appointments'), 0)::bigint AS appointments_size
+      `);
+      const sz = Array.isArray(sizeRows) ? sizeRows[0] : (sizeRows.rows ? sizeRows.rows[0] : sizeRows);
+      const toBytes = (v: any) => Number(v ?? 0);
+      const dbTotalBytes = toBytes(sz?.db_total);
+      const reportBytes = toBytes(sz?.reports_size);
+      const worksheetBytes = toBytes(sz?.worksheets_size) + toBytes(sz?.file_blobs_size) + toBytes(sz?.patient_documents_size);
+      const userBytes = toBytes(sz?.users_size) + toBytes(sz?.patients_size) + toBytes(sz?.appointments_size);
+
+      // Real counts
+      const [reportCounts, userCounts] = await Promise.all([
+        db.execute(drizzleSql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE generated_at >= ${firstDayOfMonth})::int AS this_month,
+            COUNT(*) FILTER (WHERE generated_at >= ${firstDayOfLastMonth} AND generated_at < ${firstDayOfMonth})::int AS last_month
+          FROM reports
+        `),
+        db.execute(drizzleSql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE COALESCE(updated_at, created_at) >= ${thirtyDaysAgo})::int AS active_30d
+          FROM users
+        `),
+      ]);
+      const r: any = Array.isArray(reportCounts) ? reportCounts[0] : (reportCounts as any).rows?.[0];
+      const u: any = Array.isArray(userCounts) ? userCounts[0] : (userCounts as any).rows?.[0];
+
+      const totalReports = Number(r?.total ?? 0);
+      const reportsThisMonth = Number(r?.this_month ?? 0);
+      const reportsLastMonth = Number(r?.last_month ?? 0);
+      const monthlyGrowth = reportsLastMonth > 0
+        ? Math.round(((reportsThisMonth - reportsLastMonth) / reportsLastMonth) * 100)
+        : (reportsThisMonth > 0 ? 100 : 0);
+
+      // Format sizes — show MB when under 1 GB so the dashboard isn't all zeros
+      const formatSize = (bytes: number): string => {
+        if (bytes >= 1_073_741_824) return (bytes / 1_073_741_824).toFixed(2) + ' GB';
+        if (bytes >= 1_048_576) return (bytes / 1_048_576).toFixed(1) + ' MB';
+        if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+        return bytes + ' B';
       };
-      
+
+      const totalCategorisedBytes = reportBytes + worksheetBytes + userBytes;
+
+      const stats = {
+        databaseSize: formatSize(dbTotalBytes),
+        databaseSizeUnit: '', // size already includes unit suffix
+        monthlyGrowth: monthlyGrowth.toString(),
+        activeUsers: Number(u?.active_30d ?? 0),
+        totalReports,
+        reportsThisMonth,
+        reportDataSize: formatSize(reportBytes),
+        worksheetFilesSize: formatSize(worksheetBytes),
+        userDataSize: formatSize(userBytes),
+        reportDataPercent: totalCategorisedBytes > 0 ? Math.round((reportBytes / totalCategorisedBytes) * 100) : 0,
+        worksheetFilesPercent: totalCategorisedBytes > 0 ? Math.round((worksheetBytes / totalCategorisedBytes) * 100) : 0,
+        userDataPercent: totalCategorisedBytes > 0 ? Math.round((userBytes / totalCategorisedBytes) * 100) : 0,
+        // Performance metrics (not yet instrumented — shown as N/A)
+        avgResponseTime: 'N/A',
+        apiSuccessRate: 'N/A',
+        encryptionOverhead: 'N/A',
+      };
+
       res.json(stats);
     } catch (error) {
       console.error("Error fetching system stats:", error);
