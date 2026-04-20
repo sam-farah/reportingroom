@@ -121,6 +121,7 @@ interface DrawingSurfaceProps {
   logicalHeight: number;
   templateScale: number;
   surfaceRef: React.MutableRefObject<DrawingSurfaceHandle | null>;
+  onZoomChange?: (zoom: number) => void;
   className?: string;
   containerClassName?: string;
 }
@@ -135,7 +136,7 @@ export interface DrawingSurfaceHandle {
   getZoom: () => number;
 }
 
-function DrawingSurface({ template, tool, strokeColor, strokeWidth, logicalWidth, logicalHeight, templateScale, surfaceRef, className, containerClassName }: DrawingSurfaceProps) {
+function DrawingSurface({ template, tool, strokeColor, strokeWidth, logicalWidth, logicalHeight, templateScale, surfaceRef, onZoomChange, className, containerClassName }: DrawingSurfaceProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -334,6 +335,7 @@ function DrawingSurface({ template, tool, strokeColor, strokeWidth, logicalWidth
     const newPanY = ps.initialPanY + (midY - ps.initialMidY);
     setZoom(newZoom);
     setPan({ x: newPanX, y: newPanY });
+    onZoomChange?.(newZoom);
   };
 
   const cancelStrokeWithSnapshot = () => {
@@ -416,12 +418,23 @@ function DrawingSurface({ template, tool, strokeColor, strokeWidth, logicalWidth
         ctx.restore();
       },
       toDataURL: () => canvasRef.current?.toDataURL('image/png') ?? null,
-      zoomIn: () => setZoom((z) => Math.min(5, +(z + 0.25).toFixed(2))),
-      zoomOut: () => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2))),
-      resetView: () => { setZoom(1); setPan({ x: 0, y: 0 }); },
+      zoomIn: () => setZoom((z) => {
+        const next = Math.min(5, +(z + 0.25).toFixed(2));
+        onZoomChange?.(next);
+        return next;
+      }),
+      zoomOut: () => setZoom((z) => {
+        const next = Math.max(0.5, +(z - 0.25).toFixed(2));
+        onZoomChange?.(next);
+        return next;
+      }),
+      resetView: () => { setZoom(1); setPan({ x: 0, y: 0 }); onZoomChange?.(1); },
       getZoom: () => zoom,
     };
   });
+
+  // Cancel any pending RAF on unmount
+  useEffect(() => () => { rafPendingRef.current = false; }, []);
 
   return (
     <div ref={wrapperRef} className={containerClassName} style={{ overflow: 'hidden', touchAction: 'none' }}>
@@ -468,18 +481,6 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
   const compactRef = useRef<DrawingSurfaceHandle | null>(null);
   const fullRef = useRef<DrawingSurfaceHandle | null>(null);
 
-  const refreshZoomBadge = (which: 'compact' | 'full') => {
-    const z = (which === 'compact' ? compactRef.current : fullRef.current)?.getZoom?.();
-    if (typeof z === 'number') setZoomBadge(z);
-  };
-
-  const saveFromCompact = () => {
-    const data = compactRef.current?.toDataURL();
-    if (!data) return;
-    onWorksheetCreated(data, VASCULAR_TEMPLATES[selectedTemplate].name);
-    toast({ title: 'Worksheet Created', description: `${VASCULAR_TEMPLATES[selectedTemplate].name} worksheet has been created successfully` });
-  };
-
   const saveFromFullscreen = () => {
     const data = fullRef.current?.toDataURL();
     if (!data) return;
@@ -514,14 +515,14 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
 
           <Separator orientation="vertical" className="h-6" />
 
-          <Button variant="outline" size="sm" onClick={() => { compactRef.current?.zoomOut(); refreshZoomBadge('compact'); }}>
+          <Button variant="outline" size="sm" onClick={() => compactRef.current?.zoomOut()}>
             <ZoomOut className="w-3 h-3" />
           </Button>
           <span className="text-xs tabular-nums w-10 text-center">{Math.round(zoomBadge * 100)}%</span>
-          <Button variant="outline" size="sm" onClick={() => { compactRef.current?.zoomIn(); refreshZoomBadge('compact'); }}>
+          <Button variant="outline" size="sm" onClick={() => compactRef.current?.zoomIn()}>
             <ZoomIn className="w-3 h-3" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => { compactRef.current?.resetView(); refreshZoomBadge('compact'); }}>
+          <Button variant="ghost" size="sm" onClick={() => compactRef.current?.resetView()}>
             <Minimize className="w-3 h-3 mr-1" /> Reset
           </Button>
 
@@ -544,6 +545,7 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
             logicalHeight={400}
             templateScale={1}
             surfaceRef={compactRef}
+            onZoomChange={setZoomBadge}
             containerClassName="w-full h-full bg-white"
             className="cursor-crosshair"
           />
@@ -586,10 +588,10 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
               <input type="range" min={1} max={15} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} className="w-20" />
               <span className="text-sm w-6">{strokeWidth}</span>
               <Separator orientation="vertical" className="h-6" />
-              <Button variant="outline" size="sm" onClick={() => { fullRef.current?.zoomOut(); refreshZoomBadge('full'); }}><ZoomOut className="w-4 h-4" /></Button>
+              <Button variant="outline" size="sm" onClick={() => fullRef.current?.zoomOut()}><ZoomOut className="w-4 h-4" /></Button>
               <span className="text-xs tabular-nums w-12 text-center">{Math.round(zoomBadge * 100)}%</span>
-              <Button variant="outline" size="sm" onClick={() => { fullRef.current?.zoomIn(); refreshZoomBadge('full'); }}><ZoomIn className="w-4 h-4" /></Button>
-              <Button variant="ghost" size="sm" onClick={() => { fullRef.current?.resetView(); refreshZoomBadge('full'); }}><Minimize className="w-4 h-4 mr-1" /> Reset View</Button>
+              <Button variant="outline" size="sm" onClick={() => fullRef.current?.zoomIn()}><ZoomIn className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="sm" onClick={() => fullRef.current?.resetView()}><Minimize className="w-4 h-4 mr-1" /> Reset View</Button>
               <Separator orientation="vertical" className="h-6" />
               <Button variant="outline" size="sm" onClick={() => fullRef.current?.clear()}>Clear</Button>
               <Button variant="outline" size="sm" onClick={() => fullRef.current?.undo()}><RotateCcw className="w-4 h-4 mr-1" /> Undo</Button>
@@ -613,11 +615,6 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
           </div>
         </DialogContent>
       </Dialog>
-
-      <div className="hidden">
-        {/* Hidden control to expose compact-canvas save (kept off-toolbar to mirror previous UX) */}
-        <Button onClick={saveFromCompact}>Save</Button>
-      </div>
     </>
   );
 }
