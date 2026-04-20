@@ -2044,6 +2044,27 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   </div>
                 </div>
 
+                {/* Reporting Doctor */}
+                <div className="space-y-2">
+                  <Label htmlFor="fullscreen-physicianId">Reporting Doctor</Label>
+                  <Select
+                    value={editingReport.physicianId ? String(editingReport.physicianId) : "none"}
+                    onValueChange={(v) => updateEditingReport('physicianId', v === "none" ? null : parseInt(v))}
+                  >
+                    <SelectTrigger id="fullscreen-physicianId" data-testid="select-physician-fullscreen">
+                      <SelectValue placeholder="Select reporting doctor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— None —</SelectItem>
+                      {physicians.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {formatPhysicianName(p.name)}{p.title ? ` ${p.title}` : ''}{p.specialty ? ` — ${p.specialty}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Report Fields */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -2410,6 +2431,27 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     value={editingReport.studyType}
                     onChange={(e) => updateEditingReport('studyType', e.target.value)}
                   />
+                </div>
+
+                {/* Reporting Doctor */}
+                <div className="space-y-2">
+                  <Label htmlFor="physicianId">Reporting Doctor</Label>
+                  <Select
+                    value={editingReport.physicianId ? String(editingReport.physicianId) : "none"}
+                    onValueChange={(v) => updateEditingReport('physicianId', v === "none" ? null : parseInt(v))}
+                  >
+                    <SelectTrigger id="physicianId" data-testid="select-physician">
+                      <SelectValue placeholder="Select reporting doctor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— None —</SelectItem>
+                      {physicians.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {formatPhysicianName(p.name)}{p.title ? ` ${p.title}` : ''}{p.specialty ? ` — ${p.specialty}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Indication */}
