@@ -2960,10 +2960,18 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                   if (generatingCertificate) return;
                                   setGeneratingCertificate(true);
                                   const apt = viewingAppointment;
-                                  const resolvedPatient = apt.patientId
+                                  const normalize = (s: string) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+                                  const aptNameNorm = normalize(apt.patientName || "");
+                                  const aptDobNorm = normalize(apt.patientDob || "");
+                                  const resolvedPatient = (apt.patientId
                                     ? allCalendarPatients.find(pt => pt.id === apt.patientId)
-                                    : allCalendarPatients.find(pt =>
-                                        `${pt.firstName} ${pt.lastName}`.toLowerCase() === (apt.patientName || "").toLowerCase()
+                                    : undefined)
+                                    || allCalendarPatients.find(pt =>
+                                        normalize(`${pt.firstName} ${pt.lastName}`) === aptNameNorm
+                                        && (!aptDobNorm || normalize(pt.dateOfBirth || "") === aptDobNorm)
+                                      )
+                                    || allCalendarPatients.find(pt =>
+                                        normalize(`${pt.firstName} ${pt.lastName}`) === aptNameNorm
                                       );
                                   const physician = apt.physicianId
                                     ? physicians.find(p => p.id === apt.physicianId)
