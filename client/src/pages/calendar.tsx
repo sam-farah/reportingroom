@@ -11,7 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText } from "lucide-react";
+import jsPDF from "jspdf";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
@@ -19,6 +20,144 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, e
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent, ReminderLog, CalendarTask } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
+
+async function fetchAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function ordinalSuffix(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function formatDobDDMMYYYY(dob: string | null | undefined): string {
+  if (!dob) return "";
+  const m = dob.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return dob;
+}
+
+async function generateAttendanceCertificate(opts: {
+  appointment: any;
+  patient: any | null;
+  clinic: any | null;
+  physician: any | null;
+}): Promise<void> {
+  const { appointment, patient, clinic, physician } = opts;
+  const apptDate = new Date(appointment.appointmentDate);
+  const today = new Date();
+  const tomorrow = new Date(apptDate);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const dateLong = `${ordinalSuffix(today.getDate())} ${format(today, "MMMM yyyy")}`;
+  const fromDate = format(apptDate, "dd/MM/yyyy");
+  const toDate = format(tomorrow, "dd/MM/yyyy");
+
+  const fullName = patient
+    ? `${patient.firstName} ${patient.lastName}`
+    : (appointment.patientName || "");
+  const lastFirst = patient
+    ? `${patient.lastName}, ${patient.firstName}`
+    : (appointment.patientName || "");
+  const dobDisplay = formatDobDDMMYYYY(patient?.dateOfBirth || appointment.patientDob);
+  const phoneDisplay = patient?.phone || appointment.patientPhone || "";
+  const addressLine1 = patient?.address || "";
+  const cityState = [patient?.city, patient?.state, patient?.zipCode].filter(Boolean).join(" ");
+
+  const logoDataUrl = clinic?.logoUrl ? await fetchAsDataUrl("/api/clinic/logo") : null;
+  const sigDataUrl = physician?.signatureUrl ? await fetchAsDataUrl(physician.signatureUrl) : null;
+
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageW = 210;
+  const margin = 22;
+
+  // Logo top-right
+  if (logoDataUrl) {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = logoDataUrl;
+      });
+      const targetW = 55;
+      const targetH = (img.height / img.width) * targetW;
+      pdf.addImage(logoDataUrl, "PNG", pageW - margin - targetW, 18, targetW, targetH);
+    } catch { /* ignore */ }
+  }
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+  pdf.setTextColor(0, 0, 0);
+
+  let y = 70;
+  pdf.text(dateLong, margin, y);
+  y += 16;
+
+  pdf.text("To Whom It May Concern,", margin, y);
+  y += 12;
+
+  pdf.text(`Re: ${lastFirst}`, margin, y);
+  y += 6;
+  if (dobDisplay) { pdf.text(`DOB: ${dobDisplay}`, margin, y); y += 6; }
+  if (addressLine1) { pdf.text(addressLine1, margin, y); y += 6; }
+  if (cityState) { pdf.text(cityState, margin, y); y += 6; }
+  if (phoneDisplay) { pdf.text(`Mob: ${phoneDisplay}`, margin, y); y += 6; }
+
+  y += 10;
+  const body = `This letter is to certify that ${fullName} required time off work to recover from a medical condition from ${fromDate} and ${toDate} inclusive.`;
+  const bodyLines = pdf.splitTextToSize(body, pageW - margin * 2);
+  pdf.text(bodyLines, margin, y);
+  y += bodyLines.length * 6 + 14;
+
+  pdf.text("Kind Regards,", margin, y);
+  y += 6;
+
+  if (sigDataUrl) {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = sigDataUrl;
+      });
+      const sigW = 45;
+      const sigH = (img.height / img.width) * sigW;
+      pdf.addImage(sigDataUrl, "PNG", margin, y, sigW, sigH);
+      y += sigH + 4;
+    } catch { y += 18; }
+  } else {
+    y += 18;
+  }
+
+  if (physician?.name) { pdf.text(physician.name, margin, y); y += 6; }
+  if (physician?.title) { pdf.text(physician.title, margin, y); y += 6; }
+
+  // Clinic footer block
+  const footerY = 245;
+  let fy = footerY;
+  if (clinic?.name) { pdf.text(clinic.name, margin, fy); fy += 6; }
+  if (clinic?.phone) { pdf.text(`Ph: ${clinic.phone}`, margin, fy); fy += 6; }
+  if (clinic?.fax) { pdf.text(`Fax: ${clinic.fax}`, margin, fy); fy += 6; }
+  if (clinic?.email) { pdf.text(`Email: ${clinic.email}`, margin, fy); fy += 6; }
+  if (clinic?.website) { pdf.text(`Website: ${clinic.website}`, margin, fy); fy += 6; }
+
+  const safeName = (fullName || "patient").replace(/[^a-z0-9]+/gi, "_");
+  pdf.save(`Attendance_Certificate_${safeName}_${format(apptDate, "yyyy-MM-dd")}.pdf`);
+}
 
 function parseReferralNotes(notes: string | null | undefined): { referrerName: string | null; cleanNotes: string | null } {
   if (!notes) return { referrerName: null, cleanNotes: null };
@@ -640,6 +779,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
 
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
+  });
+
+  const { data: clinicData } = useQuery<{ id: number; name: string; address?: string; city?: string; state?: string; zipCode?: string; phone?: string; fax?: string; email?: string; website?: string; logoUrl?: string }>({
+    queryKey: ["/api/clinic"],
   });
 
   const { data: sonographers = [] } = useQuery<Sonographer[]>({
@@ -2789,6 +2932,38 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           <Mail className="w-4 h-4 mr-1" />
                           {sendReminderMutation.isPending ? "Sending…" : "Send Reminder"}
                         </Button>
+                        {isSameDay(new Date(viewingAppointment.appointmentDate), new Date()) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-amber-700 hover:text-amber-800 border-amber-300 hover:bg-amber-50"
+                            onClick={async () => {
+                              const resolvedPatient = viewingAppointment.patientId
+                                ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
+                                : allCalendarPatients.find(pt =>
+                                    `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
+                                  );
+                              const physician = viewingAppointment.physicianId
+                                ? physicians.find(p => p.id === viewingAppointment.physicianId)
+                                : physicians[0];
+                              try {
+                                await generateAttendanceCertificate({
+                                  appointment: viewingAppointment,
+                                  patient: resolvedPatient || null,
+                                  clinic: clinicData || null,
+                                  physician: physician || null,
+                                });
+                                toast({ title: "Certificate generated", description: "Attendance certificate downloaded." });
+                              } catch (err: any) {
+                                toast({ title: "Error", description: err?.message || "Failed to generate certificate", variant: "destructive" });
+                              }
+                            }}
+                            data-testid="button-attendance-certificate"
+                          >
+                            <FileText className="w-4 h-4 mr-1" />
+                            Attendance Certificate
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
