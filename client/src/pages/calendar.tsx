@@ -3025,6 +3025,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                         body: JSON.stringify({
                                           pdfBase64: cert.base64,
                                           filename: cert.filename,
+                                          appointmentDate: format(new Date(apt.appointmentDate), "yyyy-MM-dd"),
                                         }),
                                       });
                                       if (r.ok) {

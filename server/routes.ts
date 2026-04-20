@@ -905,7 +905,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/appointments/:id/save-attendance-certificate", isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { pdfBase64, filename } = req.body || {};
+      const { pdfBase64, filename, appointmentDate: clientAppointmentDate } = req.body || {};
       if (!pdfBase64 || typeof pdfBase64 !== "string") {
         return res.status(400).json({ error: "Missing certificate PDF" });
       }
@@ -944,13 +944,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       fs.writeFileSync(outPath, buffer);
       saveFileToDB(storedFilename, outPath, "application/pdf", originalName).catch(console.error);
 
+      // Use the appointment's calendar date (in the clinic's local timezone) so the saved
+      // patient document matches the date shown on the certificate PDF, not server UTC "now".
+      const isValidDateStr = (s: any) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+      let documentDate: string;
+      if (isValidDateStr(clientAppointmentDate)) {
+        documentDate = clientAppointmentDate;
+      } else {
+        const apptDate = appointment.appointmentDate ? new Date(appointment.appointmentDate as any) : new Date();
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Australia/Sydney",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(apptDate);
+        const y = parts.find(p => p.type === "year")?.value;
+        const m = parts.find(p => p.type === "month")?.value;
+        const d = parts.find(p => p.type === "day")?.value;
+        documentDate = `${y}-${m}-${d}`;
+      }
+
       const document = await storage.createPatientDocument({
         patientId,
         title: "Attendance Certificate",
         filename: storedFilename,
         originalName,
         fileUrl: `/uploads/${storedFilename}`,
-        documentDate: new Date().toISOString().split("T")[0],
+        documentDate,
       });
 
       res.json({ success: true, patientId, documentId: document?.id });
