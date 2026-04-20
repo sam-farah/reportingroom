@@ -2070,7 +2070,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     <SelectTrigger id="fullscreen-physicianId" data-testid="select-physician-fullscreen">
                       <SelectValue placeholder="Select reporting doctor" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[200]">
                       <SelectItem value="none">— None —</SelectItem>
                       {physicians.map((p) => (
                         <SelectItem key={p.id} value={String(p.id)}>
@@ -2459,7 +2459,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     <SelectTrigger id="physicianId" data-testid="select-physician">
                       <SelectValue placeholder="Select reporting doctor" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[200]">
                       <SelectItem value="none">— None —</SelectItem>
                       {physicians.map((p) => (
                         <SelectItem key={p.id} value={String(p.id)}>
