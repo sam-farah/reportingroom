@@ -897,7 +897,10 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
       r.patientName.toLowerCase().includes(requestSearch.toLowerCase()) ||
       (r.referringDoctorName ?? "").toLowerCase().includes(requestSearch.toLowerCase()) ||
       (r.scanTypes ?? []).some(t => t.toLowerCase().includes(requestSearch.toLowerCase()));
-    const matchStatus = statusFilter === "all" || r.status === statusFilter;
+    const matchStatus =
+      statusFilter === "all"
+        ? r.status !== "archived"
+        : r.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
