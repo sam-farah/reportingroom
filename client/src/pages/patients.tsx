@@ -488,19 +488,147 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     },
   });
 
+  const { data: clinicData } = useQuery<{ id: number; name: string; address?: string; phone?: string; logoUrl?: string }>({
+    queryKey: ["/api/clinic"],
+  });
+
+  const labelImageFile = async (
+    file: File,
+    patient: Patient,
+    title: string,
+    documentDate: string,
+  ): Promise<File> => {
+    if (!file.type.startsWith("image/")) return file;
+    try {
+      const fileDataUrl = await new Promise<string>((resolve) => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(r.result as string);
+        r.readAsDataURL(file);
+      });
+      const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = fileDataUrl;
+      });
+
+      let logoImg: HTMLImageElement | null = null;
+      if (clinicData?.logoUrl) {
+        try {
+          const logoRes = await fetch("/api/clinic/logo", { credentials: "include" });
+          if (logoRes.ok) {
+            const logoBlob = await logoRes.blob();
+            const logoDataUrl = await new Promise<string>((resolve) => {
+              const r = new FileReader();
+              r.onloadend = () => resolve(r.result as string);
+              r.readAsDataURL(logoBlob);
+            });
+            logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => resolve(img);
+              img.onerror = reject;
+              img.src = logoDataUrl;
+            });
+          }
+        } catch { /* logo optional */ }
+      }
+
+      const DPI = 200;
+      const A4_W = Math.round((210 / 25.4) * DPI);
+      const A4_H = Math.round((297 / 25.4) * DPI);
+      const HEADER_HEIGHT = Math.round(A4_H * 0.11);
+      const PADDING = Math.round(A4_W * 0.025);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = A4_W;
+      canvas.height = A4_H;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, A4_W, A4_H);
+
+      const primaryColor = "#0066cc";
+      ctx.strokeStyle = primaryColor;
+      ctx.lineWidth = Math.round(A4_W * 0.003);
+      ctx.beginPath();
+      ctx.moveTo(0, HEADER_HEIGHT);
+      ctx.lineTo(A4_W, HEADER_HEIGHT);
+      ctx.stroke();
+
+      let textStartX = PADDING;
+      if (logoImg) {
+        const logoMaxH = HEADER_HEIGHT - PADDING * 2;
+        const logoMaxW = Math.round(A4_W * 0.2);
+        const scale = Math.min(logoMaxW / logoImg.width, logoMaxH / logoImg.height, 1);
+        const logoW = logoImg.width * scale;
+        const logoH = logoImg.height * scale;
+        const logoY = (HEADER_HEIGHT - logoH) / 2;
+        ctx.drawImage(logoImg, PADDING, logoY, logoW, logoH);
+        textStartX = PADDING + logoW + Math.round(A4_W * 0.015);
+      }
+
+      const fmtDate = (d: string) => {
+        if (!d) return "";
+        const dt = new Date(d);
+        if (isNaN(dt.getTime())) return d;
+        return format(dt, "dd/MM/yyyy");
+      };
+      const patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
+      const lines = [
+        `Patient: ${patientName}`,
+        patient.dateOfBirth ? `DOB: ${fmtDate(patient.dateOfBirth as any)}` : null,
+        (patient as any).urNumber ? `UR: ${(patient as any).urNumber}` : null,
+        `Document: ${title}`,
+        `Date: ${fmtDate(documentDate)}`,
+      ].filter(Boolean) as string[];
+
+      const infoFontSize = Math.round(A4_W * 0.0135);
+      ctx.fillStyle = "#333333";
+      ctx.font = `${infoFontSize}px Arial, sans-serif`;
+      const colW = (A4_W - textStartX - PADDING) / 2;
+      const half = Math.ceil(lines.length / 2);
+      const leftLines = lines.slice(0, half);
+      const rightLines = lines.slice(half);
+      const lineH = infoFontSize + Math.round(infoFontSize * 0.45);
+      const textY = (HEADER_HEIGHT - half * lineH) / 2 + infoFontSize;
+      leftLines.forEach((line, i) => ctx.fillText(line, textStartX, textY + i * lineH));
+      rightLines.forEach((line, i) => ctx.fillText(line, textStartX + colW, textY + i * lineH));
+
+      const wsAreaH = A4_H - HEADER_HEIGHT;
+      const wsScale = Math.min(A4_W / wsImg.width, wsAreaH / wsImg.height);
+      const wsDrawW = wsImg.width * wsScale;
+      const wsDrawH = wsImg.height * wsScale;
+      const wsX = (A4_W - wsDrawW) / 2;
+      const wsY = HEADER_HEIGHT + (wsAreaH - wsDrawH) / 2;
+      ctx.drawImage(wsImg, wsX, wsY, wsDrawW, wsDrawH);
+
+      const blob: Blob | null = await new Promise((resolve) => {
+        try { canvas.toBlob((b) => resolve(b), "image/jpeg", 0.93); }
+        catch { resolve(null); }
+      });
+      if (!blob) return file;
+      const baseName = file.name.replace(/\.[^.]+$/, "");
+      return new File([blob], `${baseName}-labelled.jpg`, { type: "image/jpeg" });
+    } catch {
+      return file;
+    }
+  };
+
   const uploadDocumentMutation = useMutation({
     mutationFn: async ({ file, title, documentDate }: { file: File; title: string; documentDate: string }) => {
+      const finalFile = selectedPatient
+        ? await labelImageFile(file, selectedPatient, title, documentDate)
+        : file;
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", finalFile);
       formData.append("title", title);
       formData.append("documentDate", documentDate);
-      
+
       const response = await fetch(`/api/patients/${selectedPatient!.id}/documents`, {
         method: "POST",
         credentials: "include",
         body: formData,
       });
-      
+
       if (!response.ok) throw new Error("Upload failed");
       return response.json();
     },
