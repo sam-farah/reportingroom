@@ -2864,8 +2864,8 @@ export function ChangelogCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-base">📝 What's New</CardTitle>
-            <p className="text-xs text-gray-500 mt-1">Recent fixes and improvements to Reporting Room.</p>
+            <CardTitle className="text-lg">📝 What's New</CardTitle>
+            <p className="text-sm text-gray-500 mt-1">Recent fixes and improvements to Reporting Room.</p>
           </div>
           {CHANGELOG.length > 3 && (
             <Button size="sm" variant="ghost" onClick={() => setExpanded((v) => !v)}>
@@ -2875,18 +2875,18 @@ export function ChangelogCard() {
         </div>
       </CardHeader>
       <CardContent className="border-t pt-4">
-        <ul className="space-y-4">
+        <ul className="space-y-5">
           {visible.map((entry, idx) => (
-            <li key={idx} className="flex gap-3">
-              <div className="flex-shrink-0 w-24 text-xs text-gray-500 pt-0.5">{entry.date}</div>
+            <li key={idx} className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+              <div className="flex-shrink-0 sm:w-28 text-sm font-medium text-gray-500 pt-0.5">{entry.date}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${tagStyles[entry.tag]}`}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${tagStyles[entry.tag]}`}>
                     {entry.tag.toUpperCase()}
                   </span>
-                  <span className="font-medium text-sm">{entry.title}</span>
+                  <span className="font-semibold text-base">{entry.title}</span>
                 </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed space-y-2">
+                <div className="text-sm text-gray-700 dark:text-gray-300 mt-1.5 leading-relaxed space-y-2">
                   {entry.detail.split("\n\n").map((para, i) => (
                     <p key={i}>{para}</p>
                   ))}
