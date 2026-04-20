@@ -2062,12 +2062,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
                 {/* Reporting Doctor */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="fullscreen-physicianId">Reporting Doctor</Label>
-                    <Link href="/admin?tab=physicians" className="text-xs text-blue-600 hover:underline">
-                      Manage doctors →
-                    </Link>
-                  </div>
+                  <Label htmlFor="fullscreen-physicianId">Reporting Doctor</Label>
                   <Select
                     value={editingReport.physicianId ? String(editingReport.physicianId) : "none"}
                     onValueChange={(v) => updateEditingReport('physicianId', v === "none" ? null : parseInt(v))}
@@ -2456,12 +2451,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
                 {/* Reporting Doctor */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="physicianId">Reporting Doctor</Label>
-                    <Link href="/admin?tab=physicians" className="text-xs text-blue-600 hover:underline">
-                      Manage doctors →
-                    </Link>
-                  </div>
+                  <Label htmlFor="physicianId">Reporting Doctor</Label>
                   <Select
                     value={editingReport.physicianId ? String(editingReport.physicianId) : "none"}
                     onValueChange={(v) => updateEditingReport('physicianId', v === "none" ? null : parseInt(v))}
