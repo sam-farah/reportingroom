@@ -989,12 +989,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
     // Look up sonographer
     let sonographerName = "";
+    let sonographerAms = "";
     if (report.sonographerId) {
       const sono = sonographersList.find(s => s.id === report.sonographerId);
       if (sono) {
         sonographerName = (sono.title ? sono.title + " " : "") + sono.name;
+        sonographerAms = sono.amsNumber || "";
       }
     }
+    const sonographerWithAms = sonographerName + (sonographerAms ? ` (AMS ${sonographerAms})` : "");
 
     // Fetch worksheet image
     let worksheetDataUrl: string | null = null;
@@ -1192,7 +1195,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     <div></div>
     <div class="pi-full"><span class="label">Study:</span> ${displayStudyType}</div>
     <div class="pi">${accessionId ? `<span class="label">Accession:</span> ${accessionId}` : ''}</div>
-    <div class="pi">${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}` : ''}</div>
+    <div class="pi">${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}${sonographerAms ? ` <span class="label">AMS</span> ${sonographerAms}` : ''}` : ''}</div>
   </div>
 
   ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
@@ -1214,7 +1217,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       <div>
         ${accessionId ? `<span class="label">Accession:</span> ${accessionId}` : ''}
         ${accessionId && sonographerName ? ' &nbsp;·&nbsp; ' : ''}
-        ${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}` : ''}
+        ${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}${sonographerAms ? ` &nbsp; <span class="label">AMS</span> ${sonographerAms}` : ''}` : ''}
       </div>
     </div>
     <img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" />

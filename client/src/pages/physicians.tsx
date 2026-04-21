@@ -68,6 +68,7 @@ export default function Clinic() {
     initials: "",
     title: "",
     department: "",
+    amsNumber: "",
   });
 
   // DICOM Worklist state
@@ -479,7 +480,7 @@ export default function Clinic() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sonographers"] });
       setIsAddSonographerDialogOpen(false);
-      setNewSonographer({ name: "", initials: "", title: "", department: "" });
+      setNewSonographer({ name: "", initials: "", title: "", department: "", amsNumber: "" });
       toast({
         title: "Success",
         description: "Sonographer added successfully",
@@ -1098,6 +1099,16 @@ export default function Clinic() {
                         onChange={(e) => setNewSonographer({ ...newSonographer, department: e.target.value })}
                       />
                     </div>
+                    <div>
+                      <Label htmlFor="sonographer-ams">AMS Number (Optional)</Label>
+                      <Input
+                        id="sonographer-ams"
+                        placeholder="e.g., 12345"
+                        value={newSonographer.amsNumber || ""}
+                        onChange={(e) => setNewSonographer({ ...newSonographer, amsNumber: e.target.value })}
+                        data-testid="input-sonographer-ams"
+                      />
+                    </div>
                     <div className="flex justify-end gap-2 pt-4">
                       <Button variant="outline" onClick={() => setIsAddSonographerDialogOpen(false)}>
                         Cancel
@@ -1247,6 +1258,16 @@ export default function Clinic() {
                         placeholder="e.g., Vascular Lab"
                         value={editingSonographer.department || ""}
                         onChange={(e) => setEditingSonographer({ ...editingSonographer, department: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-ams">AMS Number (Optional)</Label>
+                      <Input
+                        id="edit-ams"
+                        placeholder="e.g., 12345"
+                        value={editingSonographer.amsNumber || ""}
+                        onChange={(e) => setEditingSonographer({ ...editingSonographer, amsNumber: e.target.value })}
+                        data-testid="input-edit-sonographer-ams"
                       />
                     </div>
                     <div className="flex justify-end gap-2 pt-4">
