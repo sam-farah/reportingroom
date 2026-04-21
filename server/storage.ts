@@ -1286,6 +1286,49 @@ export class DatabaseStorage implements IStorage {
       .set({ ...patient, updatedAt: new Date() })
       .where(eq(patients.id, id))
       .returning();
+
+    if (updated) {
+      const fullName = `${updated.firstName} ${updated.lastName}`.trim();
+      const dob = updated.dateOfBirth ?? null;
+      const phone = updated.phone ?? null;
+      const email = updated.email ?? null;
+      const ur = updated.urNumber ?? null;
+
+      await Promise.all([
+        db.update(appointments).set({
+          patientName: fullName,
+          patientDob: dob,
+          patientPhone: phone,
+          patientEmail: email,
+          updatedAt: new Date(),
+        }).where(eq(appointments.patientId, id)),
+
+        db.update(scanRequests).set({
+          patientName: fullName,
+          patientDob: dob,
+          patientPhone: phone,
+          patientEmail: email,
+          patientUrNumber: ur,
+        }).where(eq(scanRequests.patientId, id)),
+
+        db.update(worksheets).set({
+          patientName: fullName,
+          patientDob: dob,
+        }).where(eq(worksheets.patientId, id)),
+
+        db.update(digitalWorksheets).set({
+          patientName: fullName,
+          patientDob: dob,
+        }).where(eq(digitalWorksheets.patientId, id)),
+
+        db.update(reports).set({
+          patientName: fullName,
+          patientDob: dob ?? "",
+          patientUrNumber: ur,
+        }).where(eq(reports.patientId, id)),
+      ]);
+    }
+
     return updated;
   }
 

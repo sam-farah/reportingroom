@@ -668,6 +668,11 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     },
     onSuccess: (updatedPatient: Patient) => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/worksheets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/digital-worksheets"] });
       toast({ title: "Success", description: "Patient updated successfully" });
       resetForm();
       setEditingPatient(null);
