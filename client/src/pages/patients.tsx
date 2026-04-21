@@ -136,44 +136,36 @@ function PdfViewer({ url, title, originalName }: { url: string; title: string; o
 }
 
 function TransmittedPdfPreview({ distributionId, title, sentAt, pdfUrl }: { distributionId: number; title: string; sentAt?: string | null; pdfUrl: string }) {
-  const [images, setImages] = useState<string[] | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [unavailable, setUnavailable] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
     setLoading(true);
     setError(null);
-    setImages(null);
-    setUnavailable(null);
-    fetch(`/api/distributions/${distributionId}/pdf-images`, { credentials: "include" })
+    setBlobUrl(null);
+    fetch(pdfUrl, { credentials: "include" })
       .then((r) => {
         if (!r.ok) throw new Error(`Failed (${r.status})`);
-        return r.json();
+        return r.blob();
       })
-      .then((data) => {
-        if (data.unavailable) {
-          setUnavailable(data.reason || "Inline preview not available on this server");
-          setImages([]);
-        } else {
-          setImages(data.images || []);
-        }
+      .then((blob) => {
+        if (cancelled) return;
+        createdUrl = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+        setBlobUrl(createdUrl);
       })
-      .catch((e) => setError(e.message || "Could not render PDF"))
-      .finally(() => setLoading(false));
-  }, [distributionId]);
+      .catch((e) => { if (!cancelled) setError(e.message || "Could not load PDF"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [pdfUrl]);
 
-  const openPdfInNewTab = async () => {
-    try {
-      const r = await fetch(pdfUrl, { credentials: "include" });
-      if (!r.ok) throw new Error(`Failed (${r.status})`);
-      const blob = await r.blob();
-      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (e: any) {
-      alert(e.message || "Could not open PDF");
-    }
+  const openPdfInNewTab = () => {
+    if (blobUrl) window.open(blobUrl, "_blank");
   };
 
   return (
@@ -196,36 +188,23 @@ function TransmittedPdfPreview({ distributionId, title, sentAt, pdfUrl }: { dist
           Open PDF
         </a>
       </div>
-      <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-900 p-4">
+      <div className="flex-1 bg-gray-100 dark:bg-gray-900 relative">
         {loading && (
-          <div className="flex items-center justify-center h-40 text-gray-500">
+          <div className="absolute inset-0 flex items-center justify-center text-gray-500">
             <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-3" />
-            Rendering PDF...
+            Loading PDF...
           </div>
         )}
         {error && (
-          <div className="text-center text-sm text-red-600 py-8">{error}</div>
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 px-6 text-center">{error}</div>
         )}
-        {!loading && !error && unavailable && (
-          <div className="max-w-md mx-auto mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
-            <p className="text-sm text-amber-800">{unavailable}</p>
-            <button
-              onClick={openPdfInNewTab}
-              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded-lg"
-            >
-              <ExternalLink className="w-3.5 h-3.5" /> Open PDF in new tab
-            </button>
-          </div>
-        )}
-        {!loading && !error && !unavailable && images && images.length === 0 && (
-          <div className="text-center text-sm text-gray-500 py-8">No pages found</div>
-        )}
-        {!loading && images && images.length > 0 && (
-          <div className="space-y-4 max-w-4xl mx-auto">
-            {images.map((src, i) => (
-              <img key={i} src={src} alt={`Page ${i + 1}`} className="w-full rounded shadow border bg-white" />
-            ))}
-          </div>
+        {!loading && !error && blobUrl && (
+          <iframe
+            src={blobUrl}
+            title={title}
+            className="w-full h-full border-0"
+            data-testid="iframe-transmitted-pdf"
+          />
         )}
       </div>
     </div>
