@@ -2167,6 +2167,25 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   </select>
                 </div>
 
+                {/* Sonographer */}
+                <div className="space-y-2">
+                  <Label htmlFor="fullscreen-sonographerId">Sonographer</Label>
+                  <select
+                    id="fullscreen-sonographerId"
+                    data-testid="select-sonographer-fullscreen"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={(editingReport as any).sonographerId ? String((editingReport as any).sonographerId) : ""}
+                    onChange={(e) => updateEditingReport('sonographerId' as any, e.target.value ? parseInt(e.target.value) : null)}
+                  >
+                    <option value="">— Select sonographer —</option>
+                    {sonographersList.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title ? `${s.title} ` : ''}{s.name}{s.amsNumber ? ` — AMS ${s.amsNumber}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Report Fields */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -2549,6 +2568,25 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     {physicians.map((p) => (
                       <option key={p.id} value={p.id}>
                         {formatPhysicianName(p.name)}{p.title ? ` ${p.title}` : ''}{p.specialty ? ` — ${p.specialty}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sonographer */}
+                <div className="space-y-2">
+                  <Label htmlFor="sonographerId">Sonographer</Label>
+                  <select
+                    id="sonographerId"
+                    data-testid="select-sonographer"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={(editingReport as any).sonographerId ? String((editingReport as any).sonographerId) : ""}
+                    onChange={(e) => updateEditingReport('sonographerId' as any, e.target.value ? parseInt(e.target.value) : null)}
+                  >
+                    <option value="">— Select sonographer —</option>
+                    {sonographersList.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title ? `${s.title} ` : ''}{s.name}{s.amsNumber ? ` — AMS ${s.amsNumber}` : ''}
                       </option>
                     ))}
                   </select>

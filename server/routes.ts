@@ -1941,13 +1941,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // If a patient is linked, try to inherit sonographer from the patient's
+      // most recent appointment (so the booking-time choice flows through).
+      let inheritedSonographerId: number | null = null;
+      if (linkedPatientId && !isNaN(linkedPatientId)) {
+        try {
+          const apts = await storage.getAppointmentsByPatient(linkedPatientId);
+          const withSono = (apts || [])
+            .filter((a: any) => a.sonographerId)
+            .sort((a: any, b: any) =>
+              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+            );
+          if (withSono.length > 0) {
+            inheritedSonographerId = withSono[0].sonographerId;
+          }
+        } catch (e) {
+          console.warn('Failed to inherit sonographer from appointment:', e);
+        }
+      }
+
       // Update worksheet with resolved patient data
       const updatedWorksheet = await storage.updateWorksheet(worksheetId, {
         patientName: finalPatientName,
         patientDob: finalPatientDob,
         examDate: ocrResult.examDate,
         ocrProcessed: true,
-        ...(linkedPatientId && !isNaN(linkedPatientId) ? { patientId: linkedPatientId } : {})
+        ...(linkedPatientId && !isNaN(linkedPatientId) ? { patientId: linkedPatientId } : {}),
+        ...(inheritedSonographerId ? { sonographerId: inheritedSonographerId } : {}),
       });
 
       console.log("Worksheet updated successfully");
@@ -2690,6 +2710,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create report in storage — inherit patientId and UR number from the worksheet if already linked
       const linkedPatientForReport = worksheet.patientId ? await storage.getPatient(worksheet.patientId) : null;
+      // Inherit sonographer: prefer the worksheet's sonographer, else fall back
+      // to the patient's most recent appointment sonographer.
+      let reportSonographerId: number | null = (worksheet as any).sonographerId ?? null;
+      if (!reportSonographerId && worksheet.patientId) {
+        try {
+          const apts = await storage.getAppointmentsByPatient(worksheet.patientId);
+          const withSono = (apts || [])
+            .filter((a: any) => a.sonographerId)
+            .sort((a: any, b: any) =>
+              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+            );
+          if (withSono.length > 0) reportSonographerId = withSono[0].sonographerId;
+        } catch (e) {
+          console.warn('Failed to inherit sonographer for report:', e);
+        }
+      }
+
       const report = await storage.createReport({
         worksheetId,
         patientName: reportData.patientName,
@@ -2700,6 +2737,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         findings: reportData.findings,
         impression: reportData.impression,
         physicianId,
+        sonographerId: reportSonographerId,
         logoUrl: clinic?.logoUrl || logoUrl,
         patientId: worksheet.patientId ?? null,
         patientUrNumber: linkedPatientForReport?.urNumber ?? null,

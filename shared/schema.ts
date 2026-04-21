@@ -113,6 +113,7 @@ export const worksheets = pgTable("worksheets", {
   examDate: text("exam_date"),
   ocrProcessed: boolean("ocr_processed").default(false),
   patientId: integer("patient_id").references(() => patients.id),
+  sonographerId: integer("sonographer_id").references(() => sonographers.id),
   isArchived: boolean("is_archived").default(false),
   archivedAt: timestamp("archived_at"),
 });
