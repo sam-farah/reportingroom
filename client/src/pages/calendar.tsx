@@ -2849,9 +2849,21 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
 
                 {/* Normal appointment detail view */}
                 {!showBeginStudy && (<>
-                <div className="flex items-center gap-2">
+                {(() => {
+                  const linkedPatient = viewingAppointment.patientId
+                    ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
+                    : allCalendarPatients.find(pt =>
+                        `${pt.firstName} ${pt.lastName}`.toLowerCase() === (viewingAppointment.patientName || "").toLowerCase()
+                      );
+                  return (
+                <div className="flex items-center gap-2 flex-wrap">
                   <User className="w-5 h-5 text-gray-500" />
                   <span className="font-semibold">{viewingAppointment.patientName}</span>
+                  {linkedPatient?.urNumber && (
+                    <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs" data-testid="badge-ur-number">
+                      UR {linkedPatient.urNumber}
+                    </span>
+                  )}
                   <span className={`ml-auto px-2 py-1 text-xs rounded-full ${STATUS_COLORS[viewingAppointment.status]}`}>
                     {viewingAppointment.status.replace("_", " ")}
                   </span>
@@ -2873,6 +2885,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </Button>
                   )}
                 </div>
+                  );
+                })()}
                 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="flex items-center gap-2">
