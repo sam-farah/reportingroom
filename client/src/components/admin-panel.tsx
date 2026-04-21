@@ -930,7 +930,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 <Database className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{systemStats?.databaseSize || '0'} GB</div>
+                <div className="text-2xl font-bold">{systemStats?.databaseSize || '0 B'}</div>
                 <p className="text-xs text-muted-foreground">+{systemStats?.monthlyGrowth || '0'}% from last month</p>
               </CardContent>
             </Card>
@@ -978,7 +978,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm">Report Data</span>
-                    <span className="text-sm font-medium">{systemStats?.reportDataSize || '0'} GB</span>
+                    <span className="text-sm font-medium">{systemStats?.reportDataSize || '0 B'}</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${systemStats?.reportDataPercent || 0}%` }}></div>
@@ -987,7 +987,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm">Worksheet Files</span>
-                    <span className="text-sm font-medium">{systemStats?.worksheetFilesSize || '0'} GB</span>
+                    <span className="text-sm font-medium">{systemStats?.worksheetFilesSize || '0 B'}</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div className="bg-green-600 h-2 rounded-full" style={{ width: `${systemStats?.worksheetFilesPercent || 0}%` }}></div>
@@ -996,7 +996,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm">User Data</span>
-                    <span className="text-sm font-medium">{systemStats?.userDataSize || '0'} GB</span>
+                    <span className="text-sm font-medium">{systemStats?.userDataSize || '0 B'}</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div className="bg-yellow-600 h-2 rounded-full" style={{ width: `${systemStats?.userDataPercent || 0}%` }}></div>
@@ -1012,15 +1012,15 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
               <CardContent className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-sm">Average Response Time</span>
-                  <span className="text-sm font-medium">{systemStats?.avgResponseTime || '0'}ms</span>
+                  <span className="text-sm font-medium">{systemStats?.avgResponseTime ? (typeof systemStats.avgResponseTime === 'number' ? `${systemStats.avgResponseTime}ms` : systemStats.avgResponseTime) : 'N/A'}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm">API Success Rate</span>
-                  <span className="text-sm font-medium text-green-600">{systemStats?.apiSuccessRate || '0'}%</span>
+                  <span className="text-sm font-medium text-green-600">{systemStats?.apiSuccessRate ? (typeof systemStats.apiSuccessRate === 'number' ? `${systemStats.apiSuccessRate}%` : systemStats.apiSuccessRate) : 'N/A'}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm">Encryption Overhead</span>
-                  <span className="text-sm font-medium">{systemStats?.encryptionOverhead || '0'}ms</span>
+                  <span className="text-sm font-medium">{systemStats?.encryptionOverhead ? (typeof systemStats.encryptionOverhead === 'number' ? `${systemStats.encryptionOverhead}ms` : systemStats.encryptionOverhead) : 'N/A'}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm">Daily Backups</span>
