@@ -496,7 +496,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
 
   const undoLastAction = () => {
     if (drawingHistory.length <= 1 || !canvasRef.current || !templateImage) return;
-    
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -504,14 +504,27 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     // Remove last state and restore previous one
     const newHistory = drawingHistory.slice(0, -1);
     setDrawingHistory(newHistory);
-    
-    // Always restore from the previous state in history
+
+    const previousState = newHistory[newHistory.length - 1];
+    if (!previousState) return;
+
+    // Always restore from the previous state in history.
+    // Reset the context so any active tool (eraser/highlighter) doesn't
+    // interfere with redrawing the snapshot.
     const img = new Image();
     img.onload = () => {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1.0;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
     };
-    img.src = newHistory[newHistory.length - 1];
+    img.onerror = () => {
+      console.error('Undo: failed to load previous state');
+    };
+    img.src = previousState;
   };
 
   const clearCanvas = () => {
