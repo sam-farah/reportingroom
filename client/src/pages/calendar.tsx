@@ -2991,7 +2991,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                               <Mail className="w-4 h-4 mr-2" />
                               {sendReminderMutation.isPending ? "Sending…" : "Send Reminder"}
                             </DropdownMenuItem>
-                            {isSameDay(new Date(viewingAppointment.appointmentDate), new Date()) && (
+                            {(() => {
+                              const aptDate = new Date(viewingAppointment.appointmentDate);
+                              const today = new Date();
+                              today.setHours(23, 59, 59, 999);
+                              return aptDate.getTime() <= today.getTime();
+                            })() && (
                               <DropdownMenuItem
                                 disabled={generatingCertificate}
                                 onSelect={async (e) => {
