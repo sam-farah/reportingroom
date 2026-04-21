@@ -619,6 +619,15 @@ export const CANONICAL_SCAN_TYPES: { name: string; hasLaterality: boolean }[] = 
   { name: "Finger brachial indices", hasLaterality: false },
 ];
 
+// Generic key/value system settings (cross-environment, persists across deploys)
+export const systemSettings = pgTable("system_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;
+
 // Scan duration settings per clinic
 export const scanDurationSettings = pgTable("scan_duration_settings", {
   id: serial("id").primaryKey(),

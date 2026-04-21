@@ -2,36 +2,79 @@ import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
 import { storage } from '../storage';
+import { db } from '../db';
+import { systemSettings } from '@shared/schema';
+import { eq, sql as drizzleSql } from 'drizzle-orm';
 
 const BACKUP_METADATA_FILE = path.join(process.cwd(), '.last-backup.json');
+const LAST_BACKUP_KEY = 'last_backup';
 
 interface BackupMetadata {
   lastBackupDate: string;
   filesIncluded: number;
 }
 
-export function getLastBackupDate(): Date | null {
+async function readSetting(key: string): Promise<string | null> {
   try {
-    if (fs.existsSync(BACKUP_METADATA_FILE)) {
-      const data = JSON.parse(fs.readFileSync(BACKUP_METADATA_FILE, 'utf-8'));
-      return new Date(data.lastBackupDate);
-    }
+    const rows = await db.select().from(systemSettings).where(eq(systemSettings.key, key)).limit(1);
+    return rows[0]?.value ?? null;
   } catch (error) {
-    console.error('Error reading backup metadata:', error);
+    console.error('Error reading system setting:', key, error);
+    return null;
   }
-  return null;
 }
 
-export function setLastBackupDate(date: Date, filesIncluded: number): void {
+async function writeSetting(key: string, value: string): Promise<void> {
   try {
-    const metadata: BackupMetadata = {
-      lastBackupDate: date.toISOString(),
-      filesIncluded
-    };
-    fs.writeFileSync(BACKUP_METADATA_FILE, JSON.stringify(metadata, null, 2));
+    await db.execute(drizzleSql`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES (${key}, ${value}, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `);
   } catch (error) {
-    console.error('Error saving backup metadata:', error);
+    console.error('Error writing system setting:', key, error);
   }
+}
+
+// One-time migration: if the DB doesn't yet have a record but the legacy
+// .last-backup.json file does, copy its value across so we don't lose history.
+let migrationDone = false;
+async function migrateLegacyMetadataIfNeeded(): Promise<void> {
+  if (migrationDone) return;
+  migrationDone = true;
+  try {
+    const existing = await readSetting(LAST_BACKUP_KEY);
+    if (existing) return;
+    if (fs.existsSync(BACKUP_METADATA_FILE)) {
+      const data = JSON.parse(fs.readFileSync(BACKUP_METADATA_FILE, 'utf-8')) as BackupMetadata;
+      if (data?.lastBackupDate) {
+        await writeSetting(LAST_BACKUP_KEY, JSON.stringify(data));
+        console.log('[backup] Migrated legacy .last-backup.json into system_settings');
+      }
+    }
+  } catch (error) {
+    console.error('Error migrating legacy backup metadata:', error);
+  }
+}
+
+export async function getLastBackupDate(): Promise<Date | null> {
+  await migrateLegacyMetadataIfNeeded();
+  const raw = await readSetting(LAST_BACKUP_KEY);
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw) as BackupMetadata;
+    return data.lastBackupDate ? new Date(data.lastBackupDate) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setLastBackupDate(date: Date, filesIncluded: number): Promise<void> {
+  const metadata: BackupMetadata = {
+    lastBackupDate: date.toISOString(),
+    filesIncluded,
+  };
+  await writeSetting(LAST_BACKUP_KEY, JSON.stringify(metadata));
 }
 
 interface FileInfo {
@@ -150,7 +193,7 @@ export async function createBackupArchive(
   outputStream: NodeJS.WritableStream,
   includeAll: boolean = true
 ): Promise<{ filesIncluded: number; totalSize: number }> {
-  const sinceDate = includeAll ? undefined : getLastBackupDate() || undefined;
+  const sinceDate = includeAll ? undefined : (await getLastBackupDate()) || undefined;
   const files = await collectPatientFiles(sinceDate);
   
   return new Promise((resolve, reject) => {
@@ -162,7 +205,9 @@ export async function createBackupArchive(
     });
     
     archive.on('end', () => {
-      setLastBackupDate(new Date(), files.length);
+      setLastBackupDate(new Date(), files.length).catch(err =>
+        console.error('Failed to record backup date:', err)
+      );
       resolve({ filesIncluded: files.length, totalSize });
     });
     
@@ -193,7 +238,7 @@ export async function getBackupInfo(): Promise<{
   totalFilesAvailable: number;
   filesSinceLastBackup: number;
 }> {
-  const lastBackup = getLastBackupDate();
+  const lastBackup = await getLastBackupDate();
   const allFiles = await collectPatientFiles();
   const newFiles = lastBackup ? await collectPatientFiles(lastBackup) : allFiles;
   
