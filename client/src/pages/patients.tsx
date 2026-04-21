@@ -139,17 +139,26 @@ function TransmittedPdfPreview({ distributionId, title, sentAt, pdfUrl }: { dist
   const [images, setImages] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
     setImages(null);
+    setUnavailable(null);
     fetch(`/api/distributions/${distributionId}/pdf-images`, { credentials: "include" })
       .then((r) => {
         if (!r.ok) throw new Error(`Failed (${r.status})`);
         return r.json();
       })
-      .then((data) => setImages(data.images || []))
+      .then((data) => {
+        if (data.unavailable) {
+          setUnavailable(data.reason || "Inline preview not available on this server");
+          setImages([]);
+        } else {
+          setImages(data.images || []);
+        }
+      })
       .catch((e) => setError(e.message || "Could not render PDF"))
       .finally(() => setLoading(false));
   }, [distributionId]);
@@ -197,7 +206,18 @@ function TransmittedPdfPreview({ distributionId, title, sentAt, pdfUrl }: { dist
         {error && (
           <div className="text-center text-sm text-red-600 py-8">{error}</div>
         )}
-        {!loading && !error && images && images.length === 0 && (
+        {!loading && !error && unavailable && (
+          <div className="max-w-md mx-auto mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+            <p className="text-sm text-amber-800">{unavailable}</p>
+            <button
+              onClick={openPdfInNewTab}
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded-lg"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Open PDF in new tab
+            </button>
+          </div>
+        )}
+        {!loading && !error && !unavailable && images && images.length === 0 && (
           <div className="text-center text-sm text-gray-500 py-8">No pages found</div>
         )}
         {!loading && images && images.length > 0 && (

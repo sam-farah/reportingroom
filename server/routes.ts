@@ -26,7 +26,7 @@ import {
   insertReportDistributionSchema,
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
-import { convertPdfToImage, convertPdfToImages, isPdfFile } from "./services/pdfConverter";
+import { convertPdfToImage, convertPdfToImages, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
 import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
 import { createBackupArchive, getBackupInfo } from "./services/backup";
@@ -2446,6 +2446,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id)) return res.status(400).json({ error: "Invalid distribution ID" });
       const dist = await storage.getDistributionById(id);
       if (!dist?.pdfBlob) return res.status(404).json({ error: "No PDF stored" });
+      if (!PDFTOPPM_AVAILABLE) {
+        return res.json({ images: [], unavailable: true, reason: "PDF preview tool not installed on this server" });
+      }
       const pdfBuffer = Buffer.from(dist.pdfBlob, "base64");
       const tmpPath = path.join(os.tmpdir(), `dist_${id}_${Date.now()}.pdf`);
       fs.writeFileSync(tmpPath, pdfBuffer);
@@ -2457,7 +2460,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error("PDF→images error:", error);
-      res.status(500).json({ error: "Failed to render PDF pages" });
+      res.json({ images: [], unavailable: true, reason: "Failed to render PDF pages" });
     }
   });
 

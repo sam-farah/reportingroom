@@ -9,11 +9,18 @@ const execAsync = promisify(exec);
 // Node's exec uses a stripped-down PATH that doesn't include nix store entries,
 // but bash -c does — so we use bash to locate the binary once and cache it.
 let PDFTOPPM: string = 'pdftoppm';
+export let PDFTOPPM_AVAILABLE = false;
 try {
-  PDFTOPPM = execSync('bash -c "which pdftoppm"', { encoding: 'utf8' }).trim();
-  console.log(`[pdfConverter] pdftoppm found at: ${PDFTOPPM}`);
+  const resolved = execSync('bash -c "which pdftoppm"', { encoding: 'utf8' }).trim();
+  if (resolved) {
+    PDFTOPPM = resolved;
+    PDFTOPPM_AVAILABLE = true;
+    console.log(`[pdfConverter] pdftoppm found at: ${PDFTOPPM}`);
+  } else {
+    console.warn('[pdfConverter] pdftoppm not found — PDF previews disabled');
+  }
 } catch {
-  console.warn('[pdfConverter] pdftoppm not found via bash; will try bare name and likely fail');
+  console.warn('[pdfConverter] pdftoppm not found — PDF previews disabled');
 }
 
 export async function convertPdfToImage(pdfPath: string): Promise<string> {
