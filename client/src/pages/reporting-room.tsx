@@ -642,6 +642,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       textStartX = PADDING + logoW + Math.round(A4_W * 0.015);
     }
 
+    // Look up sonographer (name + AMS) for the header strip
+    let sonoLabel = '';
+    if ((report as any).sonographerId) {
+      const sono = sonographersList.find((s: any) => s.id === (report as any).sonographerId);
+      if (sono) {
+        const sonoName = (sono.title ? sono.title + ' ' : '') + sono.name;
+        sonoLabel = sono.amsNumber ? `${sonoName} (AMS ${sono.amsNumber})` : sonoName;
+      }
+    }
+
     const infoFontSize = Math.round(A4_W * 0.0135);
     ctx.fillStyle = '#333333'; ctx.font = `${infoFontSize}px Arial, sans-serif`;
     const lines = [
@@ -650,6 +660,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       `Exam Date: ${formatDobAU((report as any).examDate)}`,
       (report as any).patientUrNumber ? `UR: ${(report as any).patientUrNumber}` : null,
       `Scan: ${report.studyType}`,
+      sonoLabel ? `Sonographer: ${sonoLabel}` : null,
     ].filter(Boolean) as string[];
     const colW = (A4_W - textStartX - PADDING) / 2;
     const leftLines = lines.slice(0, Math.ceil(lines.length / 2));
