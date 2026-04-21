@@ -4589,12 +4589,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Webmaster-only admin endpoints
+  const WEBMASTER_EMAILS = new Set([
+    'contact@samfarah.com',
+    'samf@nexusvascularimaging.com',
+  ]);
   const isWebmaster = async (req: any, res: any, next: any) => {
     if (!req.session.userId) {
       return res.status(403).json({ message: 'Webmaster access required' });
     }
     const user = await storage.getUser(req.session.userId!);
-    if (!user || user.email !== 'contact@samfarah.com') {
+    if (!user || !user.email || !WEBMASTER_EMAILS.has(user.email.toLowerCase())) {
       return res.status(403).json({ message: 'Webmaster access required' });
     }
     next();
