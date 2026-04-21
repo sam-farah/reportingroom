@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import { Button } from "@/components/ui/button";
@@ -202,7 +202,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [htmlBuilt, setHtmlBuilt] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [emailToName, setEmailToName] = useState("");
-  const [emailCc, setEmailCc] = useState("");
+  const [emailCcs, setEmailCcs] = useState<string[]>([""]);
   const [emailSubject, setEmailSubject] = useState("");
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -295,9 +295,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (latest.referringDoctorEmail && !emailTo) setEmailTo(latest.referringDoctorEmail);
     if (latest.referringDoctorName && !emailToName) setEmailToName(latest.referringDoctorName);
     if (latest.referringDoctorFax && !faxNumber) setFaxNumber(latest.referringDoctorFax);
-    // Pre-fill CC from copyTo if present
+    // Pre-fill CC from copyTo if present (only when no CCs have been set yet)
     const ccLatest = sorted.find(a => a.copyToEmail);
-    if (ccLatest?.copyToEmail && !emailCc) setEmailCc(ccLatest.copyToEmail);
+    const noCcsYet = emailCcs.every(c => !c.trim());
+    if (ccLatest?.copyToEmail && noCcsYet) setEmailCcs([ccLatest.copyToEmail]);
   }, [patientAppointmentsForDist, distributeReport?.id]);
 
   // Update report mutation
@@ -1278,7 +1279,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     setEmailSent(false);
     try {
       // Inject copies-to into the report HTML before generating the PDF
-      const ccList = emailCc ? emailCc.split(",").map(e => e.trim()).filter(Boolean) : [];
+      const ccList = emailCcs.map(e => e.trim()).filter(Boolean);
       const copiesTo = [emailToName || emailTo, ...ccList].filter(Boolean).join(", ");
       const htmlForEmail = distributeHtml.replace(
         "<!--COPIES_TO_PLACEHOLDER-->",
@@ -1303,7 +1304,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         body: JSON.stringify({
           toEmail: emailTo,
           toName: emailToName || emailTo,
-          ccEmails: emailCc ? emailCc.split(",").map(e => e.trim()).filter(Boolean) : [],
+          ccEmails: emailCcs.map(e => e.trim()).filter(Boolean),
           subject: emailSubject || `Medical Report — ${distributeReport.patientName}`,
           reportHtml: htmlForEmail,
           pdfBase64,
@@ -2952,15 +2953,84 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <Label className="text-xs text-gray-600">CC (optional — separate multiple with commas)</Label>
-                  <Input
-                    type="text"
-                    placeholder="cc@example.com, another@example.com"
-                    value={emailCc}
-                    onChange={(e) => setEmailCc(e.target.value)}
-                    className="bg-white text-sm"
-                  />
+                <div className="space-y-2">
+                  <Label className="text-xs text-gray-600">CC (optional)</Label>
+
+                  {referringDoctors.filter(d => d.email).length > 0 && (
+                    <Select
+                      onValueChange={(value) => {
+                        const doc = referringDoctors.find(d => String(d.id) === value);
+                        if (!doc?.email) return;
+                        setEmailCcs(prev => {
+                          if (prev.some(c => c.trim().toLowerCase() === doc.email!.toLowerCase())) return prev;
+                          const firstEmpty = prev.findIndex(c => !c.trim());
+                          if (firstEmpty >= 0) {
+                            const next = [...prev];
+                            next[firstEmpty] = doc.email!;
+                            return next;
+                          }
+                          return [...prev, doc.email!];
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="bg-white text-sm h-9" data-testid="select-cc-autofill">
+                        <SelectValue placeholder="Autofill CC from a referring doctor…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {referringDoctors.filter(d => d.email).map(doc => (
+                          <SelectItem key={doc.id} value={String(doc.id)}>
+                            <div className="flex flex-col">
+                              <span>{doc.name}</span>
+                              <span className="text-xs text-gray-400">{[doc.practiceName, doc.email].filter(Boolean).join(" · ")}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  <div className="space-y-2">
+                    {emailCcs.map((cc, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input
+                          type="email"
+                          placeholder="cc@example.com"
+                          value={cc}
+                          onChange={(e) => {
+                            const next = [...emailCcs];
+                            next[idx] = e.target.value;
+                            setEmailCcs(next);
+                          }}
+                          className="bg-white text-sm flex-1"
+                          data-testid={`input-cc-${idx}`}
+                        />
+                        {emailCcs.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEmailCcs(emailCcs.filter((_, i) => i !== idx))}
+                            className="h-9 w-9 p-0 text-gray-400 hover:text-red-600"
+                            aria-label="Remove CC"
+                            data-testid={`button-remove-cc-${idx}`}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEmailCcs([...emailCcs, ""])}
+                      className="h-8 text-xs"
+                      data-testid="button-add-cc"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" />
+                      Add another CC
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-1">
