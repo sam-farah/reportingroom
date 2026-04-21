@@ -133,6 +133,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/kiosk/notices", async (req, res) => {
+    try {
+      const { clinicId } = req.query;
+      let resolvedClinicId: number | null = null;
+      if (clinicId && typeof clinicId === 'string') {
+        const id = parseInt(clinicId);
+        if (!isNaN(id)) resolvedClinicId = id;
+      }
+      if (!resolvedClinicId) {
+        const clinics = await storage.getAllClinics();
+        resolvedClinicId = clinics[0]?.id || null;
+      }
+      if (!resolvedClinicId) return res.json([]);
+      const posts = await storage.getNoticeBoardPosts(resolvedClinicId);
+      // Pinned notices are surfaced on the kiosk for waiting patients.
+      const visible = (posts || [])
+        .filter((p: any) => p.pinned)
+        .slice(0, 10)
+        .map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          body: p.body,
+          category: p.category,
+          pinned: p.pinned,
+          createdAt: p.createdAt,
+        }));
+      res.json(visible);
+    } catch (error) {
+      console.error("Kiosk notices error:", error);
+      res.json([]);
+    }
+  });
+
   // Kiosk endpoints - no authentication required for patient self-check-in
   app.get("/api/kiosk/appointments/today", async (req, res) => {
     try {

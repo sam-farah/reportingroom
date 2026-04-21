@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, CheckCircle, Clock, ArrowLeft, UserCheck, ClipboardList, QrCode, X } from "lucide-react";
+import { Search, CheckCircle, Clock, ArrowLeft, UserCheck, ClipboardList, QrCode, X, Megaphone, Pin } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,23 @@ interface KioskSettings {
   kioskConsentText: string | null;
 }
 
+interface KioskNotice {
+  id: number;
+  title: string;
+  body: string;
+  category: string;
+  pinned: boolean;
+  createdAt: string | null;
+}
+
+const NOTICE_CATEGORY_STYLES: Record<string, { bg: string; border: string; text: string; label: string }> = {
+  general:     { bg: "bg-blue-50",    border: "border-blue-300",    text: "text-blue-900",    label: "Notice" },
+  important:   { bg: "bg-rose-50",    border: "border-rose-400",    text: "text-rose-900",    label: "Important" },
+  policy:      { bg: "bg-purple-50",  border: "border-purple-300",  text: "text-purple-900",  label: "Policy" },
+  maintenance: { bg: "bg-amber-50",   border: "border-amber-300",   text: "text-amber-900",   label: "Maintenance" },
+  social:      { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-900", label: "Announcement" },
+};
+
 interface RegistrationStatus {
   registered: boolean;
   hasPatient: boolean;
@@ -43,6 +60,8 @@ export default function Kiosk() {
   const [checkedIn, setCheckedIn] = useState<number | null>(null);
   const [checkingIn, setCheckingIn] = useState<number | null>(null);
   const [settings, setSettings] = useState<KioskSettings | null>(null);
+  const [notices, setNotices] = useState<KioskNotice[]>([]);
+  const [noticeIndex, setNoticeIndex] = useState(0);
   const [regStatus, setRegStatus] = useState<Record<number, RegistrationStatus>>({});
   const [registerFor, setRegisterFor] = useState<{ apt: KioskAppointment; status: RegistrationStatus } | null>(null);
   const [registerMode, setRegisterMode] = useState<"qr" | "form" | null>(null);
@@ -62,7 +81,29 @@ export default function Kiosk() {
       .then(res => res.ok ? res.json() : null)
       .then(data => { if (data) setSettings(data); })
       .catch(() => {});
+
+    const loadNotices = () => {
+      fetch('/api/kiosk/notices')
+        .then(res => res.ok ? res.json() : [])
+        .then(data => { if (Array.isArray(data)) setNotices(data); })
+        .catch(() => {});
+    };
+    loadNotices();
+    const noticePoll = setInterval(loadNotices, 60000);
+    return () => clearInterval(noticePoll);
   }, []);
+
+  useEffect(() => {
+    if (notices.length <= 1) return;
+    const rotate = setInterval(() => {
+      setNoticeIndex((i) => (i + 1) % notices.length);
+    }, 8000);
+    return () => clearInterval(rotate);
+  }, [notices.length]);
+
+  useEffect(() => {
+    if (noticeIndex >= notices.length) setNoticeIndex(0);
+  }, [notices.length, noticeIndex]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -468,6 +509,45 @@ export default function Kiosk() {
           <span className="text-sm text-gray-500">Kiosk Mode</span>
         </div>
       </div>
+
+      {notices.length > 0 && (() => {
+        const current = notices[noticeIndex] || notices[0];
+        const style = NOTICE_CATEGORY_STYLES[current.category] || NOTICE_CATEGORY_STYLES.general;
+        return (
+          <div className="px-4 pt-2 pb-1">
+            <div
+              className={`w-full max-w-5xl mx-auto rounded-2xl border-2 ${style.border} ${style.bg} ${style.text} shadow-lg overflow-hidden`}
+              data-testid="kiosk-notice-banner"
+            >
+              <div className="flex items-stretch">
+                <div className="flex items-center gap-3 px-5 py-4 bg-white/40 border-r border-white/60 shrink-0">
+                  <Megaphone className="w-7 h-7" />
+                  <div className="text-sm font-bold uppercase tracking-wider">{style.label}</div>
+                </div>
+                <div className="flex-1 px-6 py-4 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    {current.pinned && <Pin className="w-4 h-4 shrink-0" />}
+                    <h2 className="text-2xl font-bold truncate">{current.title}</h2>
+                  </div>
+                  <p className="text-lg leading-snug whitespace-pre-wrap line-clamp-3">{current.body}</p>
+                </div>
+                {notices.length > 1 && (
+                  <div className="flex flex-col justify-center gap-1.5 px-4 shrink-0">
+                    {notices.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setNoticeIndex(i)}
+                        className={`w-2.5 h-2.5 rounded-full transition-all ${i === noticeIndex ? 'bg-current scale-125' : 'bg-current/30'}`}
+                        aria-label={`Notice ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="flex-1 flex flex-col items-center justify-center px-8 pb-16">
         <div className="w-full max-w-2xl text-center">
