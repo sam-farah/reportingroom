@@ -1156,8 +1156,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     .section{margin-bottom:12px;page-break-inside:avoid;}
     .section-title{${sectionTitleCSS}}
     .section-content{font-size:13px;line-height:1.55;white-space:pre-wrap;}
-    .worksheet-page{page-break-before:always;break-before:page;page-break-inside:avoid;break-inside:avoid;padding-top:30px;}
-    .worksheet-img{max-width:100%;max-height:270mm;object-fit:contain;border:1px solid #ddd;border-radius:4px;display:block;page-break-inside:avoid;break-inside:avoid;}
+    .worksheet-page{page-break-before:always;break-before:page;padding-top:30px;}
+    .worksheet-page-header{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:#555;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #e5e7eb;page-break-after:avoid;break-after:avoid;}
+    .worksheet-page-header .label{font-weight:bold;color:#444;}
+    .worksheet-img{max-width:100%;max-height:255mm;object-fit:contain;border:1px solid #ddd;border-radius:4px;display:block;}
     .sig-area{margin-top:28px;padding-top:12px;border-top:1px solid #ddd;text-align:${sigPos};}
     .sig-img{max-height:68px;margin-bottom:4px;}
     .sig-name{font-weight:bold;font-size:13px;}
@@ -1186,10 +1188,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     <div class="pi"><span class="label">UR Number:</span> ${report.patientUrNumber ? `<span class="ur">UR ${report.patientUrNumber}</span>` : '—'}</div>
     <div class="pi"><span class="label">Date of Birth:</span> ${formatDobAU(report.patientDob)}</div>
     <div class="pi"><span class="label">Exam Date:</span> ${displayExamDate}</div>
-    ${sonographerName ? `<div class="pi"><span class="label">Sonographer:</span> ${sonographerName}</div>` : '<div></div>'}
     <div class="pi"><span class="label">Report Date:</span> ${todayAU}</div>
+    <div></div>
     <div class="pi-full"><span class="label">Study:</span> ${displayStudyType}</div>
-    ${accessionId ? `<div class="pi"><span class="label">Accession:</span> ${accessionId}</div>` : ''}
+    <div class="pi">${accessionId ? `<span class="label">Accession:</span> ${accessionId}` : ''}</div>
+    <div class="pi">${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}` : ''}</div>
   </div>
 
   ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
@@ -1205,7 +1208,17 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   </div>` : ''}
 
 
-  ${wsUrl ? `<div class="worksheet-page"><img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" /></div>` : ''}
+  ${wsUrl ? `<div class="worksheet-page">
+    <div class="worksheet-page-header">
+      <div><span class="label">${report.patientName}</span>${report.patientUrNumber ? ` &nbsp;·&nbsp; <span class="ur">UR ${report.patientUrNumber}</span>` : ''}</div>
+      <div>
+        ${accessionId ? `<span class="label">Accession:</span> ${accessionId}` : ''}
+        ${accessionId && sonographerName ? ' &nbsp;·&nbsp; ' : ''}
+        ${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}` : ''}
+      </div>
+    </div>
+    <img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" />
+  </div>` : ''}
 </body>
 </html>`;
 
