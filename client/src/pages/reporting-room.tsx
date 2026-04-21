@@ -667,6 +667,63 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     return canvas;
   };
 
+  // ── Backfill labelled worksheets ────────────────────────────────────────────
+  // Runs in the background when reports load. For any report with a
+  // worksheet/digital worksheet but no labelledWorksheetId, generate the
+  // labelled version and attach it. Throttled to one at a time, and each
+  // report is only attempted once per session to avoid loops on persistent
+  // failures.
+  const labelAttemptedRef = useRef<Set<number>>(new Set());
+  const labelInProgressRef = useRef(false);
+  useEffect(() => {
+    if (!reports || reports.length === 0) return;
+    if (labelInProgressRef.current) return;
+    if (!clinicData) return; // wait for clinic data so the header has a logo
+
+    const candidate = reports.find((r: any) =>
+      (r.worksheetId || r.digitalWorksheetId) &&
+      !r.labelledWorksheetId &&
+      !labelAttemptedRef.current.has(r.id)
+    );
+    if (!candidate) return;
+
+    labelAttemptedRef.current.add(candidate.id);
+    labelInProgressRef.current = true;
+
+    (async () => {
+      try {
+        const canvas = await generateLabelledCanvas(candidate);
+        if (!canvas) {
+          console.warn(`[labelling] could not generate canvas for report ${candidate.id} (worksheet may be a PDF or unreachable)`);
+          return;
+        }
+        const blob: Blob | null = await new Promise((resolve) => {
+          try { canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93); }
+          catch { resolve(null); }
+        });
+        if (!blob) {
+          console.warn(`[labelling] toBlob returned null for report ${candidate.id}`);
+          return;
+        }
+        const formData = new FormData();
+        formData.append("worksheet", new File([blob], `labelled-${candidate.id}.jpg`, { type: 'image/jpeg' }));
+        const uploadRes = await fetch("/api/worksheets/upload", { method: "POST", body: formData, credentials: 'include' });
+        if (!uploadRes.ok) {
+          console.warn(`[labelling] upload failed for report ${candidate.id}: ${uploadRes.status}`);
+          return;
+        }
+        const { worksheetId: newId } = await uploadRes.json();
+        if (!newId) return;
+        await apiRequest(`/api/reports/${candidate.id}`, "PATCH", { labelledWorksheetId: newId });
+        queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      } catch (err) {
+        console.warn(`[labelling] error for report ${candidate.id}:`, err);
+      } finally {
+        labelInProgressRef.current = false;
+      }
+    })();
+  }, [reports, clinicData]);
+
   const handleSaveReport = () => {
     if (!editingReport) return;
 
