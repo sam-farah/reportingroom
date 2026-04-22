@@ -1662,20 +1662,22 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
               <div className="flex flex-col space-y-2">
                 <div className="flex space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEditReport(report)}
-                    className="flex-1"
-                  >
-                    <Edit3 className="w-4 h-4 mr-1" />
-                    Edit
-                  </Button>
+                  {!(report as any).isFinalized && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditReport(report)}
+                      className="flex-1"
+                    >
+                      <Edit3 className="w-4 h-4 mr-1" />
+                      Edit
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleDistribute(report)}
-                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                    className={`text-blue-600 border-blue-200 hover:bg-blue-50 ${(report as any).isFinalized ? "flex-1" : ""}`}
                   >
                     <Share2 className="w-3 h-3 mr-1" />
                     Distribute
