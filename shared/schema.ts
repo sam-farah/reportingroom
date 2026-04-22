@@ -621,7 +621,6 @@ export const CANONICAL_SCAN_TYPES: { name: string; hasLaterality: boolean }[] = 
   { name: "Pedal Acceleration Time", hasLaterality: true },
   { name: "Temporal arteries", hasLaterality: false },
   { name: "Resting ABI", hasLaterality: false },
-  { name: "Exercise ABI", hasLaterality: false },
   { name: "Finger brachial indices", hasLaterality: false },
 ];
 
