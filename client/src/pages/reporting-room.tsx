@@ -1674,13 +1674,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleExportPDF(report)}
-                  >
-                    PDF
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
                     onClick={() => handleDistribute(report)}
                     className="text-blue-600 border-blue-200 hover:bg-blue-50"
                   >
