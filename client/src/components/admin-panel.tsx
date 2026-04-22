@@ -1293,6 +1293,9 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           </CardContent>
         </Card>
 
+        {/* AI Training Audit — distributed reports auto-added to training */}
+        <TrainingAuditCard />
+
         {/* Training Data History */}
         <Card>
           <CardContent className="p-6">
@@ -1308,17 +1311,29 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Date</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Scan Type</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Finding</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Source</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Status</th>
                   </tr>
                 </thead>
                 <tbody className="text-sm">
                   {trainingPairs.map((pair) => (
-                    <tr key={pair.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={pair.id} className="border-b border-gray-100 hover:bg-gray-50" data-testid={`row-training-pair-${pair.id}`}>
                       <td className="py-3 px-4 text-gray-900">
                         {pair.uploadedAt ? new Date(pair.uploadedAt).toLocaleDateString() : 'N/A'}
                       </td>
                       <td className="py-3 px-4 text-gray-700">{pair.category}</td>
                       <td className="py-3 px-4 text-gray-700">{pair.complexityLevel}</td>
+                      <td className="py-3 px-4">
+                        {pair.autoImported ? (
+                          <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs">
+                            Auto from Report #{pair.sourceReportId}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">
+                            Manual upload
+                          </span>
+                        )}
+                      </td>
                       <td className="py-3 px-4">
                         <span className="px-2 py-1 bg-[var(--medical-success)] bg-opacity-10 text-[var(--medical-success)] rounded-full text-xs">
                           Complete
@@ -1328,7 +1343,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                   ))}
                   {trainingPairs.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-8 text-center text-gray-500">
+                      <td colSpan={5} className="py-8 text-center text-gray-500">
                         No training data uploaded yet
                       </td>
                     </tr>
@@ -3003,6 +3018,118 @@ export function ChangelogCard() {
             </li>
           ))}
         </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface TrainingAuditEntry {
+  id: number;
+  reportId: number;
+  method: string;
+  recipientName: string | null;
+  recipientEmail: string | null;
+  sentAt: string;
+  trainingPairId: number | null;
+  addedToTrainingAt: string | null;
+}
+
+interface TrainingAuditResponse {
+  totalDistributions: number;
+  trainedCount: number;
+  untrainedCount: number;
+  distributions: TrainingAuditEntry[];
+}
+
+function TrainingAuditCard() {
+  const { data, isLoading } = useQuery<TrainingAuditResponse>({
+    queryKey: ["/api/training-audit"],
+  });
+
+  const distributions = (data?.distributions || []).slice().sort(
+    (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()
+  );
+
+  return (
+    <Card data-testid="card-training-audit">
+      <CardContent className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center">
+          <Database className="medical-text-primary mr-2 inline" />
+          AI Training Audit
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Every report you distribute is automatically added to the AI training set so it learns your house style. This log shows exactly which distributions have been used for training.
+        </p>
+
+        {isLoading ? (
+          <div className="text-sm text-gray-500 py-4">Loading…</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-lg border bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Total distributions</div>
+                <div className="text-2xl font-semibold" data-testid="text-total-distributions">{data?.totalDistributions ?? 0}</div>
+              </div>
+              <div className="rounded-lg border bg-emerald-50 p-3">
+                <div className="text-xs text-emerald-700">Added to training</div>
+                <div className="text-2xl font-semibold text-emerald-700" data-testid="text-trained-count">{data?.trainedCount ?? 0}</div>
+              </div>
+              <div className="rounded-lg border bg-amber-50 p-3">
+                <div className="text-xs text-amber-700">Not yet trained</div>
+                <div className="text-2xl font-semibold text-amber-700" data-testid="text-untrained-count">{data?.untrainedCount ?? 0}</div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto max-h-96 overflow-y-auto border rounded-lg">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Sent</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Report</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Method</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Recipient</th>
+                    <th className="text-left py-2 px-3 font-medium text-gray-700">Training</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {distributions.map((d) => (
+                    <tr key={d.id} className="border-b hover:bg-gray-50" data-testid={`row-distribution-${d.id}`}>
+                      <td className="py-2 px-3 text-gray-700 whitespace-nowrap">
+                        {new Date(d.sentAt).toLocaleString()}
+                      </td>
+                      <td className="py-2 px-3 text-gray-700">#{d.reportId}</td>
+                      <td className="py-2 px-3 text-gray-700 capitalize">{d.method.replace("_", " ")}</td>
+                      <td className="py-2 px-3 text-gray-700">
+                        {d.recipientName || d.recipientEmail || "—"}
+                      </td>
+                      <td className="py-2 px-3">
+                        {d.trainingPairId ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-xs"
+                            title={d.addedToTrainingAt ? `Added ${new Date(d.addedToTrainingAt).toLocaleString()}` : ""}
+                          >
+                            ✓ Trained (pair #{d.trainingPairId})
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs">
+                            Pending
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {distributions.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-gray-500">
+                        No distributions yet. The AI will start learning as soon as you distribute your first report.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

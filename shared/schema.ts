@@ -153,11 +153,17 @@ export const reports = pgTable("reports", {
 
 export const trainingPairs = pgTable("training_pairs", {
   id: serial("id").primaryKey(),
-  worksheetUrl: text("worksheet_url").notNull(),
-  reportUrl: text("report_url").notNull(),
-  category: text("category").notNull(), // e.g., "Lower Limb Venous", "Carotid Duplex", "Abdominal Aorta"
-  complexityLevel: text("complexity_level").notNull(), // e.g., "normal", "abnormal", "complex"
+  worksheetUrl: text("worksheet_url"),
+  reportUrl: text("report_url"),
+  category: text("category").notNull(),
+  complexityLevel: text("complexity_level").notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  // Auto-import from distributed reports
+  sourceReportId: integer("source_report_id"),
+  sourceDistributionId: integer("source_distribution_id"),
+  worksheetText: text("worksheet_text"),
+  reportText: text("report_text"),
+  autoImported: boolean("auto_imported").default(false),
 });
 
 export const reportTemplates = pgTable("report_templates", {
@@ -807,9 +813,11 @@ export const reportDistributions = pgTable("report_distributions", {
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   confirmedAt: timestamp("confirmed_at"),
   confirmedBy: varchar("confirmed_by", { length: 200 }),
+  trainingPairId: integer("training_pair_id"),
+  addedToTrainingAt: timestamp("added_to_training_at"),
 });
 
-export const insertReportDistributionSchema = createInsertSchema(reportDistributions).omit({ id: true, sentAt: true });
+export const insertReportDistributionSchema = createInsertSchema(reportDistributions).omit({ id: true, sentAt: true, trainingPairId: true, addedToTrainingAt: true });
 export type ReportDistribution = typeof reportDistributions.$inferSelect;
 export type InsertReportDistribution = z.infer<typeof insertReportDistributionSchema>;
 

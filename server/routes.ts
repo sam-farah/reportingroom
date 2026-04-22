@@ -30,6 +30,7 @@ import { convertPdfToImage, convertPdfToImages, isPdfFile, PDFTOPPM_AVAILABLE } 
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
 import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
 import { createBackupArchive, getBackupInfo } from "./services/backup";
+import { autoTrainFromDistribution, getTrainingAuditSummary } from "./services/auto-training";
 import { saveFileToDB, getFileFromDB, detectMimeType, backfillFilesToDB } from "./services/fileStorage";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
@@ -2269,7 +2270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Auto-log the distribution and store the transmitted PDF snapshot
-      await storage.createReportDistribution({
+      const emailDist = await storage.createReportDistribution({
         reportId: id,
         clinicId: user?.clinicId ?? null,
         method: "email",
@@ -2281,6 +2282,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });
+
+      // Auto-train AI from this distributed report (idempotent per report)
+      autoTrainFromDistribution(id, emailDist.id).catch(err =>
+        console.error("Auto-train failed (email):", err)
+      );
 
       // Auto-archive the source report now that a transmitted PDF is stored
       if (pdfBase64) {
@@ -2340,7 +2346,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await sgMail.send(message);
 
-      await storage.createReportDistribution({
+      const faxDist = await storage.createReportDistribution({
         reportId: id,
         clinicId: user?.clinicId ?? null,
         method: "fax",
@@ -2352,6 +2358,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });
+
+      autoTrainFromDistribution(id, faxDist.id).catch(err =>
+        console.error("Auto-train failed (fax):", err)
+      );
 
       // Auto-archive the source report now that a transmitted PDF is stored
       if (pdfBase64) {
@@ -2433,6 +2443,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI training audit — which distributed reports have been added to training
+  app.get("/api/training-audit", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      const summary = await getTrainingAuditSummary(user?.clinicId ?? undefined);
+      res.json(summary);
+    } catch (error) {
+      console.error("Training audit error:", error);
+      res.status(500).json({ error: "Failed to fetch training audit" });
+    }
+  });
+
   // List distributions for a report
   app.get("/api/reports/:id/distributions", isAuthenticated, async (req, res) => {
     try {
@@ -2462,6 +2484,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const distribution = await storage.createReportDistribution(body);
+
+      // Auto-train AI from this distributed report (idempotent per report)
+      autoTrainFromDistribution(id, distribution.id).catch(err =>
+        console.error("Auto-train failed (manual log):", err)
+      );
 
       // Auto-archive the source report if a PDF snapshot was provided
       if (body.pdfBlob) {
@@ -2632,12 +2659,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Extract actual text content from training report images using OCR
       const enhancedTrainingData = await Promise.all(allTrainingData.map(async (pair) => {
-        console.log(`🔍 Processing training pair ${pair.id}: ${pair.category} (${pair.complexityLevel})`);
+        console.log(`🔍 Processing training pair ${pair.id}: ${pair.category} (${pair.complexityLevel})${pair.autoImported ? " [auto-imported]" : ""}`);
         
-        let extractedReportText = null;
-        
+        let extractedReportText: string | null = null;
+
+        // Auto-imported training pairs already have report text stored — no OCR needed
+        if (pair.reportText) {
+          extractedReportText = pair.reportText;
+          console.log(`⚡ Using stored report text (${extractedReportText.length} chars), skipping OCR`);
+        }
         // Try to extract text from the training report image
-        if (pair.reportUrl) {
+        else if (pair.reportUrl) {
           try {
             const reportPath = path.join(uploadDir, path.basename(pair.reportUrl));
             console.log(`📄 Extracting text from training report: ${reportPath}`);
