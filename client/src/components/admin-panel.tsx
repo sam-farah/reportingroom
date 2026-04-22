@@ -3042,8 +3042,27 @@ interface TrainingAuditResponse {
 }
 
 function TrainingAuditCard() {
+  const { toast } = useToast();
   const { data, isLoading } = useQuery<TrainingAuditResponse>({
     queryKey: ["/api/training-audit"],
+  });
+
+  const retry = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", "/api/training-audit/retry");
+      return r.json();
+    },
+    onSuccess: (result: { attempted: number; trained: number; failed: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/training-audit"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/training-pairs"] });
+      toast({
+        title: "Retry complete",
+        description: result.attempted === 0
+          ? "Nothing pending — everything is already trained."
+          : `Trained ${result.trained} of ${result.attempted}${result.failed ? ` (${result.failed} failed)` : ""}.`,
+      });
+    },
+    onError: () => toast({ title: "Retry failed", variant: "destructive" }),
   });
 
   const distributions = (data?.distributions || []).slice().sort(
@@ -3053,12 +3072,23 @@ function TrainingAuditCard() {
   return (
     <Card data-testid="card-training-audit">
       <CardContent className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center">
-          <Database className="medical-text-primary mr-2 inline" />
-          AI Training Audit
-        </h2>
+        <div className="flex items-start justify-between mb-1">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+            <Database className="medical-text-primary mr-2 inline" />
+            AI Training Audit
+          </h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => retry.mutate()}
+            disabled={retry.isPending}
+            data-testid="button-retry-training"
+          >
+            {retry.isPending ? "Retrying…" : "Retry pending"}
+          </Button>
+        </div>
         <p className="text-sm text-gray-500 mb-4">
-          Every report you distribute is automatically added to the AI training set so it learns your house style. This log shows exactly which distributions have been used for training.
+          Every report you distribute is automatically added to the AI training set so it learns your house style. A self-healing background sweep runs every minute to catch anything the live hook missed, and you can force a retry here.
         </p>
 
         {isLoading ? (

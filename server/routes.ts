@@ -30,7 +30,7 @@ import { convertPdfToImage, convertPdfToImages, isPdfFile, PDFTOPPM_AVAILABLE } 
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
 import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
 import { createBackupArchive, getBackupInfo } from "./services/backup";
-import { autoTrainFromDistribution, getTrainingAuditSummary } from "./services/auto-training";
+import { autoTrainFromDistribution, getTrainingAuditSummary, sweepUntrainedDistributions } from "./services/auto-training";
 import { saveFileToDB, getFileFromDB, detectMimeType, backfillFilesToDB } from "./services/fileStorage";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
@@ -77,6 +77,11 @@ const upload = multer({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Backfill any existing on-disk files to DB so they survive future resets
   backfillFilesToDB(uploadDir).catch(() => {});
+
+  // Self-healing AI training sweep — picks up any distribution that didn't
+  // get auto-trained at send time (e.g. transient DB error, dropped path)
+  const { startAutoTrainingSweep } = await import("./services/auto-training");
+  startAutoTrainingSweep();
 
   // Auth middleware - setup authentication BEFORE any protected routes
   await setupAuth(app);
@@ -2269,8 +2274,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         worksheetPdfBase64: worksheetPdfBase64 || undefined,
       });
 
-      // Auto-log the distribution and store the transmitted PDF snapshot
-      const emailDist = await storage.createReportDistribution({
+      // Auto-log the distribution and store the transmitted PDF snapshot.
+      // (Auto-training is triggered automatically inside storage.createReportDistribution.)
+      await storage.createReportDistribution({
         reportId: id,
         clinicId: user?.clinicId ?? null,
         method: "email",
@@ -2282,11 +2288,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });
-
-      // Auto-train AI from this distributed report (idempotent per report)
-      autoTrainFromDistribution(id, emailDist.id).catch(err =>
-        console.error("Auto-train failed (email):", err)
-      );
 
       // Auto-archive the source report now that a transmitted PDF is stored
       if (pdfBase64) {
@@ -2346,7 +2347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await sgMail.send(message);
 
-      const faxDist = await storage.createReportDistribution({
+      await storage.createReportDistribution({
         reportId: id,
         clinicId: user?.clinicId ?? null,
         method: "fax",
@@ -2358,10 +2359,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });
-
-      autoTrainFromDistribution(id, faxDist.id).catch(err =>
-        console.error("Auto-train failed (fax):", err)
-      );
 
       // Auto-archive the source report now that a transmitted PDF is stored
       if (pdfBase64) {
@@ -2455,6 +2452,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manually trigger the self-healing sweep — used by the "Retry training" button
+  app.post("/api/training-audit/retry", isAuthenticated, async (_req, res) => {
+    try {
+      // 0 second cutoff: retry everything that's still pending, including very recent rows
+      const result = await sweepUntrainedDistributions(0);
+      res.json(result);
+    } catch (error) {
+      console.error("Training retry error:", error);
+      res.status(500).json({ error: "Failed to retry training" });
+    }
+  });
+
   // List distributions for a report
   app.get("/api/reports/:id/distributions", isAuthenticated, async (req, res) => {
     try {
@@ -2484,11 +2493,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const distribution = await storage.createReportDistribution(body);
-
-      // Auto-train AI from this distributed report (idempotent per report)
-      autoTrainFromDistribution(id, distribution.id).catch(err =>
-        console.error("Auto-train failed (manual log):", err)
-      );
 
       // Auto-archive the source report if a PDF snapshot was provided
       if (body.pdfBlob) {

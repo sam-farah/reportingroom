@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { trainingPairs, reportDistributions, reports, worksheets } from "@shared/schema";
-import { eq, and, isNotNull } from "drizzle-orm";
+import { eq, and, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { storage } from "../storage";
 
 function inferComplexity(report: { findings: string; impression: string }): string {
@@ -84,6 +84,54 @@ export async function autoTrainFromDistribution(reportId: number, distributionId
     console.error(`[auto-train] Failed to auto-train from report ${reportId}, distribution ${distributionId}:`, error);
     return null;
   }
+}
+
+/**
+ * Self-healing sweep: find any distributions older than `olderThanSeconds` that
+ * haven't been linked to a training pair, and try to train them now.
+ * Returns how many were successfully trained on this pass.
+ *
+ * Runs on a timer at startup so a transient failure (DB hiccup, etc.) gets
+ * automatically picked up within a minute. Also exposed manually via
+ * POST /api/training-audit/retry for the "Retry training" workflow.
+ */
+export async function sweepUntrainedDistributions(olderThanSeconds = 60): Promise<{
+  attempted: number;
+  trained: number;
+  failed: number;
+}> {
+  const cutoff = new Date(Date.now() - olderThanSeconds * 1000);
+  const pending = await db
+    .select({ id: reportDistributions.id, reportId: reportDistributions.reportId })
+    .from(reportDistributions)
+    .where(and(isNull(reportDistributions.trainingPairId), lt(reportDistributions.sentAt, cutoff)))
+    .limit(50);
+
+  if (pending.length === 0) return { attempted: 0, trained: 0, failed: 0 };
+
+  console.log(`[auto-train] Sweep found ${pending.length} untrained distribution(s) — retrying`);
+  let trained = 0;
+  let failed = 0;
+  for (const row of pending) {
+    const result = await autoTrainFromDistribution(row.reportId, row.id);
+    if (result) trained++;
+    else failed++;
+  }
+  console.log(`[auto-train] Sweep complete: ${trained} trained, ${failed} failed`);
+  return { attempted: pending.length, trained, failed };
+}
+
+let sweepTimer: NodeJS.Timeout | null = null;
+export function startAutoTrainingSweep(intervalMs = 60_000): void {
+  if (sweepTimer) return;
+  // Run once shortly after boot so anything stranded by a previous outage
+  // gets picked up immediately, then on the regular interval.
+  setTimeout(() => sweepUntrainedDistributions().catch(err => console.error("[auto-train] sweep error:", err)), 10_000);
+  sweepTimer = setInterval(
+    () => sweepUntrainedDistributions().catch(err => console.error("[auto-train] sweep error:", err)),
+    intervalMs
+  );
+  console.log(`[auto-train] Self-healing sweep scheduled every ${intervalMs / 1000}s`);
 }
 
 /**

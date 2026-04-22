@@ -1674,6 +1674,13 @@ export class DatabaseStorage implements IStorage {
 
   async createReportDistribution(distribution: InsertReportDistribution): Promise<ReportDistribution> {
     const [created] = await db.insert(reportDistributions).values(distribution).returning();
+    // Single chokepoint: every distribution feeds the AI training set, no matter
+    // which route created it. Dynamic import avoids a circular dependency.
+    import("./services/auto-training")
+      .then(({ autoTrainFromDistribution }) =>
+        autoTrainFromDistribution(created.reportId, created.id)
+      )
+      .catch(err => console.error("[auto-train] post-create hook failed:", err));
     return created;
   }
 
