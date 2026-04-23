@@ -2740,6 +2740,20 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "23 Apr 2026",
+    tag: "New",
+    title: "Reports tab now shows a badge for outstanding work",
+    detail:
+      "An amber badge sits on the Reports tab in the top navigation showing how many reports still need to be finalised or distributed (archived reports are excluded). The number updates automatically as you sign off reports and send them out, so at a glance you know how much is still on your plate.",
+  },
+  {
+    date: "23 Apr 2026",
+    tag: "Improve",
+    title: "Click a patient's name in Reports to open their file",
+    detail:
+      "Patient names on each report card in the Reports view (active and archived) are now clickable links. One click jumps you straight into that patient's file in the Patients tab — handy for checking history, allergies or previous studies without losing your place.",
+  },
+  {
     date: "20 Apr 2026",
     tag: "Fix",
     title: "Attendance certificate now reliably saves to the patient file",
