@@ -171,7 +171,7 @@ interface EditableReport extends Report {
   templateId?: number;
 }
 
-export default function ReportingRoom({ initialOpenReportId, onReportOpened, onStartAnotherScan }: { initialOpenReportId?: number | null; onReportOpened?: () => void; onStartAnotherScan?: (params: { patientId: number | null; patientName: string; examDate: string }) => void } = {}) {
+export default function ReportingRoom({ initialOpenReportId, onReportOpened, onStartAnotherScan, onOpenPatient }: { initialOpenReportId?: number | null; onReportOpened?: () => void; onStartAnotherScan?: (params: { patientId: number | null; patientName: string; examDate: string }) => void; onOpenPatient?: (patientId: number) => void } = {}) {
   const { toast } = useToast();
   const [editingReport, setEditingReport] = useState<EditableReport | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -1606,7 +1606,18 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <FileText className="w-5 h-5 text-blue-600 shrink-0" />
-                  {report.patientName}
+                  {onOpenPatient && report.patientId ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenPatient(report.patientId!)}
+                      className="text-left hover:text-blue-600 hover:underline transition-colors"
+                      title="Open patient file"
+                    >
+                      {report.patientName}
+                    </button>
+                  ) : (
+                    report.patientName
+                  )}
                   {(report as any).patientUrNumber && (
                     <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs normal-case">UR {(report as any).patientUrNumber}</span>
                   )}

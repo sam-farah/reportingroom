@@ -92,6 +92,20 @@ export default function Dashboard() {
   });
   const pendingRequestsCount = (scanRequests ?? []).filter(r => r.status === "pending").length;
 
+  const { data: reportsForBadge } = useQuery<{ id: number; isFinalized?: boolean; isArchived?: boolean }[]>({
+    queryKey: ["/api/reports/recent"],
+    retry: false,
+  });
+  const { data: distributionCountsForBadge } = useQuery<Record<number, number>>({
+    queryKey: ["/api/distributions-summary"],
+    retry: false,
+  });
+  const pendingReportsCount = (reportsForBadge ?? []).filter(r => {
+    if (r.isArchived) return false;
+    const distributed = (distributionCountsForBadge ?? {})[r.id] ?? 0;
+    return !r.isFinalized || distributed === 0;
+  }).length;
+
   const { data: noticePosts } = useQuery<{ pinned: boolean; createdAt: string }[]>({
     queryKey: ["/api/notice-board"],
     retry: false,
@@ -211,6 +225,14 @@ export default function Dashboard() {
                         {pendingRequestsCount > 99 ? "99+" : pendingRequestsCount}
                       </span>
                     )}
+                    {item.id === "reporting-room" && pendingReportsCount > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center leading-none"
+                        title={`${pendingReportsCount} report${pendingReportsCount !== 1 ? "s" : ""} pending finalisation or distribution`}
+                      >
+                        {pendingReportsCount > 99 ? "99+" : pendingReportsCount}
+                      </span>
+                    )}
                   </span>
                   <span>{item.label}</span>
                 </button>
@@ -229,6 +251,7 @@ export default function Dashboard() {
         <ReportingRoom
           initialOpenReportId={openReportId}
           onReportOpened={() => setOpenReportId(null)}
+          onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}
           onStartAnotherScan={({ patientId, patientName, examDate }) => {
             setPreLinkedPatientId(patientId);
             setPreLinkedPatientName(patientName);
