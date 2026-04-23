@@ -25,6 +25,22 @@ import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
+// Format an ISO date string (yyyy-MM-dd or full ISO) as dd-mm-yyyy.
+const fmtDate = (d?: string | null) => {
+  if (!d) return "";
+  try {
+    const dt = d.length === 10 ? parseISO(d) : new Date(d);
+    return isNaN(dt.getTime()) ? d : format(dt, "dd-MM-yyyy");
+  } catch { return d; }
+};
+const fmtDateTime = (d?: string | Date | null) => {
+  if (!d) return "";
+  try {
+    const dt = typeof d === "string" ? new Date(d) : d;
+    return isNaN(dt.getTime()) ? "" : format(dt, "dd-MM-yyyy HH:mm");
+  } catch { return ""; }
+};
+
 const URGENCY_CONFIG: Record<string, { label: string; color: string }> = {
   routine: { label: "Routine", color: "bg-slate-100 text-slate-700" },
   urgent: { label: "Urgent", color: "bg-amber-100 text-amber-700" },
@@ -955,7 +971,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span className="font-semibold text-gray-900">{r.patientName}</span>
                             {r.patientUrNumber && <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {r.patientUrNumber}</span>}
-                            {r.patientDob && <span className="text-xs text-gray-400">DOB: {r.patientDob}</span>}
+                            {r.patientDob && <span className="text-xs text-gray-400">DOB: {fmtDate(r.patientDob)}</span>}
                             <Badge className={`text-xs ${urgCfg.color}`}>{urgCfg.label}</Badge>
                             <Badge className={`text-xs flex items-center gap-1 ${stsCfg.color}`}>
                               <StsIcon className="w-3 h-3" />{stsCfg.label}
@@ -995,7 +1011,12 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                           )}
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-xs text-gray-400">{r.requestDate}</span>
+                          <div className="flex flex-col items-end leading-tight">
+                            <span className="text-xs text-gray-500">{fmtDate(r.requestDate)}</span>
+                            {r.createdAt && (
+                              <span className="text-[10px] text-gray-400">Received {fmtDateTime(r.createdAt)}</span>
+                            )}
+                          </div>
                           <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); openEditRequest(r); }}>
                             <Edit className="w-3.5 h-3.5" />
                           </Button>
@@ -1238,7 +1259,12 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                 <div className="flex gap-2">
                   <Badge className={urgCfg.color}>{urgCfg.label}</Badge>
                   <Badge className={stsCfg.color}>{stsCfg.label}</Badge>
-                  <span className="text-sm text-gray-400 ml-auto">{viewingRequest.requestDate}</span>
+                  <div className="ml-auto text-right leading-tight">
+                    <div className="text-sm text-gray-500">{fmtDate(viewingRequest.requestDate)}</div>
+                    {viewingRequest.createdAt && (
+                      <div className="text-[11px] text-gray-400">Received {fmtDateTime(viewingRequest.createdAt)}</div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-5">
@@ -1252,7 +1278,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                       <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {viewingRequest.patientUrNumber}</span>
                     )}
                   </div>
-                  {viewingRequest.patientDob && <p className="text-sm text-gray-600">DOB: {viewingRequest.patientDob}</p>}
+                  {viewingRequest.patientDob && <p className="text-sm text-gray-600">DOB: {fmtDate(viewingRequest.patientDob)}</p>}
                   {viewingRequest.patientPhone && <p className="text-sm text-gray-600 flex items-center gap-1"><Phone className="w-3 h-3" />{viewingRequest.patientPhone}</p>}
                   {viewingRequest.patientEmail && <p className="text-sm text-gray-600 flex items-center gap-1"><Mail className="w-3 h-3" />{viewingRequest.patientEmail}</p>}
                 </div>
@@ -1426,7 +1452,12 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                 <div className="space-y-3 lg:border-r lg:pr-5">
                   <div className="flex gap-2 flex-wrap">
                     <Badge className={urgCfg.color}>{urgCfg.label}</Badge>
-                    <span className="text-xs text-gray-400 ml-auto">{viewingRequest.requestDate}</span>
+                    <div className="ml-auto text-right leading-tight">
+                      <div className="text-xs text-gray-500">{fmtDate(viewingRequest.requestDate)}</div>
+                      {viewingRequest.createdAt && (
+                        <div className="text-[10px] text-gray-400">Received {fmtDateTime(viewingRequest.createdAt)}</div>
+                      )}
+                    </div>
                   </div>
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1">
                     <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide">Patient</p>
@@ -1436,7 +1467,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                         <span className="font-mono font-bold text-blue-700 bg-white border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {viewingRequest.patientUrNumber}</span>
                       )}
                     </div>
-                    {viewingRequest.patientDob && <p className="text-xs text-blue-700">DOB: {viewingRequest.patientDob}</p>}
+                    {viewingRequest.patientDob && <p className="text-xs text-blue-700">DOB: {fmtDate(viewingRequest.patientDob)}</p>}
                     {viewingRequest.patientPhone && <p className="text-xs text-blue-700 flex items-center gap-1"><Phone className="w-3 h-3" />{viewingRequest.patientPhone}</p>}
                     {viewingRequest.patientEmail ? (
                       <p className="text-xs text-blue-700 flex items-center gap-1"><Mail className="w-3 h-3" />{viewingRequest.patientEmail}</p>
