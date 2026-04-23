@@ -5432,7 +5432,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           phone: linkedPatient.phone,
           email: linkedPatient.email,
         } : null,
-        wasAutoMatched: !!linkedPatient && isExternal,
+        wasAutoMatched: !!linkedPatient && (request as any).patientLinkSource === "auto_match",
+        patientLinkSource: (request as any).patientLinkSource ?? (linkedPatient && isExternal ? "auto_match" : null),
         candidates,
         requestSnapshot: {
           patientName: request.patientName,
@@ -5477,7 +5478,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateScanRequest(id, {
         patientId: newPatient.id,
         patientUrNumber: newPatient.urNumber,
-      });
+        patientLinkSource: "created_new",
+      } as any);
       if (updated) {
         archiveScanRequestToPatientFile(updated, newPatient.id).catch((e) =>
           console.error("Auto-archive (create-patient) failed:", e),
@@ -5495,7 +5497,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const clinicId = req.user?.clinicId;
       if (!clinicId) return res.status(400).json({ error: "No clinic" });
-      const request = await storage.createScanRequest({ ...req.body, clinicId });
+      const request = await storage.createScanRequest({
+        ...req.body,
+        clinicId,
+        patientLinkSource: req.body.patientId ? "manual_link" : null,
+      });
       // Auto-archive to patient file if linked to a patient
       if (request.patientId) {
         archiveScanRequestToPatientFile(request, request.patientId).catch((e) =>
@@ -5512,7 +5518,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const existing = await storage.getScanRequest(id);
       if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
-      const updated = await storage.updateScanRequest(id, req.body);
+      // If the patientId is being changed (linked or re-linked), record it as a manual link
+      const body: any = { ...req.body };
+      if (body.patientId !== undefined && body.patientId !== existing.patientId) {
+        body.patientLinkSource = body.patientId ? "manual_link" : null;
+      }
+      const updated = await storage.updateScanRequest(id, body);
       // Auto-archive when a patient gets linked (or re-linked) to this request
       if (updated && updated.patientId && updated.patientId !== existing.patientId) {
         archiveScanRequestToPatientFile(updated, updated.patientId).catch((e) =>
@@ -5678,6 +5689,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         referrerName: referringDoctorName || "Web Form",
         patientUrNumber: matchedPatient?.urNumber ?? null,
         patientId: matchedPatient?.id ?? null,
+        patientLinkSource: matchedPatient?.id ? "auto_match" : null,
         referringDoctorId: matchedDoctorId,
         scheduledAppointmentId: null,
         clinicalHistory: null,

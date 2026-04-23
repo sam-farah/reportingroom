@@ -166,7 +166,7 @@ function PatientMatchAudit({ requestId, onOpenPatient, onOpenPatientDetails }: {
     );
   }
 
-  const { linkedPatient, wasAutoMatched, isExternal, candidates } = data;
+  const { linkedPatient, wasAutoMatched, isExternal, candidates, patientLinkSource } = data as any;
 
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -181,11 +181,13 @@ function PatientMatchAudit({ requestId, onOpenPatient, onOpenPatientDetails }: {
         {linkedPatient ? (
           <div>
             <p className="text-xs text-gray-500 mb-1">
-              {wasAutoMatched
-                ? "✓ Auto-matched to existing patient (name + DOB or name + phone)"
-                : isExternal
-                  ? "✓ Linked to existing patient"
-                  : "✓ Linked to patient (selected when request was created)"}
+              {patientLinkSource === "created_new"
+                ? "✓ New patient file created from this request"
+                : patientLinkSource === "auto_match" || wasAutoMatched
+                  ? "✓ Auto-matched to existing patient (name + DOB or name + phone)"
+                  : isExternal
+                    ? "✓ Linked to existing patient"
+                    : "✓ Linked to patient (selected when request was created)"}
             </p>
             <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded p-2">
               <span className="font-semibold text-sm">{linkedPatient.firstName} {linkedPatient.lastName}</span>

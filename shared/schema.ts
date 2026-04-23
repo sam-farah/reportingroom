@@ -712,6 +712,8 @@ export const scanRequests = pgTable("scan_requests", {
   // Per-request preferred report delivery method as captured on the form.
   preferredReportDelivery: varchar("preferred_report_delivery", { length: 40 }),
   preferredReportDeliveryNote: text("preferred_report_delivery_note"),
+  // How the patientId on this request came to be linked: 'auto_match' | 'created_new' | 'manual_link'
+  patientLinkSource: varchar("patient_link_source", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
