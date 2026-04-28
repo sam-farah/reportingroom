@@ -1292,28 +1292,46 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                   const reqDeliveryNote = (viewingRequest as any).preferredReportDeliveryNote as string | null | undefined;
                   const docDelivery = (linkedDoctor as any)?.preferredReportDelivery as string | null | undefined;
                   const docDeliveryNote = (linkedDoctor as any)?.preferredReportDeliveryNote as string | null | undefined;
+                  const docEmail = (viewingRequest as any).referringDoctorEmail as string | null | undefined;
+                  const effectiveDelivery = reqDelivery || docDelivery;
+                  const effectiveDeliveryNote = reqDelivery ? reqDeliveryNote : docDeliveryNote;
+                  const deliverySource = reqDelivery ? "On this request" : docDelivery ? "Doctor's saved default" : null;
                   return (
-                    <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Referring Doctor</p>
-                      <p className="font-semibold">{viewingRequest.referringDoctorName}</p>
-                      {viewingRequest.referringDoctorProviderNumber && <p className="text-sm text-gray-600">Provider #: {viewingRequest.referringDoctorProviderNumber}</p>}
-                      {(reqDelivery || docDelivery) && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          {reqDelivery && (
-                            <>
-                              <span className="text-[11px] text-gray-500">On request:</span>
-                              <DeliveryBadge method={reqDelivery} note={reqDeliveryNote} />
-                            </>
+                    <>
+                      <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Referring Doctor</p>
+                        <p className="font-semibold">{viewingRequest.referringDoctorName}</p>
+                        {viewingRequest.referringDoctorProviderNumber && <p className="text-sm text-gray-600">Provider #: {viewingRequest.referringDoctorProviderNumber}</p>}
+                        {docEmail && (
+                          <p className="text-sm text-gray-600 flex items-center gap-1" data-testid="text-referring-doctor-email">
+                            <Mail className="w-3 h-3" />{docEmail}
+                          </p>
+                        )}
+                      </div>
+                      {effectiveDelivery && (
+                        <div
+                          className="rounded-lg p-3 space-y-2 border border-blue-200 bg-blue-50"
+                          data-testid="block-preferred-delivery"
+                        >
+                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Preferred Report Delivery</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <DeliveryBadge method={effectiveDelivery} note={effectiveDeliveryNote} />
+                            {deliverySource && (
+                              <span className="text-[11px] text-blue-700/70">({deliverySource})</span>
+                            )}
+                          </div>
+                          {effectiveDelivery === "other" && effectiveDeliveryNote && (
+                            <p className="text-xs text-blue-900/80">Details: {effectiveDeliveryNote}</p>
                           )}
-                          {docDelivery && docDelivery !== reqDelivery && (
-                            <>
-                              <span className="text-[11px] text-gray-500 ml-1">Doctor's default:</span>
+                          {reqDelivery && docDelivery && docDelivery !== reqDelivery && (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-blue-200">
+                              <span className="text-[11px] text-gray-500">Doctor's saved default:</span>
                               <DeliveryBadge method={docDelivery} note={docDeliveryNote} />
-                            </>
+                            </div>
                           )}
                         </div>
                       )}
-                    </div>
+                    </>
                   );
                 })()}
                 {(viewingRequest as any).source && (viewingRequest as any).source !== "internal" && (
