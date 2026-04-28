@@ -677,17 +677,18 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     endSession();
   };
 
-  // If the user exits browser fullscreen via Esc or system gesture, end the session too.
+  // Keep the local isFullscreen flag in sync if the browser/OS exits fullscreen
+  // (e.g. Esc key, iPad swipe-down gesture). We deliberately do NOT end the
+  // drawing session here — only the explicit "Exit Fullscreen" button does that.
   useEffect(() => {
     const onFsChange = () => {
-      if (!document.fullscreenElement && isFullscreen) {
-        endSession();
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
       }
     };
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFullscreen, currentWorksheet, drawingHistory]);
+  }, []);
 
   const resetZoom = () => {
     setZoom({ scale: 1, offsetX: 0, offsetY: 0 });
