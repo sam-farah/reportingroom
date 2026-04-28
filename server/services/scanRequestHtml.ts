@@ -14,6 +14,14 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+const DELIVERY_LABEL: Record<string, string> = {
+  secure_messaging: "Secure Messaging (Medical Objects / HealthLink)",
+  email: "Email",
+  fax: "Fax",
+  post: "Post / Mail",
+  other: "Other",
+};
+
 function urgencyNote(urgency: string): string {
   switch (urgency) {
     case "stat": return "IMMEDIATE attention required — perform today";
@@ -140,10 +148,25 @@ export function buildScanRequestHtml(r: ScanRequest, clinic: Clinic | null): str
         ${r.referringDoctorName ? `
           <div class="field-row"><span class="field-label">Name:</span><span class="field-value"><strong>${esc(r.referringDoctorName)}</strong></span></div>
           ${r.referringDoctorProviderNumber ? `<div class="field-row"><span class="field-label">Provider No.:</span><span class="field-value">${esc(r.referringDoctorProviderNumber)}</span></div>` : ""}
+          ${(r as any).referringDoctorEmail ? `<div class="field-row"><span class="field-label">Email:</span><span class="field-value">${esc((r as any).referringDoctorEmail)}</span></div>` : ""}
         ` : `<div style="color:#9ca3af;font-style:italic;padding-top:4px;">Not specified</div>`}
       </div>
     </div>
   </div>
+
+  ${r.preferredReportDelivery ? `
+  <div class="full-col">
+    <div class="section-box" style="border-color:#bfdbfe;">
+      <div class="section-head" style="background:#1d4ed8;">Preferred Report Delivery</div>
+      <div class="section-body" style="background:#f0f7ff;">
+        <div class="field-row">
+          <span class="field-label">Method:</span>
+          <span class="field-value"><strong>${esc(DELIVERY_LABEL[r.preferredReportDelivery] ?? r.preferredReportDelivery)}</strong></span>
+        </div>
+        ${r.preferredReportDeliveryNote ? `<div class="field-row"><span class="field-label">Details:</span><span class="field-value">${esc(r.preferredReportDeliveryNote)}</span></div>` : ""}
+      </div>
+    </div>
+  </div>` : ""}
 
   ${(r.scanTypes ?? []).length > 0 ? `
   <div class="full-col">
