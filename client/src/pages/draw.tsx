@@ -367,6 +367,10 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
 
+    // Ignore finger touches so pinch-to-zoom still works.
+    // Only draw with stylus/pen or mouse. (PointerEvent has pointerType; MouseEvent doesn't.)
+    if ('pointerType' in e && e.pointerType === 'touch') return;
+
     // Text tool: place a floating input overlay at click position
     if (currentTool.type === 'text') {
       const canvas = canvasRef.current;
@@ -1077,14 +1081,11 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                     touchAction: 'pinch-zoom',
                     objectFit: 'contain'
                   }}
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={stopDrawing}
                   onPointerDown={startDrawing}
                   onPointerMove={draw}
                   onPointerUp={stopDrawing}
                   onPointerLeave={stopDrawing}
+                  onPointerCancel={stopDrawing}
                 />
                 {/* Floating text annotation input */}
                 {textInput && (
