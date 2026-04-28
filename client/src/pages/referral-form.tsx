@@ -27,6 +27,7 @@ export default function ReferralFormPage() {
     referringDoctorName: "",
     referringDoctorPractice: "",
     referringDoctorPhone: "",
+    referringDoctorEmail: "",
     referringDoctorProviderNumber: "",
     scanTypes: [] as string[],
     urgency: "routine",
@@ -197,6 +198,18 @@ export default function ReferralFormPage() {
                   <Label className="text-sm">Doctor Phone</Label>
                   <Input type="tel" value={form.referringDoctorPhone} onChange={(e) => setForm((p) => ({ ...p, referringDoctorPhone: e.target.value }))} className="mt-1" />
                 </div>
+              </div>
+              <div>
+                <Label className="text-sm">Doctor Email</Label>
+                <Input
+                  type="email"
+                  value={form.referringDoctorEmail}
+                  onChange={(e) => setForm((p) => ({ ...p, referringDoctorEmail: e.target.value }))}
+                  placeholder="doctor@example.com"
+                  className="mt-1"
+                  data-testid="input-referring-doctor-email"
+                />
+                <p className="text-xs text-gray-500 mt-1">We'll send you a confirmation once the referral is received.</p>
               </div>
             </CardContent>
           </Card>

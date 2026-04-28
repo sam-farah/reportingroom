@@ -2741,6 +2741,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "28 Apr 2026",
+    tag: "New",
+    title: "Public referral form now collects doctor email and sends an automatic confirmation",
+    detail:
+      "The public online referral form (the one referring doctors fill in to send us a patient) now has a 'Doctor Email' field in the Referring Doctor section. It's optional, but when supplied:\n\n• The doctor's email is saved against the referral so you have it on file in the Requests tab.\n• A polished confirmation email is automatically sent back to the doctor straight after submission, thanking them for the referral and listing the patient name, scan type(s), urgency and date received. It also reminds them how the report will be delivered and gives the clinic phone/email for follow-up.\n• Invalid email addresses are rejected up front with a clear message so typos don't get saved.",
+  },
+  {
+    date: "28 Apr 2026",
     tag: "Fix",
     title: "CC recipients now reliably included when distributing a report by email",
     detail:

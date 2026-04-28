@@ -5,7 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq, sql as drizzleSql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
-import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation } from "./email";
+import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor } from "./email";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -5665,8 +5665,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const {
         patientName, patientDob, patientPhone, patientEmail,
         referringDoctorName, referringDoctorPhone, referringDoctorProviderNumber, referringDoctorPractice,
+        referringDoctorEmail,
         scanTypes, urgency, clinicalIndication, notes, resultMethod, resultMethodOther,
       } = req.body;
+
+      // Validate doctor email if supplied
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const doctorEmailClean = typeof referringDoctorEmail === "string" ? referringDoctorEmail.trim() : "";
+      if (doctorEmailClean && !EMAIL_RE.test(doctorEmailClean)) {
+        return res.status(400).json({ error: "Please provide a valid doctor email address" });
+      }
 
       if (!patientName || !scanTypes?.length) {
         return res.status(400).json({ error: "Patient name and at least one scan type are required" });
@@ -5727,6 +5735,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientEmail: patientEmail || null,
         referringDoctorName: referringDoctorName || null,
         referringDoctorProviderNumber: referringDoctorProviderNumber || null,
+        referringDoctorEmail: doctorEmailClean || null,
         scanTypes: Array.isArray(scanTypes) ? scanTypes : [scanTypes],
         urgency: urgency || "routine",
         clinicalIndication: clinicalIndication || null,
@@ -5772,7 +5781,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).catch(console.error);
       }
 
-      res.json({ success: true, message: "Referral submitted successfully" });
+      // Confirmation email back to the referring doctor (if they supplied one)
+      let doctorEmailSent = false;
+      if (doctorEmailClean) {
+        try {
+          await sendReferralConfirmationToDoctor({
+            doctorEmail: doctorEmailClean,
+            doctorName: referringDoctorName || "",
+            patientName,
+            scanTypes: Array.isArray(scanTypes) ? scanTypes : [scanTypes],
+            urgency: urgency || "routine",
+            clinicName: clinic.name,
+            clinicPhone: clinic.phone || null,
+            clinicEmail: clinic.email || null,
+            requestDate: today,
+          });
+          doctorEmailSent = true;
+          console.log(`[referral-form] confirmation sent to doctor=${doctorEmailClean} request=${createdRequest.id}`);
+        } catch (e) {
+          console.error(`[referral-form] failed to email doctor=${doctorEmailClean}:`, e);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Referral submitted successfully",
+        doctorEmailSent,
+      });
     } catch (e) {
       console.error("Public referral error:", e);
       res.status(500).json({ error: "Failed to submit referral" });

@@ -404,6 +404,81 @@ export async function sendExternalReferralNotification(params: {
   }
 }
 
+export async function sendReferralConfirmationToDoctor(params: {
+  doctorEmail: string;
+  doctorName: string;
+  patientName: string;
+  scanTypes: string[];
+  urgency: string;
+  clinicName: string;
+  clinicPhone?: string | null;
+  clinicEmail?: string | null;
+  requestDate: string; // yyyy-MM-dd
+}): Promise<void> {
+  const urgencyColors: Record<string, string> = {
+    routine: "#2563eb", urgent: "#d97706", asap: "#dc2626", stat: "#7c3aed",
+  };
+  const urgencyColor = urgencyColors[params.urgency.toLowerCase()] || "#2563eb";
+
+  // Format request date as dd-MM-yyyy for display
+  let displayDate = params.requestDate;
+  try {
+    const [y, m, d] = params.requestDate.split("-");
+    if (y && m && d) displayDate = `${d}-${m}-${y}`;
+  } catch { /* fall back to raw */ }
+
+  const greeting = params.doctorName?.trim()
+    ? params.doctorName.trim().match(/^(dr|prof|mr|ms|mrs|miss)\b/i)
+      ? params.doctorName.trim()
+      : `Dr. ${params.doctorName.trim()}`
+    : "Doctor";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; color: #1a1a2e; background: #f8fafc;">
+      <div style="background: #1e40af; padding: 24px 32px; border-radius: 8px 8px 0 0;">
+        <h1 style="margin: 0; color: #fff; font-size: 20px; font-weight: 700;">${params.clinicName}</h1>
+        <p style="margin: 6px 0 0; color: #bfdbfe; font-size: 13px;">Referral Received — Confirmation</p>
+      </div>
+      <div style="background: #fff; padding: 28px 32px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <p style="margin: 0 0 14px; font-size: 15px; color: #374151;">Dear ${greeting},</p>
+        <p style="margin: 0 0 18px; color: #4b5563; font-size: 14px; line-height: 1.6;">
+          Thank you for referring <strong>${params.patientName}</strong> to ${params.clinicName}.
+          We have received your referral and our team will contact the patient shortly to arrange an appointment.
+        </p>
+        <div style="background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 18px 20px; margin-bottom: 22px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <tr><td style="padding: 6px 0; color: #6b7280; width: 40%;">Patient</td><td style="padding: 6px 0; font-weight: 600;">${params.patientName}</td></tr>
+            <tr><td style="padding: 6px 0; color: #6b7280;">Scan Type(s)</td><td style="padding: 6px 0;">${params.scanTypes.join(", ")}</td></tr>
+            <tr><td style="padding: 6px 0; color: #6b7280;">Urgency</td><td style="padding: 6px 0;"><span style="display:inline-block;padding:2px 10px;border-radius:99px;background:${urgencyColor};color:#fff;font-size:12px;text-transform:capitalize;">${params.urgency}</span></td></tr>
+            <tr><td style="padding: 6px 0; color: #6b7280;">Date Received</td><td style="padding: 6px 0;">${displayDate}</td></tr>
+          </table>
+        </div>
+        <p style="margin: 0 0 6px; color: #4b5563; font-size: 13px;">
+          Once the scan is completed, the report will be sent to you via your preferred delivery method.
+        </p>
+        ${params.clinicPhone || params.clinicEmail ? `
+        <p style="margin: 18px 0 0; color: #6b7280; font-size: 13px;">
+          If you have any questions, please contact ${params.clinicName}${params.clinicPhone ? ` on <strong>${params.clinicPhone}</strong>` : ""}${params.clinicEmail ? ` or email <a href="mailto:${params.clinicEmail}" style="color:#2563eb;text-decoration:none;">${params.clinicEmail}</a>` : ""}.
+        </p>` : ""}
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 22px 0 14px;" />
+        <p style="margin: 0; color: #9ca3af; font-size: 11px; text-align: center;">
+          This is an automated confirmation from ${params.clinicName}. Please do not reply to this email.
+        </p>
+      </div>
+    </div>`;
+
+  try {
+    await sgMail.send({
+      to: params.doctorEmail,
+      from: { email: FROM_EMAIL, name: params.clinicName || FROM_NAME },
+      subject: `Referral Received — ${params.patientName} (${params.clinicName})`,
+      html,
+    });
+  } catch (err: any) {
+    console.error("Failed to send referral confirmation to doctor:", err?.response?.body?.errors ?? err?.message);
+  }
+}
+
 export async function sendPatientBookingConfirmation(params: {
   patientEmail: string;
   patientName: string;

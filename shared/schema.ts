@@ -698,6 +698,7 @@ export const scanRequests = pgTable("scan_requests", {
   patientEmail: varchar("patient_email", { length: 200 }),
   referringDoctorName: varchar("referring_doctor_name", { length: 200 }),
   referringDoctorProviderNumber: varchar("referring_doctor_provider_number", { length: 50 }),
+  referringDoctorEmail: varchar("referring_doctor_email", { length: 200 }),
   scanTypes: text("scan_types").array().notNull().default([]),
   urgency: varchar("urgency", { length: 20 }).notNull().default("routine"),
   clinicalIndication: text("clinical_indication"),
