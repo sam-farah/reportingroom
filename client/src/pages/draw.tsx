@@ -1074,7 +1074,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                   style={{ 
                     maxWidth: isFullscreen ? 'calc(100vw - 320px)' : '100%',
                     maxHeight: isFullscreen ? 'calc(100vh - 140px)' : '600px',
-                    touchAction: 'none',
+                    touchAction: 'pinch-zoom',
                     objectFit: 'contain'
                   }}
                   onMouseDown={startDrawing}
