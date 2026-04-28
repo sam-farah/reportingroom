@@ -37,6 +37,17 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   const [showCreateDraftDialog, setShowCreateDraftDialog] = useState(false);
   const [templateImage, setTemplateImage] = useState<HTMLImageElement | null>(null);
   const [pendingPoints, setPendingPoints] = useState<{x: number, y: number}[]>([]);
+  // Pinch-to-zoom state for the canvas (custom, since viewport meta blocks native pinch)
+  const [zoom, setZoom] = useState({ scale: 1, offsetX: 0, offsetY: 0 });
+  const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStartRef = useRef<{
+    distance: number;
+    midX: number;
+    midY: number;
+    startScale: number;
+    startOffsetX: number;
+    startOffsetY: number;
+  } | null>(null);
   const [currentTool, setCurrentTool] = useState<DrawingTool>({
     type: 'pen',
     color: '#000000',
@@ -367,9 +378,29 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
 
-    // Ignore finger touches so pinch-to-zoom still works.
-    // Only draw with stylus/pen or mouse. (PointerEvent has pointerType; MouseEvent doesn't.)
-    if ('pointerType' in e && e.pointerType === 'touch') return;
+    // Track touch fingers for custom pinch-to-zoom (native pinch is blocked by viewport meta).
+    if ('pointerType' in e && e.pointerType === 'touch') {
+      try { (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId); } catch {}
+      activeTouchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // If we just got a 2nd finger, snapshot the pinch baseline.
+      if (activeTouchesRef.current.size === 2) {
+        const pts = Array.from(activeTouchesRef.current.values());
+        const dx = pts[0].x - pts[1].x;
+        const dy = pts[0].y - pts[1].y;
+        pinchStartRef.current = {
+          distance: Math.hypot(dx, dy) || 1,
+          midX: (pts[0].x + pts[1].x) / 2,
+          midY: (pts[0].y + pts[1].y) / 2,
+          startScale: zoom.scale,
+          startOffsetX: zoom.offsetX,
+          startOffsetY: zoom.offsetY,
+        };
+        // Cancel any in-progress stroke when pinch begins.
+        setIsDrawing(false);
+        setLastPointer(null);
+      }
+      return;
+    }
 
     // Text tool: place a floating input overlay at click position
     if (currentTool.type === 'text') {
@@ -427,6 +458,27 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
+    // Update tracked touches and apply pinch-zoom transform.
+    if ('pointerType' in e && e.pointerType === 'touch') {
+      if (!activeTouchesRef.current.has(e.pointerId)) return;
+      activeTouchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activeTouchesRef.current.size === 2 && pinchStartRef.current) {
+        const pts = Array.from(activeTouchesRef.current.values());
+        const dx = pts[0].x - pts[1].x;
+        const dy = pts[0].y - pts[1].y;
+        const newDist = Math.hypot(dx, dy) || 1;
+        const newMidX = (pts[0].x + pts[1].x) / 2;
+        const newMidY = (pts[0].y + pts[1].y) / 2;
+        const start = pinchStartRef.current;
+        const rawScale = start.startScale * (newDist / start.distance);
+        const newScale = Math.max(0.5, Math.min(5, rawScale));
+        const newOffsetX = start.startOffsetX + (newMidX - start.midX);
+        const newOffsetY = start.startOffsetY + (newMidY - start.midY);
+        setZoom({ scale: newScale, offsetX: newOffsetX, offsetY: newOffsetY });
+      }
+      return;
+    }
+
     if (!isDrawing || !canvasRef.current) return;
     
     const canvas = canvasRef.current;
@@ -453,7 +505,19 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     setLastPointer({x, y});
   };
 
-  const stopDrawing = () => {
+  const stopDrawing = (e?: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
+    // Clear touch tracking when a finger lifts.
+    if (e && 'pointerType' in e && e.pointerType === 'touch') {
+      activeTouchesRef.current.delete(e.pointerId);
+      if (activeTouchesRef.current.size < 2) {
+        pinchStartRef.current = null;
+      }
+      // If a touch ended, reset any partial draw state and bail (we weren't drawing on touch anyway).
+      setIsDrawing(false);
+      setLastPointer(null);
+      return;
+    }
+
     setIsDrawing(false);
     setLastPointer(null);
     
@@ -579,13 +643,54 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     link.click();
   };
 
+  // End the current drawing session (auto-saves first, then returns to template selection).
+  const endSession = () => {
+    if (canvasRef.current && currentWorksheet) {
+      try {
+        const canvasData = canvasRef.current.toDataURL('image/jpeg', 0.8);
+        updateWorksheetMutation.mutate({
+          drawingData: canvasData,
+          drawingHistory: JSON.stringify(drawingHistory.slice(-5)),
+        });
+      } catch (e) {
+        console.warn('Failed to auto-save before ending session:', e);
+      }
+    }
+    setIsFullscreen(false);
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(console.error);
+    }
+    setCurrentWorksheet(null);
+    setSelectedTemplate(null);
+    setZoom({ scale: 1, offsetX: 0, offsetY: 0 });
+    activeTouchesRef.current.clear();
+    pinchStartRef.current = null;
+  };
+
   const toggleFullscreen = () => {
     if (!isFullscreen) {
       document.documentElement.requestFullscreen?.();
-    } else {
-      document.exitFullscreen?.();
+      setIsFullscreen(true);
+      return;
     }
-    setIsFullscreen(!isFullscreen);
+    // Exiting fullscreen ends the drawing session entirely.
+    endSession();
+  };
+
+  // If the user exits browser fullscreen via Esc or system gesture, end the session too.
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement && isFullscreen) {
+        endSession();
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen, currentWorksheet, drawingHistory]);
+
+  const resetZoom = () => {
+    setZoom({ scale: 1, offsetX: 0, offsetY: 0 });
   };
 
   // Template selection UI (when no template is selected)
@@ -830,9 +935,21 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
             onClick={toggleFullscreen} 
             variant="outline"
             size={isFullscreen ? "sm" : "default"}
+            data-testid="button-toggle-fullscreen"
           >
             {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           </Button>
+          {isFullscreen && zoom.scale !== 1 && (
+            <Button
+              onClick={resetZoom}
+              variant="outline"
+              size="sm"
+              data-testid="button-reset-zoom"
+              title="Reset pinch zoom"
+            >
+              Reset Zoom ({Math.round(zoom.scale * 100)}%)
+            </Button>
+          )}
           <Button 
             onClick={undoLastAction}
             disabled={drawingHistory.length <= 1}
@@ -1078,8 +1195,11 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                   style={{ 
                     maxWidth: isFullscreen ? 'calc(100vw - 320px)' : '100%',
                     maxHeight: isFullscreen ? 'calc(100vh - 140px)' : '600px',
-                    touchAction: 'pinch-zoom',
-                    objectFit: 'contain'
+                    touchAction: 'none',
+                    objectFit: 'contain',
+                    transform: `translate(${zoom.offsetX}px, ${zoom.offsetY}px) scale(${zoom.scale})`,
+                    transformOrigin: 'center center',
+                    transition: pinchStartRef.current ? 'none' : 'transform 0.05s linear',
                   }}
                   onPointerDown={startDrawing}
                   onPointerMove={draw}
