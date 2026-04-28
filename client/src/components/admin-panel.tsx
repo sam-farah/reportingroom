@@ -2741,6 +2741,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "28 Apr 2026",
+    tag: "Fix",
+    title: "CC recipients now reliably included when distributing a report by email",
+    detail:
+      "When sending a report by email from the Distribute dialog, addresses entered in the CC field are now properly validated and confirmed:\n\n• Each CC address is checked for a valid email format before sending — if anything looks wrong (typo, missing domain) you'll get a clear error so you can fix it instead of the email going out without that recipient.\n• Every CC recipient is now logged as its own entry in the Distribution History at the bottom of the Distribute dialog, with a note saying it was sent as a CC alongside the primary recipient. Previously only the primary recipient was recorded so it looked like the CC didn't go out.\n• The success toast now lists the CC addresses too (e.g. \"Report sent to dr.smith@…  — CC: receptionist@…\") so you have immediate confirmation.",
+  },
+  {
+    date: "28 Apr 2026",
     tag: "Improve",
     title: "Click any report card to open it — finalised reports open read-only",
     detail:

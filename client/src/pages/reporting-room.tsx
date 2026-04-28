@@ -1358,12 +1358,33 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
   const handleSendEmail = async () => {
     if (!distributeReport || !emailTo) return;
+
+    // Client-side validation: catch typos in CCs before round-tripping to the server
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const ccList = emailCcs.map(e => e.trim()).filter(Boolean);
+    const badCcs = ccList.filter(e => !EMAIL_RE.test(e));
+    if (badCcs.length > 0) {
+      toast({
+        title: "Invalid CC email",
+        description: `Please fix: ${badCcs.join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!EMAIL_RE.test(emailTo.trim())) {
+      toast({
+        title: "Invalid recipient email",
+        description: `Please fix: ${emailTo}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!htmlBuilt) await buildDistributeHtml();
     setEmailSending(true);
     setEmailSent(false);
     try {
       // Inject copies-to into the report HTML before generating the PDF
-      const ccList = emailCcs.map(e => e.trim()).filter(Boolean);
       const copiesTo = [emailToName || emailTo, ...ccList].filter(Boolean).join(", ");
       const htmlForEmail = distributeHtml.replace(
         "<!--COPIES_TO_PLACEHOLDER-->",
@@ -1401,7 +1422,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       refetchDistributions();
       refetchDistributionCounts();
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
-      toast({ title: "Email Sent", description: `Report sent to ${emailTo}` });
+      toast({
+        title: "Email Sent",
+        description:
+          ccList.length > 0
+            ? `Report sent to ${emailTo} — CC: ${ccList.join(", ")}`
+            : `Report sent to ${emailTo}`,
+      });
       setTimeout(() => setEmailSent(false), 4000);
     } catch (err: any) {
       toast({ title: "Send Failed", description: err.message || "Could not send email", variant: "destructive" });

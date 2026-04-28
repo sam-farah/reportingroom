@@ -2254,6 +2254,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "toEmail and reportHtml are required" });
       }
 
+      // Validate primary recipient email
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const primaryEmail = String(toEmail).trim();
+      if (!EMAIL_RE.test(primaryEmail)) {
+        return res.status(400).json({ error: `Invalid recipient email: ${primaryEmail}` });
+      }
+
+      // Clean + validate CC emails up-front — a single bad address can cause SendGrid
+      // to silently drop the rest, so reject early with a clear message.
+      const rawCcs: string[] = Array.isArray(ccEmails) ? ccEmails : [];
+      const cleanedCcs: string[] = [];
+      const invalidCcs: string[] = [];
+      for (const raw of rawCcs) {
+        const v = String(raw || "").trim();
+        if (!v) continue;
+        if (v.toLowerCase() === primaryEmail.toLowerCase()) continue; // skip if same as primary
+        if (cleanedCcs.some(c => c.toLowerCase() === v.toLowerCase())) continue; // skip duplicates
+        if (!EMAIL_RE.test(v)) {
+          invalidCcs.push(v);
+        } else {
+          cleanedCcs.push(v);
+        }
+      }
+      if (invalidCcs.length > 0) {
+        return res.status(400).json({
+          error: `Invalid CC email${invalidCcs.length > 1 ? "s" : ""}: ${invalidCcs.join(", ")}`,
+        });
+      }
+
       const report = await storage.getReport(id);
       if (!report) return res.status(404).json({ error: "Report not found" });
 
@@ -2262,10 +2291,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clinicName = clinic?.name || "Nexus Vascular Imaging";
       const resolvedPatientName = report.patientName || bodyPatientName || "Patient";
 
+      console.log(
+        `[send-email] report=${id} to=${primaryEmail} cc=[${cleanedCcs.join(", ")}] subject="${subject || `Medical Report — ${resolvedPatientName}`}"`
+      );
+
       await sendReportEmail({
-        toEmail,
-        toName: toName || toEmail,
-        ccEmails: Array.isArray(ccEmails) ? ccEmails : [],
+        toEmail: primaryEmail,
+        toName: toName || primaryEmail,
+        ccEmails: cleanedCcs,
         subject: subject || `Medical Report — ${resolvedPatientName}`,
         reportHtml,
         clinicName,
@@ -2274,27 +2307,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         worksheetPdfBase64: worksheetPdfBase64 || undefined,
       });
 
-      // Auto-log the distribution and store the transmitted PDF snapshot.
+      // Auto-log the distribution for the primary recipient and store the transmitted PDF snapshot.
       // (Auto-training is triggered automatically inside storage.createReportDistribution.)
+      const ccNote = cleanedCcs.length > 0 ? `CC: ${cleanedCcs.join(", ")}` : null;
       await storage.createReportDistribution({
         reportId: id,
         clinicId: user?.clinicId ?? null,
         method: "email",
         recipientName: toName || null,
-        recipientEmail: toEmail,
-        notes: null,
+        recipientEmail: primaryEmail,
+        notes: ccNote,
         worksheetIncluded: !!worksheetPdfBase64,
         pdfBlob: pdfBase64 || null,
         confirmedAt: new Date(),
         confirmedBy: user?.email || null,
       });
 
+      // Log a separate distribution row for each CC recipient so they appear
+      // individually in the Distribution History (no PDF blob duplication).
+      for (const ccAddr of cleanedCcs) {
+        await storage.createReportDistribution({
+          reportId: id,
+          clinicId: user?.clinicId ?? null,
+          method: "email",
+          recipientName: null,
+          recipientEmail: ccAddr,
+          notes: `Sent as CC alongside primary recipient ${primaryEmail}`,
+          worksheetIncluded: !!worksheetPdfBase64,
+          pdfBlob: null,
+          confirmedAt: new Date(),
+          confirmedBy: user?.email || null,
+        });
+      }
+
       // Auto-archive the source report now that a transmitted PDF is stored
       if (pdfBase64) {
         await storage.archiveReport(id);
       }
 
-      res.json({ success: true, message: `Report sent to ${toEmail}` });
+      const summary =
+        cleanedCcs.length > 0
+          ? `Report sent to ${primaryEmail} (cc: ${cleanedCcs.join(", ")})`
+          : `Report sent to ${primaryEmail}`;
+      res.json({ success: true, message: summary, primaryRecipient: primaryEmail, ccRecipients: cleanedCcs });
     } catch (error: any) {
       console.error("Send report email error:", error);
       res.status(500).json({ error: "Failed to send email", details: error?.message });
