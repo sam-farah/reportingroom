@@ -2740,6 +2740,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "28 Apr 2026",
+    tag: "Improve",
+    title: "Click any report card to open it — finalised reports open read-only",
+    detail:
+      "You can now click anywhere on a report card in the Reports view to open it, not just the Edit button. If the report is still a draft it opens in the usual editor. If it has already been finalised, it opens in a read-only viewer with a green banner showing the signing date — all the fields are locked so you can't accidentally change a signed report.\n\nFrom the read-only viewer you can still Close, Export PDF, or Distribute. To make changes, click the orange Amend button — that takes you into the existing amendment flow where you must provide a reason, which is captured in the audit trail as before.",
+  },
+  {
     date: "23 Apr 2026",
     tag: "New",
     title: "Reports tab now shows a badge for outstanding work",
