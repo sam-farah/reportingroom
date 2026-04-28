@@ -1601,7 +1601,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       {/* Reports Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {currentReports.map((report: Report) => (
-          <Card key={report.id} className="hover:shadow-md transition-shadow">
+          <Card
+            key={report.id}
+            className="hover:shadow-md transition-shadow cursor-pointer"
+            onClick={(e) => {
+              // Ignore clicks coming from interactive children (buttons, checkboxes, links)
+              if ((e.target as HTMLElement).closest('button, a, input, [role="checkbox"], [role="button"]')) return;
+              handleEditReport(report);
+            }}
+            title={report.isFinalized ? "Open finalised report (read-only)" : "Open report to edit"}
+          >
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -2084,10 +2093,31 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
             {/* Right Panel - Report Editor */}
             <div className="w-1/2 flex flex-col bg-white">
               <div className="p-4 border-b">
-                <h3 className="text-lg font-semibold">Report Editor</h3>
-                <p className="text-sm text-gray-600">Edit report content and save changes</p>
+                <h3 className="text-lg font-semibold">
+                  {editingReport.isFinalized ? "Report Viewer" : "Report Editor"}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {editingReport.isFinalized
+                    ? "Finalised — read-only. Click Amend to make changes."
+                    : "Edit report content and save changes"}
+                </p>
               </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {editingReport.isFinalized && (
+                  <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm">
+                    <CheckCircle className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-medium text-green-800">This report is finalised and read-only.</div>
+                      <div className="text-green-700">
+                        {editingReport.finalizedAt
+                          ? `Electronically signed on ${format(new Date(editingReport.finalizedAt), 'dd-MM-yyyy')}.`
+                          : ""}{" "}
+                        Click the orange Amend button below to make changes.
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <fieldset disabled={Boolean(editingReport.isFinalized)} className="contents">
                 {/* Template Selection */}
                 <div className="space-y-2">
                   <Label htmlFor="fullscreen-template">Report Template</Label>
@@ -2388,6 +2418,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   )}
                 </div>
 
+                </fieldset>
+
                 {/* Action Buttons */}
                 <div className="flex space-x-2 pt-4 border-t">
                   <Button
@@ -2412,14 +2444,27 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     <Share2 className="w-4 h-4 mr-2" />
                     Distribute
                   </Button>
-                  <Button
-                    onClick={handleSaveReport}
-                    disabled={updateReportMutation.isPending}
-                    className="medical-btn-primary"
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
-                  </Button>
+                  {editingReport.isFinalized ? (
+                    <Button
+                      onClick={() => {
+                        setIsEditDialogOpen(false);
+                        handleAmendReport(editingReport);
+                      }}
+                      className="bg-orange-600 hover:bg-orange-700 text-white"
+                    >
+                      <Edit3 className="w-4 h-4 mr-2" />
+                      Amend
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleSaveReport}
+                      disabled={updateReportMutation.isPending}
+                      className="medical-btn-primary"
+                    >
+                      <Save className="w-4 h-4 mr-2" />
+                      {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
