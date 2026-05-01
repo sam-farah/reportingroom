@@ -482,9 +482,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const response = await apiRequest(`/api/reports/${reportId}/sonographer-complete`, "POST");
       return await response.json();
     },
-    onSuccess: (updated: Report) => {
-      toast({ title: "Sonographer Complete", description: "Report marked as complete by sonographer." });
+    onSuccess: (updated: Report & { appointmentCompleted?: { id: number } | null }) => {
+      const appointmentMessage = updated.appointmentCompleted
+        ? "Report marked complete and the matching appointment was set to Completed."
+        : "Report marked as complete by sonographer.";
+      toast({ title: "Sonographer Complete", description: appointmentMessage });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      // Refresh calendar/home so the appointment status reflects immediately.
+      if (updated.appointmentCompleted) {
+        queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      }
       if (editingReport && editingReport.id === updated.id) setEditingReport(updated as any);
     },
     onError: () => {

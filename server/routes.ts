@@ -2118,7 +2118,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : String(req.session.userId!);
       const report = await storage.sonographerCompleteReport(id, completedBy);
       if (!report) return res.status(404).json({ error: "Report not found" });
-      res.json(report);
+
+      // Auto-complete the matching appointment on the calendar (if one exists).
+      // We match by patientId + same calendar day as the report's exam date.
+      // We deliberately do NOT touch appointments that are already completed,
+      // cancelled, or no-show.
+      let appointmentCompleted: { id: number } | null = null;
+      try {
+        if (report.patientId && report.examDate) {
+          const examDate = new Date(report.examDate);
+          if (!isNaN(examDate.getTime())) {
+            const dayStart = new Date(examDate);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(examDate);
+            dayEnd.setHours(23, 59, 59, 999);
+            const patientAppts = await storage.getPatientAppointments(report.patientId);
+            // Pick the appointment on the same day that is still "open"
+            // (not completed/cancelled/no-show). If multiple, take the
+            // earliest one — that's the booking the sonographer was working
+            // through.
+            const candidate = patientAppts
+              .filter((a) => {
+                const ad = new Date(a.appointmentDate);
+                return (
+                  ad >= dayStart &&
+                  ad <= dayEnd &&
+                  a.status !== "completed" &&
+                  a.status !== "cancelled" &&
+                  a.status !== "no_show"
+                );
+              })
+              .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())[0];
+            if (candidate) {
+              await storage.updateAppointment(candidate.id, { status: "completed" });
+              appointmentCompleted = { id: candidate.id };
+            }
+          }
+        }
+      } catch (apptErr) {
+        console.warn("Sono-complete: failed to auto-complete matching appointment", apptErr);
+      }
+
+      res.json({ ...report, appointmentCompleted });
     } catch (error) {
       console.error("Error marking sonographer complete:", error);
       res.status(500).json({ error: "Failed to update report" });
