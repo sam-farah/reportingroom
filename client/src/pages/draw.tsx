@@ -144,6 +144,15 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   const [drawingHistory, setDrawingHistory] = useState<string[]>([]);
   const [autoSaveTimer, setAutoSaveTimer] = useState<NodeJS.Timeout | null>(null);
 
+  // High-frequency drawing refs — these are read/written every pointermove so
+  // they MUST NOT be React state (state updates would re-render the whole page
+  // on every Pencil sample, killing performance).
+  const isDrawingRef = useRef(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const prevPointRef = useRef<{ x: number; y: number } | null>(null);
+  const cachedRectRef = useRef<DOMRect | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+
   // Fetch worksheet templates
   const { data: worksheetTemplates } = useQuery({
     queryKey: ["/api/worksheet-templates"],
@@ -416,22 +425,30 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       return;
     }
 
-    setIsDrawing(true);
     const canvas = canvasRef.current;
+    // Cache the bounding rect ONCE per stroke — avoids forced layout reflow
+    // on every pointermove (which is the #1 perf killer for canvas drawing).
     const rect = canvas.getBoundingClientRect();
+    cachedRectRef.current = rect;
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
-    
-    setLastPointer({x, y});
-    
+
+    // Capture the pointer so we keep getting events even if the finger/pencil
+    // briefly leaves the canvas bounds.
+    try { (e.currentTarget as HTMLCanvasElement).setPointerCapture((e as React.PointerEvent).pointerId); } catch {}
+    activePointerIdRef.current = (e as React.PointerEvent).pointerId ?? null;
+
+    isDrawingRef.current = true;
+    setIsDrawing(true);
+    lastPointRef.current = { x, y };
+    prevPointRef.current = { x, y };
+    setLastPointer({ x, y });
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    
+
     if (currentTool.type === 'pen') {
       ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = currentTool.color;
@@ -452,13 +469,21 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       ctx.lineWidth = currentTool.size;
       ctx.globalAlpha = 1.0;
     }
-    
+
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+
+    // Draw the initial dot so a single tap registers.
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(0.5, ctx.lineWidth / 2), 0, Math.PI * 2);
+    ctx.fillStyle = ctx.strokeStyle as string;
+    if (currentTool.type !== 'eraser') ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
-    // Update tracked touches and apply pinch-zoom transform.
+    // Pinch-zoom branch: a finger touch is moving while another finger is down.
     if ('pointerType' in e && e.pointerType === 'touch') {
       if (!activeTouchesRef.current.has(e.pointerId)) return;
       activeTouchesRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -479,30 +504,56 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       return;
     }
 
-    if (!isDrawing || !canvasRef.current) return;
-    
+    // Read from refs — NOT React state — for zero re-render overhead.
+    if (!isDrawingRef.current || !canvasRef.current || !cachedRectRef.current) return;
+
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    
-    // Throttle drawing for performance - only every few pixels (in canvas space)
-    if (lastPointer && Math.abs(x - lastPointer.x) < 2 && Math.abs(y - lastPointer.y) < 2) {
-      return;
-    }
-    
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
-    // Simple line drawing for better performance
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    
-    setLastPointer({x, y});
+    const rect = cachedRectRef.current;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    // Use coalesced events so we get every Apple Pencil sample (up to 240Hz),
+    // not just the ones that aligned with the browser's animation frames.
+    // This dramatically reduces "stairstep" aliasing on slow strokes.
+    const native = e.nativeEvent as PointerEvent;
+    const events: { clientX: number; clientY: number }[] =
+      typeof (native as any).getCoalescedEvents === 'function'
+        ? (native as any).getCoalescedEvents()
+        : [native];
+    const points = (events.length > 0 ? events : [native]).map((ev) => ({
+      x: (ev.clientX - rect.left) * scaleX,
+      y: (ev.clientY - rect.top) * scaleY,
+    }));
+
+    for (const p of points) {
+      const last = lastPointRef.current;
+      if (!last) {
+        lastPointRef.current = p;
+        prevPointRef.current = p;
+        continue;
+      }
+      // Skip near-duplicate samples to avoid useless work, but use a tiny
+      // 0.5px threshold (canvas-space) so we keep almost all detail.
+      const dx = p.x - last.x;
+      const dy = p.y - last.y;
+      if (dx * dx + dy * dy < 0.25) continue;
+
+      // Quadratic-curve smoothing: draw a curve from the previous midpoint
+      // to the current midpoint, using the previous point as the control.
+      // This is the standard signature-pad / sketch-app smoothing technique
+      // and gives much nicer-looking strokes than straight lineTo segments.
+      const midX = (last.x + p.x) / 2;
+      const midY = (last.y + p.y) / 2;
+      ctx.quadraticCurveTo(last.x, last.y, midX, midY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(midX, midY);
+
+      prevPointRef.current = last;
+      lastPointRef.current = p;
+    }
   };
 
   const stopDrawing = (e?: React.MouseEvent<HTMLCanvasElement> | React.PointerEvent<HTMLCanvasElement>) => {
@@ -513,11 +564,24 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         pinchStartRef.current = null;
       }
       // If a touch ended, reset any partial draw state and bail (we weren't drawing on touch anyway).
+      isDrawingRef.current = false;
+      lastPointRef.current = null;
+      prevPointRef.current = null;
+      cachedRectRef.current = null;
       setIsDrawing(false);
       setLastPointer(null);
       return;
     }
 
+    // Release pointer capture if we have it.
+    if (e && 'pointerId' in e && canvasRef.current) {
+      try { canvasRef.current.releasePointerCapture((e as React.PointerEvent).pointerId); } catch {}
+    }
+    activePointerIdRef.current = null;
+    isDrawingRef.current = false;
+    lastPointRef.current = null;
+    prevPointRef.current = null;
+    cachedRectRef.current = null;
     setIsDrawing(false);
     setLastPointer(null);
     
@@ -1200,7 +1264,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                     objectFit: 'contain',
                     transform: `translate(${zoom.offsetX}px, ${zoom.offsetY}px) scale(${zoom.scale})`,
                     transformOrigin: 'center center',
-                    transition: pinchStartRef.current ? 'none' : 'transform 0.05s linear',
+                    willChange: 'transform',
                   }}
                   onPointerDown={startDrawing}
                   onPointerMove={draw}
