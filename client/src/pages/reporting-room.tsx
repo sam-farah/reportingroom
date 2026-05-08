@@ -1481,6 +1481,35 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     }
   };
 
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const handleDownloadPdf = async () => {
+    if (!distributeReport || !distributeHtmlNoWs) return;
+    setDownloadingPdf(true);
+    try {
+      const pdfBase64 = await generateReportPdfBase64(distributeHtmlNoWs, distributeWorksheetDataUrl);
+      // Decode base64 -> Blob
+      const byteChars = atob(pdfBase64);
+      const bytes = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const safeName = (distributeReport.patientName || "Patient").replace(/[^a-zA-Z0-9_-]+/g, "_");
+      const safeDate = (distributeReport.examDate || format(new Date(), "yyyy-MM-dd")).replace(/[^0-9-]/g, "");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Report_${safeName}_${safeDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast({ title: "PDF Downloaded", description: "You can now attach it to an email or fax it manually." });
+    } catch (err: any) {
+      toast({ title: "Download Failed", description: err.message || "Could not generate PDF", variant: "destructive" });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const updateEditingReport = (field: keyof EditableReport, value: any) => {
     if (!editingReport) return;
     setEditingReport(prev => prev ? { ...prev, [field]: value } : null);
@@ -3396,7 +3425,19 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       />
                     </div>
 
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        onClick={handleDownloadPdf}
+                        disabled={downloadingPdf}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        title="Generate the same PDF that fax/email would send, and download it so you can attach it manually."
+                      >
+                        {downloadingPdf ? (
+                          <><div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />Building PDF…</>
+                        ) : (
+                          <><Download className="w-4 h-4 mr-2" />Download PDF</>
+                        )}
+                      </Button>
                       <Button onClick={handleCopyHtml} variant="outline" className={distributeCopied ? "border-green-400 text-green-700" : ""}>
                         {distributeCopied ? <Check className="w-4 h-4 mr-2 text-green-600" /> : <Copy className="w-4 h-4 mr-2" />}
                         {distributeCopied ? "Copied!" : "Copy HTML"}

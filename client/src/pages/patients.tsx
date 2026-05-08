@@ -803,7 +803,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const archiveDocumentMutation = makeArchiveMutation("patient-documents", "documents", "archive");
   const unarchiveDocumentMutation = makeArchiveMutation("patient-documents", "documents", "unarchive");
 
-  const [historyTab, setHistoryTab] = useState<'active' | 'archived' | 'completed'>('active');
+  const [historyTab, setHistoryTab] = useState<'active' | 'archived' | 'completed' | 'finalized'>('active');
 
   const resetForm = () => {
     setFormData({
@@ -1465,10 +1465,82 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   <CheckCircle className="w-3 h-3" />
                   Sent {transmittedReports.length > 0 && `(${transmittedReports.length})`}
                 </button>
+                {(() => {
+                  const finalisedReports = patientReports.filter(r => r.isFinalized && !(r as any).isArchived);
+                  return (
+                    <button
+                      onClick={() => setHistoryTab('finalized')}
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${historyTab === 'finalized' ? 'bg-violet-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      <ClipboardCheck className="w-3 h-3" />
+                      Finalised {finalisedReports.length > 0 && `(${finalisedReports.length})`}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
             <div className="flex-1 overflow-auto">
-              {historyTab === 'completed' ? (
+              {historyTab === 'finalized' ? (
+                (() => {
+                  const finalisedReports = patientReports
+                    .filter(r => r.isFinalized && !(r as any).isArchived)
+                    .sort((a, b) => {
+                      const da = new Date(a.finalizedAt || a.examDate || 0).getTime();
+                      const db = new Date(b.finalizedAt || b.examDate || 0).getTime();
+                      return db - da;
+                    });
+                  if (finalisedReports.length === 0) {
+                    return (
+                      <div className="p-4 text-center text-gray-500">
+                        <ClipboardCheck className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">No finalised reports yet</p>
+                        <p className="text-xs text-gray-400 mt-1">Reports appear here once a doctor finalises them</p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="divide-y">
+                      {finalisedReports.map((r) => {
+                        const isSelected = selectedDocument?.type === 'report' && selectedDocument?.id === r.id;
+                        return (
+                          <div
+                            key={r.id}
+                            onClick={() => { setSelectedDocument({ type: 'report', id: r.id }); setMobileShowDetail(true); }}
+                            className={`p-3 cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-violet-50 dark:bg-violet-900/30 border-l-4 border-violet-500'
+                                : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 rounded bg-violet-100 text-violet-600 flex-shrink-0">
+                                <ClipboardCheck className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm truncate">{r.studyType || "Report"}</div>
+                                <div className="text-xs text-gray-500">
+                                  {safeDateFormat(r.examDate, "d MMM yyyy")}
+                                  {r.finalizedAt && ` · Finalised ${safeDateFormat(r.finalizedAt, "d MMM yyyy")}`}
+                                </div>
+                                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                  <Badge variant="outline" className="text-xs px-1.5 py-0 text-violet-700 border-violet-300 bg-violet-50">
+                                    finalised
+                                  </Badge>
+                                  {r.isAmended && (
+                                    <Badge variant="outline" className="text-xs px-1.5 py-0 text-amber-700 border-amber-300 bg-amber-50">
+                                      amended
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
+              ) : historyTab === 'completed' ? (
                 transmittedReports.length === 0 ? (
                   <div className="p-4 text-center text-gray-500">
                     <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
