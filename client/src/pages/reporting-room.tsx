@@ -1780,15 +1780,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
               </div>
 
               <div className="flex flex-col space-y-2">
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                   {!(report as any).isFinalized && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleEditReport(report)}
-                      className="flex-1"
+                      className="flex-1 min-w-0 px-2"
                     >
-                      <Edit3 className="w-4 h-4 mr-1" />
+                      <Edit3 className="w-4 h-4 mr-1 shrink-0" />
                       Edit
                     </Button>
                   )}
@@ -1796,9 +1796,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     variant="outline"
                     size="sm"
                     onClick={() => handleDistribute(report)}
-                    className={`text-blue-600 border-blue-200 hover:bg-blue-50 ${(report as any).isFinalized ? "flex-1" : ""}`}
+                    className={`text-blue-600 border-blue-200 hover:bg-blue-50 flex-1 min-w-0 px-2 ${(report as any).isFinalized ? "" : ""}`}
                   >
-                    <Share2 className="w-3 h-3 mr-1" />
+                    <Share2 className="w-3 h-3 mr-1 shrink-0" />
                     Distribute
                   </Button>
                   <Button
@@ -1806,15 +1806,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     size="sm"
                     onClick={() => handleDirectDownloadPdf(report)}
                     disabled={directDownloadingId === report.id}
-                    className={report.isFinalized ? "text-violet-600 border-violet-200 hover:bg-violet-50" : "text-amber-700 border-amber-300 hover:bg-amber-50"}
+                    className={`flex-1 min-w-0 px-2 ${report.isFinalized ? "text-violet-600 border-violet-200 hover:bg-violet-50" : "text-amber-700 border-amber-300 hover:bg-amber-50"}`}
                     title={report.isFinalized ? "Download the same PDF that fax/email would send" : "Report not finalised — downloads as an INTERIM report"}
                   >
                     {directDownloadingId === report.id ? (
-                      <div className={`animate-spin w-3 h-3 border-2 ${report.isFinalized ? "border-violet-600" : "border-amber-700"} border-t-transparent rounded-full mr-1`} />
+                      <div className={`animate-spin w-3 h-3 border-2 shrink-0 ${report.isFinalized ? "border-violet-600" : "border-amber-700"} border-t-transparent rounded-full mr-1`} />
                     ) : (
-                      <Download className="w-3 h-3 mr-1" />
+                      <Download className="w-3 h-3 mr-1 shrink-0" />
                     )}
-                    {report.isFinalized ? "PDF" : "Interim PDF"}
+                    {report.isFinalized ? "PDF" : "Interim"}
                   </Button>
                 </div>
                 {/* Sonographer Complete + Archive row */}
@@ -1836,18 +1836,18 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       Sono Complete
                     </Button>
                   )}
-                  {(distributionCounts[report.id] ?? 0) > 0 && !(report as any).isArchived && (
+                  {!(report as any).isArchived && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="text-gray-500 border-gray-200 hover:bg-gray-50 px-2"
                       onClick={() => {
-                        if (confirm("Archive this workflow? It will be hidden from the main reports list.")) {
+                        if (confirm("Archive this report? It will be hidden from the main reports list.")) {
                           archiveReportMutation.mutate(report.id);
                         }
                       }}
                       disabled={archiveReportMutation.isPending}
-                      title="Archive workflow"
+                      title="Archive report"
                     >
                       <Archive className="w-3 h-3" />
                     </Button>
