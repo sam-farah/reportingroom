@@ -2740,6 +2740,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "08 May 2026",
+    tag: "New",
+    title: "Download report PDFs without needing email or fax",
+    detail:
+      "You can now save the same combined report + worksheet PDF that fax/email would normally send, straight to your computer — handy when the email/fax service is down or when you'd rather attach it manually to your own email.\n\nThree places to grab it:\n\n• Reports panel — every report card has a new purple PDF button next to Distribute. One click and the file downloads as Report_<PatientName>_<ExamDate>.pdf.\n• Distribute dialog — once you've generated the preview, a blue Download PDF button sits next to Copy HTML.\n• Patient file — a new violet Finalised tab (next to Sent) lists every report the doctor has signed off, sorted newest first. Click any report to open it, then use either of the buttons above to download.\n\nThe PDF is generated in your browser so it works even when the messaging service is offline.",
+  },
+  {
     date: "28 Apr 2026",
     tag: "New",
     title: "Public referral form now collects doctor email and sends an automatic confirmation",
