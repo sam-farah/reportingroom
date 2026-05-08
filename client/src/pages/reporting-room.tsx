@@ -1331,14 +1331,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const url = URL.createObjectURL(blob);
       const safeName = (report.patientName || "Patient").replace(/[^a-zA-Z0-9_-]+/g, "_");
       const safeDate = (report.examDate || format(new Date(), "yyyy-MM-dd")).replace(/[^0-9-]/g, "");
+      const isInterim = !report.isFinalized;
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Report_${safeName}_${safeDate}.pdf`;
+      a.download = `${isInterim ? "Interim_Report" : "Report"}_${safeName}_${safeDate}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast({ title: "PDF Downloaded", description: `${report.patientName} — ${report.studyType}` });
+      toast({ title: isInterim ? "Interim Report Downloaded" : "PDF Downloaded", description: `${report.patientName} — ${report.studyType}` });
     } catch (err: any) {
       toast({ title: "Download Failed", description: err.message || "Could not generate PDF", variant: "destructive" });
     } finally {
@@ -1529,14 +1530,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const url = URL.createObjectURL(blob);
       const safeName = (distributeReport.patientName || "Patient").replace(/[^a-zA-Z0-9_-]+/g, "_");
       const safeDate = (distributeReport.examDate || format(new Date(), "yyyy-MM-dd")).replace(/[^0-9-]/g, "");
+      const isInterim = !distributeReport.isFinalized;
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Report_${safeName}_${safeDate}.pdf`;
+      a.download = `${isInterim ? "Interim_Report" : "Report"}_${safeName}_${safeDate}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast({ title: "PDF Downloaded", description: "You can now attach it to an email or fax it manually." });
+      toast({ title: isInterim ? "Interim Report Downloaded" : "PDF Downloaded", description: "You can now attach it to an email or fax it manually." });
     } catch (err: any) {
       toast({ title: "Download Failed", description: err.message || "Could not generate PDF", variant: "destructive" });
     } finally {
@@ -1804,15 +1806,15 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     size="sm"
                     onClick={() => handleDirectDownloadPdf(report)}
                     disabled={directDownloadingId === report.id}
-                    className="text-violet-600 border-violet-200 hover:bg-violet-50"
-                    title="Download the same PDF that fax/email would send"
+                    className={report.isFinalized ? "text-violet-600 border-violet-200 hover:bg-violet-50" : "text-amber-700 border-amber-300 hover:bg-amber-50"}
+                    title={report.isFinalized ? "Download the same PDF that fax/email would send" : "Report not finalised — downloads as an INTERIM report"}
                   >
                     {directDownloadingId === report.id ? (
-                      <div className="animate-spin w-3 h-3 border-2 border-violet-600 border-t-transparent rounded-full mr-1" />
+                      <div className={`animate-spin w-3 h-3 border-2 ${report.isFinalized ? "border-violet-600" : "border-amber-700"} border-t-transparent rounded-full mr-1`} />
                     ) : (
                       <Download className="w-3 h-3 mr-1" />
                     )}
-                    PDF
+                    {report.isFinalized ? "PDF" : "Interim PDF"}
                   </Button>
                 </div>
                 {/* Sonographer Complete + Archive row */}
@@ -3478,13 +3480,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       <Button
                         onClick={handleDownloadPdf}
                         disabled={downloadingPdf}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                        title="Generate the same PDF that fax/email would send, and download it so you can attach it manually."
+                        className={distributeReport?.isFinalized ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-amber-600 hover:bg-amber-700 text-white"}
+                        title={distributeReport?.isFinalized ? "Generate the same PDF that fax/email would send, and download it so you can attach it manually." : "Report not finalised — downloads as an INTERIM report"}
                       >
                         {downloadingPdf ? (
                           <><div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />Building PDF…</>
                         ) : (
-                          <><Download className="w-4 h-4 mr-2" />Download PDF</>
+                          <><Download className="w-4 h-4 mr-2" />{distributeReport?.isFinalized ? "Download PDF" : "Download Interim Report"}</>
                         )}
                       </Button>
                       <Button onClick={handleCopyHtml} variant="outline" className={distributeCopied ? "border-green-400 text-green-700" : ""}>
