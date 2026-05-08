@@ -1023,10 +1023,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     setDistributeWorksheetDataUrl(null);
   };
 
-  const buildDistributeHtml = async () => {
-    if (!distributeReport) return;
-    const report = distributeReport;
-    setDistributeLoading(true);
+  const buildDistributeHtml = async (reportArg?: Report): Promise<{ htmlNoWs: string; htmlWithWs: string; worksheetDataUrl: string | null } | undefined> => {
+    const report = reportArg ?? distributeReport;
+    if (!report) return;
+    const updateState = !reportArg;
+    if (updateState) setDistributeLoading(true);
 
     // Helper to fetch a URL and return a base64 data-URI
     const toBase64 = async (url: string): Promise<string | null> => {
@@ -1303,13 +1304,46 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const hasWs = !!labelledWorksheetDataUrl;
     const htmlWithWs = makeHtml(labelledWorksheetDataUrl);
     const htmlNoWs = makeHtml(null);
-    setDistributeHasWorksheet(hasWs);
-    setDistributeWorksheetDataUrl(labelledWorksheetDataUrl);
-    setDistributeHtmlWithWs(htmlWithWs);
-    setDistributeHtmlNoWs(htmlNoWs);
-    setDistributeHtml(htmlWithWs); // default: worksheet included
-    setHtmlBuilt(true);
-    setDistributeLoading(false);
+    if (updateState) {
+      setDistributeHasWorksheet(hasWs);
+      setDistributeWorksheetDataUrl(labelledWorksheetDataUrl);
+      setDistributeHtmlWithWs(htmlWithWs);
+      setDistributeHtmlNoWs(htmlNoWs);
+      setDistributeHtml(htmlWithWs); // default: worksheet included
+      setHtmlBuilt(true);
+      setDistributeLoading(false);
+    }
+    return { htmlNoWs, htmlWithWs, worksheetDataUrl: labelledWorksheetDataUrl };
+  };
+
+  // Direct download — bypasses the distribute dialog. Used by per-card "PDF" button.
+  const [directDownloadingId, setDirectDownloadingId] = useState<number | null>(null);
+  const handleDirectDownloadPdf = async (report: Report) => {
+    setDirectDownloadingId(report.id);
+    try {
+      const built = await buildDistributeHtml(report);
+      if (!built) throw new Error("Could not build report HTML");
+      const pdfBase64 = await generateReportPdfBase64(built.htmlNoWs, built.worksheetDataUrl);
+      const byteChars = atob(pdfBase64);
+      const bytes = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const safeName = (report.patientName || "Patient").replace(/[^a-zA-Z0-9_-]+/g, "_");
+      const safeDate = (report.examDate || format(new Date(), "yyyy-MM-dd")).replace(/[^0-9-]/g, "");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Report_${safeName}_${safeDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast({ title: "PDF Downloaded", description: `${report.patientName} — ${report.studyType}` });
+    } catch (err: any) {
+      toast({ title: "Download Failed", description: err.message || "Could not generate PDF", variant: "destructive" });
+    } finally {
+      setDirectDownloadingId(null);
+    }
   };
 
   const handleCopyHtml = async () => {
@@ -1764,6 +1798,21 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   >
                     <Share2 className="w-3 h-3 mr-1" />
                     Distribute
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDirectDownloadPdf(report)}
+                    disabled={directDownloadingId === report.id}
+                    className="text-violet-600 border-violet-200 hover:bg-violet-50"
+                    title="Download the same PDF that fax/email would send"
+                  >
+                    {directDownloadingId === report.id ? (
+                      <div className="animate-spin w-3 h-3 border-2 border-violet-600 border-t-transparent rounded-full mr-1" />
+                    ) : (
+                      <Download className="w-3 h-3 mr-1" />
+                    )}
+                    PDF
                   </Button>
                 </div>
                 {/* Sonographer Complete + Archive row */}
