@@ -688,11 +688,63 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   // ── Backfill labelled worksheets ────────────────────────────────────────────
   // Runs in the background when reports load. For any report with a
   // worksheet/digital worksheet but no labelledWorksheetId, generate the
-  // labelled version and attach it. Throttled to one at a time, and each
-  // report is only attempted once per session to avoid loops on persistent
-  // failures.
-  const labelAttemptedRef = useRef<Set<number>>(new Set());
+  // labelled version and attach it. Throttled to one at a time. Each report
+  // is allowed up to 3 automatic attempts per session — after that the user
+  // can re-trigger from the small amber "Re-label" button on the card.
+  const labelAttemptsRef = useRef<Map<number, number>>(new Map());
   const labelInProgressRef = useRef(false);
+  const [manuallyRelabelingId, setManuallyRelabelingId] = useState<number | null>(null);
+
+  // Core helper: label one report. Returns true on success.
+  const labelReport = async (report: Report, opts: { manual?: boolean } = {}): Promise<boolean> => {
+    const id = report.id;
+    try {
+      const canvas = await generateLabelledCanvas(report);
+      if (!canvas) {
+        console.warn(`[labelling] could not generate canvas for report ${id} (worksheet may be a PDF or unreachable)`);
+        if (opts.manual) toast({ title: "Couldn't label worksheet", description: "The worksheet image could not be loaded (it may be a PDF or have been removed).", variant: "destructive" });
+        return false;
+      }
+      const blob: Blob | null = await new Promise((resolve) => {
+        try { canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93); }
+        catch { resolve(null); }
+      });
+      if (!blob) {
+        console.warn(`[labelling] toBlob returned null for report ${id}`);
+        if (opts.manual) toast({ title: "Couldn't label worksheet", description: "Failed to render the labelled image.", variant: "destructive" });
+        return false;
+      }
+      const formData = new FormData();
+      formData.append("worksheet", new File([blob], `labelled-${id}.jpg`, { type: 'image/jpeg' }));
+      const uploadRes = await fetch("/api/worksheets/upload", { method: "POST", body: formData, credentials: 'include' });
+      if (!uploadRes.ok) {
+        console.warn(`[labelling] upload failed for report ${id}: ${uploadRes.status}`);
+        if (opts.manual) toast({ title: "Couldn't label worksheet", description: `Upload failed (status ${uploadRes.status}).`, variant: "destructive" });
+        return false;
+      }
+      const { worksheetId: newId } = await uploadRes.json();
+      if (!newId) return false;
+      await apiRequest(`/api/reports/${id}`, "PATCH", { labelledWorksheetId: newId });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      if (opts.manual) toast({ title: "Worksheet labelled", description: `${report.patientName} — labelled copy attached.` });
+      return true;
+    } catch (err: any) {
+      console.warn(`[labelling] error for report ${id}:`, err);
+      if (opts.manual) toast({ title: "Couldn't label worksheet", description: err?.message || "Unexpected error", variant: "destructive" });
+      return false;
+    }
+  };
+
+  // Manual trigger for the per-card "Re-label" button.
+  const handleManualRelabel = async (report: Report) => {
+    setManuallyRelabelingId(report.id);
+    try {
+      await labelReport(report, { manual: true });
+    } finally {
+      setManuallyRelabelingId(null);
+    }
+  };
+
   useEffect(() => {
     if (!reports || reports.length === 0) return;
     if (labelInProgressRef.current) return;
@@ -701,41 +753,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const candidate = reports.find((r: any) =>
       (r.worksheetId || r.digitalWorksheetId) &&
       !r.labelledWorksheetId &&
-      !labelAttemptedRef.current.has(r.id)
+      (labelAttemptsRef.current.get(r.id) ?? 0) < 3
     );
     if (!candidate) return;
 
-    labelAttemptedRef.current.add(candidate.id);
+    labelAttemptsRef.current.set(candidate.id, (labelAttemptsRef.current.get(candidate.id) ?? 0) + 1);
     labelInProgressRef.current = true;
 
     (async () => {
       try {
-        const canvas = await generateLabelledCanvas(candidate);
-        if (!canvas) {
-          console.warn(`[labelling] could not generate canvas for report ${candidate.id} (worksheet may be a PDF or unreachable)`);
-          return;
-        }
-        const blob: Blob | null = await new Promise((resolve) => {
-          try { canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93); }
-          catch { resolve(null); }
-        });
-        if (!blob) {
-          console.warn(`[labelling] toBlob returned null for report ${candidate.id}`);
-          return;
-        }
-        const formData = new FormData();
-        formData.append("worksheet", new File([blob], `labelled-${candidate.id}.jpg`, { type: 'image/jpeg' }));
-        const uploadRes = await fetch("/api/worksheets/upload", { method: "POST", body: formData, credentials: 'include' });
-        if (!uploadRes.ok) {
-          console.warn(`[labelling] upload failed for report ${candidate.id}: ${uploadRes.status}`);
-          return;
-        }
-        const { worksheetId: newId } = await uploadRes.json();
-        if (!newId) return;
-        await apiRequest(`/api/reports/${candidate.id}`, "PATCH", { labelledWorksheetId: newId });
-        queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
-      } catch (err) {
-        console.warn(`[labelling] error for report ${candidate.id}:`, err);
+        await labelReport(candidate);
       } finally {
         labelInProgressRef.current = false;
       }
@@ -1816,6 +1843,22 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     )}
                     {report.isFinalized ? "PDF" : "Interim"}
                   </Button>
+                  {(report.worksheetId || (report as any).digitalWorksheetId) && !(report as any).labelledWorksheetId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleManualRelabel(report)}
+                      disabled={manuallyRelabelingId === report.id}
+                      className="text-amber-700 border-amber-400 bg-amber-50 hover:bg-amber-100 px-2 shrink-0"
+                      title="Worksheet has not been labelled with patient details yet — click to add the labelled header strip"
+                    >
+                      {manuallyRelabelingId === report.id ? (
+                        <div className="animate-spin w-3 h-3 border-2 border-amber-700 border-t-transparent rounded-full" />
+                      ) : (
+                        <Type className="w-3 h-3" />
+                      )}
+                    </Button>
+                  )}
                 </div>
                 {/* Sonographer Complete + Archive row */}
                 <div className="flex space-x-2">
