@@ -685,63 +685,50 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     return canvas;
   };
 
-  // ── Backfill labelled worksheets ────────────────────────────────────────────
-  // Runs in the background when reports load. For any report with a
-  // worksheet/digital worksheet but no labelledWorksheetId, generate the
-  // labelled version and attach it. Throttled to one at a time. Each report
-  // is allowed up to 3 automatic attempts per session — after that the user
-  // can re-trigger from the small amber "Re-label" button on the card.
+  // ── Worksheet labelling (in-place) ──────────────────────────────────────────
+  // Generates the header-stripped version of the worksheet and OVERWRITES the
+  // original worksheet's file with it. Same worksheet ID, same patient link —
+  // the file content just gains the patient/exam header. After this runs, the
+  // worksheet IS the labelled image everywhere it's shown (patient file viewer,
+  // distribute dialog, fax/email PDFs). No second-step labelling anywhere.
+  //
+  // The report's `labelledWorksheetId` is set equal to `worksheetId` purely as
+  // a "labelled in-place — done" flag, so the auto-retry effect doesn't fire
+  // again on subsequent reloads.
   const labelAttemptsRef = useRef<Map<number, number>>(new Map());
   const labelInProgressRef = useRef(false);
-  const [manuallyRelabelingId, setManuallyRelabelingId] = useState<number | null>(null);
 
-  // Core helper: label one report. Returns true on success.
-  const labelReport = async (report: Report, opts: { manual?: boolean } = {}): Promise<boolean> => {
+  const labelReport = async (report: Report): Promise<boolean> => {
     const id = report.id;
+    const wsId = (report as any).worksheetId;
+    // In-place replacement only applies to standard (image) worksheets.
+    // Digital worksheets are rendered server-side and don't need labelling here.
+    if (!wsId || (report as any).digitalWorksheetId) return false;
     try {
       const canvas = await generateLabelledCanvas(report);
       if (!canvas) {
-        console.warn(`[labelling] could not generate canvas for report ${id} (worksheet may be a PDF or unreachable)`);
-        if (opts.manual) toast({ title: "Couldn't label worksheet", description: "The worksheet image could not be loaded (it may be a PDF or have been removed).", variant: "destructive" });
+        console.warn(`[labelling] could not generate canvas for report ${id}`);
         return false;
       }
       const blob: Blob | null = await new Promise((resolve) => {
         try { canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93); }
         catch { resolve(null); }
       });
-      if (!blob) {
-        console.warn(`[labelling] toBlob returned null for report ${id}`);
-        if (opts.manual) toast({ title: "Couldn't label worksheet", description: "Failed to render the labelled image.", variant: "destructive" });
-        return false;
-      }
+      if (!blob) return false;
       const formData = new FormData();
       formData.append("worksheet", new File([blob], `labelled-${id}.jpg`, { type: 'image/jpeg' }));
-      const uploadRes = await fetch("/api/worksheets/upload", { method: "POST", body: formData, credentials: 'include' });
-      if (!uploadRes.ok) {
-        console.warn(`[labelling] upload failed for report ${id}: ${uploadRes.status}`);
-        if (opts.manual) toast({ title: "Couldn't label worksheet", description: `Upload failed (status ${uploadRes.status}).`, variant: "destructive" });
+      const replaceRes = await fetch(`/api/worksheets/${wsId}/replace-file`, { method: "POST", body: formData, credentials: 'include' });
+      if (!replaceRes.ok) {
+        console.warn(`[labelling] replace failed for worksheet ${wsId}: ${replaceRes.status}`);
         return false;
       }
-      const { worksheetId: newId } = await uploadRes.json();
-      if (!newId) return false;
-      await apiRequest(`/api/reports/${id}`, "PATCH", { labelledWorksheetId: newId });
+      // Mark the report as labelled in-place so we don't try again.
+      await apiRequest(`/api/reports/${id}`, "PATCH", { labelledWorksheetId: wsId });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
-      if (opts.manual) toast({ title: "Worksheet labelled", description: `${report.patientName} — labelled copy attached.` });
       return true;
     } catch (err: any) {
       console.warn(`[labelling] error for report ${id}:`, err);
-      if (opts.manual) toast({ title: "Couldn't label worksheet", description: err?.message || "Unexpected error", variant: "destructive" });
       return false;
-    }
-  };
-
-  // Manual trigger for the per-card "Re-label" button.
-  const handleManualRelabel = async (report: Report) => {
-    setManuallyRelabelingId(report.id);
-    try {
-      await labelReport(report, { manual: true });
-    } finally {
-      setManuallyRelabelingId(null);
     }
   };
 
@@ -751,8 +738,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (!clinicData) return; // wait for clinic data so the header has a logo
 
     const candidate = reports.find((r: any) =>
-      (r.worksheetId || r.digitalWorksheetId) &&
-      !r.labelledWorksheetId &&
+      r.worksheetId &&
+      !r.digitalWorksheetId &&
+      r.labelledWorksheetId !== r.worksheetId &&
       (labelAttemptsRef.current.get(r.id) ?? 0) < 3
     );
     if (!candidate) return;
@@ -792,27 +780,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     // Save the report immediately so the user gets instant feedback.
     updateReportMutation.mutate(updateData as any);
 
-    // Generate and upload the labelled worksheet in the background (non-blocking, non-fatal).
-    if (editingReport.worksheetId || (editingReport as any).digitalWorksheetId) {
-      const reportId = editingReport.id;
-      (async () => {
-        try {
-          const canvas = await generateLabelledCanvas(editingReport);
-          if (!canvas) return;
-          const blob: Blob | null = await new Promise((resolve) => {
-            try { canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93); }
-            catch { resolve(null); }
-          });
-          if (!blob) return;
-          const formData = new FormData();
-          formData.append("worksheet", new File([blob], `labelled-${reportId}.jpg`, { type: 'image/jpeg' }));
-          const uploadRes = await fetch("/api/worksheets/upload", { method: "POST", body: formData });
-          if (!uploadRes.ok) return;
-          const { worksheetId: newId } = await uploadRes.json();
-          if (!newId) return;
-          await apiRequest(`/api/reports/${reportId}`, "PATCH", { labelledWorksheetId: newId });
-        } catch { /* labelling is best-effort */ }
-      })();
+    // Label the worksheet in-place (overwrites the original file with the
+    // header-stripped version). Best-effort and non-blocking. The auto-retry
+    // useEffect will pick this up on the next load if it fails.
+    if (editingReport.worksheetId && !(editingReport as any).digitalWorksheetId) {
+      labelReport(editingReport).catch(() => { /* non-fatal */ });
     }
   };
 
@@ -1159,72 +1131,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       clinicLogoDataUrl = await toBase64(clinicLogoApiUrl);
     }
 
-    // Always composite the labelled header strip onto the worksheet image for the distribute dialog.
-    // The per-distribution toggle controls whether it is included; it defaults to ON.
-    let labelledWorksheetDataUrl: string | null = worksheetDataUrl;
-    if (worksheetDataUrl) {
-      try {
-        const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-          const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = worksheetDataUrl!;
-        });
-        let logoImgEl: HTMLImageElement | null = null;
-        if (clinicLogoDataUrl) {
-          logoImgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
-            const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = clinicLogoDataUrl!;
-          });
-        }
-        const W = wsImg.width;
-        const HPAD = Math.round(W * 0.025);
-        const HHEIGHT = Math.round(W * 0.1);
-        const canvas = document.createElement('canvas');
-        canvas.width = W;
-        canvas.height = wsImg.height + HHEIGHT;
-        const ctx = canvas.getContext('2d')!;
-        // White header background
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, W, HHEIGHT);
-        // Border line under header
-        ctx.strokeStyle = pc;
-        ctx.lineWidth = Math.round(W * 0.003);
-        ctx.beginPath(); ctx.moveTo(0, HHEIGHT); ctx.lineTo(W, HHEIGHT); ctx.stroke();
-        // Logo on the left
-        let textStartX = HPAD;
-        if (logoImgEl) {
-          const logoMaxH = HHEIGHT - HPAD * 2;
-          const logoMaxW = Math.round(W * 0.2);
-          const scale = Math.min(logoMaxW / logoImgEl.width, logoMaxH / logoImgEl.height, 1);
-          const logoW = logoImgEl.width * scale;
-          const logoH = logoImgEl.height * scale;
-          const logoY = (HHEIGHT - logoH) / 2;
-          ctx.drawImage(logoImgEl, HPAD, logoY, logoW, logoH);
-          textStartX = HPAD + logoW + Math.round(W * 0.015);
-        }
-        // Patient info lines (no clinic name text — logo is sufficient)
-        const infoFontSize = Math.round(W * 0.0135);
-        ctx.fillStyle = '#333333';
-        ctx.font = `${infoFontSize}px Arial, sans-serif`;
-        const infoLines = [
-          `Patient: ${report.patientName}`,
-          report.patientDob ? `DOB: ${formatDobAU(report.patientDob)}` : null,
-          `Exam Date: ${formatDobAU(report.examDate)}`,
-          report.patientUrNumber ? `UR: ${report.patientUrNumber}` : null,
-          `Scan: ${report.studyType}`,
-        ].filter(Boolean) as string[];
-        const infoColW = (W - textStartX - HPAD) / 2;
-        const leftInfoLines = infoLines.slice(0, Math.ceil(infoLines.length / 2));
-        const rightInfoLines = infoLines.slice(Math.ceil(infoLines.length / 2));
-        const lineH = infoFontSize + Math.round(infoFontSize * 0.45);
-        const textY = (HHEIGHT - Math.ceil(infoLines.length / 2) * lineH) / 2 + infoFontSize;
-        leftInfoLines.forEach((line, i) => ctx.fillText(line, textStartX, textY + i * lineH));
-        rightInfoLines.forEach((line, i) => ctx.fillText(line, textStartX + infoColW, textY + i * lineH));
-        // Worksheet image below header
-        ctx.drawImage(wsImg, 0, HHEIGHT);
-        labelledWorksheetDataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      } catch {
-        // fall back to raw worksheet if compositing fails
-        labelledWorksheetDataUrl = worksheetDataUrl;
-      }
-    }
+    // The worksheet image is already labelled in place (header strip baked in
+    // at report-save time), so we just use it as-is here. No re-compositing —
+    // doing so would stack a second header on top of the existing one.
+    const labelledWorksheetDataUrl: string | null = worksheetDataUrl;
 
     const clinicName = clinicData?.name || clinic?.clinicName || 'Medical Clinic';
     const clinicAddress = clinicData?.address || clinic?.address || '';
@@ -1633,16 +1543,35 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         toast({ title: "No worksheet", description: "No worksheet image is attached to this report.", variant: "destructive" });
         return;
       }
-      const canvas = await generateLabelledCanvas(report);
-      if (!canvas) throw new Error("Failed to generate labelled canvas");
-
+      // The worksheet on file is already labelled — just fetch it and wrap in a PDF.
+      const imageUrl = (report as any).digitalWorksheetId
+        ? `/api/digital-worksheets/${(report as any).digitalWorksheetId}/image`
+        : `/api/worksheets/${report.worksheetId}/image`;
+      const wsRes = await fetch(imageUrl, { credentials: 'include' });
+      if (!wsRes.ok) throw new Error("Failed to fetch worksheet image");
+      const wsBlob = await wsRes.blob();
+      const wsDataUrl = await new Promise<string>((resolve) => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(r.result as string);
+        r.readAsDataURL(wsBlob);
+      });
+      const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = wsDataUrl;
+      });
+      // Fit the worksheet onto A4 portrait, preserving aspect ratio.
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297);
+      const A4_W = 210, A4_H = 297;
+      const scale = Math.min(A4_W / wsImg.width, A4_H / wsImg.height);
+      const drawW = wsImg.width * scale;
+      const drawH = wsImg.height * scale;
+      const x = (A4_W - drawW) / 2;
+      const y = (A4_H - drawH) / 2;
+      pdf.addImage(wsDataUrl, 'JPEG', x, y, drawW, drawH);
       pdf.save(`worksheet-${report.patientName.replace(/\s+/g, '-')}-${report.examDate}.pdf`);
-      toast({ title: "Downloaded", description: "Labelled worksheet saved as A4 PDF." });
+      toast({ title: "Downloaded", description: "Worksheet saved as A4 PDF." });
     } catch (error) {
       console.error("Download labelled worksheet error:", error);
-      toast({ title: "Error", description: "Failed to generate labelled worksheet.", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to download worksheet.", variant: "destructive" });
     }
   };
 
@@ -2202,13 +2131,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       }}
                     />
                   </div>
-                ) : (editingReport as any).labelledWorksheetId ? (
-                  /* Show the annotated (labelled) version once the report has been saved */
-                  <WorksheetViewer
-                    worksheetId={(editingReport as any).labelledWorksheetId}
-                    alt="Annotated Worksheet"
-                  />
                 ) : editingReport.worksheetId ? (
+                  /* Worksheet is labelled in place once the report has been saved */
                   <WorksheetViewer 
                     worksheetId={editingReport.worksheetId} 
                     alt="Uploaded Worksheet"

@@ -78,6 +78,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Backfill any existing on-disk files to DB so they survive future resets
   backfillFilesToDB(uploadDir).catch(() => {});
 
+  // One-time backfill: for reports that were labelled the OLD way (a separate
+  // labelled worksheet record), point the original worksheet's file at the
+  // labelled file so the patient file viewer shows the labelled image. Marks
+  // the report as labelled-in-place by setting labelledWorksheetId = worksheetId.
+  // Idempotent — the WHERE clause filters out reports already converted.
+  (async () => {
+    try {
+      const { reports: reportsTbl, worksheets: worksheetsTbl } = await import("@shared/schema");
+      const { db: dbConn } = await import("./db");
+      const { eq, and, isNotNull, ne, sql } = await import("drizzle-orm");
+      const candidates = await dbConn
+        .select()
+        .from(reportsTbl)
+        .where(and(
+          isNotNull(reportsTbl.labelledWorksheetId),
+          isNotNull(reportsTbl.worksheetId),
+          ne(reportsTbl.labelledWorksheetId, reportsTbl.worksheetId),
+        ));
+      let migrated = 0;
+      for (const r of candidates) {
+        try {
+          const labelled = await storage.getWorksheet(r.labelledWorksheetId as number);
+          const original = await storage.getWorksheet(r.worksheetId as number);
+          if (!labelled || !original) continue;
+          await dbConn
+            .update(worksheetsTbl)
+            .set({ filename: labelled.filename, fileUrl: labelled.fileUrl } as any)
+            .where(eq(worksheetsTbl.id, original.id));
+          await dbConn
+            .update(reportsTbl)
+            .set({ labelledWorksheetId: r.worksheetId } as any)
+            .where(eq(reportsTbl.id, r.id));
+          migrated++;
+        } catch (err) {
+          console.warn(`[labelling-backfill] report ${r.id} skipped:`, (err as any)?.message);
+        }
+      }
+      if (migrated > 0) console.log(`[labelling-backfill] migrated ${migrated} report(s) to in-place labelled worksheets`);
+    } catch (err) {
+      console.warn("[labelling-backfill] sweep failed:", (err as any)?.message);
+    }
+  })();
+
   // Self-healing AI training sweep — picks up any distribution that didn't
   // get auto-trained at send time (e.g. transient DB error, dropped path)
   const { startAutoTrainingSweep } = await import("./services/auto-training");
@@ -1879,6 +1922,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Upload error:", error);
       res.status(500).json({ error: "Failed to upload worksheet" });
+    }
+  });
+
+  // Replace the binary contents of an existing worksheet (used for in-place
+  // labelling at report-save time). Keeps the worksheet ID, patient link, OCR
+  // metadata, and any references from reports — only the file payload changes.
+  app.post("/api/worksheets/:id/replace-file", isAuthenticated, upload.single('worksheet'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const id = parseInt(req.params.id);
+      const existing = await storage.getWorksheet(id);
+      if (!existing) return res.status(404).json({ error: "Worksheet not found" });
+
+      const newFilename = req.file.filename;
+      const newFileUrl = `/uploads/${newFilename}`;
+
+      // Persist the new file in the DB blob store before responding.
+      await saveFileToDB(newFilename, req.file.path, req.file.mimetype, req.file.originalname);
+
+      // Point the worksheet record at the new file. originalName is left intact
+      // so the patient file viewer keeps the same display title.
+      const updated = await storage.updateWorksheet(id, {
+        filename: newFilename,
+        fileUrl: newFileUrl,
+      } as any);
+
+      // Best-effort cleanup of the old file on disk (DB blob retained as backup).
+      try {
+        const oldPath = path.join(uploadDir, existing.filename);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      } catch { /* non-fatal */ }
+
+      res.json(updated || { id, filename: newFilename, fileUrl: newFileUrl });
+    } catch (error) {
+      console.error("Replace worksheet file error:", error);
+      res.status(500).json({ error: "Failed to replace worksheet file" });
     }
   });
 
