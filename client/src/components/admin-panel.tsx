@@ -2846,6 +2846,20 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "10 May 2026",
     tag: "New",
+    title: "Attach screenshots to bug reports",
+    detail:
+      "When you log a bug from Admin → Bug Reports, you can now include a picture so we can see exactly what you're describing — a missing button, a broken layout, a confusing error message, etc.\n\nTwo ways to attach:\n\n• Click 'Attach screenshot' to pick any image file from your computer (up to 5MB).\n• Or just paste an image directly into the description box (Ctrl/Cmd+V) — perfect after you've used Snipping Tool / Cmd+Shift+4 to capture part of the screen.\n\nA preview appears straight away with an X button if you want to swap it out. Once submitted, a thumbnail shows up under the bug in the list — click it to open the full-size image in a lightbox. Massively faster than trying to describe a visual problem in words.",
+  },
+  {
+    date: "10 May 2026",
+    tag: "Improve",
+    title: "Worksheets that didn't get auto-labelled can now be fixed with one click",
+    detail:
+      "When you save a report, the system automatically generates a 'labelled' copy of the worksheet — the same image with a header strip showing patient name, DOB, UR, exam date and sonographer. This is what gets sent out with the report.\n\nOccasionally that background process didn't complete (network blip, browser closed too quickly, etc.) and the report ended up with a worksheet but no labelled version. There was no signal that anything had failed.\n\nNow:\n\n• The auto-retry is more persistent — up to 3 attempts per report per session instead of one.\n• Any report card that's missing its labelled worksheet shows a small amber 'T' button next to the PDF button. Click it to generate the labelled copy on the spot. You'll get a toast confirming success, or a clear error message if something's still wrong (e.g. 'worksheet image could not be loaded' for older PDF worksheets).\n• Errors are no longer swallowed silently — they're logged so we can diagnose any persistent failures.",
+  },
+  {
+    date: "10 May 2026",
+    tag: "New",
     title: "Office Notes and an On Hold area on the Requests page",
     detail:
       "Two related changes to make the Requests page easier to triage day-to-day:\n\n• Office Notes — a new internal-only notes field on every scan request, separate from the clinical notes the referrer sees. Use it for things like 'waiting on referral letter', 'patient to call back about preferred time', or 'follow up after MRI'. The field shows on the request form (amber background so it's clearly internal) and on the request view dialog. It's never sent to the referring doctor or shown on the printable request PDF.\n\n• On Hold status — when you've got a request that isn't ready to schedule yet, click 'Move to On Hold' from the request view (or the amber clock icon on a card). On Hold requests are moved out of the main list and shown in their own amber-tinted section at the bottom of the page so they don't clutter the active workflow. Click the blue clock icon to move them back to Pending when you're ready, or open the request and use 'Resume (Pending)'.\n\nIf you filter by a specific status (e.g. 'On Hold' or 'Pending') the page just shows that one list — the split only kicks in when you're viewing 'All statuses'.",
