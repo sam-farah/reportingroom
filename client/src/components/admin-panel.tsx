@@ -2859,6 +2859,13 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   },
   {
     date: "10 May 2026",
+    tag: "New",
+    title: "Spell-check on the report editor",
+    detail:
+      "All the long-text fields in the report editor — Indication, Technique, Findings, Impression, Recommendations and Comments — now have spell-check turned on. Misspelled words will get a red wavy underline as you type, and you can right-click them for suggestions or to add a word to your browser's personal dictionary (handy for medical terminology that the default dictionary doesn't know — once added it'll never be flagged again on that browser).\n\nThe dictionary is set to Australian English (en-AU), so you'll get the correct spellings — colour, anaesthetic, oedema, fibre, paediatric — instead of US variants. This is browser-native, so suggestions are instant and don't send any text off your machine.\n\nIt's enabled everywhere the same Textarea component is used in the app — patient notes, scan request clinical history, notice board posts, calendar event notes, etc. — not just the report editor.",
+  },
+  {
+    date: "10 May 2026",
     tag: "Improve",
     title: "Labelled worksheet now shows up in the patient file",
     detail:
