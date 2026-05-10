@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image, CheckCircle, Loader2, Star } from "lucide-react";
+import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image, CheckCircle, Loader2, Star, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { Button } from "@/components/ui/button";
@@ -2426,7 +2426,42 @@ function BugReportsTab() {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [form, setForm] = useState({ text: "", priority: "medium", category: "" });
+  const [form, setForm] = useState({ text: "", priority: "medium", category: "", screenshot: "" });
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const readImageAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("Only image files are supported"));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      reject(new Error("Image must be under 5MB"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+
+  const handleScreenshotFile = async (file: File) => {
+    try {
+      const dataUrl = await readImageAsDataUrl(file);
+      setForm((p) => ({ ...p, screenshot: dataUrl }));
+    } catch (err: any) {
+      toast({ title: "Couldn't attach image", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
+    if (!item) return;
+    const file = item.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    await handleScreenshotFile(file);
+  };
 
   const { data: bugs = [], isLoading } = useQuery<BugReport[]>({
     queryKey: ["/api/bug-reports"],
@@ -2440,12 +2475,13 @@ function BugReportsTab() {
         description: data.text.trim(),
         priority: data.priority,
         category: data.category || null,
+        screenshotData: data.screenshot || null,
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bug-reports"] });
-      setForm({ text: "", priority: "medium", category: "" });
+      setForm({ text: "", priority: "medium", category: "", screenshot: "" });
       setShowForm(false);
       toast({ title: "Bug reported", description: "Your bug report has been saved." });
     },
@@ -2522,10 +2558,49 @@ function BugReportsTab() {
               <Textarea
                 autoFocus
                 rows={4}
-                placeholder="Describe the bug — what happened, where, and any steps to reproduce..."
+                placeholder="Describe the bug — what happened, where, and any steps to reproduce... (you can paste a screenshot here directly)"
                 value={form.text}
                 onChange={(e) => setForm((p) => ({ ...p, text: e.target.value }))}
+                onPaste={handlePaste}
               />
+              {form.screenshot ? (
+                <div className="relative inline-block border rounded-lg overflow-hidden bg-gray-50">
+                  <img src={form.screenshot} alt="Screenshot preview" className="max-h-48 max-w-full object-contain" />
+                  <button
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, screenshot: "" }))}
+                    className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
+                    title="Remove screenshot"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Image className="w-3.5 h-3.5 mr-1.5" />
+                    Attach screenshot
+                  </Button>
+                  <span>or paste an image (Ctrl/Cmd+V) into the text box</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleScreenshotFile(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <Select value={form.priority} onValueChange={(v) => setForm((p) => ({ ...p, priority: v }))}>
                   <SelectTrigger className="h-8 w-32 text-xs">
@@ -2612,6 +2687,20 @@ function BugReportsTab() {
                         </div>
                         <p className={`font-medium text-sm ${isResolved ? "line-through text-gray-400" : "text-gray-900"}`}>{bug.title}</p>
                         <p className={`text-xs mt-1 whitespace-pre-wrap ${isResolved ? "text-gray-400" : "text-gray-600"}`}>{bug.description}</p>
+                        {(bug as any).screenshotData && (
+                          <button
+                            type="button"
+                            onClick={() => setLightboxImage((bug as any).screenshotData)}
+                            className="mt-2 inline-block border rounded overflow-hidden bg-gray-50 hover:ring-2 hover:ring-blue-300 transition"
+                            title="Click to enlarge"
+                          >
+                            <img
+                              src={(bug as any).screenshotData}
+                              alt="Bug screenshot"
+                              className={`max-h-32 max-w-full object-contain ${isResolved ? "opacity-50" : ""}`}
+                            />
+                          </button>
+                        )}
                         <p className="text-xs text-gray-400 mt-2">
                           Reported by {bug.reportedByName ?? "Unknown"} · {bug.createdAt ? new Date(bug.createdAt).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : ""}
                           {isResolved && (bug as any).resolvedAt && (
@@ -2654,6 +2743,21 @@ function BugReportsTab() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!lightboxImage} onOpenChange={(o) => { if (!o) setLightboxImage(null); }}>
+        <DialogContent className="max-w-5xl p-2 bg-black/95 border-gray-800">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Bug screenshot</DialogTitle>
+          </DialogHeader>
+          {lightboxImage && (
+            <img
+              src={lightboxImage}
+              alt="Bug screenshot full size"
+              className="w-full h-auto max-h-[85vh] object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

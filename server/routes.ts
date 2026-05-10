@@ -6236,9 +6236,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
-      const { title, description, priority, category } = req.body;
+      const { title, description, priority, category, screenshotData } = req.body;
       if (!title?.trim() || !description?.trim()) {
         return res.status(400).json({ error: "Title and description are required" });
+      }
+      // Cap screenshot at ~5MB of base64 to avoid runaway payloads
+      let screenshot: string | null = null;
+      if (typeof screenshotData === "string" && screenshotData.startsWith("data:image/")) {
+        if (screenshotData.length > 7_000_000) {
+          return res.status(413).json({ error: "Screenshot is too large (max ~5MB)" });
+        }
+        screenshot = screenshotData;
       }
       const report = await storage.createBugReport({
         clinicId: user.clinicId,
@@ -6249,6 +6257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         priority: priority || "medium",
         status: "open",
         category: category || null,
+        screenshotData: screenshot,
       });
       res.json(report);
     } catch { res.status(500).json({ error: "Failed to create bug report" }); }

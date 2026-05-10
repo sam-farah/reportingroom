@@ -860,6 +860,7 @@ export const bugReports = pgTable("bug_reports", {
   priority: varchar("priority", { length: 20 }).notNull().default("medium"),
   status: varchar("status", { length: 20 }).notNull().default("open"),
   category: varchar("category", { length: 100 }),
+  screenshotData: text("screenshot_data"),
   createdAt: timestamp("created_at").defaultNow(),
   resolvedAt: timestamp("resolved_at"),
 });
