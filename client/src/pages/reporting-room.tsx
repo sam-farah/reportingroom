@@ -1843,22 +1843,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     )}
                     {report.isFinalized ? "PDF" : "Interim"}
                   </Button>
-                  {(report.worksheetId || (report as any).digitalWorksheetId) && !(report as any).labelledWorksheetId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleManualRelabel(report)}
-                      disabled={manuallyRelabelingId === report.id}
-                      className="text-amber-700 border-amber-400 bg-amber-50 hover:bg-amber-100 px-2 shrink-0"
-                      title="Worksheet has not been labelled with patient details yet — click to add the labelled header strip"
-                    >
-                      {manuallyRelabelingId === report.id ? (
-                        <div className="animate-spin w-3 h-3 border-2 border-amber-700 border-t-transparent rounded-full" />
-                      ) : (
-                        <Type className="w-3 h-3" />
-                      )}
-                    </Button>
-                  )}
                 </div>
                 {/* Sonographer Complete + Archive row */}
                 <div className="flex space-x-2">
