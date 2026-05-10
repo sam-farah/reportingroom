@@ -678,7 +678,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
   const [showPatientResults, setShowPatientResults] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
-  const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
+  const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", address: "", city: "", state: "", zipCode: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
   const [registrationPromptPatient, setRegistrationPromptPatient] = useState<Patient | null>(null);
 
   // Calendar events state
@@ -995,7 +995,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     onSuccess: (patient: Patient) => {
       handleSelectPatient(patient);
       setIsCreatingPatient(false);
-      setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
+      setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", address: "", city: "", state: "", zipCode: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
       queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
       if (patient.email) {
         setRegistrationPromptPatient(patient);
@@ -2341,6 +2341,50 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 className="mt-1"
                               />
                             </div>
+                            <div className="col-span-2">
+                              <Label htmlFor="npAddress" className="text-xs">Street Address <span className="text-blue-400 font-normal">(optional)</span></Label>
+                              <Input
+                                id="npAddress"
+                                value={newPatientForm.address}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, address: e.target.value }))}
+                                placeholder="e.g. 123 Smith Street"
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="npCity" className="text-xs">Suburb</Label>
+                              <Input
+                                id="npCity"
+                                value={newPatientForm.city}
+                                onChange={(e) => setNewPatientForm(prev => ({ ...prev, city: capitalizeWords(e.target.value) }))}
+                                autoCapitalize="words"
+                                className="mt-1"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <Label htmlFor="npState" className="text-xs">State</Label>
+                                <Input
+                                  id="npState"
+                                  value={newPatientForm.state}
+                                  onChange={(e) => setNewPatientForm(prev => ({ ...prev, state: e.target.value.toUpperCase() }))}
+                                  placeholder="VIC"
+                                  maxLength={3}
+                                  className="mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="npZip" className="text-xs">Postcode</Label>
+                                <Input
+                                  id="npZip"
+                                  value={newPatientForm.zipCode}
+                                  onChange={(e) => setNewPatientForm(prev => ({ ...prev, zipCode: e.target.value.replace(/\D/g, "") }))}
+                                  placeholder="3000"
+                                  maxLength={4}
+                                  className="mt-1"
+                                />
+                              </div>
+                            </div>
                             <div>
                               <Label htmlFor="npEcName" className="text-xs">Emergency Contact Name</Label>
                               <Input
@@ -2415,6 +2459,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                 dateOfBirth: newPatientForm.dateOfBirth || null,
                                 phone: newPatientForm.phone || null,
                                 email: newPatientForm.email || null,
+                                address: newPatientForm.address || null,
+                                city: newPatientForm.city || null,
+                                state: newPatientForm.state || null,
+                                zipCode: newPatientForm.zipCode || null,
                                 medicareNumber: newPatientForm.medicareNumber || null,
                                 medicareIrn: newPatientForm.medicareIrn || null,
                                 medicareExpiry: newPatientForm.medicareExpiry || null,

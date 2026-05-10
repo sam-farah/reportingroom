@@ -2845,6 +2845,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "10 May 2026",
+    tag: "Fix",
+    title: "Address fields now available when creating a patient from the Calendar",
+    detail:
+      "When you booked an appointment for a brand new patient and clicked 'Create new patient file', the quick form only asked for name, DOB, phone, email and Medicare — there was nowhere to enter a street address. The result was that the new patient record had blank Address, Suburb, State and Postcode, which then showed as empty in the View Patient popup later (and missed off any printed certificates).\n\nThe quick-create form on the Calendar now includes optional Street Address, Suburb, State and Postcode fields. They sit just under the email field and feed straight into the patient file. Old patients with blank addresses can be filled in by opening their patient file and editing them, or by sending the patient a Registration Form link (Patients → patient → 'Send Registration Form' or 'Copy Form Link') so they can fill in their own details.",
+  },
+  {
+    date: "10 May 2026",
     tag: "New",
     title: "Attach screenshots to bug reports",
     detail:
