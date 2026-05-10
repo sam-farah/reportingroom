@@ -2859,6 +2859,13 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   },
   {
     date: "10 May 2026",
+    tag: "Fix",
+    title: "Dedicated Finalise Report button in the editor",
+    detail:
+      "Previously the only way to finalise a report from inside the editor was to tick the small 'Finalize this report' checkbox up in the right-hand panel and THEN click Save Changes. People were ticking the box, expecting something to happen, and reporting that finalising was broken. Easy mistake.\n\nNow there's a dedicated green 'Finalise Report' button right next to Save Changes at the bottom of the editor (both in fullscreen and the regular pop-up dialog). Click it and the report is saved AND electronically signed in one step. You'll get a confirmation prompt first so it can't be triggered accidentally.\n\nThe old checkbox is still there if you prefer that workflow — both routes do exactly the same thing on the backend. The button just makes the action obvious.",
+  },
+  {
+    date: "10 May 2026",
     tag: "New",
     title: "Spell-check on the report editor",
     detail:

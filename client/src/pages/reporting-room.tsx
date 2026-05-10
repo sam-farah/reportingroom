@@ -567,6 +567,35 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     }
   };
 
+  // One-click "Save current edits + finalise" used by the dedicated Finalise
+  // button in the editor action bar. Sends every editable field PLUS
+  // isFinalized:true so the backend persists pending changes and electronically
+  // signs the report in a single PATCH (no need to tick a checkbox first).
+  const handleSaveAndFinalize = () => {
+    if (!editingReport) return;
+    if (!window.confirm(`Finalise this report for ${editingReport.patientName}?\n\nThis will electronically sign it and lock it from further edits. You can still amend it later from the report card.`)) {
+      return;
+    }
+    const updateData: Record<string, any> = {
+      patientName: editingReport.patientName,
+      patientUrNumber: (editingReport as any).patientUrNumber ?? null,
+      patientDob: editingReport.patientDob,
+      examDate: editingReport.examDate,
+      studyType: editingReport.studyType,
+      indication: editingReport.indication,
+      findings: editingReport.findings,
+      impression: editingReport.impression,
+      physicianId: editingReport.physicianId ?? null,
+      sonographerId: (editingReport as any).sonographerId ?? null,
+      patientId: (editingReport as any).patientId ?? null,
+      isFinalized: true,
+    };
+    updateReportMutation.mutate(updateData as any);
+    if (editingReport.worksheetId && !(editingReport as any).digitalWorksheetId) {
+      labelReport(editingReport).catch(() => { /* non-fatal */ });
+    }
+  };
+
   const handleAmendReport = (report: Report) => {
     setAmendingReport({ ...report });
     setIsAmendDialogOpen(true);
@@ -2521,14 +2550,25 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       Amend
                     </Button>
                   ) : (
-                    <Button
-                      onClick={handleSaveReport}
-                      disabled={updateReportMutation.isPending}
-                      className="medical-btn-primary"
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
-                    </Button>
+                    <>
+                      <Button
+                        onClick={handleSaveReport}
+                        disabled={updateReportMutation.isPending}
+                        className="medical-btn-primary"
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
+                      </Button>
+                      <Button
+                        onClick={handleSaveAndFinalize}
+                        disabled={updateReportMutation.isPending}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        title="Save current edits and electronically sign this report"
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        {updateReportMutation.isPending ? "Finalising..." : "Finalise Report"}
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -2945,6 +2985,17 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     <Save className="w-4 h-4 mr-2" />
                     {updateReportMutation.isPending ? "Saving..." : "Save Changes"}
                   </Button>
+                  {!editingReport.isFinalized && (
+                    <Button
+                      onClick={handleSaveAndFinalize}
+                      disabled={updateReportMutation.isPending}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      title="Save current edits and electronically sign this report"
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      {updateReportMutation.isPending ? "Finalising..." : "Finalise Report"}
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
