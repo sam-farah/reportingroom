@@ -50,6 +50,7 @@ const URGENCY_CONFIG: Record<string, { label: string; color: string }> = {
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   pending: { label: "Pending", color: "bg-blue-100 text-blue-700", icon: Clock },
+  on_hold: { label: "On Hold", color: "bg-amber-100 text-amber-800", icon: AlertCircle },
   scheduled: { label: "Scheduled", color: "bg-purple-100 text-purple-700", icon: ClipboardList },
   completed: { label: "Completed", color: "bg-green-100 text-green-700", icon: CheckCircle },
   cancelled: { label: "Cancelled", color: "bg-slate-100 text-slate-500", icon: XCircle },
@@ -72,6 +73,7 @@ type RequestFormData = {
   clinicalHistory: string;
   status: string;
   notes: string;
+  officeNotes: string;
   requestDate: string;
 };
 
@@ -91,6 +93,7 @@ const blankRequest = (): RequestFormData => ({
   clinicalHistory: "",
   status: "pending",
   notes: "",
+  officeNotes: "",
   requestDate: format(new Date(), "yyyy-MM-dd"),
 });
 
@@ -592,6 +595,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
       clinicalHistory: r.clinicalHistory ?? "",
       status: r.status,
       notes: r.notes ?? "",
+      officeNotes: (r as any).officeNotes ?? "",
       requestDate: r.requestDate,
     });
     setIsRequestOpen(true);
@@ -921,6 +925,14 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
         : r.status === statusFilter;
     return matchSearch && matchStatus;
   });
+  // Split out on_hold requests so they render in their own section at the bottom
+  // (only when the user is viewing "All statuses" — otherwise the explicit filter wins).
+  const activeRequests = statusFilter === "all"
+    ? filteredRequests.filter(r => r.status !== "on_hold")
+    : filteredRequests;
+  const onHoldRequests = statusFilter === "all"
+    ? filteredRequests.filter(r => r.status === "on_hold")
+    : [];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -961,7 +973,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredRequests.map(r => {
+              {activeRequests.map(r => {
                 const urgCfg = URGENCY_CONFIG[r.urgency] ?? URGENCY_CONFIG.routine;
                 const stsCfg = STATUS_CONFIG[r.status] ?? STATUS_CONFIG.pending;
                 const StsIcon = stsCfg.icon;
@@ -1031,6 +1043,90 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                   </Card>
                 );
               })}
+            </div>
+          )}
+
+          {/* ── ON HOLD section (separate row at the bottom) ── */}
+          {onHoldRequests.length > 0 && (
+            <div className="mt-8 border-t-2 border-amber-200 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-amber-100 text-amber-800 rounded-full p-1.5">
+                  <AlertCircle className="w-4 h-4" />
+                </div>
+                <h2 className="text-sm font-semibold text-amber-900 uppercase tracking-wide">
+                  On Hold
+                </h2>
+                <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
+                  {onHoldRequests.length}
+                </span>
+                <span className="text-xs text-gray-500 ml-2">Awaiting more info, follow-up, or office action</span>
+              </div>
+              <div className="space-y-3">
+                {onHoldRequests.map(r => {
+                  const urgCfg = URGENCY_CONFIG[r.urgency] ?? URGENCY_CONFIG.routine;
+                  const stsCfg = STATUS_CONFIG[r.status] ?? STATUS_CONFIG.pending;
+                  const StsIcon = stsCfg.icon;
+                  return (
+                    <Card key={r.id} className="cursor-pointer hover:shadow-md transition-shadow bg-amber-50/40 border-amber-200" onClick={() => setViewingRequest(r)}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className="font-semibold text-gray-900">{r.patientName}</span>
+                              {r.patientUrNumber && <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {r.patientUrNumber}</span>}
+                              {r.patientDob && <span className="text-xs text-gray-400">DOB: {fmtDate(r.patientDob)}</span>}
+                              <Badge className={`text-xs ${urgCfg.color}`}>{urgCfg.label}</Badge>
+                              <Badge className={`text-xs flex items-center gap-1 ${stsCfg.color}`}>
+                                <StsIcon className="w-3 h-3" />{stsCfg.label}
+                              </Badge>
+                            </div>
+                            {r.referringDoctorName && (
+                              <p className="text-sm text-gray-600 flex items-center gap-1.5">
+                                <Stethoscope className="w-3.5 h-3.5 flex-shrink-0" />
+                                {r.referringDoctorName}
+                              </p>
+                            )}
+                            {(r.scanTypes ?? []).length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {(r.scanTypes ?? []).map(t => (
+                                  <span key={t} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{t}</span>
+                                ))}
+                              </div>
+                            )}
+                            {(r as any).officeNotes && (
+                              <p className="text-xs text-amber-800 mt-1.5 bg-amber-100/60 border border-amber-200 rounded px-2 py-1 line-clamp-2">
+                                <Building2 className="w-3 h-3 inline mr-1 -mt-0.5" />
+                                {(r as any).officeNotes}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex flex-col items-end leading-tight">
+                              <span className="text-xs text-gray-500">{fmtDate(r.requestDate)}</span>
+                              {r.createdAt && (
+                                <span className="text-[10px] text-gray-400">Received {fmtDateTime(r.createdAt)}</span>
+                              )}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              title="Move back to Pending"
+                              onClick={e => { e.stopPropagation(); setRequestStatus.mutate({ id: r.id, status: "pending" }); }}
+                              disabled={setRequestStatus.isPending}
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); openEditRequest(r); }}>
+                              <Edit className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -1217,6 +1313,16 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                   <Label>Notes</Label>
                   <Textarea value={requestForm.notes} onChange={e => setRequestForm(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Any additional notes..." />
                 </div>
+                <div>
+                  <Label className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5 text-amber-600" /> Office Notes <span className="text-xs text-gray-400 font-normal">(internal — not shown to referrer)</span></Label>
+                  <Textarea
+                    value={requestForm.officeNotes}
+                    onChange={e => setRequestForm(p => ({ ...p, officeNotes: e.target.value }))}
+                    rows={2}
+                    placeholder="e.g. waiting on referral, patient to call back, follow-up required..."
+                    className="bg-amber-50 border-amber-200 focus-visible:ring-amber-400"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1373,6 +1479,12 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                     <p className="text-sm text-gray-700">{viewingRequest.notes}</p>
                   </div>
                 )}
+                {(viewingRequest as any).officeNotes && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1 flex items-center gap-1.5"><Building2 className="w-3 h-3" /> Office Notes</p>
+                    <p className="text-sm text-amber-900 whitespace-pre-wrap">{(viewingRequest as any).officeNotes}</p>
+                  </div>
+                )}
                   </div>
 
                   {/* ── RIGHT: Patient match / linking ── */}
@@ -1415,6 +1527,28 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                       data-testid="button-mark-completed"
                     >
                       <CheckCircle className="w-4 h-4 mr-2" /> Mark Completed
+                    </Button>
+                  )}
+                  {viewingRequest.status === "on_hold" ? (
+                    <Button
+                      variant="outline"
+                      className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                      disabled={setRequestStatus.isPending}
+                      onClick={() => setRequestStatus.mutate({ id: viewingRequest.id, status: "pending" })}
+                      data-testid="button-resume-from-hold"
+                    >
+                      <Clock className="w-4 h-4 mr-2" /> Resume (Pending)
+                    </Button>
+                  ) : viewingRequest.status !== "completed" && viewingRequest.status !== "archived" && viewingRequest.status !== "scheduled" && (
+                    <Button
+                      variant="outline"
+                      className="text-amber-700 border-amber-300 hover:bg-amber-50"
+                      disabled={setRequestStatus.isPending}
+                      onClick={() => setRequestStatus.mutate({ id: viewingRequest.id, status: "on_hold" })}
+                      title="Park this request — it'll move to the On Hold area at the bottom of the list"
+                      data-testid="button-move-on-hold"
+                    >
+                      <AlertCircle className="w-4 h-4 mr-2" /> Move to On Hold
                     </Button>
                   )}
                   {viewingRequest.status !== "archived" && (

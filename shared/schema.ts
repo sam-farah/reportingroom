@@ -705,6 +705,7 @@ export const scanRequests = pgTable("scan_requests", {
   clinicalHistory: text("clinical_history"),
   status: varchar("status", { length: 30 }).notNull().default("pending"),
   notes: text("notes"),
+  officeNotes: text("office_notes"),
   requestDate: varchar("request_date", { length: 20 }).notNull(),
   scheduledAppointmentId: integer("scheduled_appointment_id").references(() => appointments.id),
   source: varchar("source", { length: 20 }).notNull().default("internal"),

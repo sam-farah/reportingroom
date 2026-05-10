@@ -2740,6 +2740,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "10 May 2026",
+    tag: "New",
+    title: "Office Notes and an On Hold area on the Requests page",
+    detail:
+      "Two related changes to make the Requests page easier to triage day-to-day:\n\n• Office Notes — a new internal-only notes field on every scan request, separate from the clinical notes the referrer sees. Use it for things like 'waiting on referral letter', 'patient to call back about preferred time', or 'follow up after MRI'. The field shows on the request form (amber background so it's clearly internal) and on the request view dialog. It's never sent to the referring doctor or shown on the printable request PDF.\n\n• On Hold status — when you've got a request that isn't ready to schedule yet, click 'Move to On Hold' from the request view (or the amber clock icon on a card). On Hold requests are moved out of the main list and shown in their own amber-tinted section at the bottom of the page so they don't clutter the active workflow. Click the blue clock icon to move them back to Pending when you're ready, or open the request and use 'Resume (Pending)'.\n\nIf you filter by a specific status (e.g. 'On Hold' or 'Pending') the page just shows that one list — the split only kicks in when you're viewing 'All statuses'.",
+  },
+  {
     date: "08 May 2026",
     tag: "New",
     title: "Download report PDFs without needing email or fax",
