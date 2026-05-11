@@ -723,38 +723,39 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const labelAttemptsRef = useRef<Map<number, number>>(new Map());
   const labelInProgressRef = useRef(false);
 
-  const labelReport = async (report: Report): Promise<boolean> => {
+  const labelReport = async (report: Report, opts: { force?: boolean } = {}): Promise<{ ok: boolean; newWorksheetId?: number }> => {
     // Concurrency guard — only one labelling pass at a time, regardless of
-    // who triggered it (handleSaveReport, the auto-retry effect, etc).
-    if (labelInProgressRef.current) return false;
+    // who triggered it (handleSaveReport, the auto-retry effect, Distribute, etc).
+    if (labelInProgressRef.current) return { ok: false };
     const id = report.id;
     const wsId = (report as any).worksheetId;
-    if (!wsId || (report as any).digitalWorksheetId) return false;
-    // Already labelled? skip.
-    if ((report as any).labelledWorksheetId) return false;
+    if (!wsId || (report as any).digitalWorksheetId) return { ok: false };
+    // Skip if already labelled — unless the caller explicitly forces a re-label
+    // (e.g. before sending, to capture any edits made after the first labelling).
+    if (!opts.force && (report as any).labelledWorksheetId) return { ok: false };
     labelInProgressRef.current = true;
     try {
       const canvas = await generateLabelledCanvas(report);
-      if (!canvas) return false;
+      if (!canvas) return { ok: false };
       const blob: Blob | null = await new Promise((resolve) => {
         try { canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93); }
         catch { resolve(null); }
       });
-      if (!blob) return false;
+      if (!blob) return { ok: false };
       const formData = new FormData();
       formData.append("worksheet", new File([blob], `labelled-${id}.jpg`, { type: 'image/jpeg' }));
       const uploadRes = await fetch(`/api/worksheets/upload`, { method: "POST", body: formData, credentials: 'include' });
       if (!uploadRes.ok) {
         console.warn(`[labelling] upload failed for report ${id}: ${uploadRes.status}`);
-        return false;
+        return { ok: false };
       }
       const { worksheetId: newWsId } = await uploadRes.json();
       await apiRequest(`/api/reports/${id}`, "PATCH", { labelledWorksheetId: newWsId });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
-      return true;
+      return { ok: true, newWorksheetId: newWsId };
     } catch (err: any) {
       console.warn(`[labelling] error for report ${id}:`, err);
-      return false;
+      return { ok: false };
     } finally {
       labelInProgressRef.current = false;
     }
@@ -1100,11 +1101,22 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     }
     const sonographerWithAms = sonographerName + (sonographerAms ? ` (AMS ${sonographerAms})` : "");
 
+    // Always regenerate the labelled worksheet right before sending so the
+    // header strip reflects the current report data (patient name, UR, exam
+    // date, sonographer, etc.) — even if those fields were edited after the
+    // initial labelling pass. Falls through silently on failure.
+    let effectiveLabelledId = (report as any).labelledWorksheetId as number | undefined;
+    if (report.worksheetId && !report.digitalWorksheetId) {
+      const result = await labelReport(report, { force: true });
+      if (result.ok && result.newWorksheetId) {
+        effectiveLabelledId = result.newWorksheetId;
+      }
+    }
+
     // Fetch worksheet image — prefer the labelled copy if one exists.
     let worksheetDataUrl: string | null = null;
-    const labelledId = (report as any).labelledWorksheetId;
-    if (labelledId) {
-      worksheetDataUrl = await toBase64(`/api/worksheets/${labelledId}/image`);
+    if (effectiveLabelledId) {
+      worksheetDataUrl = await toBase64(`/api/worksheets/${effectiveLabelledId}/image`);
     } else if (report.worksheetId) {
       worksheetDataUrl = await toBase64(`/api/worksheets/${report.worksheetId}/image`);
     } else if (report.digitalWorksheetId) {
