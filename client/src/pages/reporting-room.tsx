@@ -828,16 +828,47 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
   const handleReuploadWorksheet = async (file: File) => {
     if (!editingReport) return;
+    // Friendly client-side size guard — anything bigger than 50MB will be
+    // rejected by multer (and likely also by Replit's autoscale proxy before it
+    // even reaches the app), so refuse it up-front instead of leaving the user
+    // staring at a spinner.
+    const MAX_BYTES = 50 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      toast({
+        title: "File too large",
+        description: `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. Worksheets must be 50 MB or smaller. Please compress the PDF or export at a lower resolution and try again.`,
+        variant: "destructive",
+      });
+      setIsReuploading(false);
+      setReuploadDragOver(false);
+      return;
+    }
     setReuploadLoading(true);
     try {
       const formData = new FormData();
       formData.append("worksheet", file);
-      const uploadRes = await fetch("/api/worksheets/upload", {
-        method: "POST",
-        body: formData,
-        credentials: 'include',
-      });
-      if (!uploadRes.ok) throw new Error("Upload failed");
+      // Hard timeout so the spinner can't hang forever if the network or proxy
+      // silently drops the request.
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 90_000);
+      let uploadRes: Response;
+      try {
+        uploadRes = await fetch("/api/worksheets/upload", {
+          method: "POST",
+          body: formData,
+          credentials: 'include',
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (uploadRes.status === 401) {
+        throw new Error("Your session expired. Please refresh and log in again.");
+      }
+      if (uploadRes.status === 413) {
+        throw new Error("File too large for the server. Please use a smaller file.");
+      }
+      if (!uploadRes.ok) throw new Error(`Upload failed (status ${uploadRes.status})`);
       const { worksheetId: newWorksheetId } = await uploadRes.json();
 
       // Patch report: point at the new worksheet, clear any digital worksheet,
@@ -858,7 +889,14 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       toast({ title: "Worksheet replaced", description: "The new worksheet has been saved to this report." });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
     } catch (err: any) {
-      toast({ title: "Reupload failed", description: err.message || "Something went wrong.", variant: "destructive" });
+      const isAbort = err?.name === "AbortError";
+      toast({
+        title: "Reupload failed",
+        description: isAbort
+          ? "The upload took too long and was cancelled. Please try a smaller file or try again."
+          : (err.message || "Something went wrong."),
+        variant: "destructive",
+      });
     } finally {
       setReuploadLoading(false);
       setReuploadDragOver(false);
