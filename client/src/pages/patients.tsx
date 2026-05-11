@@ -1178,14 +1178,22 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
               <Badge variant={worksheet.ocrProcessed ? "default" : "secondary"}>
                 {worksheet.ocrProcessed ? "OCR Processed" : "Pending Processing"}
               </Badge>
-              {worksheet.filename && (
-                <div className="mt-4" style={{ minHeight: '400px' }}>
-                  <WorksheetViewer 
-                    worksheetId={worksheet.id} 
-                    alt={worksheet.originalName}
-                  />
-                </div>
-              )}
+              {worksheet.filename && (() => {
+                // Prefer the labelled copy if any of this patient's reports
+                // links to a labelled worksheet for this original.
+                const linkedReport = (patientReports as any[]).find(
+                  (r) => r.worksheetId === worksheet.id && r.labelledWorksheetId
+                );
+                const displayId = linkedReport?.labelledWorksheetId ?? worksheet.id;
+                return (
+                  <div className="mt-4" style={{ minHeight: '400px' }}>
+                    <WorksheetViewer 
+                      worksheetId={displayId} 
+                      alt={worksheet.originalName}
+                    />
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

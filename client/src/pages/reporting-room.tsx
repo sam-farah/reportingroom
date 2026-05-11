@@ -714,31 +714,28 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     return canvas;
   };
 
-  // ── Worksheet labelling (in-place) ──────────────────────────────────────────
-  // Generates the header-stripped version of the worksheet and OVERWRITES the
-  // original worksheet's file with it. Same worksheet ID, same patient link —
-  // the file content just gains the patient/exam header. After this runs, the
-  // worksheet IS the labelled image everywhere it's shown (patient file viewer,
-  // distribute dialog, fax/email PDFs). No second-step labelling anywhere.
-  //
-  // The report's `labelledWorksheetId` is set equal to `worksheetId` purely as
-  // a "labelled in-place — done" flag, so the auto-retry effect doesn't fire
-  // again on subsequent reloads.
+  // ── Worksheet labelling (separate record) ───────────────────────────────────
+  // Generates a labelled copy of the worksheet, uploads it as a NEW worksheet
+  // record, and points the report's `labelledWorksheetId` at it. The ORIGINAL
+  // worksheet file is NEVER modified — this is critical, because reading the
+  // original guarantees that no matter how many times labelReport runs, we get
+  // exactly one header strip on the output (no stacking).
   const labelAttemptsRef = useRef<Map<number, number>>(new Map());
   const labelInProgressRef = useRef(false);
 
   const labelReport = async (report: Report): Promise<boolean> => {
+    // Concurrency guard — only one labelling pass at a time, regardless of
+    // who triggered it (handleSaveReport, the auto-retry effect, etc).
+    if (labelInProgressRef.current) return false;
     const id = report.id;
     const wsId = (report as any).worksheetId;
-    // In-place replacement only applies to standard (image) worksheets.
-    // Digital worksheets are rendered server-side and don't need labelling here.
     if (!wsId || (report as any).digitalWorksheetId) return false;
+    // Already labelled? skip.
+    if ((report as any).labelledWorksheetId) return false;
+    labelInProgressRef.current = true;
     try {
       const canvas = await generateLabelledCanvas(report);
-      if (!canvas) {
-        console.warn(`[labelling] could not generate canvas for report ${id}`);
-        return false;
-      }
+      if (!canvas) return false;
       const blob: Blob | null = await new Promise((resolve) => {
         try { canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93); }
         catch { resolve(null); }
@@ -746,18 +743,20 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       if (!blob) return false;
       const formData = new FormData();
       formData.append("worksheet", new File([blob], `labelled-${id}.jpg`, { type: 'image/jpeg' }));
-      const replaceRes = await fetch(`/api/worksheets/${wsId}/replace-file`, { method: "POST", body: formData, credentials: 'include' });
-      if (!replaceRes.ok) {
-        console.warn(`[labelling] replace failed for worksheet ${wsId}: ${replaceRes.status}`);
+      const uploadRes = await fetch(`/api/worksheets/upload`, { method: "POST", body: formData, credentials: 'include' });
+      if (!uploadRes.ok) {
+        console.warn(`[labelling] upload failed for report ${id}: ${uploadRes.status}`);
         return false;
       }
-      // Mark the report as labelled in-place so we don't try again.
-      await apiRequest(`/api/reports/${id}`, "PATCH", { labelledWorksheetId: wsId });
+      const { worksheetId: newWsId } = await uploadRes.json();
+      await apiRequest(`/api/reports/${id}`, "PATCH", { labelledWorksheetId: newWsId });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       return true;
     } catch (err: any) {
       console.warn(`[labelling] error for report ${id}:`, err);
       return false;
+    } finally {
+      labelInProgressRef.current = false;
     }
   };
 
@@ -769,21 +768,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const candidate = reports.find((r: any) =>
       r.worksheetId &&
       !r.digitalWorksheetId &&
-      r.labelledWorksheetId !== r.worksheetId &&
-      (labelAttemptsRef.current.get(r.id) ?? 0) < 3
+      !r.labelledWorksheetId &&
+      (labelAttemptsRef.current.get(r.id) ?? 0) < 2
     );
     if (!candidate) return;
 
     labelAttemptsRef.current.set(candidate.id, (labelAttemptsRef.current.get(candidate.id) ?? 0) + 1);
-    labelInProgressRef.current = true;
-
-    (async () => {
-      try {
-        await labelReport(candidate);
-      } finally {
-        labelInProgressRef.current = false;
-      }
-    })();
+    labelReport(candidate);
   }, [reports, clinicData]);
 
   const handleSaveReport = () => {
@@ -843,19 +834,25 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const uploadRes = await fetch("/api/worksheets/upload", {
         method: "POST",
         body: formData,
+        credentials: 'include',
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
       const { worksheetId: newWorksheetId } = await uploadRes.json();
 
-      // Patch the report with the new worksheetId + clear digitalWorksheetId
+      // Patch report: point at the new worksheet, clear any digital worksheet,
+      // and clear the previous labelled worksheet id so the auto-retry effect
+      // generates a fresh labelled copy from the new file.
       const patchRes = await fetch(`/api/reports/${editingReport.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ worksheetId: newWorksheetId, digitalWorksheetId: null }),
+        credentials: 'include',
+        body: JSON.stringify({ worksheetId: newWorksheetId, digitalWorksheetId: null, labelledWorksheetId: null }),
       });
       if (!patchRes.ok) throw new Error("Failed to link worksheet to report");
 
-      setEditingReport(prev => prev ? { ...prev, worksheetId: newWorksheetId, digitalWorksheetId: null } : prev);
+      setEditingReport(prev => prev ? { ...prev, worksheetId: newWorksheetId, digitalWorksheetId: null, labelledWorksheetId: null } as any : prev);
+      // Reset the per-report attempt counter so the auto-retry effect will fire.
+      labelAttemptsRef.current.delete(editingReport.id);
       setIsReuploading(false);
       toast({ title: "Worksheet replaced", description: "The new worksheet has been saved to this report." });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
@@ -1103,9 +1100,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     }
     const sonographerWithAms = sonographerName + (sonographerAms ? ` (AMS ${sonographerAms})` : "");
 
-    // Fetch worksheet image
+    // Fetch worksheet image — prefer the labelled copy if one exists.
     let worksheetDataUrl: string | null = null;
-    if (report.worksheetId) {
+    const labelledId = (report as any).labelledWorksheetId;
+    if (labelledId) {
+      worksheetDataUrl = await toBase64(`/api/worksheets/${labelledId}/image`);
+    } else if (report.worksheetId) {
       worksheetDataUrl = await toBase64(`/api/worksheets/${report.worksheetId}/image`);
     } else if (report.digitalWorksheetId) {
       worksheetDataUrl = await toBase64(`/api/digital-worksheets/${report.digitalWorksheetId}/image`);
@@ -1572,30 +1572,34 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         toast({ title: "No worksheet", description: "No worksheet image is attached to this report.", variant: "destructive" });
         return;
       }
-      // The worksheet on file is already labelled — just fetch it and wrap in a PDF.
-      const imageUrl = (report as any).digitalWorksheetId
-        ? `/api/digital-worksheets/${(report as any).digitalWorksheetId}/image`
-        : `/api/worksheets/${report.worksheetId}/image`;
-      const wsRes = await fetch(imageUrl, { credentials: 'include' });
-      if (!wsRes.ok) throw new Error("Failed to fetch worksheet image");
-      const wsBlob = await wsRes.blob();
-      const wsDataUrl = await new Promise<string>((resolve) => {
-        const r = new FileReader();
-        r.onloadend = () => resolve(r.result as string);
-        r.readAsDataURL(wsBlob);
-      });
-      const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = wsDataUrl;
-      });
-      // Fit the worksheet onto A4 portrait, preserving aspect ratio.
+      const labelledId = (report as any).labelledWorksheetId;
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const A4_W = 210, A4_H = 297;
-      const scale = Math.min(A4_W / wsImg.width, A4_H / wsImg.height);
-      const drawW = wsImg.width * scale;
-      const drawH = wsImg.height * scale;
-      const x = (A4_W - drawW) / 2;
-      const y = (A4_H - drawH) / 2;
-      pdf.addImage(wsDataUrl, 'JPEG', x, y, drawW, drawH);
+      const A4_W_MM = 210, A4_H_MM = 297;
+
+      if (labelledId) {
+        // Already-labelled copy exists — fetch and wrap in PDF.
+        const wsRes = await fetch(`/api/worksheets/${labelledId}/image`, { credentials: 'include' });
+        if (!wsRes.ok) throw new Error("Failed to fetch labelled worksheet");
+        const wsBlob = await wsRes.blob();
+        const wsDataUrl = await new Promise<string>((resolve) => {
+          const r = new FileReader();
+          r.onloadend = () => resolve(r.result as string);
+          r.readAsDataURL(wsBlob);
+        });
+        const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = wsDataUrl;
+        });
+        const scale = Math.min(A4_W_MM / wsImg.width, A4_H_MM / wsImg.height);
+        const drawW = wsImg.width * scale; const drawH = wsImg.height * scale;
+        const x = (A4_W_MM - drawW) / 2; const y = (A4_H_MM - drawH) / 2;
+        pdf.addImage(wsDataUrl, 'JPEG', x, y, drawW, drawH);
+      } else {
+        // Compose a fresh labelled canvas from the original worksheet.
+        const canvas = await generateLabelledCanvas(report);
+        if (!canvas) throw new Error("Could not generate labelled worksheet");
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.93);
+        pdf.addImage(dataUrl, 'JPEG', 0, 0, A4_W_MM, A4_H_MM);
+      }
       pdf.save(`worksheet-${report.patientName.replace(/\s+/g, '-')}-${report.examDate}.pdf`);
       toast({ title: "Downloaded", description: "Worksheet saved as A4 PDF." });
     } catch (error) {
@@ -2161,9 +2165,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     />
                   </div>
                 ) : editingReport.worksheetId ? (
-                  /* Worksheet is labelled in place once the report has been saved */
+                  /* Prefer the labelled copy once it's been generated */
                   <WorksheetViewer 
-                    worksheetId={editingReport.worksheetId} 
+                    worksheetId={(editingReport as any).labelledWorksheetId || editingReport.worksheetId} 
                     alt="Uploaded Worksheet"
                   />
                 ) : (
