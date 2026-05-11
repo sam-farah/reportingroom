@@ -1450,25 +1450,35 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       return;
     }
 
-    if (!htmlBuilt) await buildDistributeHtml();
+    // Always rebuild the HTML right before sending so we have fresh values
+    // (and so the forced re-label inside buildDistributeHtml runs against the
+    // current report data). Use the RETURNED values directly — reading from
+    // state here would be stale because React state updates inside
+    // buildDistributeHtml haven't flushed yet on the same tick.
     setEmailSending(true);
     setEmailSent(false);
     try {
+      const built = await buildDistributeHtml(distributeReport);
+      const htmlWithWsFresh = built?.htmlWithWs ?? distributeHtmlWithWs;
+      const htmlNoWsFresh = built?.htmlNoWs ?? distributeHtmlNoWs;
+      const worksheetDataUrlFresh = built?.worksheetDataUrl ?? distributeWorksheetDataUrl;
+      const baseHtmlForEmail = distributeIncludeWorksheet ? htmlWithWsFresh : htmlNoWsFresh;
+
       // Inject copies-to into the report HTML before generating the PDF
       const copiesTo = [emailToName || emailTo, ...ccList].filter(Boolean).join(", ");
-      const htmlForEmail = distributeHtml.replace(
+      const htmlForEmail = baseHtmlForEmail.replace(
         "<!--COPIES_TO_PLACEHOLDER-->",
         copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : ""
       );
 
       // Build a single combined PDF: report pages first, worksheet as dedicated final page
-      const htmlForPdf = distributeHtmlNoWs.replace(
+      const htmlForPdf = htmlNoWsFresh.replace(
         "<!--COPIES_TO_PLACEHOLDER-->",
         copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : ""
       );
       let pdfBase64: string | undefined;
       try {
-        pdfBase64 = await generateReportPdfBase64(htmlForPdf, distributeWorksheetDataUrl);
+        pdfBase64 = await generateReportPdfBase64(htmlForPdf, worksheetDataUrlFresh);
       } catch (pdfErr) {
         console.warn("Report PDF generation failed, sending without attachment:", pdfErr);
       }
@@ -1512,10 +1522,18 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     setFaxSending(true);
     setFaxSent(false);
     try {
+      // Always rebuild HTML right before sending (forces a fresh re-label so
+      // the worksheet image reflects current report data) and use the
+      // RETURNED values directly — reading from state on the same tick would
+      // be stale because setState inside buildDistributeHtml hasn't flushed.
+      const built = await buildDistributeHtml(distributeReport);
+      const htmlNoWsFresh = built?.htmlNoWs ?? distributeHtmlNoWs;
+      const worksheetDataUrlFresh = built?.worksheetDataUrl ?? distributeWorksheetDataUrl;
+
       // Build a single combined PDF: report pages first, worksheet as dedicated final page
       let pdfBase64: string | undefined;
       try {
-        pdfBase64 = await generateReportPdfBase64(distributeHtmlNoWs, distributeWorksheetDataUrl);
+        pdfBase64 = await generateReportPdfBase64(htmlNoWsFresh, worksheetDataUrlFresh);
       } catch (pdfErr) {
         console.warn("PDF generation failed for fax, sending without attachment:", pdfErr);
       }
@@ -3512,7 +3530,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     ) : (
                       <div className="space-y-2">
                         <p className="text-xs text-gray-500">Generate the report HTML to preview or copy it into your messaging app.</p>
-                        <Button onClick={buildDistributeHtml} variant="outline" className="gap-2">
+                        <Button onClick={() => buildDistributeHtml()} variant="outline" className="gap-2">
                           <Eye className="w-4 h-4" />
                           Generate Preview &amp; HTML
                         </Button>
