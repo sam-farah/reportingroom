@@ -2122,6 +2122,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // If worksheetId or labelledWorksheetId is being changed (e.g. via the
+      // "Replace Worksheet" flow or auto-labelling), propagate the report's
+      // patient + exam metadata onto the new worksheet so it shows up in the
+      // patient's file. Without this, freshly-uploaded worksheets are orphaned
+      // (no patientId set) and never appear under the patient.
+      try {
+        const existingReport = await storage.getReport(reportId);
+        const targetPatientId = updates.patientId ?? existingReport?.patientId;
+        const carryFields: Record<string, any> = {};
+        if (targetPatientId) carryFields.patientId = targetPatientId;
+        const patientName = updates.patientName ?? existingReport?.patientName;
+        const patientDob = updates.patientDob ?? existingReport?.patientDob;
+        const examDate = updates.examDate ?? existingReport?.examDate;
+        if (patientName) carryFields.patientName = patientName;
+        if (patientDob) carryFields.patientDob = patientDob;
+        if (examDate) carryFields.examDate = examDate;
+
+        if (Object.keys(carryFields).length > 0) {
+          if (typeof updates.worksheetId === 'number') {
+            await storage.updateWorksheet(updates.worksheetId, carryFields as any);
+          }
+          if (typeof updates.labelledWorksheetId === 'number') {
+            await storage.updateWorksheet(updates.labelledWorksheetId, carryFields as any);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to propagate patient link to new worksheet:', e);
+      }
+
       // Apply all other field updates first
       if (Object.keys(updates).length > 0) {
         await storage.updateReport(reportId, updates);
