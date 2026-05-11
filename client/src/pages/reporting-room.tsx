@@ -749,7 +749,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         console.warn(`[labelling] upload failed for report ${id}: ${uploadRes.status}`);
         return { ok: false };
       }
-      const { worksheetId: newWsId } = await uploadRes.json();
+      // The upload endpoint returns the new Worksheet row whose primary key is `id`.
+      const uploadJson = await uploadRes.json();
+      const newWsId: number | undefined = uploadJson?.id;
+      if (!newWsId) {
+        console.warn(`[labelling] upload response missing id for report ${id}`);
+        return { ok: false };
+      }
       await apiRequest(`/api/reports/${id}`, "PATCH", { labelledWorksheetId: newWsId });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       return { ok: true, newWorksheetId: newWsId };
@@ -869,7 +875,13 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         throw new Error("File too large for the server. Please use a smaller file.");
       }
       if (!uploadRes.ok) throw new Error(`Upload failed (status ${uploadRes.status})`);
-      const { worksheetId: newWorksheetId } = await uploadRes.json();
+      // The upload endpoint returns the new Worksheet row, whose primary key
+      // is `id` (NOT `worksheetId`). Destructuring as `worksheetId` previously
+      // produced `undefined`, JSON.stringify dropped it, and the PATCH below
+      // silently failed to repoint the report at the new worksheet.
+      const uploadJson = await uploadRes.json();
+      const newWorksheetId: number | undefined = uploadJson?.id;
+      if (!newWorksheetId) throw new Error("Upload response missing worksheet id");
 
       // Patch report: point at the new worksheet, clear any digital worksheet,
       // and clear the previous labelled worksheet id so the auto-retry effect
