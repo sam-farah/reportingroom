@@ -78,48 +78,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Backfill any existing on-disk files to DB so they survive future resets
   backfillFilesToDB(uploadDir).catch(() => {});
 
-  // One-time backfill: for reports that were labelled the OLD way (a separate
-  // labelled worksheet record), point the original worksheet's file at the
-  // labelled file so the patient file viewer shows the labelled image. Marks
-  // the report as labelled-in-place by setting labelledWorksheetId = worksheetId.
-  // Idempotent — the WHERE clause filters out reports already converted.
-  (async () => {
-    try {
-      const { reports: reportsTbl, worksheets: worksheetsTbl } = await import("@shared/schema");
-      const { db: dbConn } = await import("./db");
-      const { eq, and, isNotNull, ne, sql } = await import("drizzle-orm");
-      const candidates = await dbConn
-        .select()
-        .from(reportsTbl)
-        .where(and(
-          isNotNull(reportsTbl.labelledWorksheetId),
-          isNotNull(reportsTbl.worksheetId),
-          ne(reportsTbl.labelledWorksheetId, reportsTbl.worksheetId),
-        ));
-      let migrated = 0;
-      for (const r of candidates) {
-        try {
-          const labelled = await storage.getWorksheet(r.labelledWorksheetId as number);
-          const original = await storage.getWorksheet(r.worksheetId as number);
-          if (!labelled || !original) continue;
-          await dbConn
-            .update(worksheetsTbl)
-            .set({ filename: labelled.filename, fileUrl: labelled.fileUrl } as any)
-            .where(eq(worksheetsTbl.id, original.id));
-          await dbConn
-            .update(reportsTbl)
-            .set({ labelledWorksheetId: r.worksheetId } as any)
-            .where(eq(reportsTbl.id, r.id));
-          migrated++;
-        } catch (err) {
-          console.warn(`[labelling-backfill] report ${r.id} skipped:`, (err as any)?.message);
-        }
-      }
-      if (migrated > 0) console.log(`[labelling-backfill] migrated ${migrated} report(s) to in-place labelled worksheets`);
-    } catch (err) {
-      console.warn("[labelling-backfill] sweep failed:", (err as any)?.message);
-    }
-  })();
+  // ──────────────────────────────────────────────────────────────────────────
+  // PERMANENTLY DISABLED: legacy "in-place labelling" backfill.
+  //
+  // This sweep used to convert old separate-record labelled reports into the
+  // in-place model by overwriting the original worksheet's file bytes with
+  // the labelled file's bytes, then setting `labelledWorksheetId = worksheetId`.
+  // Its WHERE filter was `labelledWorksheetId != worksheetId`, which now
+  // matches EVERY report processed by the current (correct) separate-record
+  // labelling system. On every server restart it would overwrite each
+  // original worksheet with its labelled (header-stamped) copy, so the next
+  // labelling pass would read an already-stamped image and add another
+  // header — producing the 2- and 3-label stacking we kept seeing.
+  //
+  // Do not re-enable. The current labelling code preserves the original
+  // worksheet file untouched and stores the labelled copy under
+  // `labelledWorksheetId`; that invariant is exactly what this backfill
+  // destroyed.
+  // ──────────────────────────────────────────────────────────────────────────
 
   // Self-healing AI training sweep — picks up any distribution that didn't
   // get auto-trained at send time (e.g. transient DB error, dropped path)
