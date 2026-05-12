@@ -513,6 +513,20 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     },
   });
 
+  const unarchiveReportMutation = useMutation({
+    mutationFn: async (reportId: number) => {
+      const response = await apiRequest(`/api/reports/${reportId}/unarchive`, "POST");
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Workflow Restored", description: "Report has been unarchived." });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not unarchive workflow.", variant: "destructive" });
+    },
+  });
+
   const handleEditReport = (report: Report) => {
     const defaultTemplate = templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
     setIsReuploading(false);
@@ -1905,7 +1919,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       Sono Complete
                     </Button>
                   )}
-                  {!(report as any).isArchived && (
+                  {!(report as any).isArchived ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1919,6 +1933,18 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       title="Archive report"
                     >
                       <Archive className="w-3 h-3" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 px-2 text-xs"
+                      onClick={() => unarchiveReportMutation.mutate(report.id)}
+                      disabled={unarchiveReportMutation.isPending}
+                      title="Unarchive report"
+                    >
+                      <Undo2 className="w-3 h-3 mr-1" />
+                      Unarchive
                     </Button>
                   )}
                 </div>
