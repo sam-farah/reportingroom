@@ -45,8 +45,35 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+// Process-wide monotonic counter — guarantees uniqueness even if two uploads
+// land in the same millisecond, which would otherwise be the only theoretical
+// collision window for the timestamp+random scheme below.
+let _uploadFilenameCounter = 0;
+
 const upload = multer({
-  dest: uploadDir,
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      // Multer 2.x's default filename generator (random 16 hex bytes) was
+      // observed to assign the SAME filename to two uploads seconds apart in
+      // this environment, which silently overwrote the first upload's bytes
+      // on disk and produced double-stamped worksheets. We replace it with a
+      // construction that is unique by design: ms-timestamp + per-process
+      // counter + random hex + the file's real extension.
+      const ext = path.extname(file.originalname || "") || "";
+      _uploadFilenameCounter = (_uploadFilenameCounter + 1) >>> 0;
+      const ts = Date.now().toString(36);
+      const ctr = _uploadFilenameCounter.toString(36).padStart(4, "0");
+      const rnd = require("crypto").randomBytes(8).toString("hex");
+      let candidate = `${ts}-${ctr}-${rnd}${ext}`;
+      // Belt-and-braces: if the unthinkable happens and the path exists,
+      // append more entropy and retry rather than overwrite.
+      while (fs.existsSync(path.join(uploadDir, candidate))) {
+        candidate = `${ts}-${ctr}-${rnd}-${require("crypto").randomBytes(4).toString("hex")}${ext}`;
+      }
+      cb(null, candidate);
+    },
+  }),
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit (worksheets are sometimes multi-page PDFs)
   },
