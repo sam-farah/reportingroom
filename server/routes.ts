@@ -64,12 +64,12 @@ const upload = multer({
       _uploadFilenameCounter = (_uploadFilenameCounter + 1) >>> 0;
       const ts = Date.now().toString(36);
       const ctr = _uploadFilenameCounter.toString(36).padStart(4, "0");
-      const rnd = require("crypto").randomBytes(8).toString("hex");
+      const rnd = crypto.randomBytes(8).toString("hex");
       let candidate = `${ts}-${ctr}-${rnd}${ext}`;
       // Belt-and-braces: if the unthinkable happens and the path exists,
       // append more entropy and retry rather than overwrite.
       while (fs.existsSync(path.join(uploadDir, candidate))) {
-        candidate = `${ts}-${ctr}-${rnd}-${require("crypto").randomBytes(4).toString("hex")}${ext}`;
+        candidate = `${ts}-${ctr}-${rnd}-${crypto.randomBytes(4).toString("hex")}${ext}`;
       }
       cb(null, candidate);
     },
