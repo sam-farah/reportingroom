@@ -2845,6 +2845,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "14 May 2026",
+    tag: "Improve",
+    title: "Online referral form now captures Bilateral / Left / Right",
+    detail:
+      "Referrers using the online referral form previously had no way to specify whether a scan was for one side or both — and if just one, which leg or arm. The information was sometimes squeezed into the Clinical Indication free-text and often missed altogether, leaving sonographers guessing.\n\nWhen a referrer ticks any scan that has a side (e.g. Lower limb DVT, Carotid is bilateral by nature so unaffected, Varicose veins, AV Fistula, etc.), three small buttons now appear directly under that scan: Bilateral, Left, Right. Bilateral is pre-selected as the most common request, but the referrer must positively confirm a choice for each side-relevant scan before they can submit.\n\nThe chosen side is appended to the scan name itself — e.g. 'Lower limb DVT (Left)' — so it flows straight through into the internal Scan Requests page, the request detail dialog, and the printed PDF without any extra clicks.",
+  },
+  {
+    date: "14 May 2026",
     tag: "Fix",
     title: "Dates now consistently shown in Australian format (dd/mm/yyyy)",
     detail:

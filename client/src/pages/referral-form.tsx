@@ -38,6 +38,16 @@ export default function ReferralFormPage() {
     _hp: "",
   });
 
+  // Per-scan-type laterality: "bilateral" | "left" | "right".
+  // Only meaningful for scan types where hasLaterality === true.
+  const [scanLaterality, setScanLaterality] = useState<Record<string, "bilateral" | "left" | "right">>({});
+
+  const lateralityOf = (name: string) =>
+    CANONICAL_SCAN_TYPES.find((s) => s.name === name)?.hasLaterality ?? false;
+
+  // Any selected scan type that has laterality but no side picked yet?
+  const missingLaterality = form.scanTypes.some((n) => lateralityOf(n) && !scanLaterality[n]);
+
   useEffect(() => {
     fetch(`/api/public/clinic/${clinicId}/info`)
       .then(async (r) => {
@@ -49,23 +59,50 @@ export default function ReferralFormPage() {
   }, [clinicId]);
 
   const toggleScanType = (name: string) => {
-    setForm((prev) => ({
-      ...prev,
-      scanTypes: prev.scanTypes.includes(name)
-        ? prev.scanTypes.filter((s) => s !== name)
-        : [...prev.scanTypes, name],
-    }));
+    setForm((prev) => {
+      const isOn = prev.scanTypes.includes(name);
+      return {
+        ...prev,
+        scanTypes: isOn ? prev.scanTypes.filter((s) => s !== name) : [...prev.scanTypes, name],
+      };
+    });
+    // When ticking a laterality scan, default to bilateral (most common request).
+    // When unticking, clear the side so it doesn't linger.
+    setScanLaterality((prev) => {
+      const next = { ...prev };
+      if (form.scanTypes.includes(name)) {
+        delete next[name];
+      } else if (lateralityOf(name) && !next[name]) {
+        next[name] = "bilateral";
+      }
+      return next;
+    });
+  };
+
+  const setSide = (name: string, side: "bilateral" | "left" | "right") => {
+    setScanLaterality((prev) => ({ ...prev, [name]: side }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.patientName || form.scanTypes.length === 0) return;
+    if (missingLaterality) return;
     setSubmitting(true);
     try {
+      // Encode laterality directly into the scan type names so it flows through
+      // unchanged into the internal request view, e.g. "Lower limb DVT (Left)".
+      const scanTypesWithSide = form.scanTypes.map((name) => {
+        if (!lateralityOf(name)) return name;
+        const side = scanLaterality[name];
+        if (!side) return name;
+        const label = side === "bilateral" ? "Bilateral" : side === "left" ? "Left" : "Right";
+        return `${name} (${label})`;
+      });
+      const payload = { ...form, scanTypes: scanTypesWithSide };
       const r = await fetch(`/api/public/referral/${clinicId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
@@ -222,19 +259,49 @@ export default function ReferralFormPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-2">
-                {CANONICAL_SCAN_TYPES.map((st) => (
-                  <label key={st.name} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded p-1.5 transition-colors">
-                    <Checkbox
-                      checked={form.scanTypes.includes(st.name)}
-                      onCheckedChange={() => toggleScanType(st.name)}
-                    />
-                    <span className="text-sm">{st.name}</span>
-                  </label>
-                ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {CANONICAL_SCAN_TYPES.map((st) => {
+                  const checked = form.scanTypes.includes(st.name);
+                  const side = scanLaterality[st.name];
+                  return (
+                    <div key={st.name} className={`rounded p-1.5 transition-colors ${checked ? "bg-blue-50" : "hover:bg-gray-50"}`}>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleScanType(st.name)}
+                        />
+                        <span className="text-sm">{st.name}</span>
+                      </label>
+                      {checked && st.hasLaterality && (
+                        <div className="ml-6 mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {(["bilateral", "left", "right"] as const).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setSide(st.name, opt)}
+                              className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                                side === opt
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
+                              }`}
+                            >
+                              {opt === "bilateral" ? "Bilateral" : opt === "left" ? "Left" : "Right"}
+                            </button>
+                          ))}
+                          {!side && (
+                            <span className="text-[11px] text-red-500">Choose a side</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               {form.scanTypes.length === 0 && (
                 <p className="text-xs text-red-500 mt-2">Please select at least one scan type.</p>
+              )}
+              {missingLaterality && (
+                <p className="text-xs text-red-500 mt-2">Please choose Bilateral, Left or Right for each scan above.</p>
               )}
             </CardContent>
           </Card>
@@ -308,6 +375,7 @@ export default function ReferralFormPage() {
               !form.referringDoctorProviderNumber ||
               !form.clinicalIndication ||
               form.scanTypes.length === 0 ||
+              missingLaterality ||
               !form.resultMethod ||
               (form.resultMethod === "Other" && !form.resultMethodOther.trim())
             }
