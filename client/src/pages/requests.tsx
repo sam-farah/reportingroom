@@ -25,19 +25,24 @@ import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
-// Format an ISO date string (yyyy-MM-dd or full ISO) as dd-mm-yyyy.
+// Format an ISO date string (yyyy-MM-dd or full ISO) as dd/MM/yyyy (Australian).
 const fmtDate = (d?: string | null) => {
   if (!d) return "";
   try {
+    // Already DD/MM/YYYY
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
+    // DD-MM-YYYY → DD/MM/YYYY (no Date parse needed)
+    const dmy = d.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (dmy) return `${dmy[1]}/${dmy[2]}/${dmy[3]}`;
     const dt = d.length === 10 ? parseISO(d) : new Date(d);
-    return isNaN(dt.getTime()) ? d : format(dt, "dd-MM-yyyy");
+    return isNaN(dt.getTime()) ? d : format(dt, "dd/MM/yyyy");
   } catch { return d; }
 };
 const fmtDateTime = (d?: string | Date | null) => {
   if (!d) return "";
   try {
     const dt = typeof d === "string" ? new Date(d) : d;
-    return isNaN(dt.getTime()) ? "" : format(dt, "dd-MM-yyyy HH:mm");
+    return isNaN(dt.getTime()) ? "" : format(dt, "dd/MM/yyyy HH:mm");
   } catch { return ""; }
 };
 
@@ -197,7 +202,7 @@ function PatientMatchAudit({ requestId, onOpenPatient, onOpenPatientDetails }: {
               {linkedPatient.urNumber && (
                 <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {linkedPatient.urNumber}</span>
               )}
-              {linkedPatient.dateOfBirth && <span className="text-xs text-gray-600">DOB: {linkedPatient.dateOfBirth}</span>}
+              {linkedPatient.dateOfBirth && <span className="text-xs text-gray-600">DOB: {fmtDate(linkedPatient.dateOfBirth)}</span>}
               <Button
                 size="sm"
                 variant="ghost"
@@ -291,7 +296,7 @@ function PatientMatchAudit({ requestId, onOpenPatient, onOpenPatientDetails }: {
                       {c.urNumber && (
                         <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-xs">UR {c.urNumber}</span>
                       )}
-                      {c.dateOfBirth && <span className="text-xs text-gray-500">DOB: {c.dateOfBirth}</span>}
+                      {c.dateOfBirth && <span className="text-xs text-gray-500">DOB: {fmtDate(c.dateOfBirth)}</span>}
                       {c.phone && <span className="text-xs text-gray-500">{c.phone}</span>}
                     </div>
                     <div className="flex flex-wrap gap-1 mt-1">
@@ -1152,7 +1157,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                         <span className="font-mono font-bold text-blue-700 bg-white border border-blue-300 px-1.5 py-0.5 rounded text-xs">UR {requestForm.patientUrNumber}</span>
                       )}
                     </div>
-                    {requestForm.patientDob && <span className="text-xs text-blue-600">DOB: {requestForm.patientDob}</span>}
+                    {requestForm.patientDob && <span className="text-xs text-blue-600">DOB: {fmtDate(requestForm.patientDob)}</span>}
                   </div>
                   <Button type="button" size="sm" variant="ghost" onClick={clearPatient}><X className="w-3.5 h-3.5" /></Button>
                 </div>
@@ -1173,7 +1178,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                         <button key={p.id} type="button" className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm flex items-center gap-2" onMouseDown={() => selectPatient(p)}>
                           <User className="w-3.5 h-3.5 text-gray-400" />
                           <span className="font-medium">{p.firstName} {p.lastName}</span>
-                          {p.dateOfBirth && <span className="text-gray-400 text-xs">{p.dateOfBirth}</span>}
+                          {p.dateOfBirth && <span className="text-gray-400 text-xs">{fmtDate(p.dateOfBirth)}</span>}
                         </button>
                       ))}
                     </div>

@@ -213,8 +213,17 @@ function TransmittedPdfPreview({ distributionId, title, sentAt, pdfUrl }: { dist
 
 function formatDob(dob: string | null | undefined): string {
   if (!dob) return "";
-  const m = dob.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  // Already DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dob)) return dob;
+  // ISO YYYY-MM-DD (or with time)
+  const iso = dob.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  // DD-MM-YYYY → DD/MM/YYYY
+  const dmy = dob.match(/^(\d{2})-(\d{2})-(\d{4})/);
+  if (dmy) return `${dmy[1]}/${dmy[2]}/${dmy[3]}`;
+  // D/M/YYYY (single-digit) → pad to DD/MM/YYYY
+  const slashDMY = dob.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashDMY) return `${slashDMY[1].padStart(2, '0')}/${slashDMY[2].padStart(2, '0')}/${slashDMY[3]}`;
   return dob;
 }
 
@@ -1013,7 +1022,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
               <div className="flex justify-between items-start">
                 <div>
                   <h2 className="text-xl font-bold">{report.studyType}</h2>
-                  <p className="text-gray-600">Exam Date: {report.examDate}</p>
+                  <p className="text-gray-600">Exam Date: {formatDob(report.examDate)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {report.isFinalized && <Badge className="bg-green-600">Finalized</Badge>}
@@ -1055,7 +1064,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Patient Information</h3>
                 <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
                   <p><strong>Name:</strong> {report.patientName}</p>
-                  <p><strong>DOB:</strong> {report.patientDob}</p>
+                  <p><strong>DOB:</strong> {formatDob(report.patientDob)}</p>
                 </div>
               </div>
 
@@ -1172,7 +1181,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg">
             <div className="border-b pb-4 mb-4">
               <h2 className="text-xl font-bold">{worksheet.originalName}</h2>
-              <p className="text-gray-600">Uploaded: {worksheet.uploadedAt ? format(new Date(worksheet.uploadedAt), "PPP") : 'N/A'}</p>
+              <p className="text-gray-600">Uploaded: {worksheet.uploadedAt ? format(new Date(worksheet.uploadedAt), "dd/MM/yyyy") : 'N/A'}</p>
             </div>
             <div className="space-y-4">
               <Badge variant={worksheet.ocrProcessed ? "default" : "secondary"}>
@@ -1209,7 +1218,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
               <div className="flex justify-between items-start">
                 <div>
                   <h2 className="text-xl font-bold">{digitalWorksheet.studyType || 'Digital Worksheet'}</h2>
-                  <p className="text-gray-600">Created: {digitalWorksheet.createdAt ? format(new Date(digitalWorksheet.createdAt), "PPP") : 'N/A'}</p>
+                  <p className="text-gray-600">Created: {digitalWorksheet.createdAt ? format(new Date(digitalWorksheet.createdAt), "dd/MM/yyyy") : 'N/A'}</p>
                 </div>
                 <Badge variant={digitalWorksheet.isDraft ? "outline" : "default"}>
                   {digitalWorksheet.isDraft ? "Draft" : "Completed"}
@@ -1221,8 +1230,8 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Patient Information</h3>
                 <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
                   <p><strong>Name:</strong> {digitalWorksheet.patientName}</p>
-                  {digitalWorksheet.patientDob && <p><strong>DOB:</strong> {digitalWorksheet.patientDob}</p>}
-                  <p><strong>Exam Date:</strong> {digitalWorksheet.examDate}</p>
+                  {digitalWorksheet.patientDob && <p><strong>DOB:</strong> {formatDob(digitalWorksheet.patientDob)}</p>}
+                  <p><strong>Exam Date:</strong> {formatDob(digitalWorksheet.examDate)}</p>
                 </div>
               </div>
               {digitalWorksheet.drawingData && (

@@ -779,7 +779,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                 Patient pre-filled from calendar: {selectedPatient.firstName} {selectedPatient.lastName}
               </div>
               <div className="text-xs text-purple-600">
-                {selectedPatient.dateOfBirth && `DOB: ${selectedPatient.dateOfBirth}`}
+                {selectedPatient.dateOfBirth && `DOB: ${(() => { const m = selectedPatient.dateOfBirth.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : selectedPatient.dateOfBirth; })()}`}
                 {selectedPatient.urNumber && ` · UR ${selectedPatient.urNumber}`}
               </div>
             </div>
@@ -855,7 +855,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                         {selectedPatient.firstName} {selectedPatient.lastName}
                       </div>
                       <div className="text-sm text-green-600">
-                        DOB: {selectedPatient.dateOfBirth}
+                        DOB: {(() => { const d = selectedPatient.dateOfBirth || ""; const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : d; })()}
                         {selectedPatient.phone && ` | ${selectedPatient.phone}`}
                       </div>
                     </div>
@@ -889,7 +889,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                             >
                               <div className="font-medium">{patient.firstName} {patient.lastName}</div>
                               <div className="text-sm text-gray-500">
-                                DOB: {patient.dateOfBirth}
+                                DOB: {(() => { const d = patient.dateOfBirth || ""; const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : d; })()}
                                 {patient.phone && ` | ${patient.phone}`}
                               </div>
                             </div>

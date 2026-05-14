@@ -2219,7 +2219,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                           )}
                         </div>
                         <div className="text-sm text-green-600">
-                          {selectedPatient.dateOfBirth && `DOB: ${selectedPatient.dateOfBirth}`}
+                          {selectedPatient.dateOfBirth && `DOB: ${(() => { const m = selectedPatient.dateOfBirth.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : selectedPatient.dateOfBirth; })()}`}
                           {selectedPatient.phone && ` | ${selectedPatient.phone}`}
                         </div>
                       </div>
@@ -2258,7 +2258,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                                   >
                                     <div className="font-medium">{patient.firstName} {patient.lastName}</div>
                                     <div className="text-sm text-gray-500">
-                                      {patient.dateOfBirth && `DOB: ${patient.dateOfBirth}`}
+                                      {patient.dateOfBirth && `DOB: ${(() => { const m = patient.dateOfBirth.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : patient.dateOfBirth; })()}`}
                                       {patient.phone && ` | ${patient.phone}`}
                                     </div>
                                   </div>

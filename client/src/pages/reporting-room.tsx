@@ -706,7 +706,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     ctx.fillStyle = '#333333'; ctx.font = `${infoFontSize}px Arial, sans-serif`;
     const lines = [
       `Patient: ${report.patientName}`,
-      (report as any).patientDob ? `DOB: ${(report as any).patientDob}` : null,
+      (report as any).patientDob ? `DOB: ${formatDobAU((report as any).patientDob)}` : null,
       `Exam Date: ${formatDobAU((report as any).examDate)}`,
       (report as any).patientUrNumber ? `UR: ${(report as any).patientUrNumber}` : null,
       `Scan: ${report.studyType}`,
