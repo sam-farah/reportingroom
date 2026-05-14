@@ -2844,6 +2844,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "14 May 2026",
+    tag: "Fix",
+    title: "Dates now consistently shown in Australian format (dd/mm/yyyy)",
+    detail:
+      "A bug report flagged that dates were appearing in different formats across the app — for example a patient's DOB might show as 30/11/1958 in their file header but as 1958-11-30 on the scan request and worksheet preview, with exam dates sometimes appearing as 11/05/2026 and other times as 2026-05-10. Confusing and easy to misread.\n\nEvery date display in the app now uses the Australian dd/mm/yyyy format. This covers the patient file panel (report exam date, DOB, worksheet upload date, digital worksheet created date), the Scan Requests page (every DOB and request date), the Calendar booking dialog, the Draw page patient picker, and the labelled worksheet header inside generated PDFs.\n\nThis change is display-only — no stored data was touched and no finalised reports or worksheets were modified. Reports finalised before today retain their original generated content exactly as signed.",
+  },
+  {
     date: "10 May 2026",
     tag: "Fix",
     title: "Address fields now available when creating a patient from the Calendar",
