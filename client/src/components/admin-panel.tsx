@@ -2844,6 +2844,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "15 May 2026",
+    tag: "Fix",
+    title: "Appointment durations now correctly account for laterality and multi-scan requests",
+    detail:
+      "Two related issues were causing appointment lengths to come out wrong when scheduling from a referral.\n\nFirstly, on the Calendar booking dialog, scans coming in from the new online referral form arrive with the side encoded in the name (e.g. 'Lower limb DVT (Left)'). The duration calculator was matching scan names exactly against the clinic's scan-duration table, so these suffixed names matched nothing and silently defaulted to 30 minutes per scan — regardless of whether you'd configured a longer bilateral time.\n\nSecondly, when you opened a referral and clicked 'Schedule Appointment' from the Requests page, the Duration field was hard-coded to 30 minutes with no auto-calculation, even for multi-scan or bilateral requests.\n\nBoth flows now strip the (Left)/(Right)/(Bilateral) suffix to find the matching scan setting, and use the side encoded in the name to pick the right duration (unilateral vs bilateral). The Schedule Appointment dialog now auto-fills the Duration when it opens, summing every requested scan's configured time — and you can still adjust it manually before saving.",
+  },
+  {
     date: "14 May 2026",
     tag: "Improve",
     title: "Online referral form now captures Bilateral / Left / Right",

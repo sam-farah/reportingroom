@@ -1078,14 +1078,27 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
   };
 
+  // Strip a "(Left)" / "(Right)" / "(Bilateral)" suffix that the online referral
+  // form encodes into the scan name, returning the canonical name + side.
+  const parseScanWithSide = (raw: string): { canonical: string; side: "unilateral" | "bilateral" | null } => {
+    const m = raw.match(/^(.*?)\s*\((Left|Right|Bilateral)\)\s*$/i);
+    if (!m) return { canonical: raw, side: null };
+    const tag = m[2].toLowerCase();
+    return { canonical: m[1].trim(), side: tag === "bilateral" ? "bilateral" : "unilateral" };
+  };
+
   const calcDuration = (scanTypes: string[], laterality: Record<string, "unilateral" | "bilateral">): string => {
     if (scanTypes.length === 0 || scanDurations.length === 0) return "30";
     let total = 0;
     for (const st of scanTypes) {
-      const setting = scanDurations.find(s => s.scanType === st && s.isEnabled);
+      const { canonical, side } = parseScanWithSide(st);
+      const setting =
+        scanDurations.find(s => s.scanType === st && s.isEnabled) ??
+        scanDurations.find(s => s.scanType === canonical && s.isEnabled);
       if (!setting) { total += 30; continue; }
       if (setting.hasLaterality) {
-        const lat = laterality[st] ?? "bilateral";
+        // Side encoded in the name beats the form's laterality map; fall back to the map; default bilateral.
+        const lat = side ?? laterality[st] ?? laterality[canonical] ?? "bilateral";
         total += lat === "unilateral"
           ? (setting.unilateralDuration ?? 30)
           : (setting.bilateralDuration ?? 45);

@@ -22,7 +22,7 @@ import {
   UserCheck, Users, Link2, UserPlus, UserCog
 } from "lucide-react";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
-import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment } from "@shared/schema";
+import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment, ScanDurationSetting } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
 // Format an ISO date string (yyyy-MM-dd or full ISO) as dd/MM/yyyy (Australian).
@@ -440,6 +440,40 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
 
   const { data: physicians = [] } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: sonographers = [] } = useQuery<Sonographer[]>({ queryKey: ["/api/sonographers"] });
+  const { data: scanDurations = [] } = useQuery<(ScanDurationSetting & { hasLaterality: boolean })[]>({ queryKey: ["/api/scan-durations"] });
+
+  // Strip a "(Left)" / "(Right)" / "(Bilateral)" suffix that the online referral
+  // form encodes into the scan name, returning the canonical name + side.
+  const parseScanWithSide = (raw: string): { canonical: string; side: "unilateral" | "bilateral" | null } => {
+    const m = raw.match(/^(.*?)\s*\((Left|Right|Bilateral)\)\s*$/i);
+    if (!m) return { canonical: raw, side: null };
+    const tag = m[2].toLowerCase();
+    return { canonical: m[1].trim(), side: tag === "bilateral" ? "bilateral" : "unilateral" };
+  };
+
+  // Sum the per-scan-type durations from the clinic's settings, honouring any
+  // (Left)/(Right)/(Bilateral) suffix in the scan name. Falls back to 30 min when
+  // a scan type has no setting at all.
+  const calcRequestDuration = (scanTypes: string[]): number => {
+    if (!scanTypes || scanTypes.length === 0 || scanDurations.length === 0) return 30;
+    let total = 0;
+    for (const st of scanTypes) {
+      const { canonical, side } = parseScanWithSide(st);
+      const setting =
+        scanDurations.find(s => s.scanType === st && s.isEnabled) ??
+        scanDurations.find(s => s.scanType === canonical && s.isEnabled);
+      if (!setting) { total += 30; continue; }
+      if (setting.hasLaterality) {
+        const lat = side ?? "bilateral";
+        total += lat === "unilateral"
+          ? (setting.unilateralDuration ?? 30)
+          : (setting.bilateralDuration ?? 45);
+      } else {
+        total += setting.bilateralDuration ?? 30;
+      }
+    }
+    return total;
+  };
 
   const { data: savePatientResults = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients", "save-search", savePatientSearch],
@@ -1578,7 +1612,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                         setScheduleForm({
                           appointmentDate: format(new Date(), "yyyy-MM-dd"),
                           appointmentTime: "09:00",
-                          duration: "30",
+                          duration: String(calcRequestDuration(viewingRequest.scanTypes ?? [])),
                           physicianId: "",
                           sonographerId: "",
                           notes: viewingRequest.notes || "",
@@ -1884,14 +1918,15 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                     </div>
                     <div>
                       <Label className="text-xs">Duration (minutes)</Label>
-                      <Select value={scheduleForm.duration} onValueChange={v => setScheduleForm(p => ({ ...p, duration: v }))}>
-                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {["15","20","30","45","60","75","90","120"].map(d => (
-                            <SelectItem key={d} value={d}>{d} min</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Input
+                        type="number"
+                        min={5}
+                        step={5}
+                        value={scheduleForm.duration}
+                        onChange={e => setScheduleForm(p => ({ ...p, duration: e.target.value }))}
+                        className="mt-1"
+                      />
+                      <p className="text-[11px] text-gray-500 mt-1">Auto-calculated from the requested scans — adjust if needed.</p>
                     </div>
                   </div>
 
