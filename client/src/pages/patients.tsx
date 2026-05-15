@@ -891,7 +891,16 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       isArchived: (r as any).isArchived ?? false,
       data: r,
     })),
-    ...patientWorksheets.map(w => ({
+    ...patientWorksheets
+      // Hide internal labelled-XXX worksheets — they're auto-generated header-stamped
+      // copies of the original upload, not separate worksheets the user uploaded.
+      // The original worksheet viewer already substitutes the labelled file on display.
+      .filter(w => {
+        const isLabelledByName = (w.originalName || '').toLowerCase().startsWith('labelled-');
+        const isReferencedAsLabelled = patientReports.some(r => (r as any).labelledWorksheetId === w.id);
+        return !isLabelledByName && !isReferencedAsLabelled;
+      })
+      .map(w => ({
       type: 'worksheet' as const,
       id: w.id,
       title: w.originalName || 'Worksheet',

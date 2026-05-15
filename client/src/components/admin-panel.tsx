@@ -2846,6 +2846,13 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "15 May 2026",
     tag: "Fix",
+    title: "Patient file no longer cluttered by auto-generated labelled worksheets",
+    detail:
+      "When a report is finalised, the system stamps a header (patient name, DOB, exam date, UR) onto the original worksheet image and saves that as a 'labelled-XXX.jpg' copy. These labelled copies are internal artifacts — they exist so the printed PDF and Distribute output show a properly headed worksheet — but they were appearing as separate worksheet rows in the patient file alongside the original upload. Across multiple finalisations, replaces, and amendments this could pile up to four or five 'worksheet' entries for what was actually one upload.\n\nThe patient file's document timeline now hides any worksheet whose name starts with 'labelled-' or that is referenced as a report's labelled copy. The worksheet viewer continues to substitute the labelled version automatically when you open the original, so nothing visible is lost — the redundant rows simply stop appearing.\n\nIn addition, deleting a report now also archives the labelled copy that was generated for it, so deleted reports don't leave behind orphaned worksheet rows in the patient file.\n\nThis change is display-only — no stored data has been altered. Existing labelled copies still live in the database and can still be viewed via their parent report or the Archived tab.",
+  },
+  {
+    date: "15 May 2026",
+    tag: "Fix",
     title: "Appointment durations now correctly account for laterality and multi-scan requests",
     detail:
       "Two related issues were causing appointment lengths to come out wrong when scheduling from a referral.\n\nFirstly, on the Calendar booking dialog, scans coming in from the new online referral form arrive with the side encoded in the name (e.g. 'Lower limb DVT (Left)'). The duration calculator was matching scan names exactly against the clinic's scan-duration table, so these suffixed names matched nothing and silently defaulted to 30 minutes per scan — regardless of whether you'd configured a longer bilateral time.\n\nSecondly, when you opened a referral and clicked 'Schedule Appointment' from the Requests page, the Duration field was hard-coded to 30 minutes with no auto-calculation, even for multi-scan or bilateral requests.\n\nBoth flows now strip the (Left)/(Right)/(Bilateral) suffix to find the matching scan setting, and use the side encoded in the name to pick the right duration (unilateral vs bilateral). The Schedule Appointment dialog now auto-fills the Duration when it opens, summing every requested scan's configured time — and you can still adjust it manually before saving.",

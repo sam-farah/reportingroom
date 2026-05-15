@@ -705,6 +705,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteReport(id: number): Promise<void> {
+    // Archive the report's auto-generated labelled worksheet copy too (if any)
+    // so it doesn't linger as an orphaned row in the patient file.
+    try {
+      const [existing] = await db
+        .select({ labelledWorksheetId: reports.labelledWorksheetId })
+        .from(reports)
+        .where(eq(reports.id, id));
+      const lwId = existing?.labelledWorksheetId;
+      if (typeof lwId === "number") {
+        await db
+          .update(worksheets)
+          .set({ isArchived: true, archivedAt: new Date() } as any)
+          .where(eq(worksheets.id, lwId));
+      }
+    } catch {
+      /* non-fatal: still proceed with deleting the report */
+    }
     await db.delete(reports).where(eq(reports.id, id));
   }
 
