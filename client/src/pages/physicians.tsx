@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle, UserMinus, UserCheck, Wifi, RefreshCw, Download, Copy, Eye, EyeOff } from "lucide-react";
 import { format } from "date-fns";
 
@@ -775,6 +776,21 @@ export default function Clinic() {
     deletePhysicianMutation.mutate(id);
   };
 
+  // Handle error states (like unauthorized) — MUST be declared before any early returns
+  // to preserve React hooks order across renders.
+  useEffect(() => {
+    if (physiciansError && isUnauthorizedError(physiciansError as Error)) {
+      toast({
+        title: "Authentication Required",
+        description: "Redirecting to login...",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/api/login";
+      }, 1000);
+    }
+  }, [physiciansError, toast]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
@@ -806,20 +822,6 @@ export default function Clinic() {
       </div>
     );
   }
-
-  // Handle error states (like unauthorized)
-  useEffect(() => {
-    if (physiciansError && isUnauthorizedError(physiciansError as Error)) {
-      toast({
-        title: "Authentication Required",
-        description: "Redirecting to login...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 1000);
-    }
-  }, [physiciansError, toast]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
