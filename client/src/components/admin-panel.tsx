@@ -2845,6 +2845,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "21 May 2026",
+    tag: "Fix",
+    title: "Pages now refresh automatically — no more constant manual refreshing",
+    detail:
+      "Several users mentioned having to hit Refresh constantly to see the latest report statuses, new appointments, incoming referrals, etc. The data-fetching layer was configured to cache forever and never re-fetch after the first load, so anything changed by another user (or in another tab) wouldn't appear until you hard-reloaded the browser.\n\nThe app now treats data as fresh for 30 seconds, then quietly re-fetches whenever you:\n\n• tab back to the app from another window,\n• switch between pages inside the app,\n• reconnect after a brief internet drop.\n\nIn practice this means the Reporting Room, Calendar, Requests, Patients list and notifications all update on their own as you move around — no more F5. Background polling was deliberately not enabled (so the server isn't hammered), which means an open page sitting idle in the foreground for several minutes can still be slightly behind; flicking to another tab and back will refresh it instantly.",
+  },
+  {
+    date: "21 May 2026",
     tag: "Improve",
     title: "Calendar hover tooltip now shows the patient's UR number",
     detail:

@@ -47,8 +47,14 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
+      // Auto-refresh when the user tabs back to the app or reconnects, and
+      // re-fetch on remount once data is older than the stale window. This
+      // removes the previous "manual refresh required" behaviour without
+      // adding background polling.
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      refetchOnMount: true,
+      staleTime: 30_000,
       retry: false,
     },
     mutations: {
