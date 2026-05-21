@@ -2844,6 +2844,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "21 May 2026",
+    tag: "Improve",
+    title: "Calendar hover tooltip now shows the patient's UR number",
+    detail:
+      "When you hover over an appointment on the Calendar, the pop-up summary (patient name, date/time, scan type, DOB, phone, referrer) now also shows the patient's UR number as a small blue badge next to the name — the same UR badge used throughout the rest of the app. Lets you confirm the right patient file at a glance without opening the appointment. The UR is read from the appointment record when available, and falls back to the linked patient file otherwise, so existing appointments without a stored UR will still show one as long as they're linked to a patient.",
+  },
+  {
     date: "15 May 2026",
     tag: "Fix",
     title: "Patient file no longer cluttered by auto-generated labelled worksheets",

@@ -3592,7 +3592,24 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
             className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm max-w-xs pointer-events-none"
             style={{ left: Math.min(tooltip.x, window.innerWidth - 240), top: Math.max(tooltip.y, 8) }}
           >
-            <div className="font-semibold text-gray-900 mb-1">{tooltip.apt.patientName}</div>
+            {(() => {
+              // Prefer the UR stored on the appointment; fall back to the linked patient.
+              const apptUr = (tooltip.apt as any).patientUrNumber as string | null | undefined;
+              const patientUr = tooltip.apt.patientId
+                ? allCalendarPatients.find(p => p.id === tooltip.apt.patientId)?.urNumber
+                : null;
+              const ur = apptUr || patientUr;
+              return (
+                <div className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                  <span>{tooltip.apt.patientName}</span>
+                  {ur && (
+                    <span className="text-[10px] font-mono font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+                      UR {ur}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             <div className="text-gray-600 text-xs space-y-0.5">
               <div>{format(new Date(tooltip.apt.appointmentDate), "EEEE d MMM, h:mm a")} ({tooltip.apt.duration} min)</div>
               {tooltip.apt.scanType && <div>{tooltip.apt.scanType}</div>}
