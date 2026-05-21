@@ -2845,6 +2845,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "21 May 2026",
+    tag: "Improve",
+    title: "Finalise reports directly from the patient file, with a clearer Finalise button on report cards",
+    detail:
+      "Two related changes to the report finalisation flow:\n\n1. **Finalise from the patient file.** Previously you could only finalise a report from the main Reports page. The report viewer inside the patient file now shows a green 'Finalise Report' button next to the status badges whenever the open report is still pending. Click it (with a confirmation prompt) and it's electronically signed without leaving the patient.\n\n2. **The tickbox on report cards is now a proper button.** The small checkbox labelled 'Finalize' on each card in the Reports page was easy to miss and gave no visual cue that the report was waiting on you. It's now a full-width amber-to-green gradient button labelled 'Awaiting Finalisation' with a subtle pulse, so reports that still need signing stand out at a glance. Clicking it still asks for confirmation before signing.\n\nNothing about the underlying finalisation logic has changed — same electronic signature, same audit trail, same one-way action requiring an Amendment to alter afterwards.",
+  },
+  {
+    date: "21 May 2026",
     tag: "Fix",
     title: "Pages now refresh automatically — no more constant manual refreshing",
     detail:

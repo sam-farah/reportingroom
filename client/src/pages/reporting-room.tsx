@@ -1955,21 +1955,20 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       Finalized
                     </div>
                   ) : (
-                    <div className="flex items-center space-x-2 w-full">
-                      <Checkbox
-                        checked={false}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            finalizeReportMutation.mutate(report.id);
-                          }
-                        }}
-                        disabled={finalizeReportMutation.isPending}
-                        className="scale-75"
-                      />
-                      <span className="text-xs text-gray-600 flex-1">
-                        {finalizeReportMutation.isPending ? "Finalizing..." : "Finalize"}
-                      </span>
-                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (confirm("Finalise this report? Once finalised it can only be changed via an Amendment.")) {
+                          finalizeReportMutation.mutate(report.id);
+                        }
+                      }}
+                      disabled={finalizeReportMutation.isPending}
+                      className="w-full bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 text-white shadow-sm ring-1 ring-amber-300/60"
+                      title="Click to electronically sign and finalise this report"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
+                      {finalizeReportMutation.isPending ? "Finalising…" : "Awaiting Finalisation"}
+                    </Button>
                   )}
                   {report.isFinalized && (
                     <Button

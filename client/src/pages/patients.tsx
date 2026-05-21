@@ -623,6 +623,22 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     }
   };
 
+  const finalizeReportMutation = useMutation({
+    mutationFn: async (reportId: number) => {
+      const response = await apiRequest(`/api/reports/${reportId}/finalize`, "POST");
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, "reports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", selectedPatient?.id, "documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      toast({ title: "Report finalised", description: "The report has been electronically signed." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Could not finalise", description: error?.message || "Please try again.", variant: "destructive" });
+    },
+  });
+
   const uploadDocumentMutation = useMutation({
     mutationFn: async ({ file, title, documentDate }: { file: File; title: string; documentDate: string }) => {
       const finalFile = selectedPatient
@@ -1033,12 +1049,27 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   <h2 className="text-xl font-bold">{report.studyType}</h2>
                   <p className="text-gray-600">Exam Date: {formatDob(report.examDate)}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {report.isFinalized && <Badge className="bg-green-600">Finalized</Badge>}
                   {(report as any).isSonographerComplete && <Badge className="bg-teal-600">Sono Complete</Badge>}
                   {report.isAmended && <Badge variant="secondary">Amended</Badge>}
                   {report.isDraft && <Badge variant="outline">Draft</Badge>}
                   {(report as any).isArchived && <Badge variant="outline" className="text-gray-500 border-gray-400">Archived</Badge>}
+                  {!report.isFinalized && !(report as any).isArchived && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (confirm("Finalise this report? Once finalised it can only be changed via an Amendment.")) {
+                          finalizeReportMutation.mutate(report.id);
+                        }
+                      }}
+                      disabled={finalizeReportMutation.isPending}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-1.5" />
+                      {finalizeReportMutation.isPending ? "Finalising…" : "Finalise Report"}
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
