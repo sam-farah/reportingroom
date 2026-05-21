@@ -711,6 +711,32 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     queryKey: ["/api/patients"],
   });
 
+  // Public holidays for the visible year (and adjacent year when straddling Dec/Jan)
+  const visibleYear = currentDate.getFullYear();
+  const { data: holidaysThisYear = [] } = useQuery<{ date: string; name: string; region: string }[]>({
+    queryKey: ["/api/public-holidays", { year: visibleYear }],
+    queryFn: async () => {
+      const r = await fetch(`/api/public-holidays?year=${visibleYear}`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+  const { data: holidaysNextYear = [] } = useQuery<{ date: string; name: string; region: string }[]>({
+    queryKey: ["/api/public-holidays", { year: visibleYear + 1 }],
+    queryFn: async () => {
+      const r = await fetch(`/api/public-holidays?year=${visibleYear + 1}`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+  const holidayByDate = new Map<string, { name: string; region: string }[]>();
+  [...holidaysThisYear, ...holidaysNextYear].forEach((h) => {
+    const list = holidayByDate.get(h.date) || [];
+    list.push({ name: h.name, region: h.region });
+    holidayByDate.set(h.date, list);
+  });
+  const getHolidaysForDate = (date: Date) => holidayByDate.get(format(date, "yyyy-MM-dd")) || [];
+
   const { data: searchedPatients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients", "search", patientSearch],
     queryFn: async () => {
@@ -1509,6 +1535,15 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
           <div className={`text-sm font-medium mb-1 ${isToday ? "text-blue-600" : ""}`}>
             {format(currentDay, "d")}
           </div>
+          {getHolidaysForDate(currentDay).map((h, i) => (
+            <div
+              key={`hol-${i}`}
+              className="text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-200 rounded px-1 py-0.5 truncate mb-0.5"
+              title={`${h.name} — public holiday (${h.region})`}
+            >
+              {h.name}
+            </div>
+          ))}
           <div className="space-y-1">
             {dayEvents.map((ev) => {
               const colors = EVENT_COLORS[ev.color] || EVENT_COLORS.purple;
@@ -1748,6 +1783,21 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 <div className="text-center font-semibold text-gray-600 bg-gray-100 p-2 border border-gray-200 mb-2">
                   {format(currentDate, "EEEE, MMMM d")}
                 </div>
+                {getHolidaysForDate(currentDate).length > 0 && (
+                  <div className="mb-2 space-y-1">
+                    {getHolidaysForDate(currentDate).map((h, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded px-3 py-1.5 text-sm"
+                        title={`Public holiday — ${h.region}`}
+                      >
+                        <CalendarIcon className="w-4 h-4 flex-shrink-0" />
+                        <span className="font-semibold">{h.name}</span>
+                        <span className="text-xs text-amber-600">Public holiday</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="flex border border-gray-200">
                   <div className="w-20 flex-shrink-0 bg-gray-50">
                     {SLOTS.map((slot, i) => (
@@ -1879,12 +1929,26 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   <div className="flex-1 grid grid-cols-7">
                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => {
                       const weekDay = addDays(startOfWeek(currentDate), index);
+                      const dayHolidays = getHolidaysForDate(weekDay);
                       return (
                         <div key={day} className="p-2 text-center font-semibold text-gray-600 bg-gray-100 border border-gray-200">
                           <div>{day}</div>
                           <div className={`text-lg ${isSameDay(weekDay, new Date()) ? "text-blue-600 font-bold" : ""}`}>
                             {format(weekDay, "d")}
                           </div>
+                          {dayHolidays.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {dayHolidays.map((h, i) => (
+                                <div
+                                  key={i}
+                                  className="text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-200 rounded px-1 py-0.5 truncate"
+                                  title={`${h.name} — public holiday (${h.region})`}
+                                >
+                                  {h.name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

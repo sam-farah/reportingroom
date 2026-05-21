@@ -86,6 +86,7 @@ export default function Clinic() {
     phone: "",
     fax: "",
     email: "",
+    publicHolidayRegion: "",
   });
 
   // Initialize clinic form when clinic data is loaded
@@ -97,6 +98,7 @@ export default function Clinic() {
         phone: clinic.phone || "",
         fax: clinic.fax || "",
         email: clinic.email || "",
+        publicHolidayRegion: (clinic as any).publicHolidayRegion || "",
       });
     }
   }, [clinic]);
@@ -1539,6 +1541,39 @@ export default function Clinic() {
                   </div>
                   
                   <div className="md:col-span-2">
+                    <Label htmlFor="clinic-holiday-region">Public Holiday Calendar</Label>
+                    <Select
+                      value={(clinicForm as any).publicHolidayRegion || "none"}
+                      onValueChange={(v) => setClinicForm(prev => ({ ...prev, publicHolidayRegion: v === "none" ? "" : v } as any))}
+                    >
+                      <SelectTrigger id="clinic-holiday-region">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None — don't show public holidays</SelectItem>
+                        <SelectItem value="AU-VIC">Australia — Victoria</SelectItem>
+                        <SelectItem value="AU-NSW">Australia — New South Wales</SelectItem>
+                        <SelectItem value="AU-QLD">Australia — Queensland</SelectItem>
+                        <SelectItem value="AU-WA">Australia — Western Australia</SelectItem>
+                        <SelectItem value="AU-SA">Australia — South Australia</SelectItem>
+                        <SelectItem value="AU-TAS">Australia — Tasmania</SelectItem>
+                        <SelectItem value="AU-ACT">Australia — ACT</SelectItem>
+                        <SelectItem value="AU-NT">Australia — Northern Territory</SelectItem>
+                        <SelectItem value="AU">Australia — National only</SelectItem>
+                        <SelectItem value="NZ">New Zealand</SelectItem>
+                        <SelectItem value="GB">United Kingdom</SelectItem>
+                        <SelectItem value="IE">Ireland</SelectItem>
+                        <SelectItem value="US">United States</SelectItem>
+                        <SelectItem value="CA">Canada</SelectItem>
+                        <SelectItem value="IN">India</SelectItem>
+                        <SelectItem value="SG">Singapore</SelectItem>
+                        <SelectItem value="ZA">South Africa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">Selected holidays appear as an amber all-day banner at the top of each day in the Calendar.</p>
+                  </div>
+
+                  <div>
                     <Label htmlFor="clinic-email">Clinic Email *</Label>
                     <Input
                       id="clinic-email"

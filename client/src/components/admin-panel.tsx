@@ -2845,6 +2845,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "21 May 2026",
+    tag: "New",
+    title: "Public holidays now show on the Calendar — pick your region in Clinic Settings",
+    detail:
+      "Admin → Clinic Settings has a new dropdown called 'Public Holiday Calendar'. Pick your state (e.g. Australia — Victoria, NSW, QLD, etc.) or a national set (NZ, UK, US, Canada, Ireland, India, Singapore, South Africa), save, and the corresponding public holidays will appear automatically on every view of the Calendar:\n\n• Day view — an amber all-day banner at the very top of the day, showing the holiday name.\n• Week view — a small amber pill under each weekday header.\n• Month view — an amber pill at the top of the day cell.\n\nThe holidays are pulled from a free public-holiday data source (Nager.Date), cached for 24 hours, and filtered to the state/territory you selected so you don't see, for example, NSW-only holidays on a Victorian calendar. Select 'None' to turn the feature off.\n\nThis does NOT create block-out events automatically — it's a visual indicator only, so your bookings and recurring events still appear normally on those days. If you want a public holiday to actually block the day, add a regular block-out Event for it as usual.",
+  },
+  {
+    date: "21 May 2026",
     tag: "Improve",
     title: "Finalise reports directly from the patient file, with a clearer Finalise button on report cards",
     detail:

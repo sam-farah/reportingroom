@@ -4034,7 +4034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Unauthorized to update this clinic" });
       }
 
-      const { name, address, phone, fax, email } = req.body;
+      const { name, address, phone, fax, email, publicHolidayRegion } = req.body;
       
       if (!name || !email) {
         return res.status(400).json({ error: "Clinic name and email are required" });
@@ -4046,7 +4046,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone,
         fax,
         email,
-      });
+        ...(publicHolidayRegion !== undefined ? { publicHolidayRegion: publicHolidayRegion || null } : {}),
+      } as any);
 
       if (!updatedClinic) {
         return res.status(404).json({ error: "Clinic not found" });
@@ -4056,6 +4057,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Update clinic error:", error);
       res.status(500).json({ error: "Failed to update clinic information" });
+    }
+  });
+
+  // Public holidays — fetched from Nager.Date (https://date.nager.at), cached in-memory per (country, year)
+  const publicHolidayCache = new Map<string, { fetchedAt: number; holidays: any[] }>();
+  const PUBLIC_HOLIDAY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+  app.get("/api/public-holidays", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.json([]);
+      const clinic = await storage.getClinic(user.clinicId);
+      const region = (clinic as any)?.publicHolidayRegion as string | null | undefined;
+      if (!region) return res.json([]);
+
+      // Region is either a country code ("AU", "NZ", "US", "GB") or a subdivision ("AU-VIC")
+      const country = region.split("-")[0].toUpperCase();
+      const subdivision = region.includes("-") ? region.toUpperCase() : null;
+
+      const year = parseInt(String(req.query.year || new Date().getFullYear()));
+      if (isNaN(year) || year < 1970 || year > 2100) {
+        return res.status(400).json({ error: "Invalid year" });
+      }
+
+      const cacheKey = `${country}:${year}`;
+      const cached = publicHolidayCache.get(cacheKey);
+      let raw: any[];
+      if (cached && Date.now() - cached.fetchedAt < PUBLIC_HOLIDAY_TTL_MS) {
+        raw = cached.holidays;
+      } else {
+        const url = `https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`;
+        const r = await fetch(url);
+        if (!r.ok) {
+          console.error(`[public-holidays] Nager.Date returned ${r.status} for ${country}/${year}`);
+          return res.json([]);
+        }
+        raw = await r.json();
+        publicHolidayCache.set(cacheKey, { fetchedAt: Date.now(), holidays: raw });
+      }
+
+      const filtered = raw
+        .filter((h: any) => {
+          if (!subdivision) return true;
+          if (!h.counties || !Array.isArray(h.counties) || h.counties.length === 0) return true; // national
+          return h.counties.includes(subdivision);
+        })
+        .map((h: any) => ({
+          date: h.date,
+          name: h.localName || h.name,
+          country,
+          region: subdivision || country,
+          national: !h.counties || h.counties.length === 0,
+        }));
+
+      res.json(filtered);
+    } catch (error) {
+      console.error("Get public holidays error:", error);
+      res.json([]);
     }
   });
 
