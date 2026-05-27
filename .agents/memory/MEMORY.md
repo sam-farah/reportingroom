@@ -1,2 +1,3 @@
-- [Multi-tenant route scoping](multi-tenant-route-scoping.md) — every new patient/consultation/report route MUST verify the record's clinicId matches the requesting user's clinicId before any read/write/delete.
-- [Autosave concurrency](autosave-concurrency.md) — autosave drafts need serialized PATCHes + `expectedUpdatedAt` optimistic concurrency, otherwise out-of-order responses overwrite newer content with stale payloads.
+- [Multi-tenant route scoping](multi-tenant-route-scoping.md) — every patient/consultation/clinic-owned route must verify clinic ownership before any read or write; never trust IDs from the URL.
+- [Autosave concurrency](autosave-concurrency.md) — autosaves must be serialised (in-flight + pending) and use optimistic concurrency (expectedUpdatedAt → 409) or two tabs silently overwrite each other.
+- [AI training pipeline gaps](ai-training-gaps.md) — training is loaded but the prompt only ever sends 3 examples at 400 chars with no scan-type filter; fixes parked, owner cautious about breaking generation.
