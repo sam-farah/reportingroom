@@ -67,12 +67,18 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
     queryKey: ["/api/physicians"],
   });
 
-  const { data: backupInfo, refetch: refetchBackupInfo } = useQuery<{
+  const { data: backupInfo, refetch: refetchBackupInfo, isFetching: isFetchingBackupInfo, dataUpdatedAt: backupInfoUpdatedAt } = useQuery<{
     lastBackupDate: string | null;
     totalFilesAvailable: number;
     filesSinceLastBackup: number;
   }>({
     queryKey: ["/api/backup/info"],
+    // Show live status: poll every 15s while the tab is open, always refetch
+    // when the Backup tab is mounted, and treat the data as immediately stale.
+    refetchInterval: 15_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   const { data: templates = [] } = useQuery<ReportTemplate[]>({
@@ -1895,9 +1901,27 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
         <TabsContent value="backup" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <HardDrive className="h-5 w-5" />
-                Patient Files Backup
+              <CardTitle className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2">
+                  <HardDrive className="h-5 w-5" />
+                  Patient Files Backup
+                </span>
+                <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+                  {isFetchingBackupInfo ? (
+                    <span className="flex items-center gap-1 text-blue-600">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      Refreshing…
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      Live · updated {backupInfoUpdatedAt ? new Date(backupInfoUpdatedAt).toLocaleTimeString() : '—'}
+                    </span>
+                  )}
+                  <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => refetchBackupInfo()}>
+                    Refresh
+                  </Button>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
