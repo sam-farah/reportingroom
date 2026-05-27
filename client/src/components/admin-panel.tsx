@@ -707,7 +707,16 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="backup" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💾 Backup</TabsTrigger>
           <TabsTrigger value="bug-reports" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🐛 Bug Reports</TabsTrigger>
           {isOwnerOrAdmin && (
-            <TabsTrigger value="login-audit" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🔐 Login Audit</TabsTrigger>
+            <>
+              <div className="my-1 border-t border-gray-200" />
+              <TabsTrigger
+                value="login-audit"
+                className="w-full justify-start gap-2 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-700 opacity-70 hover:opacity-100"
+                title="Login Audit"
+              >
+                🔐
+              </TabsTrigger>
+            </>
           )}
         </TabsList>
 
