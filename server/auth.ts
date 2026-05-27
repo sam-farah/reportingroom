@@ -5,6 +5,25 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { storage } from "./storage";
 
+function clientIp(req: any): string | null {
+  const xf = (req.headers?.["x-forwarded-for"] || "") as string;
+  const ip = xf.split(",")[0]?.trim() || req.ip || req.connection?.remoteAddress || null;
+  return ip ? ip.replace(/^::ffff:/, "").slice(0, 64) : null;
+}
+
+function clientUserAgent(req: any): string | null {
+  const ua = (req.headers?.["user-agent"] || "") as string;
+  return ua ? ua.slice(0, 500) : null;
+}
+
+async function safeAudit(entry: any): Promise<void> {
+  try {
+    await storage.recordLoginAudit(entry);
+  } catch (err) {
+    console.error("[loginAudit] failed to record entry:", err);
+  }
+}
+
 declare module "express-session" {
   interface SessionData {
     userId: string;
@@ -124,15 +143,18 @@ export async function setupAuth(app: Express) {
 
       const user = await storage.getUserByEmail(email);
       if (!user || !user.passwordHash) {
+        await safeAudit({ userId: user?.id ?? null, email, clinicId: user?.clinicId ?? null, eventType: "login_failed", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: user ? "no_password_set" : "unknown_email" });
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
       const isValid = await bcrypt.compare(password, user.passwordHash);
       if (!isValid) {
+        await safeAudit({ userId: user.id, email, clinicId: user.clinicId ?? null, eventType: "login_failed", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: "bad_password" });
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
       if (!user.isActive) {
+        await safeAudit({ userId: user.id, email, clinicId: user.clinicId ?? null, eventType: "login_failed", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: "deactivated" });
         return res.status(403).json({ message: "Your account has been deactivated" });
       }
 
@@ -144,6 +166,7 @@ export async function setupAuth(app: Express) {
           console.error("Session save error:", err);
           return res.status(500).json({ message: "Login failed. Please try again." });
         }
+        void safeAudit({ userId: user.id, email, clinicId: user.clinicId ?? null, eventType: "login_success", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: null });
         res.json(safeUser);
       });
     } catch (error) {
@@ -166,13 +189,21 @@ export async function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/auth/logout", (req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
+    const userId = req.session?.userId;
+    let user: any = null;
+    if (userId) {
+      try { user = await storage.getUser(userId); } catch {}
+    }
     req.session.destroy((err) => {
       if (err) {
         console.error("Logout error:", err);
         return res.status(500).json({ message: "Logout failed" });
       }
       res.clearCookie("connect.sid");
+      if (userId) {
+        void safeAudit({ userId, email: user?.email ?? null, clinicId: user?.clinicId ?? null, eventType: "logout", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: null });
+      }
       res.json({ message: "Logged out successfully" });
     });
   });

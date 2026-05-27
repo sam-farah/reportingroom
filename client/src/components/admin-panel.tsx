@@ -18,9 +18,12 @@ import ClinicPage from "@/pages/physicians";
 import type { TrainingPair, Physician, ReportTemplate, Clinic, ScanTypeContentTemplate, WorksheetTemplate, BugReport } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import ScanDurationsTab from "./scan-durations-tab";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemplates?: () => void }) {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
+  const isOwnerOrAdmin = currentUser?.role === "clinic_owner" || currentUser?.role === "admin";
   const [worksheetFile, setWorksheetFile] = useState<File | null>(null);
   const [reportFile, setReportFile] = useState<File | null>(null);
   const [category, setCategory] = useState("");
@@ -703,6 +706,9 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="referral-system" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🔗 Referral System</TabsTrigger>
           <TabsTrigger value="backup" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💾 Backup</TabsTrigger>
           <TabsTrigger value="bug-reports" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🐛 Bug Reports</TabsTrigger>
+          {isOwnerOrAdmin && (
+            <TabsTrigger value="login-audit" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🔐 Login Audit</TabsTrigger>
+          )}
         </TabsList>
 
         {/* Right content area */}
@@ -2224,8 +2230,214 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <BugReportsTab />
         </TabsContent>
 
+        {isOwnerOrAdmin && (
+          <TabsContent value="login-audit" className="space-y-6">
+            <LoginAuditTab />
+          </TabsContent>
+        )}
+
         </div>
       </Tabs>
+    </div>
+  );
+}
+
+interface LoginAuditRow {
+  id: number;
+  userId: string | null;
+  email: string | null;
+  clinicId: number | null;
+  eventType: "login_success" | "login_failed" | "logout";
+  ipAddress: string | null;
+  userAgent: string | null;
+  failureReason: string | null;
+  createdAt: string;
+  userFirstName: string | null;
+  userLastName: string | null;
+  userEmail: string | null;
+  userRole: string | null;
+}
+
+function LoginAuditTab() {
+  const [eventFilter, setEventFilter] = useState<string>("all");
+  const [userFilter, setUserFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+
+  const { data: rows = [], isLoading, refetch, isFetching } = useQuery<LoginAuditRow[]>({
+    queryKey: ["/api/audit/logins"],
+    refetchInterval: 30000,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
+
+  const userOptions = Array.from(new Map(rows.filter(r => r.userId).map(r => [r.userId!, r])).values());
+
+  const filtered = rows.filter(r => {
+    if (eventFilter !== "all" && r.eventType !== eventFilter) return false;
+    if (userFilter !== "all" && r.userId !== userFilter) return false;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const hay = `${r.userFirstName ?? ""} ${r.userLastName ?? ""} ${r.userEmail ?? ""} ${r.email ?? ""} ${r.ipAddress ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const successes = filtered.filter(r => r.eventType === "login_success").length;
+  const failures = filtered.filter(r => r.eventType === "login_failed").length;
+  const logouts = filtered.filter(r => r.eventType === "logout").length;
+
+  const lastLoginByUser = new Map<string, LoginAuditRow>();
+  for (const r of rows) {
+    if (r.eventType === "login_success" && r.userId && !lastLoginByUser.has(r.userId)) {
+      lastLoginByUser.set(r.userId, r);
+    }
+  }
+  const recentLogins = Array.from(lastLoginByUser.values())
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 10);
+
+  const formatWhen = (iso: string) => {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const time = d.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    return `${date} ${time}`;
+  };
+  const displayName = (r: LoginAuditRow) => {
+    const name = [r.userFirstName, r.userLastName].filter(Boolean).join(" ").trim();
+    return name || r.userEmail || r.email || "(unknown)";
+  };
+  const eventBadge = (e: LoginAuditRow["eventType"]) => {
+    if (e === "login_success") return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Login</span>;
+    if (e === "login_failed") return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Failed</span>;
+    return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">Logout</span>;
+  };
+  const friendlyReason = (r: string | null) => {
+    if (!r) return "";
+    if (r === "bad_password") return "Wrong password";
+    if (r === "unknown_email") return "Unknown email";
+    if (r === "no_password_set") return "No password on account";
+    if (r === "deactivated") return "Account deactivated";
+    return r;
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <span>🔐</span> Login Audit
+              {isFetching && <span className="text-xs text-gray-500 font-normal">refreshing…</span>}
+            </CardTitle>
+            <Button size="sm" variant="outline" onClick={() => refetch()} data-testid="button-refresh-login-audit">
+              <RefreshCw className="h-3 w-3 mr-2" /> Refresh
+            </Button>
+          </div>
+          <p className="text-sm text-gray-600 mt-1">
+            Who has signed in and when. Auto-refreshes every 30 seconds. Shows the most recent 200 events for this clinic.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+              <div className="text-xs uppercase tracking-wide text-green-700">Successful logins</div>
+              <div className="text-2xl font-bold text-green-900">{successes}</div>
+            </div>
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+              <div className="text-xs uppercase tracking-wide text-red-700">Failed attempts</div>
+              <div className="text-2xl font-bold text-red-900">{failures}</div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="text-xs uppercase tracking-wide text-gray-700">Logouts</div>
+              <div className="text-2xl font-bold text-gray-900">{logouts}</div>
+            </div>
+          </div>
+
+          {recentLogins.length > 0 && (
+            <div className="mb-5 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+              <div className="text-sm font-semibold text-blue-900 mb-2">Most recent login per user</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {recentLogins.map(r => (
+                  <div key={`recent-${r.id}`} className="flex items-center justify-between bg-white rounded px-3 py-2 text-sm border border-blue-100">
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 truncate">{displayName(r)}</div>
+                      {r.userRole && <div className="text-xs text-gray-500 capitalize">{r.userRole.replace("_", " ")}</div>}
+                    </div>
+                    <div className="text-xs text-gray-600 whitespace-nowrap ml-3">{formatWhen(r.createdAt)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3 mb-3 items-end">
+            <div className="flex-1 min-w-[180px]">
+              <Label className="text-xs">Search</Label>
+              <Input placeholder="Name, email or IP…" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="input-login-audit-search" />
+            </div>
+            <div className="min-w-[160px]">
+              <Label className="text-xs">Event</Label>
+              <Select value={eventFilter} onValueChange={setEventFilter}>
+                <SelectTrigger data-testid="select-login-audit-event"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All events</SelectItem>
+                  <SelectItem value="login_success">Login</SelectItem>
+                  <SelectItem value="login_failed">Failed</SelectItem>
+                  <SelectItem value="logout">Logout</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[200px]">
+              <Label className="text-xs">User</Label>
+              <Select value={userFilter} onValueChange={setUserFilter}>
+                <SelectTrigger data-testid="select-login-audit-user"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All users</SelectItem>
+                  {userOptions.map(u => (
+                    <SelectItem key={u.userId!} value={u.userId!}>{displayName(u)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => { setEventFilter("all"); setUserFilter("all"); setSearch(""); }}>Reset</Button>
+          </div>
+
+          {isLoading ? (
+            <div className="text-center py-8 text-gray-500">Loading…</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">No login events match your filters yet.</div>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-700">When</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-700">User</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-700">Event</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-700">IP</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-700">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(r => (
+                    <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50" data-testid={`row-login-audit-${r.id}`}>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatWhen(r.createdAt)}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-gray-900">{displayName(r)}</div>
+                        {r.userEmail && r.userFirstName && <div className="text-xs text-gray-500">{r.userEmail}</div>}
+                      </td>
+                      <td className="px-3 py-2">{eventBadge(r.eventType)}</td>
+                      <td className="px-3 py-2 text-gray-600 font-mono text-xs">{r.ipAddress ?? "—"}</td>
+                      <td className="px-3 py-2 text-gray-600 text-xs">{friendlyReason(r.failureReason)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -2867,6 +3079,13 @@ function WaitAnalyticsPanel() {
 // Static changelog — update this list when shipping notable fixes/features.
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
+  {
+    date: "27 May 2026",
+    tag: "New",
+    title: "Login Audit — see who has signed in and when",
+    detail:
+      "There's a new '🔐 Login Audit' tab at the bottom of the Admin panel (visible to clinic owners and admins). It records every sign-in attempt for your clinic and shows it in a sortable, filterable list.\n\nWhat's captured for each event:\n• **When** — date and time in 24-hour format.\n• **Who** — staff member's name, email and role (or the email that was typed for failed attempts on unknown accounts).\n• **Event** — Login (green), Failed (red) or Logout (grey).\n• **IP address** — the network address the request came from.\n• **Detail** — for failures, the reason: wrong password, unknown email, deactivated account, etc.\n\nAt the top of the tab there are three counters (Successful logins / Failed attempts / Logouts) plus a 'Most recent login per user' grid so you can see at a glance when each team member last signed in. Below that, search by name/email/IP, filter by event type or by specific user, and Reset to clear filters. The page auto-refreshes every 30 seconds and there's a manual Refresh button.\n\nFailed sign-in attempts on real accounts are linked to that user (handy for spotting if someone's typing their password wrong vs. a stranger guessing). Attempts on email addresses that don't exist are still logged so you can see brute-force probing if it ever happens.",
+  },
   {
     date: "27 May 2026",
     tag: "Improve",

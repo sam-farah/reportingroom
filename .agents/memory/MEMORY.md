@@ -1,3 +1,4 @@
-- [Multi-tenant route scoping](multi-tenant-route-scoping.md) — every patient/consultation/clinic-owned route must verify clinic ownership before any read or write; never trust IDs from the URL.
-- [Autosave concurrency](autosave-concurrency.md) — autosaves must be serialised (in-flight + pending) and use optimistic concurrency (expectedUpdatedAt → 409) or two tabs silently overwrite each other.
-- [AI training pipeline gaps](ai-training-gaps.md) — training is loaded but the prompt only ever sends 3 examples at 400 chars with no scan-type filter; fixes parked, owner cautious about breaking generation.
+- [Multi-tenant route scoping](multi-tenant-route-scoping.md) — every clinic-scoped Express route must role-check then filter by `currentUser.clinicId`; never trust client-supplied clinicId.
+- [Autosave concurrency](autosave-concurrency.md) — drafts use 1.5s debounce + 30s heartbeat with serialized PATCHes and `expectedUpdatedAt` optimistic concurrency; finalised records are immutable server-side.
+- [AI training gaps](ai-training-gaps.md) — generator currently uses `slice(0,3)` + `substring(0,400)` with no scan-type filter; user has parked the fix out of fear of regressions.
+- [Login audit — unknown-email entries](login-audit-unknown-email.md) — unattributed failed logins have `clinicId=null`; clinic queries must `OR` them in or brute-force probes are invisible.

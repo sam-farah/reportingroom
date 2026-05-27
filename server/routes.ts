@@ -5028,6 +5028,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Login audit — clinic-scoped, owner/admin only
+  app.get('/api/audit/logins', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.session.userId!;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser?.clinicId || !["clinic_owner", "admin"].includes(currentUser.role || "")) {
+        return res.status(403).json({ message: "Owner or admin access required" });
+      }
+      const limit = Math.min(parseInt((req.query.limit as string) || "200", 10) || 200, 1000);
+      const entries = await storage.getLoginAuditForClinic(currentUser.clinicId, limit);
+      const clinicUsers = await storage.getUsersByClinic(currentUser.clinicId);
+      const userMap = new Map(clinicUsers.map(u => [u.id, u]));
+      const enriched = entries.map(e => {
+        const u = e.userId ? userMap.get(e.userId) : null;
+        return {
+          ...e,
+          userFirstName: u?.firstName ?? null,
+          userLastName: u?.lastName ?? null,
+          userEmail: u?.email ?? e.email ?? null,
+          userRole: u?.role ?? null,
+        };
+      });
+      res.json(enriched);
+    } catch (error) {
+      console.error("Error fetching login audit:", error);
+      res.status(500).json({ message: "Failed to fetch login audit" });
+    }
+  });
+
   app.delete('/api/invitations/:id', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.session.userId!;

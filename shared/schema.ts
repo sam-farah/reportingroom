@@ -921,3 +921,22 @@ export const consultations = pgTable("consultations", {
 export const insertConsultationSchema = createInsertSchema(consultations).omit({ id: true, createdAt: true, updatedAt: true, finalisedAt: true });
 export type Consultation = typeof consultations.$inferSelect;
 export type InsertConsultation = z.infer<typeof insertConsultationSchema>;
+
+// Login audit — records every login attempt, logout, and session event for security review.
+// Clinic-scoped via userId → users.clinicId at query time. Failed attempts are also recorded
+// (with userId null if the email didn't match a real account) so brute-force / unusual access can be spotted.
+export const loginAudit = pgTable("login_audit", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id),
+  email: varchar("email", { length: 255 }),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  eventType: varchar("event_type", { length: 20 }).notNull(), // "login_success" | "login_failed" | "logout"
+  ipAddress: varchar("ip_address", { length: 64 }),
+  userAgent: text("user_agent"),
+  failureReason: varchar("failure_reason", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertLoginAuditSchema = createInsertSchema(loginAudit).omit({ id: true, createdAt: true });
+export type LoginAuditEntry = typeof loginAudit.$inferSelect;
+export type InsertLoginAuditEntry = z.infer<typeof insertLoginAuditSchema>;

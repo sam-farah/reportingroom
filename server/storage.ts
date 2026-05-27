@@ -96,6 +96,9 @@ import {
   patientRegistrationTokens,
   type PatientRegistrationToken,
   patientNotes,
+  loginAudit,
+  type LoginAuditEntry,
+  type InsertLoginAuditEntry,
   type PatientNote,
   type InsertPatientNote,
   consultations,
@@ -103,7 +106,7 @@ import {
   type InsertConsultation,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, gte, lte, and, or, ilike, sql, max } from "drizzle-orm";
+import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Interface for storage operations
@@ -129,6 +132,10 @@ export interface IStorage {
   getClinicInvitations(clinicId: number): Promise<UserInvitation[]>;
   acceptInvitation(token: string, userId: string): Promise<void>;
   getUsersByClinic(clinicId: number): Promise<User[]>;
+
+  // Login audit
+  recordLoginAudit(entry: InsertLoginAuditEntry): Promise<LoginAuditEntry>;
+  getLoginAuditForClinic(clinicId: number, limit?: number): Promise<LoginAuditEntry[]>;
   
   // Staff management operations
   getClinicStaff(clinicId: number): Promise<User[]>;
@@ -462,6 +469,30 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.clinicId, clinicId))
       .orderBy(desc(users.createdAt));
     return users_list.map(user => FieldEncryption.decryptFields(user) as User);
+  }
+
+  async recordLoginAudit(entry: InsertLoginAuditEntry): Promise<LoginAuditEntry> {
+    const [row] = await db.insert(loginAudit).values(entry).returning();
+    return row;
+  }
+
+  async getLoginAuditForClinic(clinicId: number, limit: number = 200): Promise<LoginAuditEntry[]> {
+    // Include same-clinic entries AND unattributed failed attempts (unknown_email),
+    // which have no clinicId because the typed address didn't match any account.
+    // Surfacing these to clinic admins is required for brute-force visibility and
+    // is safe — the email is just whatever the visitor typed at the login form.
+    const rows = await db
+      .select()
+      .from(loginAudit)
+      .where(
+        or(
+          eq(loginAudit.clinicId, clinicId),
+          and(isNull(loginAudit.clinicId), eq(loginAudit.failureReason, "unknown_email")),
+        ),
+      )
+      .orderBy(desc(loginAudit.createdAt))
+      .limit(limit);
+    return rows;
   }
 
   // Staff management operations
