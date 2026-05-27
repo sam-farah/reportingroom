@@ -1,0 +1,2 @@
+- [Multi-tenant route scoping](multi-tenant-route-scoping.md) — every new patient/consultation/report route MUST verify the record's clinicId matches the requesting user's clinicId before any read/write/delete.
+- [Autosave concurrency](autosave-concurrency.md) — autosave drafts need serialized PATCHes + `expectedUpdatedAt` optimistic concurrency, otherwise out-of-order responses overwrite newer content with stale payloads.

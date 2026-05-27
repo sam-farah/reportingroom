@@ -898,3 +898,26 @@ export const patientNotes = pgTable("patient_notes", {
 export const insertPatientNoteSchema = createInsertSchema(patientNotes).omit({ id: true, createdAt: true });
 export type PatientNote = typeof patientNotes.$inferSelect;
 export type InsertPatientNote = z.infer<typeof insertPatientNoteSchema>;
+
+// Doctor consultations — comprehensive clinical notes from a doctor visit.
+// Supports three input modes: dictated letter, ambient AI-summarised, or typed-only.
+// Drafts autosave and can be resumed; finalised consultations are immutable.
+export const consultations = pgTable("consultations", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  mode: varchar("mode", { length: 20 }).notNull(), // "dictate" | "ambient" | "type"
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // "draft" | "finalised"
+  title: varchar("title", { length: 200 }),
+  rawTranscript: text("raw_transcript"), // For ambient: the raw conversation transcript before AI summary
+  letterContent: text("letter_content").notNull().default(""), // The final clinical letter/notes body
+  examinationFindings: text("examination_findings").notNull().default(""),
+  authorId: varchar("author_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  finalisedAt: timestamp("finalised_at"),
+});
+
+export const insertConsultationSchema = createInsertSchema(consultations).omit({ id: true, createdAt: true, updatedAt: true, finalisedAt: true });
+export type Consultation = typeof consultations.$inferSelect;
+export type InsertConsultation = z.infer<typeof insertConsultationSchema>;

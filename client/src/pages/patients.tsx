@@ -12,7 +12,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope } from "lucide-react";
+import ConsultationDialog from "@/components/consultation-dialog";
+
+// Feature flag for the new Consultation dialog. Set to true once user has signed off on testing.
+const CONSULTATIONS_ENABLED = false;
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
@@ -239,6 +243,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const [newNoteContent, setNewNoteContent] = useState("");
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [showNotesDialog, setShowNotesDialog] = useState(false);
+  const [showConsultationDialog, setShowConsultationDialog] = useState(false);
   const [viewMode, setViewMode] = useState<"active" | "archived">("active");
   const [archiveModal, setArchiveModal] = useState<{ patient: Patient; mode: "archive" | "restore" } | null>(null);
   const [archivePassword, setArchivePassword] = useState("");
@@ -1492,6 +1497,18 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 <MessageSquare className="w-4 h-4 mr-1" />
                 Add Note
               </Button>
+              {/* Add Consultation — fully built, currently disabled while in testing. Flip CONSULTATIONS_ENABLED to true to enable. */}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!CONSULTATIONS_ENABLED}
+                onClick={() => setShowConsultationDialog(true)}
+                title={CONSULTATIONS_ENABLED ? "Add a consultation note" : "Coming soon — currently being tested"}
+                data-testid="button-add-consultation"
+              >
+                <Stethoscope className="w-4 h-4 mr-1" />
+                Add Consultation
+              </Button>
             </div>
           </div>
         </div>
@@ -1834,6 +1851,16 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
             )}
 
           </div>
+
+          {/* Consultation Dialog (currently disabled in UI via feature flag) */}
+          {selectedPatient && (
+            <ConsultationDialog
+              open={showConsultationDialog}
+              onOpenChange={setShowConsultationDialog}
+              patientId={selectedPatient.id}
+              patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+            />
+          )}
 
           {/* Notes Dialog */}
           <Dialog open={showNotesDialog} onOpenChange={(open) => { setShowNotesDialog(open); if (!open) { setIsAddingNote(false); setNewNoteContent(""); } }}>

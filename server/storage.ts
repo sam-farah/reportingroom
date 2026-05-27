@@ -98,6 +98,9 @@ import {
   patientNotes,
   type PatientNote,
   type InsertPatientNote,
+  consultations,
+  type Consultation,
+  type InsertConsultation,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max } from "drizzle-orm";
@@ -270,6 +273,13 @@ export interface IStorage {
   deletePatientDocument(id: number): Promise<void>;
   getPatientNotes(patientId: number): Promise<PatientNote[]>;
   createPatientNote(note: InsertPatientNote): Promise<PatientNote>;
+
+  // Consultation operations (doctor visit notes)
+  getPatientConsultations(patientId: number): Promise<Consultation[]>;
+  getConsultation(id: number): Promise<Consultation | undefined>;
+  createConsultation(c: InsertConsultation): Promise<Consultation>;
+  updateConsultation(id: number, patch: Partial<InsertConsultation> & { finalisedAt?: Date | null }): Promise<Consultation>;
+  deleteConsultation(id: number): Promise<void>;
 
   // Patient portal operations
   createPatientPortalInvitation(data: InsertPatientPortalInvitation): Promise<PatientPortalInvitation>;
@@ -1412,6 +1422,34 @@ export class DatabaseStorage implements IStorage {
   async createPatientNote(note: InsertPatientNote): Promise<PatientNote> {
     const [created] = await db.insert(patientNotes).values(note).returning();
     return created;
+  }
+
+  // Consultations (doctor visit notes)
+  async getPatientConsultations(patientId: number): Promise<Consultation[]> {
+    return await db.select().from(consultations).where(eq(consultations.patientId, patientId)).orderBy(desc(consultations.updatedAt));
+  }
+
+  async getConsultation(id: number): Promise<Consultation | undefined> {
+    const [row] = await db.select().from(consultations).where(eq(consultations.id, id));
+    return row;
+  }
+
+  async createConsultation(c: InsertConsultation): Promise<Consultation> {
+    const [created] = await db.insert(consultations).values(c).returning();
+    return created;
+  }
+
+  async updateConsultation(id: number, patch: Partial<InsertConsultation> & { finalisedAt?: Date | null }): Promise<Consultation> {
+    const [updated] = await db
+      .update(consultations)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(consultations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteConsultation(id: number): Promise<void> {
+    await db.delete(consultations).where(eq(consultations.id, id));
   }
 
   // Patient portal operations
