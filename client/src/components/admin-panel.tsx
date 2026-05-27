@@ -3076,6 +3076,13 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "27 May 2026",
     tag: "New",
+    title: "Automatic sign-out after 20 minutes of inactivity",
+    detail:
+      "For security, the app now signs you out automatically after 20 minutes of no activity (no mouse movement, clicks, typing, scrolling or touches). Sixty seconds before that, a warning dialog pops up with a live countdown and two buttons:\n\n• **Stay signed in** — resets the timer; you carry on.\n• **Sign out now** — signs you out immediately.\n\nIf you don't interact with the warning, the sign-out happens automatically when the countdown hits zero and you're taken back to the sign-in page with an amber notice explaining what happened. The kiosk view and the patient/referrer portals are unaffected — those are designed to be left running.",
+  },
+  {
+    date: "27 May 2026",
+    tag: "New",
     title: "Login Audit — see who has signed in and when",
     detail:
       "There's a new '🔐 Login Audit' tab at the bottom of the Admin panel (visible to clinic owners and admins). It records every sign-in attempt for your clinic and shows it in a sortable, filterable list.\n\nWhat's captured for each event:\n• **When** — date and time in 24-hour format.\n• **Who** — staff member's name, email and role (or the email that was typed for failed attempts on unknown accounts).\n• **Event** — Login (green), Failed (red) or Logout (grey).\n• **IP address** — the network address the request came from.\n• **Detail** — for failures, the reason: wrong password, unknown email, deactivated account, etc.\n\nAt the top of the tab there are three counters (Successful logins / Failed attempts / Logouts) plus a 'Most recent login per user' grid so you can see at a glance when each team member last signed in. Below that, search by name/email/IP, filter by event type or by specific user, and Reset to clear filters. The page auto-refreshes every 30 seconds and there's a manual Refresh button.\n\nFailed sign-in attempts on real accounts are linked to that user (handy for spotting if someone's typing their password wrong vs. a stranger guessing). Attempts on email addresses that don't exist are still logged so you can see brute-force probing if it ever happens.",

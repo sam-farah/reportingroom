@@ -20,6 +20,7 @@ import ResetPassword from "@/pages/patient-portal/reset-password";
 import PatientRegistrationPage from "@/pages/patient-registration";
 import ReferralFormPage from "@/pages/referral-form";
 import ReferrerPortal from "@/pages/referrer-portal";
+import IdleLogout from "@/components/idle-logout";
 import { Loader2 } from "lucide-react";
 
 function Router() {
@@ -77,11 +78,22 @@ function Router() {
   );
 }
 
+function IdleLogoutGate() {
+  const { isAuthenticated, user } = useAuth();
+  // Don't run idle logout on the public kiosk view — it's meant to be left running.
+  const path = typeof window !== "undefined" ? window.location.pathname : "";
+  if (!isAuthenticated || !user || path.startsWith("/kiosk") || path.startsWith("/patient-portal") || path.startsWith("/referrer-portal") || path.startsWith("/referral-form") || path.startsWith("/patient-registration")) {
+    return null;
+  }
+  return <IdleLogout />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
+        <IdleLogoutGate />
         <Router />
       </TooltipProvider>
     </QueryClientProvider>

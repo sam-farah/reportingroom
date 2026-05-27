@@ -62,6 +62,11 @@ export default function LoginPage() {
           <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent>
+          {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("reason") === "idle" && (
+            <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="banner-idle-logout">
+              You were signed out automatically after 20 minutes of inactivity. Please sign in again to continue.
+            </div>
+          )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
