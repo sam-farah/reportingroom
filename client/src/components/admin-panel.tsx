@@ -2868,6 +2868,20 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "27 May 2026",
+    tag: "Improve",
+    title: "Patient list — new sort, filter and pagination controls",
+    detail:
+      "The Patients page was getting hard to scan once the list grew past a screen or two. There's now a compact toolbar sitting just under the search box with four controls:\n\n• **Sort** — Name (A–Z / Z–A), UR (low–high / high–low), Recently added, or DOB (youngest / oldest first). Defaults to Name A–Z.\n• **Gender filter** — All / Male / Female / Other.\n• **Contact filter** — Any, Has phone, Has email, Has Medicare number, or Missing phone & email (the last one is handy for finding records that still need contact details chased up).\n• **Per page** — 10 / 25 / 50 / 100. Defaults to 25.\n\nA 'Reset' button quietly appears whenever you've changed something from default. Above the patient cards there's a small live counter — e.g. 'Showing 1–25 of 142 active patients' — so you always know where you are. At the bottom of the list, Previous / Next page buttons appear once there's more than one page of results.\n\nThe search box, all three filters and the sort all reset back to page 1 automatically, so you'll never get stranded on an empty page after narrowing the list. The Active / Archived tabs at the top still work exactly as before — the new toolbar simply makes whichever tab you're looking at much easier to navigate.",
+  },
+  {
+    date: "27 May 2026",
+    tag: "Fix",
+    title: "Backup status now updates live — no more stale numbers",
+    detail:
+      "The Backup tab in Admin showed a snapshot of your file count, files since last backup, and last-backup date when you first opened the page, then never refreshed. So if you uploaded a few worksheets and flicked back to the Backup tab, the numbers were lying to you until you hard-reloaded.\n\nIt now polls every 15 seconds while you're on the tab, refetches whenever you switch back to the browser window, and immediately refreshes when you open the Backup tab. A small live indicator at the top of the Patient Files Backup card shows the status — a pulsing blue dot + 'Refreshing…' while it's fetching, then a green dot + 'Live · updated HH:mm:ss' once it's settled. There's also a manual Refresh button if you want to force an immediate update.",
+  },
+  {
     date: "21 May 2026",
     tag: "New",
     title: "Public holidays now show on the Calendar — pick your region in Clinic Settings",
