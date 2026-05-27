@@ -245,6 +245,11 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const [showNotesDialog, setShowNotesDialog] = useState(false);
   const [showConsultationDialog, setShowConsultationDialog] = useState(false);
   const [viewMode, setViewMode] = useState<"active" | "archived">("active");
+  const [sortBy, setSortBy] = useState<"name_asc" | "name_desc" | "ur_asc" | "ur_desc" | "recent" | "dob_youngest" | "dob_oldest">("name_asc");
+  const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female" | "other">("all");
+  const [contactFilter, setContactFilter] = useState<"all" | "has_phone" | "has_email" | "has_medicare" | "missing_contact">("all");
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [page, setPage] = useState<number>(1);
   const [archiveModal, setArchiveModal] = useState<{ patient: Patient; mode: "archive" | "restore" } | null>(null);
   const [archivePassword, setArchivePassword] = useState("");
   const [archiveReason, setArchiveReason] = useState("");
@@ -2517,34 +2522,167 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
         })()}
 
         <Card className="mb-6">
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 placeholder={viewMode === "archived" ? "Search archived patients..." : "Search patients by name, phone, or email..."}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                 className="pl-10"
               />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-gray-500">Sort</Label>
+                <Select value={sortBy} onValueChange={(v) => { setSortBy(v as any); setPage(1); }}>
+                  <SelectTrigger className="h-8 w-[180px] text-sm" data-testid="select-patient-sort"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name_asc">Name (A–Z)</SelectItem>
+                    <SelectItem value="name_desc">Name (Z–A)</SelectItem>
+                    <SelectItem value="ur_asc">UR (low–high)</SelectItem>
+                    <SelectItem value="ur_desc">UR (high–low)</SelectItem>
+                    <SelectItem value="recent">Recently added</SelectItem>
+                    <SelectItem value="dob_youngest">DOB (youngest first)</SelectItem>
+                    <SelectItem value="dob_oldest">DOB (oldest first)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-gray-500">Gender</Label>
+                <Select value={genderFilter} onValueChange={(v) => { setGenderFilter(v as any); setPage(1); }}>
+                  <SelectTrigger className="h-8 w-[120px] text-sm" data-testid="select-patient-gender-filter"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-gray-500">Contact</Label>
+                <Select value={contactFilter} onValueChange={(v) => { setContactFilter(v as any); setPage(1); }}>
+                  <SelectTrigger className="h-8 w-[170px] text-sm" data-testid="select-patient-contact-filter"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Any</SelectItem>
+                    <SelectItem value="has_phone">Has phone</SelectItem>
+                    <SelectItem value="has_email">Has email</SelectItem>
+                    <SelectItem value="has_medicare">Has Medicare no.</SelectItem>
+                    <SelectItem value="missing_contact">Missing phone & email</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-1.5 ml-auto">
+                <Label className="text-xs text-gray-500">Per page</Label>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                  <SelectTrigger className="h-8 w-[80px] text-sm" data-testid="select-patient-page-size"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+                {(genderFilter !== "all" || contactFilter !== "all" || sortBy !== "name_asc") && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-gray-500"
+                    onClick={() => { setGenderFilter("all"); setContactFilter("all"); setSortBy("name_asc"); setPage(1); }}
+                    data-testid="button-reset-patient-filters"
+                  >
+                    Reset
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          </div>
-        ) : patients.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900">No patients found</h3>
-              <p className="text-gray-600 mt-1">Add your first patient to get started</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4">
-            {patients.filter(p => viewMode === "archived" ? p.isActive === false : p.isActive !== false).map((patient) => (
+        {(() => {
+          const dobToDate = (s?: string | null): number => {
+            if (!s) return 0;
+            const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (iso) return new Date(`${iso[1]}-${iso[2]}-${iso[3]}`).getTime();
+            const dmy = s.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+            if (dmy) return new Date(`${dmy[3]}-${dmy[2]}-${dmy[1]}`).getTime();
+            const t = new Date(s).getTime();
+            return isNaN(t) ? 0 : t;
+          };
+          const urNum = (p: Patient): number => {
+            const n = parseInt((p.urNumber || "").replace(/\D/g, ""), 10);
+            return isNaN(n) ? Number.MAX_SAFE_INTEGER : n;
+          };
+          const passesViewMode = (p: Patient) => viewMode === "archived" ? p.isActive === false : p.isActive !== false;
+          const passesGender = (p: Patient) => genderFilter === "all" || (p.gender || "").toLowerCase() === genderFilter;
+          const passesContact = (p: Patient) => {
+            switch (contactFilter) {
+              case "has_phone": return !!p.phone;
+              case "has_email": return !!p.email;
+              case "has_medicare": return !!(p as any).medicareNumber;
+              case "missing_contact": return !p.phone && !p.email;
+              default: return true;
+            }
+          };
+          const filtered = patients.filter(p => passesViewMode(p) && passesGender(p) && passesContact(p));
+          const sorted = [...filtered].sort((a, b) => {
+            switch (sortBy) {
+              case "name_asc":  return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+              case "name_desc": return `${b.lastName} ${b.firstName}`.localeCompare(`${a.lastName} ${a.firstName}`);
+              case "ur_asc":    return urNum(a) - urNum(b);
+              case "ur_desc":   return urNum(b) - urNum(a);
+              case "recent":    return (b.id || 0) - (a.id || 0);
+              case "dob_youngest": return dobToDate(b.dateOfBirth) - dobToDate(a.dateOfBirth);
+              case "dob_oldest":   return dobToDate(a.dateOfBirth) - dobToDate(b.dateOfBirth);
+              default: return 0;
+            }
+          });
+          const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+          const currentPage = Math.min(page, totalPages);
+          const start = (currentPage - 1) * pageSize;
+          const pageItems = sorted.slice(start, start + pageSize);
+
+          if (isLoading) {
+            return (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            );
+          }
+          if (patients.length === 0) {
+            return (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900">No patients found</h3>
+                  <p className="text-gray-600 mt-1">Add your first patient to get started</p>
+                </CardContent>
+              </Card>
+            );
+          }
+          if (filtered.length === 0) {
+            return (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900">No patients match these filters</h3>
+                  <p className="text-gray-600 mt-1">Try clearing the filters or adjusting the search.</p>
+                </CardContent>
+              </Card>
+            );
+          }
+
+          return (
+            <>
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-2 px-1">
+                <span data-testid="text-patient-count">
+                  Showing <strong>{start + 1}–{Math.min(start + pageSize, sorted.length)}</strong> of <strong>{sorted.length}</strong> {viewMode === "archived" ? "archived" : "active"} patients
+                </span>
+              </div>
+              <div className="grid gap-4">
+                {pageItems.map((patient) => (
               <Card 
                 key={patient.id} 
                 className="cursor-pointer hover:shadow-md transition-shadow"
@@ -2603,8 +2741,37 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 </CardContent>
               </Card>
             ))}
-          </div>
-        )}
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between gap-2 mt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage(currentPage - 1)}
+                    data-testid="button-patients-prev-page"
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-xs text-gray-500" data-testid="text-patients-page-indicator">
+                    Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage(currentPage + 1)}
+                    data-testid="button-patients-next-page"
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
