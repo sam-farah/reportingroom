@@ -6245,6 +6245,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Referrer: get limited calendar (busy slots, no patient names)
+  app.get("/api/referrer/scan-durations", isReferrer, async (req: any, res) => {
+    try {
+      const clinicId = req.user.clinicId;
+      if (!clinicId) return res.status(403).json({ error: "No clinic associated" });
+      const settings = await storage.getScanDurationSettings(clinicId);
+      res.json(settings);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to fetch scan durations" });
+    }
+  });
+
   app.get("/api/referrer/calendar", isReferrer, async (req: any, res) => {
     try {
       const clinicId = req.user.clinicId;
@@ -6291,8 +6302,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create appointment
       const apptStart = new Date(startTime);
-      const apptEnd = new Date(endTime);
-      const durationMins = Math.max(30, Math.round((apptEnd.getTime() - apptStart.getTime()) / 60000));
+      // Derive duration from clinic's scan-duration settings (ignore client-supplied endTime
+      // so the referrer portal always respects the clinic's configured times).
+      const durationSettings = await storage.getScanDurationSettings(clinicId);
+      const match = durationSettings.find((s: any) => s.scanType === scanType && s.isEnabled);
+      let durationMins = 30;
+      if (match) {
+        durationMins = match.hasLaterality
+          ? (match.bilateralDuration ?? 45)
+          : (match.bilateralDuration ?? 30);
+      }
+      const apptEnd = new Date(apptStart.getTime() + durationMins * 60000);
       const referrerFullName = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() || "External Referrer";
       const referralPrefix = `[Referral from: ${referrerFullName}]`;
       const combinedNotes = notes ? `${referralPrefix}\n${notes}` : referralPrefix;

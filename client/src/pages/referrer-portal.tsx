@@ -16,6 +16,7 @@ type ClinicInfo = { name: string; logoUrl: string | null; phone: string | null }
 type BusySlot = { id: number; startTime: string; endTime: string; scanType: string };
 type CalendarEvent = { id: number; title: string; startTime: string; endTime: string; color: string };
 type ScanRequest = { id: number; patientName: string; scanTypes: string[]; status: string; urgency: string; requestDate: string; createdAt: string };
+type ScanDuration = { scanType: string; isEnabled: boolean; hasLaterality: boolean; bilateralDuration: number | null; unilateralDuration: number | null };
 
 const HOURS = Array.from({ length: 11 }, (_, i) => i + 7); // 7am–5pm
 const SLOT_H = 56;
@@ -49,6 +50,14 @@ export default function ReferrerPortal() {
   const [bookForm, setBookForm] = useState({ patientName: "", patientDob: "", patientPhone: "", patientEmail: "", scanType: "", clinicalIndication: "", notes: "" });
   const [booking, setBooking] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [scanDurations, setScanDurations] = useState<ScanDuration[]>([]);
+
+  const durationForScanType = (scanType: string): number => {
+    if (!scanType) return 30;
+    const s = scanDurations.find((d) => d.scanType === scanType && d.isEnabled);
+    if (!s) return 30;
+    return s.hasLaterality ? (s.bilateralDuration ?? 45) : (s.bilateralDuration ?? 30);
+  };
 
   // Check auth
   useEffect(() => {
@@ -67,9 +76,10 @@ export default function ReferrerPortal() {
   const loadCalendar = useCallback(async () => {
     setLoadingCal(true);
     try {
-      const [calRes, reqRes] = await Promise.all([
+      const [calRes, reqRes, durRes] = await Promise.all([
         fetch("/api/referrer/calendar", { credentials: "include" }),
         fetch("/api/referrer/requests", { credentials: "include" }),
+        fetch("/api/referrer/scan-durations", { credentials: "include" }),
       ]);
       if (calRes.ok) {
         const data = await calRes.json();
@@ -77,6 +87,7 @@ export default function ReferrerPortal() {
         setCalEvents(data.events || []);
       }
       if (reqRes.ok) setMyRequests(await reqRes.json());
+      if (durRes.ok) setScanDurations(await durRes.json());
     } catch {}
     setLoadingCal(false);
   }, []);
@@ -131,7 +142,7 @@ export default function ReferrerPortal() {
     try {
       const start = new Date(bookingSlot.date);
       start.setHours(bookingSlot.hour, 0, 0, 0);
-      const end = new Date(start.getTime() + 30 * 60 * 1000);
+      const end = new Date(start.getTime() + durationForScanType(bookForm.scanType) * 60 * 1000);
       const r = await fetch("/api/referrer/appointments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -149,7 +160,7 @@ export default function ReferrerPortal() {
     if (!bookingSlot) return;
     const start = new Date(bookingSlot.date);
     start.setHours(bookingSlot.hour, 0, 0, 0);
-    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    const end = new Date(start.getTime() + durationForScanType(bookForm.scanType) * 60 * 1000);
     const pad = (n: number) => String(n).padStart(2, "0");
     const fmt = (d: Date) =>
       `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
