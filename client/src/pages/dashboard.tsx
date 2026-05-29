@@ -20,10 +20,11 @@ import Draw from "./draw";
 import Templates from "./templates";
 import HelpCentre from "./help-centre";
 import NoticeBoard from "./notice-board";
+import ClinicsAdmin from "./clinics-admin";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board" | "clinics";
 
-const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; comingSoon?: boolean }[] = [
+const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; superAdminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",  icon: CalendarIcon },
   { id: "user",           label: "Upload",    icon: Upload },
   { id: "draw",           label: "Draw",      icon: PenLine },
@@ -34,6 +35,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "dicom",          label: "DICOM",     icon: ScanLine },
   { id: "staff",          label: "Team",      icon: Users, adminOnly: true },
   { id: "admin",          label: "Admin",     icon: Settings },
+  { id: "clinics",        label: "Clinics",   icon: Building2, superAdminOnly: true },
   { id: "help",           label: "Help",      icon: HelpCircle, comingSoon: true },
 ];
 
@@ -52,6 +54,7 @@ const PAGE_TITLES: Record<Panel, string> = {
   "help":           "Help Centre",
   "dicom":          "DICOM Viewer",
   "notice-board":   "Notice Board",
+  "clinics":        "Clinics",
 };
 
 export default function Dashboard() {
@@ -79,6 +82,7 @@ export default function Dashboard() {
   };
 
   const isOwnerOrAdmin = user?.role === 'clinic_owner' || user?.role === 'admin';
+  const isSuperAdmin = !!(user as any)?.isSuperAdmin;
   const roleLabel = user?.role === 'clinic_owner' ? 'Owner' : user?.role === 'admin' ? 'Admin' : 'Staff';
 
   const { data: kioskSettings } = useQuery<{ clinicName: string; address?: string; phone?: string; kioskLogoUrl?: string }>({
@@ -115,7 +119,9 @@ export default function Dashboard() {
     p => p.pinned || (p.createdAt && new Date(p.createdAt).getTime() > recentSince)
   ).length;
 
-  const visibleNav = NAV_ITEMS.filter(item => !item.adminOnly || isOwnerOrAdmin);
+  const visibleNav = NAV_ITEMS.filter(item =>
+    (!item.adminOnly || isOwnerOrAdmin) && (!item.superAdminOnly || isSuperAdmin)
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -287,6 +293,8 @@ export default function Dashboard() {
         <HelpCentre />
       ) : activePanel === "notice-board" ? (
         <NoticeBoard />
+      ) : activePanel === "clinics" && isSuperAdmin ? (
+        <ClinicsAdmin />
       ) : activePanel === "dicom" ? (
         <div className="p-8 max-w-2xl mx-auto w-full" style={{ paddingTop: "48px" }}>
           {/* Header */}

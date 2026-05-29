@@ -4833,39 +4833,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/clinics/register", isAuthenticated, async (req: any, res) => {
+  // ── Super-admin (platform owner) clinic onboarding ──
+  // Private, no public sign-up. A super admin can create new clinics and invite
+  // each clinic's first owner. Gated on the users.isSuperAdmin flag.
+  const isSuperAdmin = async (req: any, res: any, next: any) => {
     try {
-      const clinicData = insertClinicSchema.parse(req.body);
-      const userId = req.session.userId!;
-      
+      const user = await storage.getUser(req.session?.userId);
+      if (!user?.isSuperAdmin) {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+      req.superAdminUser = user;
+      next();
+    } catch {
+      res.status(403).json({ message: "Super admin access required" });
+    }
+  };
+
+  // List every clinic on the platform with its owner(s) and staff count.
+  app.get("/api/admin/clinics", isAuthenticated, isSuperAdmin, async (_req: any, res) => {
+    try {
+      const allClinics = await storage.getAllClinics();
+      const result = await Promise.all(
+        allClinics.map(async (clinic) => {
+          const staff = await storage.getUsersByClinic(clinic.id);
+          const owners = staff.filter((u) => u.role === "clinic_owner");
+          const pendingInvites = (await storage.getClinicInvitations(clinic.id)).filter(
+            (inv) => !inv.acceptedAt,
+          );
+          return {
+            id: clinic.id,
+            name: clinic.name,
+            email: clinic.email,
+            phone: clinic.phone,
+            city: clinic.city,
+            state: clinic.state,
+            isActive: clinic.isActive,
+            createdAt: clinic.createdAt,
+            staffCount: staff.length,
+            owners: owners.map((o) => ({
+              name: `${o.firstName || ""} ${o.lastName || ""}`.trim() || o.email,
+              email: o.email,
+            })),
+            pendingOwnerInvites: pendingInvites
+              .filter((inv) => inv.role === "clinic_owner")
+              .map((inv) => inv.email),
+          };
+        }),
+      );
+      res.json(result);
+    } catch (error) {
+      console.error("List clinics (super admin) error:", error);
+      res.status(500).json({ message: "Failed to list clinics" });
+    }
+  });
+
+  // Create a new clinic and invite its first owner. Returns the invite link.
+  app.post("/api/admin/clinics", isAuthenticated, isSuperAdmin, async (req: any, res) => {
+    try {
+      const { ownerEmail, ...clinicFields } = req.body;
+      const clinicData = insertClinicSchema.parse(clinicFields);
+
+      if (!ownerEmail || !ownerEmail.includes("@")) {
+        return res.status(400).json({ message: "A valid owner email is required" });
+      }
+
       const existingClinic = await storage.getClinicByEmail(clinicData.email);
       if (existingClinic) {
         return res.status(400).json({ message: "A clinic with this email already exists" });
       }
 
-      const currentUser = await storage.getUser(userId);
-      if (currentUser?.clinicId) {
-        return res.status(400).json({ message: "You are already associated with a clinic" });
-      }
-
+      // Create the clinic (not attached to the super admin's own account)
       const clinic = await storage.createClinic(clinicData);
 
-      await db
-        .update(users)
-        .set({
+      // Invite the first owner for this new clinic. If the invite cannot be
+      // created, roll back the clinic so we never leave an ownerless orphan.
+      let invitation;
+      try {
+        invitation = await storage.createUserInvitation({
+          email: ownerEmail,
+          role: "clinic_owner",
           clinicId: clinic.id,
-          role: 'clinic_owner',
-          joinedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, userId));
+          invitedBy: req.superAdminUser.id,
+          token: generateInvitationToken(),
+          expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
+          isActive: true,
+        });
+      } catch (inviteError) {
+        await storage.deleteClinic(clinic.id);
+        throw inviteError;
+      }
 
-      const updatedUser = await storage.getUser(userId);
-      res.status(201).json({ clinic, user: updatedUser });
+      const host = req.get("host");
+      const invitationUrl = host?.includes("replit")
+        ? `https://reportingroom.net/invite/${invitation.token}`
+        : `${req.protocol}://${host}/invite/${invitation.token}`;
+
+      const invitedByName =
+        req.superAdminUser.firstName && req.superAdminUser.lastName
+          ? `${req.superAdminUser.firstName} ${req.superAdminUser.lastName}`
+          : req.superAdminUser.email || "Reporting Room";
+
+      try {
+        await sendInvitationEmail({
+          toEmail: ownerEmail,
+          invitationUrl,
+          clinicName: clinic.name,
+          role: "clinic_owner",
+          invitedByName,
+        });
+      } catch (emailError) {
+        console.error("Failed to send owner invitation email:", emailError);
+      }
+
+      res.status(201).json({ clinic, invitationUrl, ownerEmail });
     } catch (error) {
-      console.error("Clinic registration error:", error);
-      res.status(400).json({ message: "Failed to register clinic" });
+      console.error("Create clinic (super admin) error:", error);
+      res.status(400).json({ message: "Failed to create clinic" });
     }
+  });
+
+  // Public clinic self-registration is DISABLED. Onboarding is private: a super
+  // admin creates each clinic and invites its first owner via POST /api/admin/clinics.
+  app.post("/api/clinics/register", isAuthenticated, async (_req: any, res) => {
+    return res.status(403).json({
+      message:
+        "Public clinic registration is disabled. New clinics are created by invitation only.",
+    });
   });
 
   // User invitation routes

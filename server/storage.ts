@@ -123,6 +123,7 @@ export interface IStorage {
   getClinic(id: number): Promise<Clinic | undefined>;
   getClinicByEmail(email: string): Promise<Clinic | undefined>;
   createClinic(clinic: InsertClinic): Promise<Clinic>;
+  deleteClinic(id: number): Promise<void>;
   updateClinic(id: number, clinic: Partial<InsertClinic>): Promise<Clinic | undefined>;
   
   // User invitation operations
@@ -400,6 +401,10 @@ export class DatabaseStorage implements IStorage {
     return clinic;
   }
 
+  async deleteClinic(id: number): Promise<void> {
+    await db.delete(clinics).where(eq(clinics.id, id));
+  }
+
   async updateClinic(id: number, clinicData: Partial<InsertClinic>): Promise<Clinic | undefined> {
     const [clinic] = await db
       .update(clinics)
@@ -442,6 +447,24 @@ export class DatabaseStorage implements IStorage {
     const invitation = await this.getUserInvitation(token);
     if (!invitation || invitation.acceptedAt) {
       throw new Error("Invalid or already accepted invitation");
+    }
+    if (invitation.isActive === false) {
+      throw new Error("This invitation has been revoked");
+    }
+    if (invitation.expiresAt && new Date(invitation.expiresAt).getTime() < Date.now()) {
+      throw new Error("This invitation has expired");
+    }
+
+    // The invitation is tied to a specific email — only the matching account may accept it.
+    const acceptingUser = await this.getUser(userId);
+    if (!acceptingUser) {
+      throw new Error("User not found");
+    }
+    if (
+      (acceptingUser.email || "").trim().toLowerCase() !==
+      (invitation.email || "").trim().toLowerCase()
+    ) {
+      throw new Error("This invitation was issued to a different email address");
     }
 
     // Update user with clinic information

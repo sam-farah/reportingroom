@@ -72,6 +72,7 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   clinicId: integer("clinic_id").references(() => clinics.id),
   role: varchar("role", { length: 50 }).notNull().default('sonographer'),
+  isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   invitedBy: varchar("invited_by").references((): AnyPgColumn => users.id),
   invitedAt: timestamp("invited_at"),
