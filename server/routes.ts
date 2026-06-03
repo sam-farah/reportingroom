@@ -1665,7 +1665,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const patient = await storage.getPatient(ctx.consult.patientId);
       const patientHeader = patient ? `Patient: ${patient.firstName} ${patient.lastName}${patient.dateOfBirth ? ` (DOB ${patient.dateOfBirth})` : ""}` : "";
 
-      const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY2 || process.env.OPENAI_API_KEY });
       const completion = await openaiClient.chat.completions.create({
         model: "gpt-4o",
         temperature: 0.2,
@@ -5470,7 +5470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
+        apiKey: process.env.OPENAI_API_KEY2 || process.env.OPENAI_API_KEY,
       });
 
       // Read file into buffer and create a File object with proper extension
