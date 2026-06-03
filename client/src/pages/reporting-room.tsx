@@ -1478,18 +1478,19 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const worksheetDataUrlFresh = built?.worksheetDataUrl ?? distributeWorksheetDataUrl;
       const baseHtmlForEmail = distributeIncludeWorksheet ? htmlWithWsFresh : htmlNoWsFresh;
 
-      // Inject copies-to into the report HTML before generating the PDF
-      const copiesTo = [emailToName || emailTo, ...ccList].filter(Boolean).join(", ");
-      const htmlForEmail = baseHtmlForEmail.replace(
-        "<!--COPIES_TO_PLACEHOLDER-->",
-        copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : ""
-      );
+      // Inject recipients into the report HTML before generating the PDF.
+      // Main recipient goes on its own "To:" line; CCs go on a separate
+      // "Copies to:" line (only shown when there are CCs).
+      const mainRecipient = emailToName || emailTo;
+      const recipientsBlock = [
+        mainRecipient ? `<div class="copies-to"><strong>To:</strong> ${mainRecipient}</div>` : "",
+        ccList.length > 0 ? `<div class="copies-to"><strong>Copies to:</strong> ${ccList.join(", ")}</div>` : "",
+      ].filter(Boolean).join("");
+
+      const htmlForEmail = baseHtmlForEmail.replace("<!--COPIES_TO_PLACEHOLDER-->", recipientsBlock);
 
       // Build a single combined PDF: report pages first, worksheet as dedicated final page
-      const htmlForPdf = htmlNoWsFresh.replace(
-        "<!--COPIES_TO_PLACEHOLDER-->",
-        copiesTo ? `<div class="copies-to"><strong>Copies to:</strong> ${copiesTo}</div>` : ""
-      );
+      const htmlForPdf = htmlNoWsFresh.replace("<!--COPIES_TO_PLACEHOLDER-->", recipientsBlock);
       let pdfBase64: string | undefined;
       try {
         pdfBase64 = await generateReportPdfBase64(htmlForPdf, worksheetDataUrlFresh);
