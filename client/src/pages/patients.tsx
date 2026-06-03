@@ -981,6 +981,14 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const activeDocuments = allDocuments.filter(d => !d.isArchived);
   const archivedDocuments = allDocuments.filter(d => d.isArchived);
 
+  // Display a yyyy-MM-dd (or ISO) date string as dd-MM-yyyy (Australian).
+  // The underlying doc.date stays yyyy-MM-dd so sorting and visit-grouping keep working.
+  const displayDocDate = (d: string) => {
+    if (!d) return '';
+    const parts = d.slice(0, 10).split('-');
+    return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : d;
+  };
+
   // Visit grouping: find examDates where 2+ non-archived reports exist (same-day multi-scan visits)
   const visitMap = new Map<string, number[]>(); // examDate → [reportIds]
   patientReports.forEach(r => {
@@ -1722,7 +1730,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="font-medium text-sm truncate">{doc.title}</div>
-                              <div className="text-xs text-gray-500">{doc.date}</div>
+                              <div className="text-xs text-gray-500">{displayDocDate(doc.date)}</div>
                               <div className="flex items-center gap-1 mt-1">
                                 <Badge variant="outline" className="text-xs px-1.5 py-0">
                                   {doc.type}
@@ -1763,7 +1771,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                           <div key={`visit-header-${doc.date}-${doc.id}`} className="px-3 py-1.5 bg-teal-50 dark:bg-teal-900/30 flex items-center gap-2 border-l-4 border-teal-400">
                             <Layers className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
                             <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">
-                              Same-day visit &middot; {doc.date} &middot; {visitCount} scans
+                              Same-day visit &middot; {displayDocDate(doc.date)} &middot; {visitCount} scans
                             </span>
                           </div>
                         );
@@ -1798,7 +1806,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm truncate text-gray-600">{doc.title}</div>
-                            <div className="text-xs text-gray-400">{doc.date}</div>
+                            <div className="text-xs text-gray-400">{displayDocDate(doc.date)}</div>
                             <div className="flex items-center gap-1 mt-1">
                               <Badge variant="outline" className="text-xs px-1.5 py-0 text-gray-400 border-gray-300">
                                 archived
