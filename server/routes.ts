@@ -2214,7 +2214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let inheritedSonographerId: number | null = null;
       if (linkedPatientId && !isNaN(linkedPatientId)) {
         try {
-          const apts = await storage.getAppointmentsByPatient(linkedPatientId);
+          const apts = await storage.getPatientAppointments(linkedPatientId);
           const withSono = (apts || [])
             .filter((a: any) => a.sonographerId)
             .sort((a: any, b: any) =>
@@ -3138,7 +3138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let reportSonographerId: number | null = (worksheet as any).sonographerId ?? null;
       if (!reportSonographerId && worksheet.patientId) {
         try {
-          const apts = await storage.getAppointmentsByPatient(worksheet.patientId);
+          const apts = await storage.getPatientAppointments(worksheet.patientId);
           const withSono = (apts || [])
             .filter((a: any) => a.sonographerId)
             .sort((a: any, b: any) =>
