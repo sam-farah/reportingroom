@@ -7,7 +7,7 @@ channel = "stable-24_05"
 packages = ["poppler", "imagemagick", "ghostscript", "chromium"]
 
 [deployment]
-deploymentTarget = "autoscale"
+deploymentTarget = "vm"
 build = ["npm", "run", "build"]
 run = ["bash", "-c", "NODE_ENV=production node dist/index.js"]
 
