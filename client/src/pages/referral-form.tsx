@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,9 @@ export default function ReferralFormPage() {
   const [status, setStatus] = useState<"loading" | "ready" | "submitted" | "error">("loading");
   const [submitting, setSubmitting] = useState(false);
 
-  const [form, setForm] = useState({
+  const draftKey = `referralDraft:${clinicId}`;
+
+  const defaultForm = {
     patientName: "",
     patientDob: "",
     patientPhone: "",
@@ -36,11 +38,31 @@ export default function ReferralFormPage() {
     resultMethod: "",
     resultMethodOther: "",
     _hp: "",
+  };
+
+  // Restore any saved draft so switching to another window — or a phone
+  // reloading the page in the background — doesn't wipe what's been typed.
+  const [form, setForm] = useState(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      const saved = raw ? JSON.parse(raw) : null;
+      return { ...defaultForm, ...(saved?.form ?? {}) };
+    } catch {
+      return defaultForm;
+    }
   });
 
   // Per-scan-type laterality: "bilateral" | "left" | "right".
   // Only meaningful for scan types where hasLaterality === true.
-  const [scanLaterality, setScanLaterality] = useState<Record<string, "bilateral" | "left" | "right">>({});
+  const [scanLaterality, setScanLaterality] = useState<Record<string, "bilateral" | "left" | "right">>(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      const saved = raw ? JSON.parse(raw) : null;
+      return saved?.scanLaterality ?? {};
+    } catch {
+      return {};
+    }
+  });
 
   const lateralityOf = (name: string) =>
     CANONICAL_SCAN_TYPES.find((s) => s.name === name)?.hasLaterality ?? false;
@@ -57,6 +79,36 @@ export default function ReferralFormPage() {
       .then((data) => { setClinicInfo(data); setStatus("ready"); })
       .catch((e) => { setLoadError(e.message); setStatus("error"); });
   }, [clinicId]);
+
+  // Tracks which clinic the current form state belongs to, so we never write
+  // one clinic's patient details into another clinic's saved draft.
+  const lastKeyRef = useRef(draftKey);
+
+  // Save the draft on every change so the data survives page refreshes,
+  // backgrounded mobile tabs, or popping over to another window to check details.
+  useEffect(() => {
+    // If the clinic in the URL changed, reload that clinic's own draft (or a
+    // blank form) instead of persisting the previous clinic's data.
+    if (lastKeyRef.current !== draftKey) {
+      try {
+        const raw = localStorage.getItem(draftKey);
+        const saved = raw ? JSON.parse(raw) : null;
+        setForm({ ...defaultForm, ...(saved?.form ?? {}) });
+        setScanLaterality(saved?.scanLaterality ?? {});
+      } catch {
+        setForm(defaultForm);
+        setScanLaterality({});
+      }
+      lastKeyRef.current = draftKey;
+      return;
+    }
+    if (status === "submitted") return;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify({ form, scanLaterality }));
+    } catch {
+      /* ignore quota / private-mode write errors */
+    }
+  }, [draftKey, form, scanLaterality, status]);
 
   const toggleScanType = (name: string) => {
     setForm((prev) => {
@@ -109,6 +161,7 @@ export default function ReferralFormPage() {
         throw new Error(data.error || "Failed to submit");
       }
       setStatus("submitted");
+      try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
     } catch (e: any) {
       alert(e.message || "Something went wrong. Please try again.");
     } finally {
