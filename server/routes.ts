@@ -6,6 +6,7 @@ import { users } from "@shared/schema";
 import { eq, sql as drizzleSql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
 import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor } from "./email";
+import { isSmsConfigured, sendSms, normalisePhone, getSmsFromNumber, validateTwilioSignature } from "./twilio";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -983,6 +984,245 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Send reminder error:", error);
       res.status(500).json({ error: error?.message || "Failed to send reminder" });
+    }
+  });
+
+  // ── SMS / patient correspondence ────────────────────────────────────────────
+
+  // Whether SMS is configured (Twilio credentials present) + the sending number.
+  app.get("/api/sms/status", isAuthenticated, async (_req, res) => {
+    res.json({ configured: isSmsConfigured(), fromNumber: getSmsFromNumber() });
+  });
+
+  // List conversation threads for the clinic (most recent first).
+  app.get("/api/sms/conversations", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const conversations = await storage.getSmsConversations(user.clinicId);
+      res.json(conversations);
+    } catch (error: any) {
+      console.error("SMS conversations error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load conversations" });
+    }
+  });
+
+  // Full thread for a patient (by patient id), and mark inbound messages read.
+  app.get("/api/sms/conversations/:patientId", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const patientId = parseInt(req.params.patientId);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient id" });
+      const thread = await storage.getSmsThread(user.clinicId, patientId);
+      await storage.markSmsThreadRead(user.clinicId, patientId);
+      res.json(thread);
+    } catch (error: any) {
+      console.error("SMS thread error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load thread" });
+    }
+  });
+
+  // Full thread for an unmatched number (no patient file), and mark read.
+  app.get("/api/sms/conversations/by-phone/:phone", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const phone = req.params.phone;
+      const thread = await storage.getSmsThreadByPhone(user.clinicId, phone);
+      await storage.markSmsThreadReadByPhone(user.clinicId, phone);
+      res.json(thread);
+    } catch (error: any) {
+      console.error("SMS thread (phone) error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load thread" });
+    }
+  });
+
+  // Send an SMS to a patient (or an arbitrary phone number).
+  app.post("/api/sms/send", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      if (!isSmsConfigured()) {
+        return res.status(503).json({ error: "SMS is not set up yet. Add your Twilio credentials to enable messaging." });
+      }
+
+      const { patientId, phone, body } = req.body || {};
+      const messageBody = typeof body === "string" ? body.trim() : "";
+      if (!messageBody) return res.status(400).json({ error: "Message body is required" });
+
+      // Resolve the destination number — prefer the patient's phone on file.
+      let toRaw: string | null = null;
+      let resolvedPatientId: number | null = null;
+      if (patientId != null) {
+        const patient = await storage.getPatient(parseInt(String(patientId)));
+        if (!patient || patient.clinicId !== user.clinicId) {
+          return res.status(404).json({ error: "Patient not found" });
+        }
+        toRaw = patient.phone || null;
+        resolvedPatientId = patient.id;
+      } else if (typeof phone === "string" && phone.trim()) {
+        toRaw = phone.trim();
+        const match = await storage.findPatientByPhone(user.clinicId, phone.trim());
+        resolvedPatientId = match?.id ?? null;
+      }
+
+      const to = normalisePhone(toRaw);
+      if (!to) return res.status(400).json({ error: "No valid phone number for this recipient" });
+
+      const fromNumber = getSmsFromNumber()!;
+      const host = `${req.protocol}://${req.get("host")}`;
+      let result;
+      try {
+        result = await sendSms({ to, body: messageBody, statusCallback: `${host}/api/sms/webhook/status` });
+      } catch (sendErr: any) {
+        // Persist the failed attempt so it shows in the thread.
+        await storage.createSmsMessage({
+          clinicId: user.clinicId,
+          patientId: resolvedPatientId,
+          direction: "outbound",
+          body: messageBody,
+          fromNumber,
+          toNumber: to,
+          status: "failed",
+          errorMessage: sendErr?.message || "Send failed",
+          sentBy: user.id,
+        });
+        return res.status(502).json({ error: sendErr?.message || "Failed to send SMS" });
+      }
+
+      const saved = await storage.createSmsMessage({
+        clinicId: user.clinicId,
+        patientId: resolvedPatientId,
+        direction: "outbound",
+        body: messageBody,
+        fromNumber,
+        toNumber: to,
+        status: result.status,
+        twilioSid: result.sid,
+        sentBy: user.id,
+      });
+
+      res.json(saved);
+    } catch (error: any) {
+      console.error("SMS send error:", error);
+      res.status(500).json({ error: error?.message || "Failed to send SMS" });
+    }
+  });
+
+  // Rebuild the exact public URL Twilio used to call this webhook, so its HMAC signature
+  // can be verified. Twilio signs against the HTTPS URL it was configured with; behind
+  // Replit's proxy we must trust the forwarded host/proto headers.
+  const twilioWebhookUrl = (req: any): string => {
+    const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim() || req.protocol || "https";
+    const host = (req.headers["x-forwarded-host"] as string) || req.get("host");
+    return `${proto}://${host}${req.originalUrl}`;
+  };
+
+  // Verify the request genuinely came from Twilio. Rejects with 403 otherwise.
+  const verifyTwilioRequest = (req: any, res: any): boolean => {
+    // If SMS isn't configured yet there is no auth token to verify against — reject so that
+    // forged messages can never be accepted before the integration is properly set up.
+    if (!isSmsConfigured()) {
+      res.sendStatus(403);
+      return false;
+    }
+    const ok = validateTwilioSignature({
+      signature: req.headers["x-twilio-signature"] as string | undefined,
+      url: twilioWebhookUrl(req),
+      params: req.body || {},
+    });
+    if (!ok) {
+      console.warn("Rejected SMS webhook with invalid/missing Twilio signature.");
+      res.sendStatus(403);
+      return false;
+    }
+    return true;
+  };
+
+  // PUBLIC — Twilio inbound message webhook. Verifies the Twilio signature, then stores the
+  // reply and links it to a patient file by phone number. Responds with empty TwiML.
+  app.post("/api/sms/webhook", async (req, res) => {
+    try {
+      if (!verifyTwilioRequest(req, res)) return;
+
+      const from: string = req.body?.From || "";
+      const to: string = req.body?.To || "";
+      const body: string = req.body?.Body || "";
+      const sid: string = req.body?.MessageSid || req.body?.SmsSid || "";
+
+      if (from && to) {
+        // The inbound "To" is our Twilio number — confirm it matches the configured number
+        // before attributing the message to a clinic at all.
+        const configuredNumber = getSmsFromNumber();
+        const digits = (n: string) => (n || "").replace(/\D/g, "").slice(-9);
+        const toMatchesOurNumber = configuredNumber ? digits(to) === digits(configuredNumber) : false;
+
+        let clinicId: number | null = null;
+        let patientId: number | null = null;
+
+        if (toMatchesOurNumber) {
+          const enabledClinics = await storage.getSmsEnabledClinics();
+          // Find every clinic that has this sender on file as a patient.
+          const matches: { clinicId: number; patientId: number }[] = [];
+          for (const c of enabledClinics) {
+            const match = await storage.findPatientByPhone(c.id, from);
+            if (match) matches.push({ clinicId: c.id, patientId: match.id });
+          }
+
+          if (matches.length === 1) {
+            // Unambiguous patient match — safe to link.
+            clinicId = matches[0].clinicId;
+            patientId = matches[0].patientId;
+          } else if (matches.length === 0 && enabledClinics.length === 1) {
+            // No patient on file but only one clinic uses this number — attribute to it, unlinked.
+            clinicId = enabledClinics[0].id;
+          } else if (matches.length > 1) {
+            // Same phone in multiple clinics — ambiguous. Do NOT guess; log for manual review.
+            console.warn(`Inbound SMS from ${from} matched ${matches.length} clinics; not attributed to avoid cross-clinic leak.`);
+          }
+        }
+
+        if (clinicId != null) {
+          await storage.createSmsMessage({
+            clinicId,
+            patientId,
+            direction: "inbound",
+            body,
+            fromNumber: from,
+            toNumber: to,
+            status: "received",
+            twilioSid: sid || null,
+          });
+        } else {
+          console.warn(`Inbound SMS from ${from} could not be safely attributed to a clinic.`);
+        }
+      }
+
+      res.set("Content-Type", "text/xml");
+      res.send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
+    } catch (error: any) {
+      console.error("SMS inbound webhook error:", error);
+      res.set("Content-Type", "text/xml");
+      res.send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
+    }
+  });
+
+  // PUBLIC — Twilio delivery status callback. Verifies the signature, then updates status.
+  app.post("/api/sms/webhook/status", async (req, res) => {
+    try {
+      if (!verifyTwilioRequest(req, res)) return;
+
+      const sid: string = req.body?.MessageSid || req.body?.SmsSid || "";
+      const status: string = req.body?.MessageStatus || req.body?.SmsStatus || "";
+      const errorCode: string = req.body?.ErrorCode || "";
+      if (sid && status) {
+        await storage.updateSmsStatusBySid(sid, status, errorCode ? `Twilio error ${errorCode}` : undefined);
+      }
+      res.sendStatus(204);
+    } catch (error: any) {
+      console.error("SMS status webhook error:", error);
+      res.sendStatus(204);
     }
   });
 
@@ -4144,6 +4384,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to save reminder instructions" });
+    }
+  });
+
+  // SMS reminder settings (enabled toggle, message template, lead hours)
+  app.put("/api/clinic/sms-settings", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const { smsRemindersEnabled, smsReminderTemplate, smsReminderLeadHours } = req.body || {};
+      const updates: any = {};
+      if (smsRemindersEnabled !== undefined) updates.smsRemindersEnabled = !!smsRemindersEnabled;
+      if (smsReminderTemplate !== undefined) updates.smsReminderTemplate = smsReminderTemplate || null;
+      if (smsReminderLeadHours !== undefined) {
+        const hours = parseInt(String(smsReminderLeadHours), 10);
+        if (!isNaN(hours) && hours > 0 && hours <= 168) updates.smsReminderLeadHours = hours;
+      }
+      await storage.updateClinic(user.clinicId, updates);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Save SMS settings error:", error);
+      res.status(500).json({ error: "Failed to save SMS settings" });
     }
   });
 

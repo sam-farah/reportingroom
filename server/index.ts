@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { securityMiddleware } from "./middleware/security";
 import { MedicalDataEncryption } from "./encryption";
+import { startSmsReminderScheduler } from "./sms-scheduler";
 
 // Prevent dropped database connections from crashing the server process.
 // Neon serverless culls idle connections, which surfaces as an unhandled
@@ -116,5 +117,9 @@ app.use((req, res, next) => {
   }, () => {
     log(`serving on port ${port}`);
     log('🔒 End-to-end encryption enabled for regulatory compliance');
+    const publicHost = process.env.PUBLIC_URL || process.env.REPLIT_DEV_DOMAIN
+      ? (process.env.PUBLIC_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`)
+      : null;
+    startSmsReminderScheduler(publicHost);
   });
 })();

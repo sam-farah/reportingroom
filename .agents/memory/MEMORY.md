@@ -4,3 +4,4 @@
 - [Login audit — unknown-email entries](login-audit-unknown-email.md) — unattributed failed logins have `clinicId=null`; clinic queries must `OR` them in or brute-force probes are invisible.
 - [Invitation acceptance security](invitation-acceptance-security.md) — acceptInvitation must verify active+unexpired+unaccepted AND invited-email == accepting-user email, or it's a clinic-takeover hole.
 - [Private clinic onboarding](onboarding-private-superadmin.md) — no public sign-up; POST /api/clinics/register is disabled (403); super admins create clinics via /api/admin/clinics.
+- [Twilio webhook & reminder safety](twilio-webhook-security.md) — verify X-Twilio-Signature on public webhooks; deterministic clinic attribution (no guessing); claim reminders atomically, roll back only on send failure.

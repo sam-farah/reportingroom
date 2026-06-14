@@ -104,6 +104,9 @@ import {
   consultations,
   type Consultation,
   type InsertConsultation,
+  smsMessages,
+  type SmsMessage,
+  type InsertSmsMessage,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull } from "drizzle-orm";
@@ -347,6 +350,20 @@ export interface IStorage {
   getReminderLogsByAppointment(appointmentId: number): Promise<ReminderLog[]>;
   getReminderLogsByPatient(patientId: number): Promise<ReminderLog[]>;
   markReminderOpened(trackingToken: string): Promise<void>;
+  // SMS messaging
+  createSmsMessage(data: InsertSmsMessage): Promise<SmsMessage>;
+  getSmsThread(clinicId: number, patientId: number): Promise<SmsMessage[]>;
+  getSmsThreadByPhone(clinicId: number, phone: string): Promise<SmsMessage[]>;
+  getSmsConversations(clinicId: number): Promise<Array<{ patientId: number | null; phone: string; patientName: string | null; lastMessage: SmsMessage; unreadCount: number }>>;
+  markSmsThreadRead(clinicId: number, patientId: number): Promise<void>;
+  markSmsThreadReadByPhone(clinicId: number, phone: string): Promise<void>;
+  updateSmsStatusBySid(sid: string, status: string, errorMessage?: string | null): Promise<void>;
+  findPatientByPhone(clinicId: number, phone: string): Promise<Patient | undefined>;
+  getAppointmentsNeedingSmsReminder(clinicId: number, withinHours: number): Promise<Appointment[]>;
+  markAppointmentSmsReminderSent(appointmentId: number): Promise<void>;
+  claimAppointmentSmsReminder(appointmentId: number): Promise<boolean>;
+  clearAppointmentSmsReminder(appointmentId: number): Promise<void>;
+  getSmsEnabledClinics(): Promise<Clinic[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1871,6 +1888,152 @@ export class DatabaseStorage implements IStorage {
     await db.update(reminderLogs)
       .set({ openedAt: new Date() })
       .where(and(eq(reminderLogs.trackingToken, trackingToken), sql`${reminderLogs.openedAt} IS NULL`));
+  }
+
+  // ── SMS messaging ──────────────────────────────────────────────────────────
+  async createSmsMessage(data: InsertSmsMessage): Promise<SmsMessage> {
+    const [row] = await db.insert(smsMessages).values(data).returning();
+    return row;
+  }
+
+  async getSmsThread(clinicId: number, patientId: number): Promise<SmsMessage[]> {
+    return db.select().from(smsMessages)
+      .where(and(eq(smsMessages.clinicId, clinicId), eq(smsMessages.patientId, patientId)))
+      .orderBy(smsMessages.createdAt);
+  }
+
+  async getSmsThreadByPhone(clinicId: number, phone: string): Promise<SmsMessage[]> {
+    const digits = (phone || "").replace(/\D/g, "");
+    const tail = digits.slice(-9);
+    if (!tail) return [];
+    const all = await db.select().from(smsMessages)
+      .where(and(eq(smsMessages.clinicId, clinicId), isNull(smsMessages.patientId)))
+      .orderBy(smsMessages.createdAt);
+    return all.filter(m => {
+      const from = (m.fromNumber || "").replace(/\D/g, "").slice(-9);
+      const to = (m.toNumber || "").replace(/\D/g, "").slice(-9);
+      return from === tail || to === tail;
+    });
+  }
+
+  async getSmsConversations(clinicId: number): Promise<Array<{ patientId: number | null; phone: string; patientName: string | null; lastMessage: SmsMessage; unreadCount: number }>> {
+    const all = await db.select().from(smsMessages)
+      .where(eq(smsMessages.clinicId, clinicId))
+      .orderBy(smsMessages.createdAt);
+    if (all.length === 0) return [];
+
+    // The patient's number is the "to" for outbound and the "from" for inbound.
+    const patientNumberOf = (m: SmsMessage) =>
+      (m.direction === "inbound" ? m.fromNumber : m.toNumber) || "";
+
+    const groups = new Map<string, { patientId: number | null; phone: string; messages: SmsMessage[] }>();
+    for (const m of all) {
+      const key = m.patientId != null ? `p:${m.patientId}` : `n:${patientNumberOf(m).replace(/\D/g, "").slice(-9)}`;
+      let g = groups.get(key);
+      if (!g) {
+        g = { patientId: m.patientId ?? null, phone: patientNumberOf(m), messages: [] };
+        groups.set(key, g);
+      }
+      g.messages.push(m);
+      if (m.patientId != null) g.patientId = m.patientId;
+      if (patientNumberOf(m)) g.phone = patientNumberOf(m);
+    }
+
+    const patientIds = Array.from(groups.values()).map(g => g.patientId).filter((x): x is number => x != null);
+    const patientMap = new Map<number, Patient>();
+    if (patientIds.length > 0) {
+      const rows = await db.select().from(patients).where(
+        and(eq(patients.clinicId, clinicId), sql`${patients.id} = ANY(${patientIds})`)
+      );
+      for (const p of rows) patientMap.set(p.id, p);
+    }
+
+    const result = Array.from(groups.values()).map(g => {
+      const lastMessage = g.messages[g.messages.length - 1];
+      const unreadCount = g.messages.filter(m => m.direction === "inbound" && !m.readAt).length;
+      const p = g.patientId != null ? patientMap.get(g.patientId) : undefined;
+      const patientName = p ? `${p.firstName} ${p.lastName}`.trim() : null;
+      return { patientId: g.patientId, phone: g.phone, patientName, lastMessage, unreadCount };
+    });
+
+    result.sort((a, b) => new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime());
+    return result;
+  }
+
+  async markSmsThreadRead(clinicId: number, patientId: number): Promise<void> {
+    await db.update(smsMessages)
+      .set({ readAt: new Date() })
+      .where(and(
+        eq(smsMessages.clinicId, clinicId),
+        eq(smsMessages.patientId, patientId),
+        eq(smsMessages.direction, "inbound"),
+        isNull(smsMessages.readAt),
+      ));
+  }
+
+  async markSmsThreadReadByPhone(clinicId: number, phone: string): Promise<void> {
+    const thread = await this.getSmsThreadByPhone(clinicId, phone);
+    const unreadIds = thread.filter(m => m.direction === "inbound" && !m.readAt).map(m => m.id);
+    if (unreadIds.length === 0) return;
+    await db.update(smsMessages)
+      .set({ readAt: new Date() })
+      .where(sql`${smsMessages.id} = ANY(${unreadIds})`);
+  }
+
+  async updateSmsStatusBySid(sid: string, status: string, errorMessage?: string | null): Promise<void> {
+    await db.update(smsMessages)
+      .set({ status, ...(errorMessage !== undefined ? { errorMessage } : {}) })
+      .where(eq(smsMessages.twilioSid, sid));
+  }
+
+  async findPatientByPhone(clinicId: number, phone: string): Promise<Patient | undefined> {
+    const tail = (phone || "").replace(/\D/g, "").slice(-9);
+    if (!tail) return undefined;
+    const clinicPatients = await db.select().from(patients).where(eq(patients.clinicId, clinicId));
+    return clinicPatients.find(p => {
+      const pTail = (p.phone || "").replace(/\D/g, "").slice(-9);
+      return pTail.length >= 8 && pTail === tail;
+    });
+  }
+
+  async getAppointmentsNeedingSmsReminder(clinicId: number, withinHours: number): Promise<Appointment[]> {
+    const now = new Date();
+    const horizon = new Date(now.getTime() + withinHours * 60 * 60 * 1000);
+    return db.select().from(appointments).where(and(
+      eq(appointments.clinicId, clinicId),
+      isNull(appointments.smsReminderSentAt),
+      gte(appointments.appointmentDate, now),
+      lte(appointments.appointmentDate, horizon),
+      or(eq(appointments.status, "scheduled"), eq(appointments.status, "confirmed")),
+    ));
+  }
+
+  async markAppointmentSmsReminderSent(appointmentId: number): Promise<void> {
+    await db.update(appointments)
+      .set({ smsReminderSentAt: new Date() })
+      .where(eq(appointments.id, appointmentId));
+  }
+
+  // Atomically claim an appointment for reminder sending. Sets smsReminderSentAt only if it
+  // is still NULL, and returns true if THIS call won the claim. Prevents two concurrent
+  // scheduler ticks from both sending a reminder for the same appointment.
+  async claimAppointmentSmsReminder(appointmentId: number): Promise<boolean> {
+    const claimed = await db.update(appointments)
+      .set({ smsReminderSentAt: new Date() })
+      .where(and(eq(appointments.id, appointmentId), isNull(appointments.smsReminderSentAt)))
+      .returning({ id: appointments.id });
+    return claimed.length > 0;
+  }
+
+  // Undo a claim when the send subsequently fails, so it can be retried on a later tick.
+  async clearAppointmentSmsReminder(appointmentId: number): Promise<void> {
+    await db.update(appointments)
+      .set({ smsReminderSentAt: null })
+      .where(eq(appointments.id, appointmentId));
+  }
+
+  async getSmsEnabledClinics(): Promise<Clinic[]> {
+    return db.select().from(clinics).where(and(eq(clinics.smsRemindersEnabled, true), eq(clinics.isActive, true)));
   }
 }
 

@@ -56,6 +56,9 @@ export const clinics = pgTable("clinics", {
   isActive: boolean("is_active").notNull().default(true),
   dictationVocabulary: text("dictation_vocabulary"), // JSON-encoded string[] of custom words/phrases for Whisper
   reminderInstructions: text("reminder_instructions"), // Custom preparation instructions sent with appointment reminders
+  smsRemindersEnabled: boolean("sms_reminders_enabled").notNull().default(false), // Auto-send SMS appointment reminders
+  smsReminderTemplate: text("sms_reminder_template"), // Template for the reminder SMS body; supports {patient} {date} {time} {clinic} {scan} placeholders
+  smsReminderLeadHours: integer("sms_reminder_lead_hours").notNull().default(24), // How many hours before the appointment to send the SMS
   dicomApiKey: varchar("dicom_api_key", { length: 100 }), // API key for DICOM Modality Worklist bridge
   publicHolidayRegion: varchar("public_holiday_region", { length: 20 }), // e.g. "AU-VIC", "AU-NSW", "AU", "NZ", "US", "GB", "CA" — used to fetch & display public holidays on the calendar
   createdAt: timestamp("created_at").defaultNow(),
@@ -533,6 +536,7 @@ export const appointments = pgTable("appointments", {
   patientId: integer("patient_id").references(() => patients.id),
   checkedInAt: timestamp("checked_in_at"),
   studyStartedAt: timestamp("study_started_at"),
+  smsReminderSentAt: timestamp("sms_reminder_sent_at"), // When an automated SMS reminder was sent (prevents duplicates)
   referringDoctorName: varchar("referring_doctor_name", { length: 255 }),
   referringDoctorEmail: varchar("referring_doctor_email", { length: 255 }),
   referringDoctorFax: varchar("referring_doctor_fax", { length: 50 }),
@@ -941,3 +945,29 @@ export const loginAudit = pgTable("login_audit", {
 export const insertLoginAuditSchema = createInsertSchema(loginAudit).omit({ id: true, createdAt: true });
 export type LoginAuditEntry = typeof loginAudit.$inferSelect;
 export type InsertLoginAuditEntry = z.infer<typeof insertLoginAuditSchema>;
+
+// SMS messages — two-way patient correspondence via Twilio.
+// Outbound messages are sent by staff (or the automated reminder scheduler); inbound are replies
+// received via the Twilio webhook. Threads are grouped by patient where a phone match exists, and
+// kept as "unmatched" (patientId null) when an inbound number can't be tied to a patient file.
+export const smsMessages = pgTable("sms_messages", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  appointmentId: integer("appointment_id").references(() => appointments.id, { onDelete: "set null" }),
+  direction: varchar("direction", { length: 10 }).notNull(), // "inbound" | "outbound"
+  body: text("body").notNull(),
+  fromNumber: varchar("from_number", { length: 32 }).notNull(),
+  toNumber: varchar("to_number", { length: 32 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("queued"), // queued | sent | delivered | failed | received
+  twilioSid: varchar("twilio_sid", { length: 64 }),
+  errorMessage: text("error_message"),
+  isReminder: boolean("is_reminder").notNull().default(false),
+  sentBy: varchar("sent_by").references(() => users.id), // staff user who sent it; null for inbound/automated
+  readAt: timestamp("read_at"), // when staff marked an inbound message/thread as read
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSmsMessageSchema = createInsertSchema(smsMessages).omit({ id: true, createdAt: true });
+export type SmsMessage = typeof smsMessages.$inferSelect;
+export type InsertSmsMessage = z.infer<typeof insertSmsMessageSchema>;

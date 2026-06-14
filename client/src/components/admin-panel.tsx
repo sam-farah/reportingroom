@@ -121,6 +121,26 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
 
+  // SMS reminder settings state
+  const { data: smsConfigStatus } = useQuery<{ configured: boolean; fromNumber: string | null }>({
+    queryKey: ["/api/sms/status"],
+  });
+  const [smsEnabled, setSmsEnabled] = useState<boolean | null>(null);
+  const [smsTemplate, setSmsTemplate] = useState<string | null>(null);
+  const [smsLeadHours, setSmsLeadHours] = useState<number | null>(null);
+  const resolvedSmsEnabled = smsEnabled ?? (clinicInfoForReminder?.smsRemindersEnabled ?? false);
+  const resolvedSmsTemplate = smsTemplate ?? (clinicInfoForReminder?.smsReminderTemplate ?? "");
+  const resolvedSmsLeadHours = smsLeadHours ?? (clinicInfoForReminder?.smsReminderLeadHours ?? 24);
+  const saveSmsSettingsMutation = useMutation({
+    mutationFn: (payload: { smsRemindersEnabled: boolean; smsReminderTemplate: string; smsReminderLeadHours: number }) =>
+      apiRequest("/api/clinic/sms-settings", "PUT", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
+      toast({ title: "Saved", description: "SMS reminder settings updated." });
+    },
+    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+
   // Per-scan-type prep instructions state
   const { data: scanPrepRows = [] } = useQuery<{ id: number; scanType: string; instructions: string }[]>({
     queryKey: ["/api/scan-prep-instructions"],
@@ -921,6 +941,86 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                   disabled={saveReminderMutation.isPending}
                 >
                   {saveReminderMutation.isPending ? "Saving…" : "Save Default Instructions"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span>📱</span> SMS Appointment Reminders
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Automatically text patients before their appointment. Reminders are sent once per appointment and replies appear in the Messages inbox.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!smsConfigStatus?.configured && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                  <span className="mt-0.5">⚠️</span>
+                  <span>SMS isn't connected yet. Once the Twilio account details are added, reminders will start sending automatically. You can still configure your message below.</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+                <div>
+                  <div className="text-sm font-medium">Send automatic SMS reminders</div>
+                  <div className="text-xs text-muted-foreground">Turn on to text patients ahead of their appointment.</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={!!resolvedSmsEnabled}
+                    onChange={(e) => setSmsEnabled(e.target.checked)}
+                    data-testid="toggle-sms-reminders"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-primary/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium block mb-1">Send reminder how many hours before?</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={resolvedSmsLeadHours}
+                  onChange={(e) => setSmsLeadHours(parseInt(e.target.value) || 24)}
+                  className="w-28 text-sm border rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-primary/30"
+                  data-testid="input-sms-lead-hours"
+                />
+                <span className="text-xs text-muted-foreground ml-2">hours (e.g. 24)</span>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium block mb-1">Reminder message</label>
+                <textarea
+                  value={resolvedSmsTemplate}
+                  onChange={(e) => setSmsTemplate(e.target.value)}
+                  placeholder={"Hi {patient}, this is a reminder of your {scan} appointment at {clinic} on {date} at {time}. Reply here if you need to reschedule."}
+                  rows={4}
+                  className="w-full text-sm border rounded-md px-3 py-2.5 outline-none focus:ring-2 focus:ring-primary/30 resize-y"
+                  data-testid="input-sms-template"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Placeholders: <code>{"{patient}"}</code> <code>{"{scan}"}</code> <code>{"{clinic}"}</code> <code>{"{date}"}</code> <code>{"{time}"}</code>. Leave blank to use the default message.
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => saveSmsSettingsMutation.mutate({
+                    smsRemindersEnabled: !!resolvedSmsEnabled,
+                    smsReminderTemplate: resolvedSmsTemplate,
+                    smsReminderLeadHours: resolvedSmsLeadHours,
+                  })}
+                  disabled={saveSmsSettingsMutation.isPending}
+                  data-testid="button-save-sms-settings"
+                >
+                  {saveSmsSettingsMutation.isPending ? "Saving…" : "Save SMS Settings"}
                 </Button>
               </div>
             </CardContent>
