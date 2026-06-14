@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone, MessageSquare } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone, MessageSquare, MessageCircle } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,8 +22,9 @@ import HelpCentre from "./help-centre";
 import NoticeBoard from "./notice-board";
 import ClinicsAdmin from "./clinics-admin";
 import Messages from "./messages";
+import Chat from "./chat";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board" | "clinics" | "messages";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board" | "clinics" | "messages" | "chat";
 
 const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; superAdminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",  icon: CalendarIcon },
@@ -32,6 +33,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "reporting-room", label: "Reports",   icon: FolderOpen },
   { id: "patients",       label: "Patients",  icon: UserCircle },
   { id: "messages",       label: "Messages",  icon: MessageSquare },
+  { id: "chat",           label: "Team Chat", icon: MessageCircle },
   { id: "requests",       label: "Requests",  icon: ClipboardList },
   { id: "contacts",       label: "Contacts",  icon: BookUser },
   { id: "dicom",          label: "DICOM",     icon: ScanLine },
@@ -58,6 +60,7 @@ const PAGE_TITLES: Record<Panel, string> = {
   "notice-board":   "Notice Board",
   "clinics":        "Clinics",
   "messages":       "Messages",
+  "chat":           "Team Chat",
 };
 
 export default function Dashboard() {
@@ -288,6 +291,8 @@ export default function Dashboard() {
         />
       ) : activePanel === "messages" ? (
         <Messages />
+      ) : activePanel === "chat" ? (
+        <Chat onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }} />
       ) : activePanel === "contacts" ? (
         <Contacts />
       ) : activePanel === "templates" ? (

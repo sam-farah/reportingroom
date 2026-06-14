@@ -107,6 +107,18 @@ import {
   smsMessages,
   type SmsMessage,
   type InsertSmsMessage,
+  chatChannels,
+  type ChatChannel,
+  type InsertChatChannel,
+  chatChannelMembers,
+  type ChatChannelMember,
+  chatMessages,
+  type ChatMessage,
+  chatAttachments,
+  type ChatAttachment,
+  type InsertChatAttachment,
+  chatMessageMentions,
+  chatMessagePatientTags,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull } from "drizzle-orm";
@@ -364,7 +376,39 @@ export interface IStorage {
   claimAppointmentSmsReminder(appointmentId: number): Promise<boolean>;
   clearAppointmentSmsReminder(appointmentId: number): Promise<void>;
   getSmsEnabledClinics(): Promise<Clinic[]>;
+  // Team Chat (staff-to-staff)
+  createChatChannel(data: { clinicId: number; type: string; name?: string | null; description?: string | null; isPrivate?: boolean; createdBy: string }, memberUserIds: string[]): Promise<ChatChannel>;
+  getChatChannel(id: number): Promise<ChatChannel | undefined>;
+  getChatChannelsForUser(clinicId: number, userId: string): Promise<ChatChannelSummary[]>;
+  getChatChannelMembers(channelId: number): Promise<Array<ChatChannelMember & { user: User }>>;
+  getChatChannelMemberUserIds(channelId: number): Promise<string[]>;
+  isChatChannelMember(channelId: number, userId: string): Promise<boolean>;
+  addChatChannelMembers(channelId: number, userIds: string[]): Promise<void>;
+  removeChatChannelMember(channelId: number, userId: string): Promise<void>;
+  getOrCreateDm(clinicId: number, userIdA: string, userIdB: string): Promise<ChatChannel>;
+  getChatMessages(channelId: number, opts?: { beforeId?: number; limit?: number }): Promise<ChatMessageWithRelations[]>;
+  getChatMessageById(id: number): Promise<ChatMessageWithRelations | undefined>;
+  createChatMessage(data: { channelId: number; clinicId: number; authorId: string; body: string }, mentionUserIds: string[], patientIds: number[]): Promise<ChatMessageWithRelations>;
+  createChatAttachment(data: InsertChatAttachment): Promise<ChatAttachment>;
+  markChatChannelRead(channelId: number, userId: string): Promise<void>;
 }
+
+// Channel as shown in the sidebar — includes unread count, last message preview,
+// and (for DMs) the "other" participant so the client can render a title/avatar.
+export type ChatChannelSummary = ChatChannel & {
+  unreadCount: number;
+  lastMessageAt: Date | null;
+  lastMessagePreview: string | null;
+  memberIds: string[];
+  dmPeer: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
+};
+
+export type ChatMessageWithRelations = ChatMessage & {
+  author: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
+  attachments: ChatAttachment[];
+  mentions: string[];
+  patientTags: Array<{ patientId: number; firstName: string; lastName: string; urNumber: string | null }>;
+};
 
 export class DatabaseStorage implements IStorage {
   // User operations
@@ -2034,6 +2078,257 @@ export class DatabaseStorage implements IStorage {
 
   async getSmsEnabledClinics(): Promise<Clinic[]> {
     return db.select().from(clinics).where(and(eq(clinics.smsRemindersEnabled, true), eq(clinics.isActive, true)));
+  }
+
+  // ── Team Chat ───────────────────────────────────────────────────────────
+  async createChatChannel(
+    data: { clinicId: number; type: string; name?: string | null; description?: string | null; isPrivate?: boolean; createdBy: string },
+    memberUserIds: string[],
+  ): Promise<ChatChannel> {
+    const [channel] = await db.insert(chatChannels).values({
+      clinicId: data.clinicId,
+      type: data.type,
+      name: data.name ?? null,
+      description: data.description ?? null,
+      isPrivate: data.isPrivate ?? false,
+      createdBy: data.createdBy,
+    }).returning();
+    // Always include the creator; creator is channel admin.
+    const unique = Array.from(new Set([data.createdBy, ...memberUserIds]));
+    await db.insert(chatChannelMembers).values(
+      unique.map((uid) => ({
+        channelId: channel.id,
+        userId: uid,
+        role: uid === data.createdBy ? "admin" : "member",
+      })),
+    );
+    return channel;
+  }
+
+  async getChatChannel(id: number): Promise<ChatChannel | undefined> {
+    const [c] = await db.select().from(chatChannels).where(eq(chatChannels.id, id));
+    return c;
+  }
+
+  async getChatChannelMemberUserIds(channelId: number): Promise<string[]> {
+    const rows = await db.select({ userId: chatChannelMembers.userId })
+      .from(chatChannelMembers)
+      .where(eq(chatChannelMembers.channelId, channelId));
+    return rows.map((r) => r.userId);
+  }
+
+  async isChatChannelMember(channelId: number, userId: string): Promise<boolean> {
+    const [row] = await db.select({ id: chatChannelMembers.id })
+      .from(chatChannelMembers)
+      .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, userId)));
+    return !!row;
+  }
+
+  async getChatChannelMembers(channelId: number): Promise<Array<ChatChannelMember & { user: User }>> {
+    const rows = await db.select().from(chatChannelMembers)
+      .innerJoin(users, eq(chatChannelMembers.userId, users.id))
+      .where(eq(chatChannelMembers.channelId, channelId));
+    return rows.map((r) => ({
+      ...r.chat_channel_members,
+      user: FieldEncryption.decryptFields(r.users) as User,
+    }));
+  }
+
+  async addChatChannelMembers(channelId: number, userIds: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+    const existing = new Set(await this.getChatChannelMemberUserIds(channelId));
+    const toAdd = userIds.filter((u) => !existing.has(u));
+    if (toAdd.length === 0) return;
+    await db.insert(chatChannelMembers).values(
+      toAdd.map((uid) => ({ channelId, userId: uid, role: "member" })),
+    );
+  }
+
+  async removeChatChannelMember(channelId: number, userId: string): Promise<void> {
+    await db.delete(chatChannelMembers)
+      .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, userId)));
+  }
+
+  async getOrCreateDm(clinicId: number, userIdA: string, userIdB: string): Promise<ChatChannel> {
+    // Find an existing DM channel in this clinic whose member set is exactly {A, B}.
+    const dmChannels = await db.select().from(chatChannels)
+      .where(and(eq(chatChannels.clinicId, clinicId), eq(chatChannels.type, "dm")));
+    for (const ch of dmChannels) {
+      const ids = await this.getChatChannelMemberUserIds(ch.id);
+      if (ids.length === 2 && ids.includes(userIdA) && ids.includes(userIdB)) {
+        return ch;
+      }
+    }
+    return this.createChatChannel(
+      { clinicId, type: "dm", name: null, isPrivate: true, createdBy: userIdA },
+      [userIdA, userIdB],
+    );
+  }
+
+  async getChatChannelsForUser(clinicId: number, userId: string): Promise<ChatChannelSummary[]> {
+    const memberships = await db.select().from(chatChannelMembers)
+      .innerJoin(chatChannels, eq(chatChannelMembers.channelId, chatChannels.id))
+      .where(and(eq(chatChannelMembers.userId, userId), eq(chatChannels.clinicId, clinicId)));
+
+    const summaries: ChatChannelSummary[] = [];
+    for (const m of memberships) {
+      const channel = m.chat_channels;
+      const membership = m.chat_channel_members;
+      const memberIds = await this.getChatChannelMemberUserIds(channel.id);
+
+      // Last (non-deleted) message for preview + ordering.
+      const [last] = await db.select().from(chatMessages)
+        .where(and(eq(chatMessages.channelId, channel.id), isNull(chatMessages.deletedAt)))
+        .orderBy(desc(chatMessages.createdAt))
+        .limit(1);
+
+      // Unread = messages after my lastReadAt that I didn't author.
+      const lastReadAt = membership.lastReadAt;
+      const unreadConds = [
+        eq(chatMessages.channelId, channel.id),
+        isNull(chatMessages.deletedAt),
+        sql`${chatMessages.authorId} <> ${userId}`,
+      ];
+      if (lastReadAt) unreadConds.push(sql`${chatMessages.createdAt} > ${lastReadAt}`);
+      const [{ count: unreadCount }] = await db
+        .select({ count: sql<number>`cast(count(*) as int)` })
+        .from(chatMessages)
+        .where(and(...unreadConds));
+
+      let dmPeer: ChatChannelSummary["dmPeer"] = null;
+      if (channel.type === "dm") {
+        const peerId = memberIds.find((id) => id !== userId);
+        if (peerId) {
+          const peer = await this.getUser(peerId);
+          if (peer) dmPeer = { id: peer.id, firstName: peer.firstName, lastName: peer.lastName, email: peer.email };
+        }
+      }
+
+      summaries.push({
+        ...channel,
+        unreadCount: unreadCount ?? 0,
+        lastMessageAt: last?.createdAt ?? null,
+        lastMessagePreview: last ? (last.body?.slice(0, 80) || "📎 Attachment") : null,
+        memberIds,
+        dmPeer,
+      });
+    }
+
+    // Most recently active first.
+    summaries.sort((a, b) => {
+      const at = a.lastMessageAt?.getTime() ?? 0;
+      const bt = b.lastMessageAt?.getTime() ?? 0;
+      return bt - at;
+    });
+    return summaries;
+  }
+
+  private async hydrateChatMessages(rows: ChatMessage[]): Promise<ChatMessageWithRelations[]> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.id);
+    const authorIds = Array.from(new Set(rows.map((r) => r.authorId)));
+
+    const authorRows = authorIds.length
+      ? await db.select().from(users).where(sql`${users.id} = ANY(${authorIds})`)
+      : [];
+    const authorMap = new Map(authorRows.map((u) => {
+      const d = FieldEncryption.decryptFields(u) as User;
+      return [d.id, { id: d.id, firstName: d.firstName, lastName: d.lastName, email: d.email }];
+    }));
+
+    const atts = await db.select().from(chatAttachments).where(sql`${chatAttachments.messageId} = ANY(${ids})`);
+    const mentions = await db.select().from(chatMessageMentions).where(sql`${chatMessageMentions.messageId} = ANY(${ids})`);
+    // Defense-in-depth: only surface tagged patients that belong to the same
+    // clinic as the message, so a stray cross-clinic tag can never be rendered.
+    const tags = await db.select({
+      messageId: chatMessagePatientTags.messageId,
+      patientId: chatMessagePatientTags.patientId,
+      firstName: patients.firstName,
+      lastName: patients.lastName,
+      urNumber: patients.urNumber,
+    })
+      .from(chatMessagePatientTags)
+      .innerJoin(chatMessages, eq(chatMessagePatientTags.messageId, chatMessages.id))
+      .innerJoin(patients, and(eq(chatMessagePatientTags.patientId, patients.id), eq(patients.clinicId, chatMessages.clinicId)))
+      .where(sql`${chatMessagePatientTags.messageId} = ANY(${ids})`);
+
+    return rows.map((r) => ({
+      ...r,
+      author: authorMap.get(r.authorId) ?? null,
+      attachments: atts.filter((a) => a.messageId === r.id),
+      mentions: mentions.filter((m) => m.messageId === r.id).map((m) => m.mentionedUserId),
+      patientTags: tags.filter((t) => t.messageId === r.id).map((t) => ({
+        patientId: t.patientId, firstName: t.firstName, lastName: t.lastName, urNumber: t.urNumber,
+      })),
+    }));
+  }
+
+  async getChatMessages(channelId: number, opts?: { beforeId?: number; limit?: number }): Promise<ChatMessageWithRelations[]> {
+    const limit = opts?.limit ?? 50;
+    const conds = [eq(chatMessages.channelId, channelId), isNull(chatMessages.deletedAt)];
+    if (opts?.beforeId) conds.push(sql`${chatMessages.id} < ${opts.beforeId}`);
+    const rows = await db.select().from(chatMessages)
+      .where(and(...conds))
+      .orderBy(desc(chatMessages.id))
+      .limit(limit);
+    rows.reverse(); // chronological (oldest first) for display
+    return this.hydrateChatMessages(rows);
+  }
+
+  async getChatMessageById(id: number): Promise<ChatMessageWithRelations | undefined> {
+    const [row] = await db.select().from(chatMessages).where(eq(chatMessages.id, id));
+    if (!row) return undefined;
+    const [hydrated] = await this.hydrateChatMessages([row]);
+    return hydrated;
+  }
+
+  async createChatMessage(
+    data: { channelId: number; clinicId: number; authorId: string; body: string },
+    mentionUserIds: string[],
+    patientIds: number[],
+  ): Promise<ChatMessageWithRelations> {
+    const [msg] = await db.insert(chatMessages).values({
+      channelId: data.channelId,
+      clinicId: data.clinicId,
+      authorId: data.authorId,
+      body: data.body,
+    }).returning();
+
+    const uniqueMentions = Array.from(new Set(mentionUserIds));
+    if (uniqueMentions.length) {
+      await db.insert(chatMessageMentions).values(
+        uniqueMentions.map((uid) => ({ messageId: msg.id, mentionedUserId: uid })),
+      );
+    }
+    const uniqueTags = Array.from(new Set(patientIds));
+    if (uniqueTags.length) {
+      // Only allow tagging patients that belong to this message's clinic — never
+      // trust client-supplied patient IDs (prevents cross-tenant PHI exposure).
+      const allowed = await db.select({ id: patients.id }).from(patients)
+        .where(and(eq(patients.clinicId, data.clinicId), sql`${patients.id} = ANY(${uniqueTags})`));
+      const allowedIds = allowed.map((r) => r.id);
+      if (allowedIds.length) {
+        await db.insert(chatMessagePatientTags).values(
+          allowedIds.map((pid) => ({ messageId: msg.id, patientId: pid })),
+        );
+      }
+    }
+    // Bump channel updatedAt so sidebar ordering reflects activity.
+    await db.update(chatChannels).set({ updatedAt: new Date() }).where(eq(chatChannels.id, data.channelId));
+
+    const [hydrated] = await this.hydrateChatMessages([msg]);
+    return hydrated;
+  }
+
+  async createChatAttachment(data: InsertChatAttachment): Promise<ChatAttachment> {
+    const [created] = await db.insert(chatAttachments).values(data).returning();
+    return created;
+  }
+
+  async markChatChannelRead(channelId: number, userId: string): Promise<void> {
+    await db.update(chatChannelMembers)
+      .set({ lastReadAt: new Date() })
+      .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, userId)));
   }
 }
 

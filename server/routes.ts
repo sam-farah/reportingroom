@@ -33,6 +33,7 @@ import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
 import { createBackupArchive, getBackupInfo } from "./services/backup";
 import { autoTrainFromDistribution, getTrainingAuditSummary, sweepUntrainedDistributions } from "./services/auto-training";
 import { saveFileToDB, getFileFromDB, detectMimeType, backfillFilesToDB } from "./services/fileStorage";
+import { chatHub } from "./chat-ws";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
 import crypto from "crypto";
@@ -1643,6 +1644,250 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting notice attachment:", error);
       res.status(500).json({ error: "Failed to delete attachment" });
+    }
+  });
+
+  // ── Team Chat (staff-to-staff) ──────────────────────────────────────────
+  // Staff directory for the new-DM / invite / @mention pickers.
+  app.get("/api/chat/staff", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const staff = await storage.getClinicStaff(user.clinicId);
+      res.json(staff.map((s) => ({ id: s.id, firstName: s.firstName, lastName: s.lastName, email: s.email, role: s.role })));
+    } catch (error) {
+      console.error("Error fetching chat staff:", error);
+      res.status(500).json({ error: "Failed to fetch staff" });
+    }
+  });
+
+  // List channels + DMs the current user belongs to (with unread + previews).
+  app.get("/api/chat/channels", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const channels = await storage.getChatChannelsForUser(user.clinicId, user.id);
+      res.json(channels);
+    } catch (error) {
+      console.error("Error fetching chat channels:", error);
+      res.status(500).json({ error: "Failed to fetch channels" });
+    }
+  });
+
+  // Create a channel and invite members.
+  app.post("/api/chat/channels", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const name = (req.body?.name ?? "").toString().trim();
+      if (!name) return res.status(400).json({ error: "Channel name is required" });
+      const isPrivate = !!req.body?.isPrivate;
+      const description = req.body?.description ? req.body.description.toString().slice(0, 500) : null;
+      const rawMembers: string[] = Array.isArray(req.body?.memberIds) ? req.body.memberIds : [];
+      // Only allow inviting staff from the same clinic.
+      const staff = await storage.getClinicStaff(user.clinicId);
+      const validIds = new Set(staff.map((s) => s.id));
+      const memberIds = rawMembers.filter((id) => validIds.has(id));
+      const channel = await storage.createChatChannel(
+        { clinicId: user.clinicId, type: "channel", name, description, isPrivate, createdBy: user.id },
+        memberIds,
+      );
+      const allMembers = await storage.getChatChannelMemberUserIds(channel.id);
+      chatHub.notifyChannelsChanged(allMembers);
+      res.status(201).json(channel);
+    } catch (error) {
+      console.error("Error creating chat channel:", error);
+      res.status(500).json({ error: "Failed to create channel" });
+    }
+  });
+
+  // Open (or find existing) a direct message with another staff member.
+  app.post("/api/chat/dm", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const otherId = (req.body?.userId ?? "").toString();
+      if (!otherId || otherId === user.id) return res.status(400).json({ error: "Invalid user" });
+      const staff = await storage.getClinicStaff(user.clinicId);
+      if (!staff.some((s) => s.id === otherId)) return res.status(404).json({ error: "User not found" });
+      const channel = await storage.getOrCreateDm(user.clinicId, user.id, otherId);
+      chatHub.notifyChannelsChanged([user.id, otherId]);
+      res.json(channel);
+    } catch (error) {
+      console.error("Error opening DM:", error);
+      res.status(500).json({ error: "Failed to open direct message" });
+    }
+  });
+
+  // Channel detail + member list (membership required).
+  app.get("/api/chat/channels/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const channelId = parseInt(req.params.id);
+      const channel = await storage.getChatChannel(channelId);
+      if (!channel || channel.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (!(await storage.isChatChannelMember(channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      const members = await storage.getChatChannelMembers(channelId);
+      res.json({
+        channel,
+        members: members.map((m) => ({ id: m.user.id, firstName: m.user.firstName, lastName: m.user.lastName, email: m.user.email, role: m.role })),
+      });
+    } catch (error) {
+      console.error("Error fetching channel:", error);
+      res.status(500).json({ error: "Failed to fetch channel" });
+    }
+  });
+
+  // Invite members to a channel.
+  app.post("/api/chat/channels/:id/members", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const channelId = parseInt(req.params.id);
+      const channel = await storage.getChatChannel(channelId);
+      if (!channel || channel.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (channel.type === "dm") return res.status(400).json({ error: "Cannot add members to a direct message" });
+      if (!(await storage.isChatChannelMember(channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      const rawMembers: string[] = Array.isArray(req.body?.memberIds) ? req.body.memberIds : [];
+      const staff = await storage.getClinicStaff(user.clinicId);
+      const validIds = new Set(staff.map((s) => s.id));
+      const memberIds = rawMembers.filter((id) => validIds.has(id));
+      await storage.addChatChannelMembers(channelId, memberIds);
+      const allMembers = await storage.getChatChannelMemberUserIds(channelId);
+      chatHub.notifyChannelsChanged(allMembers);
+      chatHub.emitChannelUpdated(channelId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error adding members:", error);
+      res.status(500).json({ error: "Failed to add members" });
+    }
+  });
+
+  // Leave / remove a member from a channel.
+  app.delete("/api/chat/channels/:id/members/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const channelId = parseInt(req.params.id);
+      const targetId = req.params.userId;
+      const channel = await storage.getChatChannel(channelId);
+      if (!channel || channel.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (channel.type === "dm") return res.status(400).json({ error: "Cannot leave a direct message" });
+      if (!(await storage.isChatChannelMember(channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      // A user may remove themselves; the channel creator may remove anyone.
+      if (targetId !== user.id && channel.createdBy !== user.id) {
+        return res.status(403).json({ error: "Only the channel creator can remove others" });
+      }
+      const affected = await storage.getChatChannelMemberUserIds(channelId);
+      await storage.removeChatChannelMember(channelId, targetId);
+      chatHub.notifyChannelsChanged(affected);
+      chatHub.emitChannelUpdated(channelId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing member:", error);
+      res.status(500).json({ error: "Failed to remove member" });
+    }
+  });
+
+  // Message history (paginated, newest page first via beforeId).
+  app.get("/api/chat/channels/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const channelId = parseInt(req.params.id);
+      const channel = await storage.getChatChannel(channelId);
+      if (!channel || channel.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (!(await storage.isChatChannelMember(channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      const beforeId = req.query.beforeId ? parseInt(req.query.beforeId as string) : undefined;
+      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 100) : 50;
+      const messages = await storage.getChatMessages(channelId, { beforeId, limit });
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // Send a message (text + optional @mentions + patient tags).
+  app.post("/api/chat/channels/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const channelId = parseInt(req.params.id);
+      const channel = await storage.getChatChannel(channelId);
+      if (!channel || channel.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (!(await storage.isChatChannelMember(channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      const body = (req.body?.body ?? "").toString();
+      const mentionUserIds: string[] = Array.isArray(req.body?.mentionUserIds) ? req.body.mentionUserIds : [];
+      const patientIds: number[] = Array.isArray(req.body?.patientIds)
+        ? req.body.patientIds.map((p: any) => parseInt(p)).filter((n: number) => !Number.isNaN(n))
+        : [];
+      if (!body.trim() && patientIds.length === 0) {
+        return res.status(400).json({ error: "Message cannot be empty" });
+      }
+      // Only allow mentioning members of this channel.
+      const memberIds = new Set(await storage.getChatChannelMemberUserIds(channelId));
+      const validMentions = mentionUserIds.filter((id) => memberIds.has(id));
+      const message = await storage.createChatMessage(
+        { channelId, clinicId: user.clinicId, authorId: user.id, body },
+        validMentions,
+        patientIds,
+      );
+      // Sender has now "read" up to their own message.
+      await storage.markChatChannelRead(channelId, user.id);
+      chatHub.emitNewMessage(channelId, message);
+      res.status(201).json(message);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  // Upload a file attachment — creates a message (optionally with text) + attachment.
+  app.post("/api/chat/channels/:id/attachments", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const channelId = parseInt(req.params.id);
+      const channel = await storage.getChatChannel(channelId);
+      if (!channel || channel.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (!(await storage.isChatChannelMember(channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
+      const body = (req.body?.body ?? "").toString();
+      saveFileToDB(file.filename, file.path, file.mimetype, file.originalname).catch(console.error);
+      const message = await storage.createChatMessage(
+        { channelId, clinicId: user.clinicId, authorId: user.id, body },
+        [],
+        [],
+      );
+      await storage.createChatAttachment({
+        messageId: message.id,
+        filename: file.filename,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        fileUrl: `/uploads/${file.filename}`,
+      });
+      await storage.markChatChannelRead(channelId, user.id);
+      const full = await storage.getChatMessageById(message.id);
+      chatHub.emitNewMessage(channelId, full);
+      res.status(201).json(full);
+    } catch (error) {
+      console.error("Error uploading chat attachment:", error);
+      res.status(500).json({ error: "Failed to upload attachment" });
+    }
+  });
+
+  // Mark a channel as read up to now.
+  app.post("/api/chat/channels/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const channelId = parseInt(req.params.id);
+      const channel = await storage.getChatChannel(channelId);
+      if (!channel || channel.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (!(await storage.isChatChannelMember(channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      await storage.markChatChannelRead(channelId, user.id);
+      chatHub.emitRead(channelId, user.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error marking read:", error);
+      res.status(500).json({ error: "Failed to mark read" });
     }
   });
 
@@ -7033,6 +7278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  chatHub.attach(httpServer);
   return httpServer;
 }
 

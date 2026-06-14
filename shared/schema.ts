@@ -971,3 +971,85 @@ export const smsMessages = pgTable("sms_messages", {
 export const insertSmsMessageSchema = createInsertSchema(smsMessages).omit({ id: true, createdAt: true });
 export type SmsMessage = typeof smsMessages.$inferSelect;
 export type InsertSmsMessage = z.infer<typeof insertSmsMessageSchema>;
+
+// ── Team Chat (staff-to-staff internal messaging) ─────────────────────────
+// Slack-style channels + direct messages, all clinic-scoped. Channels of
+// type "dm" are 1:1 conversations with exactly two members and no name.
+export const chatChannels = pgTable("chat_channels", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  type: varchar("type", { length: 10 }).notNull().default("channel"), // "channel" | "dm"
+  name: varchar("name", { length: 120 }), // channel name; null for DMs
+  description: varchar("description", { length: 500 }),
+  isPrivate: boolean("is_private").notNull().default(false),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertChatChannelSchema = createInsertSchema(chatChannels).omit({ id: true, createdAt: true, updatedAt: true });
+export type ChatChannel = typeof chatChannels.$inferSelect;
+export type InsertChatChannel = z.infer<typeof insertChatChannelSchema>;
+
+export const chatChannelMembers = pgTable("chat_channel_members", {
+  id: serial("id").primaryKey(),
+  channelId: integer("channel_id").notNull().references(() => chatChannels.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  role: varchar("role", { length: 10 }).notNull().default("member"), // "admin" | "member"
+  lastReadAt: timestamp("last_read_at"),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+});
+
+export const insertChatChannelMemberSchema = createInsertSchema(chatChannelMembers).omit({ id: true, joinedAt: true });
+export type ChatChannelMember = typeof chatChannelMembers.$inferSelect;
+export type InsertChatChannelMember = z.infer<typeof insertChatChannelMemberSchema>;
+
+export const chatMessages = pgTable("chat_messages", {
+  id: serial("id").primaryKey(),
+  channelId: integer("channel_id").notNull().references(() => chatChannels.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  authorId: varchar("author_id").notNull().references(() => users.id),
+  body: text("body").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  editedAt: timestamp("edited_at"),
+  deletedAt: timestamp("deleted_at"),
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ id: true, createdAt: true, editedAt: true, deletedAt: true });
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+
+export const chatAttachments = pgTable("chat_attachments", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  originalName: varchar("original_name", { length: 255 }).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  sizeBytes: integer("size_bytes"),
+  fileUrl: varchar("file_url", { length: 500 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertChatAttachmentSchema = createInsertSchema(chatAttachments).omit({ id: true, createdAt: true });
+export type ChatAttachment = typeof chatAttachments.$inferSelect;
+export type InsertChatAttachment = z.infer<typeof insertChatAttachmentSchema>;
+
+export const chatMessageMentions = pgTable("chat_message_mentions", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
+  mentionedUserId: varchar("mentioned_user_id").notNull().references(() => users.id),
+});
+
+export const insertChatMessageMentionSchema = createInsertSchema(chatMessageMentions).omit({ id: true });
+export type ChatMessageMention = typeof chatMessageMentions.$inferSelect;
+export type InsertChatMessageMention = z.infer<typeof insertChatMessageMentionSchema>;
+
+export const chatMessagePatientTags = pgTable("chat_message_patient_tags", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+});
+
+export const insertChatMessagePatientTagSchema = createInsertSchema(chatMessagePatientTags).omit({ id: true });
+export type ChatMessagePatientTag = typeof chatMessagePatientTags.$inferSelect;
+export type InsertChatMessagePatientTag = z.infer<typeof insertChatMessagePatientTagSchema>;

@@ -60,9 +60,14 @@ export function getSession() {
   });
 }
 
+// Shared session middleware instance — created once in setupAuth and reused by
+// the WebSocket upgrade handler so it can parse the same session cookie.
+export let sessionMiddleware: ReturnType<typeof getSession> | null = null;
+
 export async function setupAuth(app: Express) {
   app.set("trust proxy", true);
-  app.use(getSession());
+  sessionMiddleware = getSession();
+  app.use(sessionMiddleware);
 
   // Add `Partitioned` attribute to session cookies so they survive inside
   // third-party iframe contexts (Replit workspace preview, embedded demos, etc).
