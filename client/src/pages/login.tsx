@@ -13,7 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Loader2, LogIn } from "lucide-react";
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
+  email: z.string().min(1, "Username or email is required"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -74,9 +74,9 @@ export default function LoginPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Username or Email</FormLabel>
                     <FormControl>
-                      <Input type="email" autoComplete="username" placeholder="you@example.com" {...field} />
+                      <Input type="text" autoComplete="username" placeholder="Enter your username or email" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
