@@ -286,6 +286,13 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const autoSaveDirtyRef = useRef(false);
   const latestFormDataRef = useRef<any>(null);
   const performAutoSaveRef = useRef<() => void>(() => {});
+  // The form values as they were when the edit dialog opened — used by the
+  // "Discard changes" button to revert any auto-saved edits back to original.
+  const originalFormDataRef = useRef<any>(null);
+  // When "Discard changes" is pressed while an auto-save is in flight, the
+  // original values are stashed here and written once that save completes — so
+  // the revert can never be overtaken by the in-flight edit.
+  const pendingDiscardRef = useRef<any>(null);
 
   const [formData, setFormData] = useState({
     urNumber: "",
@@ -774,6 +781,16 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       if (selectedPatient && updatedPatient && selectedPatient.id === updatedPatient.id) {
         setSelectedPatient(updatedPatient);
       }
+      // A discard was requested while this save was in flight — write the
+      // original values back now so the revert lands after (and wins over) this
+      // edit, instead of re-saving newer changes.
+      if (pendingDiscardRef.current) {
+        const original = pendingDiscardRef.current;
+        pendingDiscardRef.current = null;
+        autoSaveDirtyRef.current = false;
+        discardMutation.mutate({ id: variables.id, data: original });
+        return;
+      }
       // If the user kept editing while this save was in flight, persist the
       // newer state immediately; otherwise we're caught up.
       if (autoSaveDirtyRef.current) {
@@ -783,11 +800,48 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
         setAutoSaveStatus("saved");
       }
     },
-    onError: () => {
+    onError: (_err: unknown, variables: { id: number; data: any; snapshot: string }) => {
+      autoSaveInFlightRef.current = false;
+      // If a discard was requested while this (now-failed) save was in flight,
+      // still attempt the revert — earlier saves may have persisted edits.
+      if (pendingDiscardRef.current) {
+        const original = pendingDiscardRef.current;
+        pendingDiscardRef.current = null;
+        autoSaveDirtyRef.current = false;
+        discardMutation.mutate({ id: variables.id, data: original });
+        return;
+      }
       // Leave the baseline snapshot untouched so the change is still considered
       // unsaved and will be retried on the next edit or on dialog close.
-      autoSaveInFlightRef.current = false;
       setAutoSaveStatus("error");
+    },
+  });
+
+  // Writes the original (pre-edit) values back to the server when the user
+  // presses "Discard changes". Kept separate from the auto-save mutation so it
+  // never participates in the debounce / single-flight loop. All revert toasts
+  // go through these callbacks so we never claim success before the server acks.
+  const discardMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest(`/api/patients/${id}`, "PUT", data);
+      return res.json();
+    },
+    onSuccess: (updatedPatient: Patient) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+      if (selectedPatient && updatedPatient && selectedPatient.id === updatedPatient.id) {
+        setSelectedPatient(updatedPatient);
+      }
+      toast({
+        title: "Changes discarded",
+        description: "The record was restored to how it was when you opened it.",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't discard changes",
+        description: "Your edits may still be saved. Please reopen the patient and try again.",
+      });
     },
   });
 
@@ -981,9 +1035,11 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     autoSaveDirtyRef.current = false;
     if (isDialogOpen && editingPatient) {
       savedSnapshotRef.current = JSON.stringify(formData);
+      originalFormDataRef.current = { ...formData };
       setAutoSaveStatus("idle");
     } else {
       savedSnapshotRef.current = null;
+      originalFormDataRef.current = null;
       setAutoSaveStatus("idle");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1036,6 +1092,48 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   // debounce window.
   const flushAutoSave = () => {
     performAutoSaveRef.current();
+  };
+
+  // Revert any auto-saved edits back to the values the record had when the
+  // dialog opened, then close. Either writes the original values immediately or
+  // defers to the in-flight auto-save's completion so the revert always wins.
+  const handleDiscardChanges = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    autoSaveDirtyRef.current = false;
+    const original = originalFormDataRef.current;
+    let revertDispatched = false;
+    if (editingPatient && original) {
+      const originalJson = JSON.stringify(original);
+      const changed = savedSnapshotRef.current !== null && savedSnapshotRef.current !== originalJson;
+      if (changed) {
+        if (autoSaveInFlightRef.current) {
+          // An auto-save is mid-request: stash the original so it's written
+          // back once that save resolves (see autoSaveMutation success/error).
+          pendingDiscardRef.current = { ...original };
+        } else {
+          discardMutation.mutate({ id: editingPatient.id, data: { ...original } });
+        }
+        // The "Changes discarded" / failure toast is shown by the mutation
+        // callbacks once the server confirms, so we don't claim success early.
+        revertDispatched = true;
+      }
+    }
+    if (!revertDispatched) {
+      // Nothing was persisted yet — there's nothing to revert on the server, so
+      // confirm immediately as we drop the unsaved edits.
+      toast({
+        title: "Changes discarded",
+        description: "Your unsaved edits were discarded.",
+      });
+    }
+    // Close directly (not via onOpenChange) so we don't flush/re-save the edits
+    // we just reverted. Reset form state ourselves to mirror a normal close.
+    setIsDialogOpen(false);
+    resetForm();
+    setEditingPatient(null);
   };
 
   // Combine all documents into a single list for EMR-style view
@@ -2523,6 +2621,11 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 </div>
                 <div className="flex items-center gap-3">
                   {editingPatient && <AutoSaveIndicator status={autoSaveStatus} />}
+                  {editingPatient && (
+                    <Button type="button" variant="ghost" className="text-red-700 hover:bg-red-50 hover:text-red-800" onClick={handleDiscardChanges}>
+                      Discard changes
+                    </Button>
+                  )}
                   <Button type="button" variant="outline" onClick={() => { flushAutoSave(); setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>Cancel</Button>
                   <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
                     {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingPatient ? "Update" : "Add Patient"}
@@ -3132,6 +3235,11 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
               </div>
               <div className="flex items-center justify-end gap-3">
                 {editingPatient && <AutoSaveIndicator status={autoSaveStatus} />}
+                {editingPatient && (
+                  <Button type="button" variant="ghost" className="text-red-700 hover:bg-red-50 hover:text-red-800" onClick={handleDiscardChanges}>
+                    Discard changes
+                  </Button>
+                )}
                 <Button type="button" variant="outline" onClick={() => { flushAutoSave(); setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>
                   Cancel
                 </Button>
