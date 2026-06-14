@@ -1891,6 +1891,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Edit a message — author only, within the same clinic.
+  app.patch("/api/chat/messages/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const messageId = parseInt(req.params.id);
+      const existing = await storage.getChatMessageById(messageId);
+      if (!existing || existing.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (existing.authorId !== user.id) return res.status(403).json({ error: "You can only edit your own messages" });
+      if (!(await storage.isChatChannelMember(existing.channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      if (existing.deletedAt) return res.status(400).json({ error: "Cannot edit a deleted message" });
+      const body = (req.body?.body ?? "").toString();
+      if (!body.trim()) return res.status(400).json({ error: "Message cannot be empty" });
+      // Re-derive @mentions from the edited text against current channel members
+      // (mention tokens are the member's first name with whitespace removed).
+      const members = await storage.getChatChannelMembers(existing.channelId);
+      const tokens = new Set((body.match(/@(\w+)/g) ?? []).map((t: string) => t.slice(1).toLowerCase()));
+      const validMentions = members
+        .filter((mb) => {
+          const fn = (mb.user.firstName || "").replace(/\s+/g, "").toLowerCase();
+          return fn.length > 0 && tokens.has(fn);
+        })
+        .map((mb) => mb.userId);
+      const updated = await storage.updateChatMessage(messageId, body, validMentions);
+      chatHub.emitMessageUpdated(existing.channelId, updated);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error editing message:", error);
+      res.status(500).json({ error: "Failed to edit message" });
+    }
+  });
+
+  // Delete a message — author only, within the same clinic (soft delete).
+  app.delete("/api/chat/messages/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const messageId = parseInt(req.params.id);
+      const existing = await storage.getChatMessageById(messageId);
+      if (!existing || existing.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (existing.authorId !== user.id) return res.status(403).json({ error: "You can only delete your own messages" });
+      if (!(await storage.isChatChannelMember(existing.channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      await storage.deleteChatMessage(messageId);
+      chatHub.emitMessageDeleted(existing.channelId, messageId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      res.status(500).json({ error: "Failed to delete message" });
+    }
+  });
+
   // Patients API
   app.get("/api/patients", isAuthenticated, async (req, res) => {
     try {

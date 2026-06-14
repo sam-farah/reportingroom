@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   Hash, Lock, Plus, Send, Paperclip, Search, Loader2, Users, AtSign, UserPlus,
-  MessageCircle, X, FileText, Download, LogOut, Circle, UserCircle,
+  MessageCircle, X, FileText, Download, LogOut, Circle, UserCircle, Pencil, Trash2, Check,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -40,6 +40,7 @@ interface ChatMessage {
   authorId: string;
   body: string;
   createdAt: string;
+  editedAt?: string | null;
   author: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
   attachments: ChatAttachment[];
   mentions: string[];
@@ -95,6 +96,8 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   const [composer, setComposer] = useState("");
   const [mentions, setMentions] = useState<Record<string, string>>({}); // userId -> name
   const [pendingTags, setPendingTags] = useState<ChatPatientTag[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
@@ -149,6 +152,18 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
     },
   });
 
+  const replaceMessage = useCallback((channelId: number, message: ChatMessage) => {
+    queryClient.setQueryData<ChatMessage[]>(["/api/chat/channels", channelId, "messages"], (old) =>
+      (old ?? []).map((m) => (m.id === message.id ? message : m)),
+    );
+  }, [queryClient]);
+
+  const removeMessage = useCallback((channelId: number, messageId: number) => {
+    queryClient.setQueryData<ChatMessage[]>(["/api/chat/channels", channelId, "messages"], (old) =>
+      (old ?? []).filter((m) => m.id !== messageId),
+    );
+  }, [queryClient]);
+
   const onEvent = useCallback((e: ChatServerEvent) => {
     if (e.type === "message:new") {
       appendMessage(e.channelId, e.message);
@@ -157,13 +172,18 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
       }
       // Refresh ordering / unread / preview in the sidebar.
       queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
+    } else if (e.type === "message:updated") {
+      replaceMessage(e.channelId, e.message);
+    } else if (e.type === "message:deleted") {
+      removeMessage(e.channelId, e.messageId);
+      queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
     } else if (e.type === "channels:changed") {
       queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
     } else if (e.type === "channel:updated") {
       queryClient.invalidateQueries({ queryKey: ["/api/chat/channels", e.channelId] });
       queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
     }
-  }, [appendMessage, markReadMutation, queryClient]);
+  }, [appendMessage, replaceMessage, removeMessage, markReadMutation, queryClient]);
 
   const { online, typing, sendTyping, connected } = useChatSocket({ enabled: !!currentUserId, onEvent });
 
@@ -188,6 +208,35 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
     },
     onError: () => toast({ title: "Couldn't send message", variant: "destructive" }),
   });
+
+  const editMutation = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: string }) =>
+      apiRequest(`/api/chat/messages/${id}`, "PATCH", { body }),
+    onSuccess: (msg: any) => {
+      if (selectedId != null && msg) replaceMessage(selectedId, msg);
+      setEditingId(null); setEditText("");
+      queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
+    },
+    onError: () => toast({ title: "Couldn't edit message", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/chat/messages/${id}`, "DELETE"),
+    onSuccess: (_d, id) => {
+      if (selectedId != null) removeMessage(selectedId, id);
+      queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
+    },
+    onError: () => toast({ title: "Couldn't delete message", variant: "destructive" }),
+  });
+
+  const startEdit = (m: ChatMessage) => { setEditingId(m.id); setEditText(m.body); };
+  const cancelEdit = () => { setEditingId(null); setEditText(""); };
+  const saveEdit = () => {
+    if (editingId == null) return;
+    const body = editText.trim();
+    if (!body) return;
+    editMutation.mutate({ id: editingId, body });
+  };
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
@@ -423,14 +472,48 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
               ) : messages.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-8">No messages yet. Say hello!</p>
               ) : messages.map((m) => (
-                <div key={m.id} className="flex gap-2.5" data-testid={`message-${m.id}`}>
+                <div key={m.id} className="flex gap-2.5 group" data-testid={`message-${m.id}`}>
                   <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">{initials(m.author)}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
                       <span className="font-medium text-sm">{personName(m.author)}</span>
                       <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
+                      {m.editedAt && <span className="text-[11px] text-muted-foreground italic">(edited)</span>}
+                      {m.authorId === currentUserId && editingId !== m.id && (
+                        <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEdit(m)} data-testid={`button-edit-${m.id}`}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => { if (confirm("Delete this message?")) deleteMutation.mutate(m.id); }} data-testid={`button-delete-${m.id}`}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </span>
+                      )}
                     </div>
-                    {m.body && <MessageBody body={m.body} />}
+                    {editingId === m.id ? (
+                      <div className="mt-1 space-y-1.5">
+                        <Textarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                            if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+                          }}
+                          autoFocus
+                          className="min-h-[42px] max-h-32 resize-none text-sm"
+                          data-testid={`input-edit-${m.id}`}
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={saveEdit} disabled={editMutation.isPending || !editText.trim()} data-testid={`button-save-edit-${m.id}`}>
+                            {editMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1" />} Save
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={cancelEdit} data-testid={`button-cancel-edit-${m.id}`}>Cancel</Button>
+                          <span className="text-[11px] text-muted-foreground">Enter to save · Esc to cancel</span>
+                        </div>
+                      </div>
+                    ) : (
+                      m.body && <MessageBody body={m.body} />
+                    )}
                     {m.patientTags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {m.patientTags.map((t) => (

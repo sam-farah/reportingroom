@@ -22,3 +22,11 @@ Each chat route must: load the channel, verify `channel.clinicId === currentUser
 
 ## Author message dedup
 The author receives their own new message via BOTH the POST response AND the WS broadcast (author is a channel member). The client dedupes by message id when appending to the react-query cache — keep that dedup or messages double up.
+
+## Edit / delete messages
+- Edit + delete are author-only AND require current channel membership (not just author + clinic). A user removed from a channel must not be able to mutate their old messages there.
+- Delete is soft (`deletedAt`); history fetch already excludes `deletedAt` rows, so a deleted message simply disappears (no tombstone). Live removal via WS `message:deleted` (clients filter it out of cache).
+- Edit re-derives @mentions **server-side** from the edited body against current channel members (token = member firstName, whitespace-stripped, case-insensitive). Do NOT trust client-supplied mention IDs on edit — the composer's mention map isn't available for an arbitrary historical message, so client-side matching silently dropped mentions.
+
+## In-list array queries (Neon pitfall)
+Never write `sql\`${col} = ANY(${jsArray})\`` for chat lookups — the Neon serverless driver can't serialise a JS array there and throws `malformed array literal`. Use drizzle's `inArray(col, arr)` instead.

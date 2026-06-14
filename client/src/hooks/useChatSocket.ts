@@ -7,6 +7,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 export type ChatServerEvent =
   | { type: "message:new"; channelId: number; message: any }
+  | { type: "message:updated"; channelId: number; message: any }
+  | { type: "message:deleted"; channelId: number; messageId: number }
   | { type: "channel:read"; channelId: number; userId: string }
   | { type: "channel:updated"; channelId: number }
   | { type: "channels:changed" }

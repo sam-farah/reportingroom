@@ -24,6 +24,8 @@ type Socket = WebSocket & {
 
 type OutboundEvent =
   | { type: "message:new"; channelId: number; message: any }
+  | { type: "message:updated"; channelId: number; message: any }
+  | { type: "message:deleted"; channelId: number; messageId: number }
   | { type: "channel:read"; channelId: number; userId: string }
   | { type: "channel:updated"; channelId: number }
   | { type: "channels:changed" }
@@ -179,6 +181,16 @@ class ChatHub {
   async emitNewMessage(channelId: number, message: any) {
     const memberIds = await storage.getChatChannelMemberUserIds(channelId);
     this.sendToUsers(memberIds, { type: "message:new", channelId, message });
+  }
+
+  async emitMessageUpdated(channelId: number, message: any) {
+    const memberIds = await storage.getChatChannelMemberUserIds(channelId);
+    this.sendToUsers(memberIds, { type: "message:updated", channelId, message });
+  }
+
+  async emitMessageDeleted(channelId: number, messageId: number) {
+    const memberIds = await storage.getChatChannelMemberUserIds(channelId);
+    this.sendToUsers(memberIds, { type: "message:deleted", channelId, messageId });
   }
 
   async emitRead(channelId: number, userId: string) {

@@ -391,6 +391,8 @@ export interface IStorage {
   createChatMessage(data: { channelId: number; clinicId: number; authorId: string; body: string }, mentionUserIds: string[], patientIds: number[]): Promise<ChatMessageWithRelations>;
   createChatAttachment(data: InsertChatAttachment): Promise<ChatAttachment>;
   markChatChannelRead(channelId: number, userId: string): Promise<void>;
+  updateChatMessage(id: number, body: string, mentionUserIds: string[]): Promise<ChatMessageWithRelations>;
+  deleteChatMessage(id: number): Promise<void>;
 }
 
 // Channel as shown in the sidebar — includes unread count, last message preview,
@@ -2318,6 +2320,26 @@ export class DatabaseStorage implements IStorage {
 
     const [hydrated] = await this.hydrateChatMessages([msg]);
     return hydrated;
+  }
+
+  async updateChatMessage(id: number, body: string, mentionUserIds: string[]): Promise<ChatMessageWithRelations> {
+    await db.update(chatMessages).set({ body, editedAt: new Date() }).where(eq(chatMessages.id, id));
+    // Re-sync mentions to match the edited text.
+    await db.delete(chatMessageMentions).where(eq(chatMessageMentions.messageId, id));
+    const unique = Array.from(new Set(mentionUserIds));
+    if (unique.length) {
+      await db.insert(chatMessageMentions).values(
+        unique.map((uid) => ({ messageId: id, mentionedUserId: uid })),
+      );
+    }
+    const [row] = await db.select().from(chatMessages).where(eq(chatMessages.id, id));
+    const [hydrated] = await this.hydrateChatMessages([row]);
+    return hydrated;
+  }
+
+  async deleteChatMessage(id: number): Promise<void> {
+    // Soft delete — getChatMessages already excludes rows with deletedAt set.
+    await db.update(chatMessages).set({ deletedAt: new Date() }).where(eq(chatMessages.id, id));
   }
 
   async createChatAttachment(data: InsertChatAttachment): Promise<ChatAttachment> {
