@@ -75,6 +75,14 @@ function fmtTime(value: string | Date): string {
   if (d.toDateString() === now.toDateString()) return time;
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${time}`;
 }
+function fmtTimeShort(value: string | Date): string {
+  const d = new Date(value);
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const ampm = h >= 12 ? "pm" : "am";
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${m}${ampm}`;
+}
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -374,10 +382,10 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
     : [];
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
+    <div className="flex h-[calc(100vh-8rem)] gap-2">
       {/* Sidebar */}
-      <div className="w-64 flex-shrink-0 border rounded-lg bg-card flex flex-col">
-        <div className="p-3 border-b flex items-center justify-between">
+      <div className="w-60 flex-shrink-0 border rounded-lg bg-card flex flex-col">
+        <div className="px-3 py-2.5 border-b flex items-center justify-between">
           <div className="flex items-center gap-2">
             <MessageCircle className="w-4 h-4 text-primary" />
             <span className="font-semibold text-sm">Team Chat</span>
@@ -444,7 +452,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
       <div className="flex-1 border rounded-lg bg-card flex flex-col min-w-0">
         {selectedChannel ? (
           <>
-            <div className="p-3 border-b flex items-center justify-between">
+            <div className="px-4 py-2.5 border-b flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 {selectedChannel.type === "dm"
                   ? <UserCircle className="w-4 h-4 flex-shrink-0" />
@@ -466,30 +474,30 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto py-3 px-1.5 space-y-0">
               {messagesLoading ? (
                 <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
               ) : messages.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-8">No messages yet. Say hello!</p>
-              ) : messages.map((m) => (
-                <div key={m.id} className="flex gap-2.5 group" data-testid={`message-${m.id}`}>
-                  <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">{initials(m.author)}</span>
+              ) : messages.map((m, i) => {
+                const prev = messages[i - 1];
+                const delta = prev ? new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() : 0;
+                const grouped = !!prev && prev.authorId === m.authorId && !!m.author
+                  && delta >= 0 && delta < 5 * 60 * 1000;
+                return (
+                <div key={m.id} className={`group relative flex gap-2 px-2 rounded hover:bg-muted/40 ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
+                  {grouped ? (
+                    <span className="w-8 flex-shrink-0 text-[10px] leading-5 text-muted-foreground text-right pr-1 pt-0.5 opacity-0 group-hover:opacity-100 select-none">{fmtTimeShort(m.createdAt)}</span>
+                  ) : (
+                    <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium flex-shrink-0 mt-0.5">{initials(m.author)}</span>
+                  )}
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-medium text-sm">{personName(m.author)}</span>
-                      <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
-                      {m.editedAt && <span className="text-[11px] text-muted-foreground italic">(edited)</span>}
-                      {m.authorId === currentUserId && editingId !== m.id && (
-                        <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEdit(m)} data-testid={`button-edit-${m.id}`}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => { if (confirm("Delete this message?")) deleteMutation.mutate(m.id); }} data-testid={`button-delete-${m.id}`}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </span>
-                      )}
-                    </div>
+                    {!grouped && (
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-medium text-sm">{personName(m.author)}</span>
+                        <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
+                      </div>
+                    )}
                     {editingId === m.id ? (
                       <div className="mt-1 space-y-1.5">
                         <Textarea
@@ -512,7 +520,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                         </div>
                       </div>
                     ) : (
-                      m.body && <MessageBody body={m.body} />
+                      m.body && <MessageBody body={m.body} edited={!!m.editedAt} />
                     )}
                     {m.patientTags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
@@ -547,8 +555,19 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                       </div>
                     )}
                   </div>
+                  {m.authorId === currentUserId && editingId !== m.id && (
+                    <span className="absolute right-2 -top-3 flex items-center rounded-md border bg-card shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => startEdit(m)} data-testid={`button-edit-${m.id}`}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md text-destructive hover:text-destructive" onClick={() => { if (confirm("Delete this message?")) deleteMutation.mutate(m.id); }} data-testid={`button-delete-${m.id}`}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </span>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               {typingNames.length > 0 && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground pl-10">
                   <span className="flex gap-0.5">
@@ -563,7 +582,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
             </div>
 
             {/* Composer */}
-            <div className="border-t p-3 relative">
+            <div className="border-t px-3 py-2.5 relative">
               {mentionQuery != null && mentionCandidates.length > 0 && (
                 <div className="absolute bottom-full left-3 mb-1 w-56 bg-popover border rounded-lg shadow-lg overflow-hidden z-10">
                   {mentionCandidates.map((s) => (
@@ -700,13 +719,14 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
 }
 
 // Render message body, bolding @mention tokens.
-function MessageBody({ body }: { body: string }) {
+function MessageBody({ body, edited }: { body: string; edited?: boolean }) {
   const parts = body.split(/(@\w+)/g);
   return (
-    <p className="text-sm whitespace-pre-wrap break-words mt-0.5">
+    <p className="text-sm whitespace-pre-wrap break-words leading-snug">
       {parts.map((part, i) => part.startsWith("@")
         ? <span key={i} className="text-primary font-medium bg-primary/10 rounded px-0.5">{part}</span>
         : <span key={i}>{part}</span>)}
+      {edited && <span className="text-[10px] text-muted-foreground italic ml-1 align-baseline">(edited)</span>}
     </p>
   );
 }
