@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { capitalizeWords } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -12,14 +12,39 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope, Loader2, Check } from "lucide-react";
 import ConsultationDialog from "@/components/consultation-dialog";
-
-// Feature flag for the new Consultation dialog. Set to true once user has signed off on testing.
-const CONSULTATIONS_ENABLED = false;
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
+
+// Feature flag for the new Consultation dialog. Set to true once user has signed off on testing.
+const CONSULTATIONS_ENABLED = false;
+
+function AutoSaveIndicator({ status }: { status: "idle" | "saving" | "saved" | "error" }) {
+  if (status === "saving") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-gray-500" data-testid="autosave-status">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…
+      </span>
+    );
+  }
+  if (status === "saved") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-emerald-600" data-testid="autosave-status">
+        <Check className="w-3.5 h-3.5" /> Saved
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-red-600" data-testid="autosave-status">
+        <AlertCircle className="w-3.5 h-3.5" /> Save failed
+      </span>
+    );
+  }
+  return null;
+}
 
 const safeDateFormat = (v: any, fmt: string, fallback: string = "—"): string => {
   if (!v) return fallback;
@@ -254,6 +279,13 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const [archivePassword, setArchivePassword] = useState("");
   const [archiveReason, setArchiveReason] = useState("");
   const [archiveSubmitting, setArchiveSubmitting] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const savedSnapshotRef = useRef<string | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveInFlightRef = useRef(false);
+  const autoSaveDirtyRef = useRef(false);
+  const latestFormDataRef = useRef<any>(null);
+  const performAutoSaveRef = useRef<() => void>(() => {});
 
   const [formData, setFormData] = useState({
     urNumber: "",
@@ -279,6 +311,9 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     allergies: "",
     notes: "",
   });
+  // Always keep a ref to the freshest form values so the single-flight
+  // auto-save logic can re-read the latest state inside async callbacks.
+  latestFormDataRef.current = formData;
 
   const { data: patients = [], isLoading } = useQuery<Patient[]>({
     queryKey: ["/api/patients", searchQuery],
@@ -721,6 +756,41 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     },
   });
 
+  // Silent auto-save used while editing an existing patient — persists changes
+  // without closing the dialog or showing a success toast, so accidentally
+  // clicking outside the popup or navigating away never loses an edit.
+  // Writes are single-flight (one PUT at a time) and the "saved" baseline only
+  // advances once the server confirms, so a stale request can never overwrite a
+  // newer one and a failed save is never mistaken for a successful one.
+  const autoSaveMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any; snapshot: string }) => {
+      const res = await apiRequest(`/api/patients/${id}`, "PUT", data);
+      return res.json();
+    },
+    onSuccess: (updatedPatient: Patient, variables: { id: number; data: any; snapshot: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+      savedSnapshotRef.current = variables.snapshot;
+      autoSaveInFlightRef.current = false;
+      if (selectedPatient && updatedPatient && selectedPatient.id === updatedPatient.id) {
+        setSelectedPatient(updatedPatient);
+      }
+      // If the user kept editing while this save was in flight, persist the
+      // newer state immediately; otherwise we're caught up.
+      if (autoSaveDirtyRef.current) {
+        autoSaveDirtyRef.current = false;
+        performAutoSaveRef.current();
+      } else {
+        setAutoSaveStatus("saved");
+      }
+    },
+    onError: () => {
+      // Leave the baseline snapshot untouched so the change is still considered
+      // unsaved and will be retried on the next edit or on dialog close.
+      autoSaveInFlightRef.current = false;
+      setAutoSaveStatus("error");
+    },
+  });
+
   const archiveMutation = useMutation({
     mutationFn: async ({ id, mode, password, reason }: { id: number; mode: "archive" | "restore"; password: string; reason?: string }) => {
       const res = await apiRequest(
@@ -903,6 +973,69 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     } else {
       createMutation.mutate(formData);
     }
+  };
+
+  // Whenever the edit dialog opens for an existing patient, capture a baseline
+  // snapshot so we only auto-save genuine changes. Reset everything on close.
+  useEffect(() => {
+    autoSaveDirtyRef.current = false;
+    if (isDialogOpen && editingPatient) {
+      savedSnapshotRef.current = JSON.stringify(formData);
+      setAutoSaveStatus("idle");
+    } else {
+      savedSnapshotRef.current = null;
+      setAutoSaveStatus("idle");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDialogOpen, editingPatient?.id]);
+
+  // Core single-flight save: fires at most one PUT at a time. If a save is
+  // already in flight, it marks the form dirty so the in-flight save's success
+  // handler re-runs with the newest values (preventing out-of-order overwrites).
+  const performAutoSave = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    if (!editingPatient || savedSnapshotRef.current === null) return;
+    const data = latestFormDataRef.current;
+    const current = JSON.stringify(data);
+    if (current === savedSnapshotRef.current) return;
+    // Don't try to save while a required identity field is blank — the row
+    // would be left in an invalid state.
+    if (!data.firstName || !data.lastName || !data.dateOfBirth) return;
+    if (autoSaveInFlightRef.current) {
+      autoSaveDirtyRef.current = true;
+      return;
+    }
+    autoSaveInFlightRef.current = true;
+    setAutoSaveStatus("saving");
+    autoSaveMutation.mutate({ id: editingPatient.id, data: { ...data }, snapshot: current });
+  };
+  performAutoSaveRef.current = performAutoSave;
+
+  // Debounced auto-save: persist edits ~1s after the user stops typing.
+  useEffect(() => {
+    if (!isDialogOpen || !editingPatient || savedSnapshotRef.current === null) return;
+    const current = JSON.stringify(formData);
+    if (current === savedSnapshotRef.current) return;
+    if (!formData.firstName || !formData.lastName || !formData.dateOfBirth) return;
+    setAutoSaveStatus("saving");
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      performAutoSaveRef.current();
+    }, 1000);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, isDialogOpen, editingPatient?.id]);
+
+  // Immediately persist any pending changes — used when the dialog is about to
+  // close (clicking outside / Cancel) so the last edit is never lost to the
+  // debounce window.
+  const flushAutoSave = () => {
+    performAutoSaveRef.current();
   };
 
   // Combine all documents into a single list for EMR-style view
@@ -2238,7 +2371,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
         </Dialog>
 
         {/* Edit Patient Dialog — available in the detail view */}
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { resetForm(); setEditingPatient(null); } }}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) flushAutoSave(); setIsDialogOpen(open); if (!open) { resetForm(); setEditingPatient(null); } }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingPatient ? "Edit Patient" : "Add New Patient"}</DialogTitle>
@@ -2388,8 +2521,9 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                     </Button>
                   )}
                 </div>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>Cancel</Button>
+                <div className="flex items-center gap-3">
+                  {editingPatient && <AutoSaveIndicator status={autoSaveStatus} />}
+                  <Button type="button" variant="outline" onClick={() => { flushAutoSave(); setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>Cancel</Button>
                   <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
                     {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingPatient ? "Update" : "Add Patient"}
                   </Button>
@@ -2781,7 +2915,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
           );
         })()}
 
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) flushAutoSave(); setIsDialogOpen(open); }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingPatient ? "Edit Patient" : "Add New Patient"}</DialogTitle>
@@ -2996,8 +3130,9 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   />
                 </div>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>
+              <div className="flex items-center justify-end gap-3">
+                {editingPatient && <AutoSaveIndicator status={autoSaveStatus} />}
+                <Button type="button" variant="outline" onClick={() => { flushAutoSave(); setIsDialogOpen(false); resetForm(); setEditingPatient(null); }}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
