@@ -121,7 +121,7 @@ import {
   chatMessagePatientTags,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull } from "drizzle-orm";
+import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Interface for storage operations
@@ -2229,15 +2229,15 @@ export class DatabaseStorage implements IStorage {
     const authorIds = Array.from(new Set(rows.map((r) => r.authorId)));
 
     const authorRows = authorIds.length
-      ? await db.select().from(users).where(sql`${users.id} = ANY(${authorIds})`)
+      ? await db.select().from(users).where(inArray(users.id, authorIds))
       : [];
     const authorMap = new Map(authorRows.map((u) => {
       const d = FieldEncryption.decryptFields(u) as User;
       return [d.id, { id: d.id, firstName: d.firstName, lastName: d.lastName, email: d.email }];
     }));
 
-    const atts = await db.select().from(chatAttachments).where(sql`${chatAttachments.messageId} = ANY(${ids})`);
-    const mentions = await db.select().from(chatMessageMentions).where(sql`${chatMessageMentions.messageId} = ANY(${ids})`);
+    const atts = await db.select().from(chatAttachments).where(inArray(chatAttachments.messageId, ids));
+    const mentions = await db.select().from(chatMessageMentions).where(inArray(chatMessageMentions.messageId, ids));
     // Defense-in-depth: only surface tagged patients that belong to the same
     // clinic as the message, so a stray cross-clinic tag can never be rendered.
     const tags = await db.select({
@@ -2250,7 +2250,7 @@ export class DatabaseStorage implements IStorage {
       .from(chatMessagePatientTags)
       .innerJoin(chatMessages, eq(chatMessagePatientTags.messageId, chatMessages.id))
       .innerJoin(patients, and(eq(chatMessagePatientTags.patientId, patients.id), eq(patients.clinicId, chatMessages.clinicId)))
-      .where(sql`${chatMessagePatientTags.messageId} = ANY(${ids})`);
+      .where(inArray(chatMessagePatientTags.messageId, ids));
 
     return rows.map((r) => ({
       ...r,
@@ -2305,7 +2305,7 @@ export class DatabaseStorage implements IStorage {
       // Only allow tagging patients that belong to this message's clinic — never
       // trust client-supplied patient IDs (prevents cross-tenant PHI exposure).
       const allowed = await db.select({ id: patients.id }).from(patients)
-        .where(and(eq(patients.clinicId, data.clinicId), sql`${patients.id} = ANY(${uniqueTags})`));
+        .where(and(eq(patients.clinicId, data.clinicId), inArray(patients.id, uniqueTags)));
       const allowedIds = allowed.map((r) => r.id);
       if (allowedIds.length) {
         await db.insert(chatMessagePatientTags).values(
