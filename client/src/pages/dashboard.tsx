@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useChatSocket } from "@/hooks/useChatSocket";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import UserPanel from "@/components/user-panel";
@@ -125,6 +126,23 @@ export default function Dashboard() {
     p => p.pinned || (p.createdAt && new Date(p.createdAt).getTime() > recentSince)
   ).length;
 
+  // Team Chat unread badge — total unread across all channels + DMs.
+  const currentUserId = (user as any)?.id as string | undefined;
+  const { data: chatChannels } = useQuery<{ unreadCount: number }[]>({
+    queryKey: ["/api/chat/channels"],
+    retry: false,
+  });
+  const chatUnreadCount = (chatChannels ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+  // Keep the badge live even when the chat panel isn't open.
+  useChatSocket({
+    enabled: !!currentUserId,
+    onEvent: (e) => {
+      if (e.type === "message:new" || e.type === "message:deleted" || e.type === "channels:changed" || e.type === "channel:updated" || e.type === "channel:read") {
+        queryClient.invalidateQueries({ queryKey: ["/api/chat/channels"] });
+      }
+    },
+  });
+
   const visibleNav = NAV_ITEMS.filter(item =>
     (!item.adminOnly || isOwnerOrAdmin) && (!item.superAdminOnly || isSuperAdmin)
   );
@@ -243,6 +261,14 @@ export default function Dashboard() {
                         title={`${pendingReportsCount} report${pendingReportsCount !== 1 ? "s" : ""} pending finalisation or distribution`}
                       >
                         {pendingReportsCount > 99 ? "99+" : pendingReportsCount}
+                      </span>
+                    )}
+                    {item.id === "chat" && chatUnreadCount > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none"
+                        title={`${chatUnreadCount} unread message${chatUnreadCount !== 1 ? "s" : ""}`}
+                      >
+                        {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
                       </span>
                     )}
                   </span>
