@@ -207,8 +207,8 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const sendMutation = useMutation({
-    mutationFn: (payload: { body: string; mentionUserIds: string[]; patientIds: number[] }) =>
-      apiRequest(`/api/chat/channels/${selectedId}/messages`, "POST", payload),
+    mutationFn: async (payload: { body: string; mentionUserIds: string[]; patientIds: number[] }) =>
+      (await apiRequest(`/api/chat/channels/${selectedId}/messages`, "POST", payload)).json(),
     onSuccess: (msg: any) => {
       if (selectedId != null && msg) appendMessage(selectedId, msg);
       setComposer(""); setMentions({}); setPendingTags([]);
@@ -218,8 +218,8 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   });
 
   const editMutation = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: string }) =>
-      apiRequest(`/api/chat/messages/${id}`, "PATCH", { body }),
+    mutationFn: async ({ id, body }: { id: number; body: string }) =>
+      (await apiRequest(`/api/chat/messages/${id}`, "PATCH", { body })).json(),
     onSuccess: (msg: any) => {
       if (selectedId != null && msg) replaceMessage(selectedId, msg);
       setEditingId(null); setEditText("");
@@ -247,11 +247,11 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   };
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: async (file: File) => {
       const fd = new FormData();
       fd.append("file", file);
       if (composer.trim()) fd.append("body", composer.trim());
-      return apiRequest(`/api/chat/channels/${selectedId}/attachments`, "POST", fd, { isFormData: true });
+      return (await apiRequest(`/api/chat/channels/${selectedId}/attachments`, "POST", fd, { isFormData: true })).json();
     },
     onSuccess: (msg: any) => {
       if (selectedId != null && msg) appendMessage(selectedId, msg);
@@ -262,8 +262,8 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   });
 
   const createChannelMutation = useMutation({
-    mutationFn: (payload: { name: string; description: string | null; isPrivate: boolean; memberIds: string[] }) =>
-      apiRequest("/api/chat/channels", "POST", payload),
+    mutationFn: async (payload: { name: string; description: string | null; isPrivate: boolean; memberIds: string[] }) =>
+      (await apiRequest("/api/chat/channels", "POST", payload)).json(),
     onSuccess: (ch: any) => {
       setCreateOpen(false);
       queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
@@ -273,7 +273,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   });
 
   const dmMutation = useMutation({
-    mutationFn: (userId: string) => apiRequest("/api/chat/dm", "POST", { userId }),
+    mutationFn: async (userId: string) => (await apiRequest("/api/chat/dm", "POST", { userId })).json(),
     onSuccess: (ch: any) => {
       setDmOpen(false);
       queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
@@ -522,7 +522,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                     ) : (
                       m.body && <MessageBody body={m.body} edited={!!m.editedAt} />
                     )}
-                    {m.patientTags.length > 0 && (
+                    {(m.patientTags?.length ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {m.patientTags.map((t) => (
                           <button
@@ -537,7 +537,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                         ))}
                       </div>
                     )}
-                    {m.attachments.length > 0 && (
+                    {(m.attachments?.length ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-2 mt-1.5">
                         {m.attachments.map((a) => (a.mimeType.startsWith("image/") ? (
                           <a key={a.id} href={a.fileUrl} target="_blank" rel="noreferrer" className="block">

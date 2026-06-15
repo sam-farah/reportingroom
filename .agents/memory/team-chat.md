@@ -30,3 +30,8 @@ The author receives their own new message via BOTH the POST response AND the WS 
 
 ## In-list array queries (Neon pitfall)
 Never write `sql\`${col} = ANY(${jsArray})\`` for chat lookups — the Neon serverless driver can't serialise a JS array there and throws `malformed array literal`. Use drizzle's `inArray(col, arr)` instead.
+
+## apiRequest returns a Response, not JSON (blank-page footgun)
+`apiRequest` (client/src/lib/queryClient.ts) resolves to a raw `Response`. Any useMutation whose `onSuccess` consumes the body MUST do `(await apiRequest(...)).json()` in its mutationFn. A chat mutationFn that returned the Response directly got appended to the messages cache; the render hit `m.patientTags.length` on a Response → threw → Chat is a dashboard panel with NO ErrorBoundary → the whole page blanked.
+**Why:** server returned 201 with correct JSON, so it looked like a server-shape problem; the real bug was client-side type confusion (Response vs message).
+**How to apply:** when a mutation's result feeds setQueryData/append/replace, confirm the mutationFn calls `.json()`. Consider guarding array access (`m.patientTags?.length`) since there is no top-level ErrorBoundary.
