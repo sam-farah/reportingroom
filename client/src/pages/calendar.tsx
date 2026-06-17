@@ -956,6 +956,23 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     },
   });
 
+  // Quick invoice-status toggle from the appointment detail popup — updates just
+  // the isInvoiced flag without opening the edit form or closing the dialog.
+  const invoiceMutation = useMutation({
+    mutationFn: async ({ id, isInvoiced }: { id: number; isInvoiced: boolean }) =>
+      apptFetch(`/api/appointments/${id}`, "PUT", { isInvoiced }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      setViewingAppointment((prev: any) =>
+        prev && prev.id === vars.id ? { ...prev, isInvoiced: vars.isInvoiced } : prev,
+      );
+      toast({ title: vars.isInvoiced ? "Marked as invoiced" : "Marked as not invoiced" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to update invoice status", variant: "destructive" });
+    },
+  });
+
   const confirmOverride = () => {
     if (!conflictPrompt) return;
     const data = { ...conflictPrompt.data, force: true };
@@ -3317,6 +3334,37 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                     </Button>
                   ) : null;
                 })()}
+
+                {/* Mark as Invoiced toggle — quick invoice status, below Open Patient File */}
+                {viewingAppointment.status !== "cancelled" && (
+                  <Button
+                    variant="outline"
+                    className={`w-full gap-2 ${
+                      viewingAppointment.isInvoiced
+                        ? "text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                    disabled={invoiceMutation.isPending}
+                    onClick={() =>
+                      invoiceMutation.mutate({
+                        id: viewingAppointment.id,
+                        isInvoiced: !viewingAppointment.isInvoiced,
+                      })
+                    }
+                    data-testid="button-toggle-invoiced"
+                  >
+                    {viewingAppointment.isInvoiced ? (
+                      <CheckCircle className="w-4 h-4" />
+                    ) : (
+                      <DollarSign className="w-4 h-4" />
+                    )}
+                    {invoiceMutation.isPending
+                      ? "Saving…"
+                      : viewingAppointment.isInvoiced
+                        ? "Invoiced — tap to undo"
+                        : "Mark as Invoiced"}
+                  </Button>
+                )}
                 </>)}
               </div>
             )}
