@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope, Loader2, Check } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope, Loader2, Check, ArrowDownUp } from "lucide-react";
 import ConsultationDialog from "@/components/consultation-dialog";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
@@ -963,6 +963,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const unarchiveDocumentMutation = makeArchiveMutation("patient-documents", "documents", "unarchive");
 
   const [historyTab, setHistoryTab] = useState<'active' | 'archived' | 'completed' | 'finalized'>('active');
+  const [docSortOrder, setDocSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   const resetForm = () => {
     setFormData({
@@ -1143,6 +1144,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       id: r.id,
       title: r.studyType || 'Report',
       date: r.examDate || (r.generatedAt ? format(new Date(r.generatedAt), "yyyy-MM-dd") : ''),
+      ts: (r.generatedAt as any) || r.examDate || '',
       status: r.isFinalized ? 'finalized' : r.isDraft ? 'draft' : 'pending',
       isAmended: r.isAmended,
       isArchived: (r as any).isArchived ?? false,
@@ -1162,6 +1164,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       id: w.id,
       title: w.originalName || 'Worksheet',
       date: w.uploadedAt ? format(new Date(w.uploadedAt), "yyyy-MM-dd") : '',
+      ts: (w.uploadedAt as any) || '',
       status: w.ocrProcessed ? 'processed' : 'pending',
       isAmended: false,
       isArchived: (w as any).isArchived ?? false,
@@ -1172,6 +1175,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       id: dw.id,
       title: dw.patientName ? `${dw.studyType || 'Drawing'} - ${dw.patientName}` : (dw.studyType || 'Digital Worksheet'),
       date: dw.createdAt ? format(new Date(dw.createdAt), "yyyy-MM-dd") : '',
+      ts: (dw.createdAt as any) || '',
       status: dw.isDraft ? 'draft' : 'completed',
       isAmended: false,
       isArchived: (dw as any).isArchived ?? false,
@@ -1182,6 +1186,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       id: a.id,
       title: a.scanType || 'Appointment',
       date: a.appointmentDate ? format(new Date(a.appointmentDate), "yyyy-MM-dd") : '',
+      ts: (a.appointmentDate as any) || '',
       status: a.status || 'scheduled',
       isAmended: false,
       isArchived: false,
@@ -1192,6 +1197,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       id: d.id,
       title: d.title || 'Document',
       date: d.documentDate || '',
+      ts: ((d as any).createdAt as any) || d.documentDate || '',
       status: 'uploaded',
       isAmended: false,
       isArchived: (d as any).isArchived ?? false,
@@ -1202,12 +1208,17 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       id: n.id,
       title: n.content.length > 60 ? n.content.slice(0, 60) + '…' : n.content,
       date: n.createdAt ? format(new Date(n.createdAt), "yyyy-MM-dd") : '',
+      ts: (n.createdAt as any) || '',
       status: n.type || 'note',
       isAmended: false,
       isArchived: false,
       data: n,
     })),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  ].sort((a, b) => {
+    const ta = new Date((a.ts as any) || a.date).getTime() || 0;
+    const tb = new Date((b.ts as any) || b.date).getTime() || 0;
+    return docSortOrder === 'newest' ? tb - ta : ta - tb;
+  });
 
   const activeDocuments = allDocuments.filter(d => !d.isArchived);
   const archivedDocuments = allDocuments.filter(d => d.isArchived);
@@ -1218,6 +1229,16 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     if (!d) return '';
     const parts = d.slice(0, 10).split('-');
     return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : d;
+  };
+
+  // Show the time of day for an item, but only when the source value actually
+  // carries a time component (ISO timestamps include 'T'); date-only strings show nothing.
+  const displayDocTime = (raw: any) => {
+    if (!raw) return '';
+    const s = raw instanceof Date ? raw.toISOString() : String(raw);
+    if (!s.includes('T') && !s.includes(':')) return '';
+    const dt = new Date(raw);
+    return isNaN(dt.getTime()) ? '' : format(dt, 'h:mm a');
   };
 
   // Visit grouping: find examDates where 2+ non-archived reports exist (same-day multi-scan visits)
@@ -1234,6 +1255,20 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       .filter(([, ids]) => ids.length >= 2)
       .map(([date]) => date)
   );
+
+  // IDs of the first report (in current sort order) for each multi-scan visit date.
+  // Computed from the ordered REPORT subset only, so interleaving non-report items
+  // (worksheets, notes, etc.) under timestamp sorting don't produce duplicate visit headers.
+  const firstReportOfVisitIds = new Set<number>();
+  {
+    const headed = new Set<string>();
+    for (const d of activeDocuments) {
+      if (d.type === 'report' && d.date && multiScanDates.has(d.date) && !headed.has(d.date)) {
+        firstReportOfVisitIds.add(d.id);
+        headed.add(d.date);
+      }
+    }
+  }
 
   const getSelectedDocumentData = () => {
     if (!selectedDocument) return null;
@@ -1796,6 +1831,14 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   );
                 })()}
               </div>
+              <button
+                onClick={() => setDocSortOrder(o => o === 'newest' ? 'oldest' : 'newest')}
+                className="text-xs font-semibold px-2 py-1 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-1 flex-shrink-0"
+                title={docSortOrder === 'newest' ? 'Sorted newest first — click for oldest first' : 'Sorted oldest first — click for newest first'}
+              >
+                <ArrowDownUp className="w-3 h-3" />
+                {docSortOrder === 'newest' ? 'Newest' : 'Oldest'}
+              </button>
             </div>
             <div className="flex-1 overflow-auto">
               {historyTab === 'finalized' ? (
@@ -1925,8 +1968,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   <div className="divide-y">
                     {activeDocuments.flatMap((doc, index) => {
                       const isMultiReport = doc.type === 'report' && doc.date && multiScanDates.has(doc.date);
-                      const prevDoc = index > 0 ? activeDocuments[index - 1] : null;
-                      const isFirstOfVisit = isMultiReport && !(prevDoc?.type === 'report' && prevDoc?.date === doc.date);
+                      const isFirstOfVisit = isMultiReport && firstReportOfVisitIds.has(doc.id);
                       const isSelected = selectedDocument?.type === doc.type && selectedDocument?.id === doc.id;
 
                       const row = (
@@ -1961,7 +2003,10 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="font-medium text-sm truncate">{doc.title}</div>
-                              <div className="text-xs text-gray-500">{displayDocDate(doc.date)}</div>
+                              <div className="text-xs text-gray-500">
+                                {displayDocDate(doc.date)}
+                                {displayDocTime((doc as any).ts) && <span className="text-gray-400"> · {displayDocTime((doc as any).ts)}</span>}
+                              </div>
                               <div className="flex items-center gap-1 mt-1">
                                 <Badge variant="outline" className="text-xs px-1.5 py-0">
                                   {doc.type}
@@ -2037,7 +2082,10 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm truncate text-gray-600">{doc.title}</div>
-                            <div className="text-xs text-gray-400">{displayDocDate(doc.date)}</div>
+                            <div className="text-xs text-gray-400">
+                              {displayDocDate(doc.date)}
+                              {displayDocTime((doc as any).ts) && <span> · {displayDocTime((doc as any).ts)}</span>}
+                            </div>
                             <div className="flex items-center gap-1 mt-1">
                               <Badge variant="outline" className="text-xs px-1.5 py-0 text-gray-400 border-gray-300">
                                 archived
