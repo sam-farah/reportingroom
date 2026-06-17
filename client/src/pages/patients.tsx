@@ -286,6 +286,15 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const autoSaveDirtyRef = useRef(false);
   const latestFormDataRef = useRef<any>(null);
   const performAutoSaveRef = useRef<() => void>(() => {});
+  const saveNowBeaconRef = useRef<() => void>(() => {});
+  // The exact form body the keepalive beacon last sent — used only to avoid
+  // firing duplicate identical writes when several unload triggers fire for the
+  // same event. It never stands in for the confirmed-saved baseline.
+  const lastBeaconBodyRef = useRef<string | null>(null);
+  // The JSON body of the autosave PUT that is currently in flight (null when
+  // none). Lets the unload beacon tell whether the user has typed something
+  // NEWER than the in-flight request, so it only re-sends genuinely newer edits.
+  const inFlightBodyRef = useRef<string | null>(null);
   // The form values as they were when the edit dialog opened — used by the
   // "Discard changes" button to revert any auto-saved edits back to original.
   const originalFormDataRef = useRef<any>(null);
@@ -778,6 +787,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
       savedSnapshotRef.current = variables.snapshot;
       autoSaveInFlightRef.current = false;
+      inFlightBodyRef.current = null;
       if (selectedPatient && updatedPatient && selectedPatient.id === updatedPatient.id) {
         setSelectedPatient(updatedPatient);
       }
@@ -802,6 +812,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     },
     onError: (_err: unknown, variables: { id: number; data: any; snapshot: string }) => {
       autoSaveInFlightRef.current = false;
+      inFlightBodyRef.current = null;
       // If a discard was requested while this (now-failed) save was in flight,
       // still attempt the revert — earlier saves may have persisted edits.
       if (pendingDiscardRef.current) {
@@ -1066,6 +1077,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       return;
     }
     autoSaveInFlightRef.current = true;
+    inFlightBodyRef.current = current;
     setAutoSaveStatus("saving");
     autoSaveMutation.mutate({ id: editingPatient.id, data: { ...data }, snapshot: current });
   };
@@ -1094,6 +1106,66 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const flushAutoSave = () => {
     performAutoSaveRef.current();
   };
+
+  // Best-effort immediate save for when the whole page is going away — a browser
+  // refresh/close or this component unmounting (e.g. switching panels). Radix
+  // never fires onOpenChange on unmount, so the normal flush above can't run;
+  // here we send a keepalive PUT directly so an in-progress edit still lands.
+  //
+  // Concurrency: if an autosave PUT is already in flight AND it is carrying the
+  // exact latest data, we bail — that request already covers it, so we never
+  // duplicate a write. We only send while in flight when the user has typed
+  // something NEWER than the in-flight request, so those last keystrokes aren't
+  // lost on navigate-away. (With last-write-wins and no version column, the
+  // older in-flight write could in theory still land after this newer one; that
+  // residual ordering risk needs server-side optimistic concurrency to fully
+  // close and is intentionally out of scope here.) It also does NOT advance
+  // savedSnapshotRef — a keepalive write can't be ack'd, so the change stays
+  // "unsaved" and the normal retry path remains valid.
+  const saveNowBeacon = () => {
+    if (!editingPatient || savedSnapshotRef.current === null) return;
+    const data = latestFormDataRef.current;
+    if (!data) return;
+    const current = JSON.stringify(data);
+    if (current === savedSnapshotRef.current) return;
+    if (current === lastBeaconBodyRef.current) return;
+    if (autoSaveInFlightRef.current && current === inFlightBodyRef.current) return;
+    if (!data.firstName || !data.lastName || !data.dateOfBirth) return;
+    // Dedupe identical sends from multiple unload triggers — not a saved marker.
+    lastBeaconBodyRef.current = current;
+    try {
+      fetch(`/api/patients/${editingPatient.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: current,
+        keepalive: true,
+      }).catch(() => {});
+    } catch {
+      /* page is unloading — nothing more we can do */
+    }
+  };
+  saveNowBeaconRef.current = saveNowBeacon;
+
+  // Flush any pending edit when the page unloads, the tab is hidden, or this
+  // component unmounts (e.g. switching panels). Covers the "navigated away and
+  // lost my edit" case that onOpenChange can't catch. When the tab is merely
+  // hidden the page isn't unloading, so we use the normal single-flight mutation
+  // (ordered, snapshot-advances-on-ack); for real unload/unmount we use the
+  // keepalive beacon as a best-effort last resort.
+  useEffect(() => {
+    const onBeforeUnload = () => saveNowBeaconRef.current();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") performAutoSaveRef.current();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("visibilitychange", onVisibility);
+      saveNowBeaconRef.current();
+    };
+  }, []);
 
   // Revert any auto-saved edits back to the values the record had when the
   // dialog opened, then close. Either writes the original values immediately or
