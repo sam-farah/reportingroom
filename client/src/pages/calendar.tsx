@@ -668,6 +668,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     copyToName: "",
     copyToEmail: "",
     copyToFax: "",
+    copyToRecipients: [] as { name: string; email: string; fax: string }[],
   });
 
   const { data: scanDurations = [] } = useQuery<ScanDurationSetting[]>({
@@ -1097,6 +1098,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
       copyToName: "",
       copyToEmail: "",
       copyToFax: "",
+      copyToRecipients: [],
     });
     setSelectedPatient(null);
     setPatientSearch("");
@@ -1325,6 +1327,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
       copyToName: (appointment as any).copyToName || "",
       copyToEmail: (appointment as any).copyToEmail || "",
       copyToFax: (appointment as any).copyToFax || "",
+      copyToRecipients: (() => {
+        const arr = (appointment as any).copyToRecipients;
+        if (Array.isArray(arr) && arr.length > 0) {
+          return arr.map((r: any) => ({ name: r?.name || "", email: r?.email || "", fax: r?.fax || "" }));
+        }
+        const ln = (appointment as any).copyToName, le = (appointment as any).copyToEmail, lf = (appointment as any).copyToFax;
+        return (ln || le || lf) ? [{ name: ln || "", email: le || "", fax: lf || "" }] : [];
+      })(),
     });
     // Only pre-fill selectedPatient if there's a real linked patientId
     if (appointment.patientId) {
@@ -1367,7 +1377,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     }
     
     const appointmentDateTime = new Date(`${formData.appointmentDate}T${formData.appointmentTime}`);
-    
+
+    const copyToList = (formData.copyToRecipients || [])
+      .map(r => ({ name: (r.name || "").trim(), email: (r.email || "").trim(), fax: (r.fax || "").trim() }))
+      .filter(r => r.name || r.email || r.fax);
+
     const data = {
       patientName: formData.patientName,
       patientDob: formData.patientDob || null,
@@ -1385,9 +1399,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
       referringDoctorName: formData.referringDoctorName || null,
       referringDoctorEmail: formData.referringDoctorEmail || null,
       referringDoctorFax: formData.referringDoctorFax || null,
-      copyToName: formData.copyToName || null,
-      copyToEmail: formData.copyToEmail || null,
-      copyToFax: formData.copyToFax || null,
+      copyToName: copyToList[0]?.name || null,
+      copyToEmail: copyToList[0]?.email || null,
+      copyToFax: copyToList[0]?.fax || null,
+      copyToRecipients: copyToList,
     };
 
     if (editingAppointment) {
@@ -2731,23 +2746,38 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                   </div>
                 </div>
 
-                {/* Copy To (additional CC) */}
+                {/* Copy To (additional CC recipients) */}
                 <div className="col-span-2 space-y-2">
-                  <Label className="text-sm font-semibold text-gray-700">Copy To <span className="text-xs text-gray-400 font-normal">(optional CC recipient)</span></Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">Name</Label>
-                      <Input placeholder="GP / Specialist" value={formData.copyToName} onChange={(e) => setFormData(prev => ({ ...prev, copyToName: e.target.value }))} className="text-sm h-8" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">Email</Label>
-                      <Input type="email" placeholder="cc@clinic.com" value={formData.copyToEmail} onChange={(e) => setFormData(prev => ({ ...prev, copyToEmail: e.target.value }))} className="text-sm h-8" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">Fax</Label>
-                      <Input placeholder="03XXXXXXXX" value={formData.copyToFax} onChange={(e) => setFormData(prev => ({ ...prev, copyToFax: e.target.value }))} className="text-sm h-8" />
-                    </div>
+                  <Label className="text-sm font-semibold text-gray-700">Copy To <span className="text-xs text-gray-400 font-normal">(optional CC recipients)</span></Label>
+                  {formData.copyToRecipients.length === 0 && (
+                    <p className="text-xs text-gray-400">No CC recipients added yet.</p>
+                  )}
+                  <div className="space-y-2">
+                    {formData.copyToRecipients.map((recipient, idx) => (
+                      <div key={idx} className="flex items-end gap-2">
+                        <div className="grid grid-cols-3 gap-2 flex-1">
+                          <div className="space-y-1">
+                            {idx === 0 && <Label className="text-xs text-gray-500">Name</Label>}
+                            <Input placeholder="GP / Specialist" value={recipient.name} onChange={(e) => setFormData(prev => ({ ...prev, copyToRecipients: prev.copyToRecipients.map((r, i) => i === idx ? { ...r, name: e.target.value } : r) }))} className="text-sm h-8" />
+                          </div>
+                          <div className="space-y-1">
+                            {idx === 0 && <Label className="text-xs text-gray-500">Email</Label>}
+                            <Input type="email" placeholder="cc@clinic.com" value={recipient.email} onChange={(e) => setFormData(prev => ({ ...prev, copyToRecipients: prev.copyToRecipients.map((r, i) => i === idx ? { ...r, email: e.target.value } : r) }))} className="text-sm h-8" />
+                          </div>
+                          <div className="space-y-1">
+                            {idx === 0 && <Label className="text-xs text-gray-500">Fax</Label>}
+                            <Input placeholder="03XXXXXXXX" value={recipient.fax} onChange={(e) => setFormData(prev => ({ ...prev, copyToRecipients: prev.copyToRecipients.map((r, i) => i === idx ? { ...r, fax: e.target.value } : r) }))} className="text-sm h-8" />
+                          </div>
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-red-500 shrink-0" onClick={() => setFormData(prev => ({ ...prev, copyToRecipients: prev.copyToRecipients.filter((_, i) => i !== idx) }))} aria-label="Remove recipient">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setFormData(prev => ({ ...prev, copyToRecipients: [...prev.copyToRecipients, { name: "", email: "", fax: "" }] }))}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add CC recipient
+                  </Button>
                 </div>
 
                 <div className="col-span-2">

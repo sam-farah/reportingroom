@@ -296,9 +296,17 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (latest.referringDoctorName && !emailToName) setEmailToName(latest.referringDoctorName);
     if (latest.referringDoctorFax && !faxNumber) setFaxNumber(latest.referringDoctorFax);
     // Pre-fill CC from copyTo if present (only when no CCs have been set yet)
-    const ccLatest = sorted.find(a => a.copyToEmail);
+    const ccLatest = sorted.find(a => (Array.isArray((a as any).copyToRecipients) && (a as any).copyToRecipients.some((r: any) => r?.email?.trim())) || a.copyToEmail);
     const noCcsYet = emailCcs.every(c => !c.trim());
-    if (ccLatest?.copyToEmail && noCcsYet) setEmailCcs([ccLatest.copyToEmail]);
+    if (ccLatest && noCcsYet) {
+      const recips = (ccLatest as any).copyToRecipients;
+      const ccEmails = Array.isArray(recips)
+        ? recips.map((r: any) => (r?.email || "").trim()).filter(Boolean)
+        : [];
+      if (ccEmails.length === 0 && ccLatest.copyToEmail) ccEmails.push(ccLatest.copyToEmail);
+      const uniqueCcs = Array.from(new Set(ccEmails.map((e: string) => e.toLowerCase()))).map((lower) => ccEmails.find((e: string) => e.toLowerCase() === lower)!);
+      if (uniqueCcs.length > 0) setEmailCcs(uniqueCcs);
+    }
   }, [patientAppointmentsForDist, distributeReport?.id]);
 
   // Update report mutation

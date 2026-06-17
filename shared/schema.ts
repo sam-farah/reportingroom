@@ -543,6 +543,7 @@ export const appointments = pgTable("appointments", {
   copyToName: varchar("copy_to_name", { length: 255 }),
   copyToEmail: varchar("copy_to_email", { length: 255 }),
   copyToFax: varchar("copy_to_fax", { length: 50 }),
+  copyToRecipients: jsonb("copy_to_recipients").$type<{ name?: string; email?: string; fax?: string }[]>().default([]),
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({
