@@ -746,14 +746,32 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   );
 }
 
-// Render message body, bolding @mention tokens.
+// Render message body, bolding @mention tokens and linkifying URLs.
+const MSG_TOKEN_RE = /(@\w+|https?:\/\/[^\s]+|www\.[^\s]+)/gi;
 function MessageBody({ body, edited }: { body: string; edited?: boolean }) {
-  const parts = body.split(/(@\w+)/g);
+  const parts = body.split(MSG_TOKEN_RE);
   return (
     <p className="text-sm whitespace-pre-wrap break-words leading-snug">
-      {parts.map((part, i) => part.startsWith("@")
-        ? <span key={i} className="text-primary font-medium bg-primary/10 rounded px-0.5">{part}</span>
-        : <span key={i}>{part}</span>)}
+      {parts.map((part, i) => {
+        if (!part) return null;
+        if (part.startsWith("@")) {
+          return <span key={i} className="text-primary font-medium bg-primary/10 rounded px-0.5">{part}</span>;
+        }
+        if (/^(https?:\/\/|www\.)/i.test(part)) {
+          let url = part;
+          let trail = "";
+          const tm = url.match(/[.,!?;:)\]]+$/);
+          if (tm) { trail = tm[0]; url = url.slice(0, url.length - trail.length); }
+          const href = /^www\./i.test(url) ? `https://${url}` : url;
+          return (
+            <span key={i}>
+              <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:opacity-80 break-all">{url}</a>
+              {trail}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
       {edited && <span className="text-[10px] text-muted-foreground italic ml-1 align-baseline">(edited)</span>}
     </p>
   );
