@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   Hash, Lock, Plus, Send, Paperclip, Search, Loader2, Users, AtSign, UserPlus,
   MessageCircle, X, FileText, Download, LogOut, Circle, UserCircle, Pencil, Trash2, Check,
-  Reply, CornerDownRight,
+  Reply, CornerDownRight, ChevronLeft,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -129,6 +129,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   const [editText, setEditText] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false); // mobile: show conversation pane vs. channel list
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
@@ -427,7 +428,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   return (
     <div className="flex h-[calc(100vh-8rem)] rounded-2xl border bg-card shadow-sm overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 flex-shrink-0 border-r bg-muted/30 flex flex-col">
+      <div className={`w-full md:w-64 md:flex-shrink-0 border-r bg-muted/30 flex-col ${mobileChatOpen ? "hidden md:flex" : "flex"}`}>
         <div className="px-4 py-3 border-b bg-gradient-to-br from-primary to-primary/80 text-primary-foreground flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
@@ -455,7 +456,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
             ) : channelList.map((c) => (
               <button
                 key={c.id}
-                onClick={() => setSelectedId(c.id)}
+                onClick={() => { setSelectedId(c.id); setMobileChatOpen(true); }}
                 data-testid={`channel-${c.id}`}
                 className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors ${selectedId === c.id ? "bg-primary text-primary-foreground shadow-sm font-medium" : "text-foreground/80 hover:bg-foreground/5"}`}
               >
@@ -479,7 +480,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
               return (
                 <button
                   key={c.id}
-                  onClick={() => setSelectedId(c.id)}
+                  onClick={() => { setSelectedId(c.id); setMobileChatOpen(true); }}
                   data-testid={`dm-${c.id}`}
                   className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors ${selectedId === c.id ? "bg-primary text-primary-foreground shadow-sm font-medium" : "text-foreground/80 hover:bg-foreground/5"}`}
                 >
@@ -497,11 +498,14 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
       </div>
 
       {/* Main pane */}
-      <div className="flex-1 bg-card flex flex-col min-w-0">
+      <div className={`flex-1 bg-card flex-col min-w-0 ${mobileChatOpen ? "flex" : "hidden md:flex"}`}>
         {selectedChannel ? (
           <>
             <div className="px-4 py-2.5 border-b flex items-center justify-between bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
               <div className="flex items-center gap-2.5 min-w-0">
+                <button onClick={() => setMobileChatOpen(false)} className="md:hidden -ml-1 mr-0.5 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/5 flex-shrink-0" data-testid="button-back-to-channels" aria-label="Back to channels">
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
                 {selectedChannel.type === "dm" ? (
                   <span className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(selectedChannel.dmPeer)} text-white flex items-center justify-center text-xs font-semibold flex-shrink-0`}>{initials(selectedChannel.dmPeer)}</span>
                 ) : (
@@ -623,7 +627,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                     )}
                   </div>
                   {editingId !== m.id && (
-                    <span className="absolute right-2 -top-3 flex items-center rounded-md border bg-card shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="absolute right-2 -top-3 flex items-center rounded-md border bg-card shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => startReply(m)} data-testid={`button-reply-${m.id}`}>
                         <Reply className="w-3.5 h-3.5" />
                       </Button>
