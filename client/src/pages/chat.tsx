@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   Hash, Lock, Plus, Send, Paperclip, Search, Loader2, Users, AtSign, UserPlus,
   MessageCircle, X, FileText, Download, LogOut, Circle, UserCircle, Pencil, Trash2, Check,
+  Reply, CornerDownRight,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -45,6 +46,8 @@ interface ChatMessage {
   attachments: ChatAttachment[];
   mentions: string[];
   patientTags: ChatPatientTag[];
+  replyToId?: number | null;
+  replyTo?: { id: number; authorName: string; body: string; deleted: boolean } | null;
 }
 
 function personName(p: { firstName?: string | null; lastName?: string | null; email?: string | null } | null | undefined): string {
@@ -124,6 +127,8 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   const [pendingTags, setPendingTags] = useState<ChatPatientTag[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
@@ -159,6 +164,9 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   useEffect(() => {
     if (selectedId == null && channels.length > 0) setSelectedId(channels[0].id);
   }, [channels, selectedId]);
+
+  // Clear any in-progress reply when switching channels.
+  useEffect(() => { setReplyingTo(null); }, [selectedId]);
 
   // ── Real-time ──────────────────────────────────────────────────────────────
   const appendMessage = useCallback((channelId: number, message: ChatMessage) => {
@@ -225,11 +233,11 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const sendMutation = useMutation({
-    mutationFn: async (payload: { body: string; mentionUserIds: string[]; patientIds: number[] }) =>
+    mutationFn: async (payload: { body: string; mentionUserIds: string[]; patientIds: number[]; replyToId?: number | null }) =>
       (await apiRequest(`/api/chat/channels/${selectedId}/messages`, "POST", payload)).json(),
     onSuccess: (msg: any) => {
       if (selectedId != null && msg) appendMessage(selectedId, msg);
-      setComposer(""); setMentions({}); setPendingTags([]);
+      setComposer(""); setMentions({}); setPendingTags([]); setReplyingTo(null);
       queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
     },
     onError: () => toast({ title: "Couldn't send message", variant: "destructive" }),
@@ -363,7 +371,24 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
       body: composer.trim(),
       mentionUserIds: Object.keys(mentions),
       patientIds: pendingTags.map((t) => t.patientId),
+      replyToId: replyingTo?.id ?? null,
     });
+  };
+
+  const startReply = (m: ChatMessage) => {
+    setReplyingTo(m);
+    setEditingId(null);
+    textareaRef.current?.focus();
+  };
+
+  // Scroll to (and briefly highlight) the original message a reply points at.
+  const scrollToMessage = (id: number) => {
+    const el = document.querySelector(`[data-testid="message-${id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightId(id);
+      window.setTimeout(() => setHighlightId((cur) => (cur === id ? null : cur)), 1600);
+    }
   };
 
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -514,7 +539,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                 const grouped = !!prev && prev.authorId === m.authorId && !!m.author
                   && delta >= 0 && delta < 5 * 60 * 1000;
                 return (
-                <div key={m.id} className={`group relative flex gap-2 px-2 rounded hover:bg-muted/40 ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
+                <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors ${highlightId === m.id ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/40"} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
                   {grouped ? (
                     <span className="w-8 flex-shrink-0 text-[10px] leading-5 text-muted-foreground text-right pr-1 pt-0.5 opacity-0 group-hover:opacity-100 select-none">{fmtTimeShort(m.createdAt)}</span>
                   ) : (
@@ -526,6 +551,19 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                         <span className="font-medium text-sm">{personName(m.author)}</span>
                         <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
                       </div>
+                    )}
+                    {m.replyTo && (
+                      <button
+                        onClick={() => scrollToMessage(m.replyTo!.id)}
+                        data-testid={`reply-preview-${m.id}`}
+                        className="flex items-center gap-1.5 mb-0.5 max-w-full text-left text-[11px] text-muted-foreground hover:text-foreground group/reply"
+                      >
+                        <CornerDownRight className="w-3 h-3 flex-shrink-0 opacity-70" />
+                        <span className="font-medium text-foreground/80 flex-shrink-0">{m.replyTo.authorName}</span>
+                        <span className="truncate opacity-80 group-hover/reply:underline">
+                          {m.replyTo.deleted ? "Message deleted" : (m.replyTo.body || "attachment")}
+                        </span>
+                      </button>
                     )}
                     {editingId === m.id ? (
                       <div className="mt-1 space-y-1.5">
@@ -584,14 +622,21 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                       </div>
                     )}
                   </div>
-                  {m.authorId === currentUserId && editingId !== m.id && (
+                  {editingId !== m.id && (
                     <span className="absolute right-2 -top-3 flex items-center rounded-md border bg-card shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => startEdit(m)} data-testid={`button-edit-${m.id}`}>
-                        <Pencil className="w-3.5 h-3.5" />
+                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => startReply(m)} data-testid={`button-reply-${m.id}`}>
+                        <Reply className="w-3.5 h-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md text-destructive hover:text-destructive" onClick={() => { if (confirm("Delete this message?")) deleteMutation.mutate(m.id); }} data-testid={`button-delete-${m.id}`}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      {m.authorId === currentUserId && (
+                        <>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => startEdit(m)} data-testid={`button-edit-${m.id}`}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md text-destructive hover:text-destructive" onClick={() => { if (confirm("Delete this message?")) deleteMutation.mutate(m.id); }} data-testid={`button-delete-${m.id}`}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </>
+                      )}
                     </span>
                   )}
                 </div>
@@ -623,6 +668,17 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                   ))}
                 </div>
               )}
+              {replyingTo && (
+                <div className="flex items-center gap-2 mb-2 px-2.5 py-1.5 rounded-lg bg-muted/60 border-l-2 border-primary text-xs" data-testid="reply-banner">
+                  <Reply className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  <span className="text-muted-foreground flex-shrink-0">Replying to</span>
+                  <span className="font-medium flex-shrink-0">{personName(replyingTo.author)}</span>
+                  <span className="truncate text-muted-foreground flex-1">{replyingTo.body || "attachment"}</span>
+                  <button onClick={() => setReplyingTo(null)} className="flex-shrink-0 text-muted-foreground hover:text-foreground" data-testid="button-cancel-reply">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               {pendingTags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2">
                   {pendingTags.map((t) => (
@@ -645,8 +701,11 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                   ref={textareaRef}
                   value={composer}
                   onChange={(e) => handleComposerChange(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={`Message ${channelTitle(selectedChannel)}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+                    if (e.key === "Escape" && replyingTo) { e.preventDefault(); setReplyingTo(null); }
+                  }}
+                  placeholder={replyingTo ? `Reply to ${personName(replyingTo.author)}` : `Message ${channelTitle(selectedChannel)}`}
                   className="min-h-[36px] max-h-32 resize-none border-0 bg-transparent px-1 py-1.5 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                   data-testid="input-composer"
                 />

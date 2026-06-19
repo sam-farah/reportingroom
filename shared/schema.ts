@@ -1011,6 +1011,8 @@ export const chatMessages = pgTable("chat_messages", {
   clinicId: integer("clinic_id").notNull().references(() => clinics.id),
   authorId: varchar("author_id").notNull().references(() => users.id),
   body: text("body").notNull().default(""),
+  // Message this one is a reply to (same channel). Null for top-level messages.
+  replyToId: integer("reply_to_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   editedAt: timestamp("edited_at"),
   deletedAt: timestamp("deleted_at"),

@@ -1821,11 +1821,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!body.trim() && patientIds.length === 0) {
         return res.status(400).json({ error: "Message cannot be empty" });
       }
+      // Validate the reply target: it must exist, live in THIS channel, and not
+      // be deleted. Otherwise we simply ignore it (treat as a normal message).
+      let replyToId: number | null = null;
+      const rawReplyTo = parseInt(req.body?.replyToId);
+      if (!Number.isNaN(rawReplyTo)) {
+        const parent = await storage.getChatMessageById(rawReplyTo);
+        if (parent && parent.channelId === channelId && !parent.deletedAt) {
+          replyToId = parent.id;
+        }
+      }
       // Only allow mentioning members of this channel.
       const memberIds = new Set(await storage.getChatChannelMemberUserIds(channelId));
       const validMentions = mentionUserIds.filter((id) => memberIds.has(id));
       const message = await storage.createChatMessage(
-        { channelId, clinicId: user.clinicId, authorId: user.id, body },
+        { channelId, clinicId: user.clinicId, authorId: user.id, body, replyToId },
         validMentions,
         patientIds,
       );

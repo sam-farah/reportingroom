@@ -388,7 +388,7 @@ export interface IStorage {
   getOrCreateDm(clinicId: number, userIdA: string, userIdB: string): Promise<ChatChannel>;
   getChatMessages(channelId: number, opts?: { beforeId?: number; limit?: number }): Promise<ChatMessageWithRelations[]>;
   getChatMessageById(id: number): Promise<ChatMessageWithRelations | undefined>;
-  createChatMessage(data: { channelId: number; clinicId: number; authorId: string; body: string }, mentionUserIds: string[], patientIds: number[]): Promise<ChatMessageWithRelations>;
+  createChatMessage(data: { channelId: number; clinicId: number; authorId: string; body: string; replyToId?: number | null }, mentionUserIds: string[], patientIds: number[]): Promise<ChatMessageWithRelations>;
   createChatAttachment(data: InsertChatAttachment): Promise<ChatAttachment>;
   markChatChannelRead(channelId: number, userId: string): Promise<void>;
   updateChatMessage(id: number, body: string, mentionUserIds: string[]): Promise<ChatMessageWithRelations>;
@@ -410,6 +410,7 @@ export type ChatMessageWithRelations = ChatMessage & {
   attachments: ChatAttachment[];
   mentions: string[];
   patientTags: Array<{ patientId: number; firstName: string; lastName: string; urNumber: string | null }>;
+  replyTo: { id: number; authorName: string; body: string; deleted: boolean } | null;
 };
 
 export class DatabaseStorage implements IStorage {
@@ -2228,7 +2229,21 @@ export class DatabaseStorage implements IStorage {
   private async hydrateChatMessages(rows: ChatMessage[]): Promise<ChatMessageWithRelations[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.id);
-    const authorIds = Array.from(new Set(rows.map((r) => r.authorId)));
+
+    // Fetch the parent messages for any replies (these may themselves be
+    // soft-deleted — we still want to show "message deleted" rather than break).
+    const parentIds = Array.from(new Set(
+      rows.map((r) => r.replyToId).filter((x): x is number => x != null),
+    ));
+    const parentRows = parentIds.length
+      ? await db.select().from(chatMessages).where(inArray(chatMessages.id, parentIds))
+      : [];
+    const parentMap = new Map(parentRows.map((p) => [p.id, p]));
+
+    const authorIds = Array.from(new Set([
+      ...rows.map((r) => r.authorId),
+      ...parentRows.map((p) => p.authorId),
+    ]));
 
     const authorRows = authorIds.length
       ? await db.select().from(users).where(inArray(users.id, authorIds))
@@ -2237,6 +2252,12 @@ export class DatabaseStorage implements IStorage {
       const d = FieldEncryption.decryptFields(u) as User;
       return [d.id, { id: d.id, firstName: d.firstName, lastName: d.lastName, email: d.email }];
     }));
+    const nameOf = (uid: string): string => {
+      const a = authorMap.get(uid);
+      if (!a) return "Unknown";
+      const n = `${a.firstName ?? ""} ${a.lastName ?? ""}`.trim();
+      return n || a.email || "Unknown";
+    };
 
     const atts = await db.select().from(chatAttachments).where(inArray(chatAttachments.messageId, ids));
     const mentions = await db.select().from(chatMessageMentions).where(inArray(chatMessageMentions.messageId, ids));
@@ -2254,15 +2275,26 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(patients, and(eq(chatMessagePatientTags.patientId, patients.id), eq(patients.clinicId, chatMessages.clinicId)))
       .where(inArray(chatMessagePatientTags.messageId, ids));
 
-    return rows.map((r) => ({
-      ...r,
-      author: authorMap.get(r.authorId) ?? null,
-      attachments: atts.filter((a) => a.messageId === r.id),
-      mentions: mentions.filter((m) => m.messageId === r.id).map((m) => m.mentionedUserId),
-      patientTags: tags.filter((t) => t.messageId === r.id).map((t) => ({
-        patientId: t.patientId, firstName: t.firstName, lastName: t.lastName, urNumber: t.urNumber,
-      })),
-    }));
+    return rows.map((r) => {
+      const parent = r.replyToId != null ? parentMap.get(r.replyToId) : undefined;
+      return {
+        ...r,
+        author: authorMap.get(r.authorId) ?? null,
+        attachments: atts.filter((a) => a.messageId === r.id),
+        mentions: mentions.filter((m) => m.messageId === r.id).map((m) => m.mentionedUserId),
+        patientTags: tags.filter((t) => t.messageId === r.id).map((t) => ({
+          patientId: t.patientId, firstName: t.firstName, lastName: t.lastName, urNumber: t.urNumber,
+        })),
+        replyTo: parent
+          ? {
+              id: parent.id,
+              authorName: nameOf(parent.authorId),
+              body: parent.deletedAt ? "" : parent.body,
+              deleted: !!parent.deletedAt,
+            }
+          : null,
+      };
+    });
   }
 
   async getChatMessages(channelId: number, opts?: { beforeId?: number; limit?: number }): Promise<ChatMessageWithRelations[]> {
@@ -2285,7 +2317,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createChatMessage(
-    data: { channelId: number; clinicId: number; authorId: string; body: string },
+    data: { channelId: number; clinicId: number; authorId: string; body: string; replyToId?: number | null },
     mentionUserIds: string[],
     patientIds: number[],
   ): Promise<ChatMessageWithRelations> {
@@ -2294,6 +2326,7 @@ export class DatabaseStorage implements IStorage {
       clinicId: data.clinicId,
       authorId: data.authorId,
       body: data.body,
+      replyToId: data.replyToId ?? null,
     }).returning();
 
     const uniqueMentions = Array.from(new Set(mentionUserIds));
