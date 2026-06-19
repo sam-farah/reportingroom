@@ -429,15 +429,15 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
     <div className="flex h-[calc(100vh-8rem)] rounded-2xl border bg-card shadow-sm overflow-hidden">
       {/* Sidebar */}
       <div className={`w-full md:w-64 md:flex-shrink-0 border-r bg-muted/30 flex-col ${mobileChatOpen ? "hidden md:flex" : "flex"}`}>
-        <div className="px-4 py-3 border-b bg-gradient-to-br from-primary to-primary/80 text-primary-foreground flex items-center justify-between">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
               <MessageCircle className="w-4 h-4" />
             </div>
             <span className="font-semibold text-sm">Team Chat</span>
           </div>
-          <span className="flex items-center gap-1 text-[10px] font-medium">
-            <Circle className={`w-2 h-2 ${connected ? "fill-green-400 text-green-400" : "fill-white/50 text-white/50"}`} />
+          <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+            <Circle className={`w-2 h-2 ${connected ? "fill-green-500 text-green-500" : "fill-muted-foreground/40 text-muted-foreground/40"}`} />
             {connected ? "Online" : "Offline"}
           </span>
         </div>
