@@ -3175,6 +3175,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "20 June 2026",
+    tag: "New",
+    title: "Filter a patient's file by Clinical or Non-clinical",
+    detail:
+      "Inside a patient's file there's a new 'Show' filter above the document list. Choose 'All entries' to see everything, 'Clinical documentation' to see just reports, worksheets and scanned documents, or 'Non-clinical' to see appointments, notes and other admin items. This makes it much quicker to find what you're after when a patient has a long history.\n\nThe Sort control (Newest first / Oldest first) sits right next to it and is now easier to spot, and the document list panel has been widened to fit everything comfortably.",
+  },
+  {
+    date: "20 June 2026",
     tag: "Improve",
     title: "Tidier 'Sent' history in patient files",
     detail:
