@@ -742,7 +742,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                     })()}
                   </div>
                   {editingId !== m.id && (
-                    <span className="absolute right-2 -top-3 flex items-center rounded-md border bg-card shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <span className="absolute right-2 -bottom-3 flex items-center rounded-md border bg-card shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" data-testid={`button-react-${m.id}`}>
