@@ -3176,6 +3176,34 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "20 June 2026",
     tag: "New",
+    title: "Text messaging (SMS) is now live",
+    detail:
+      "Reporting Room can now send and receive text messages with your patients. This is switched on and working, so the features below are ready to use.\n\nTexts are sent from your clinic's own phone number, and everything stays private to your clinic.",
+  },
+  {
+    date: "20 June 2026",
+    tag: "New",
+    title: "Automatic appointment reminders by text",
+    detail:
+      "Patients can now be sent a text reminder ahead of their appointment, automatically. The system checks regularly throughout the day and texts each patient once, at the lead time you choose (24 hours before by default).\n\nTo turn it on, go to Admin → Clinic Settings → 'SMS Appointment Reminders'. There you can switch reminders on, set how many hours ahead they go out, and edit the wording. The reminder shows the correct local time for the appointment, and any reminders that have been sent appear in the appointment's Reminder History.",
+  },
+  {
+    date: "20 June 2026",
+    tag: "New",
+    title: "Two-way text conversations with patients",
+    detail:
+      "There's a new 'Messages' area where your team can text patients and see their replies, kept in a tidy conversation per patient. When a patient texts back, their reply appears here automatically.\n\nThe Messages menu item shows a red badge with the number of unread replies, so nothing gets missed.",
+  },
+  {
+    date: "20 June 2026",
+    tag: "Improve",
+    title: "Shorter, branded patient registration links",
+    detail:
+      "When you text a patient a link to complete their registration, the link is now short and tidy. On the live site it uses your own reportingroom.net web address, so it looks professional and is easy for patients to trust.",
+  },
+  {
+    date: "20 June 2026",
+    tag: "New",
     title: "Record verbal consent before starting a study",
     detail:
       "When a sonographer begins a study from the calendar, there's now a dedicated consent step. After confirming the patient's identity (the 3-point ID check), a new screen appears with a 'Verbal Consent obtained for study' button. Pressing it records the exact date and time consent was given, and only then are the worksheet options shown.\n\nThat consent date and time is then automatically stamped onto the labelled worksheet, on its own line directly beneath the sonographer's name — so every report carries a clear record that verbal consent was obtained, and exactly when.",
