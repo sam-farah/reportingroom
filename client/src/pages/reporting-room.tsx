@@ -768,10 +768,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (labelInProgressRef.current) return { ok: false };
     const id = report.id;
     const wsId = (report as any).worksheetId;
+    const labelledId = (report as any).labelledWorksheetId;
     if (!wsId || (report as any).digitalWorksheetId) return { ok: false };
+    // Post-merge, the report's primary worksheet IS the labelled (header-stamped)
+    // copy — the raw original was deleted on merge. Re-labelling it (even with
+    // `force`) would read the already-labelled image and stack a SECOND header.
+    // There's no raw source to regenerate from, so keep the existing labelled copy.
+    if (labelledId && wsId === labelledId) return { ok: false, newWorksheetId: labelledId };
     // Skip if already labelled — unless the caller explicitly forces a re-label
     // (e.g. before sending, to capture any edits made after the first labelling).
-    if (!opts.force && (report as any).labelledWorksheetId) return { ok: false };
+    if (!opts.force && labelledId) return { ok: false };
     labelInProgressRef.current = true;
     try {
       const canvas = await generateLabelledCanvas(report);

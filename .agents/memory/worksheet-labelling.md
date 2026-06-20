@@ -35,3 +35,14 @@ keep only the labelled upload.
   (`isPrimaryForReport`). This keeps OLD two-row data working (original shown,
   labelled hidden) and NEW merged single-row data visible.
 - Old worksheets labelled before this change keep the two-row layout; not migrated.
+
+## Double-label regression (force re-label after merge)
+After merge, `worksheetId === labelledWorksheetId` (both point at the labelled,
+header-stamped image; raw original deleted). The Distribute flow re-labels with
+`force: true` to capture late edits — but with no raw source left, that reads the
+already-labelled image and stacks a SECOND header. **Guard `labelReport` so it
+refuses when `worksheetId === labelledWorksheetId`** (return early; the existing
+labelled copy is already correct). Consequence: edits made AFTER labelling are not
+re-stamped onto a merged worksheet — acceptable because consent/header data is
+normally set before labelling. Existing already-double-labelled rows can't be
+un-stacked (raw gone); fix is to replace/re-upload the worksheet.
