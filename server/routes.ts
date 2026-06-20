@@ -104,6 +104,16 @@ const upload = multer({
   }
 });
 
+// Base URL for patient-facing links (registration texts/emails). Prefers an explicit
+// APP_URL override, then the canonical production domain when deployed, and finally the
+// request host (so dev/preview keeps working against the dev database).
+function publicBaseUrl(req: any): string {
+  const configured = (process.env.APP_URL || "").trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  if (process.env.NODE_ENV === "production") return "https://reportingroom.net";
+  return req.headers.origin || `${req.protocol}://${req.headers.host}`;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Backfill any existing on-disk files to DB so they survive future resets
   backfillFilesToDB(uploadDir).catch(() => {});
@@ -351,7 +361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.createPatientRegistrationToken(patient.id, appointment.clinicId!, token, expiresAt);
       }
 
-      const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const host = publicBaseUrl(req);
       const registrationUrl = `${host}/patient-registration/${token}`;
       res.json({ registered: false, hasPatient: true, registrationUrl, token });
     } catch (error) {
@@ -1161,7 +1171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await storage.createPatientRegistrationToken(id, user.clinicId, token, expiresAt);
 
-      const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const host = publicBaseUrl(req);
       const registrationUrl = `${host}/r/${token}`;
 
       const firstName = (patient.firstName || "").trim() || "there";
@@ -2806,7 +2816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createPatientRegistrationToken(id, user.clinicId, token, expiresAt);
 
       // Build the registration URL
-      const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const host = publicBaseUrl(req);
       const registrationUrl = `${host}/patient-registration/${token}`;
 
       await sendPatientRegistrationEmail({
@@ -2856,7 +2866,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.createPatientRegistrationToken(id, user.clinicId, token, expiresAt);
 
-      const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const host = publicBaseUrl(req);
       const registrationUrl = `${host}/patient-registration/${token}`;
       res.json({ registrationUrl, token });
     } catch (error: any) {
