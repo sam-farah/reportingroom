@@ -1872,8 +1872,8 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel - Document List (hidden on mobile when detail is showing) */}
           <div className={`${mobileShowDetail ? 'hidden' : 'flex'} md:flex w-full md:w-80 bg-white dark:bg-gray-800 border-r flex-col`}>
-            <div className="p-3 border-b bg-gray-50 dark:bg-gray-700 flex items-center justify-between">
-              <div className="flex gap-1">
+            <div className="p-3 border-b bg-gray-50 dark:bg-gray-700 flex flex-col gap-2">
+              <div className="flex gap-1 flex-wrap">
                 <button
                   onClick={() => setHistoryTab('active')}
                   className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors ${historyTab === 'active' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
