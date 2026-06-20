@@ -3174,6 +3174,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "20 June 2026",
+    tag: "Improve",
+    title: "Tidier 'Sent' history in patient files",
+    detail:
+      "When the same report is sent to more than one place, the Sent tab in a patient's file now shows it as a single entry that lists every recipient and the date it went to each — instead of keeping a separate full copy for every send. A 'Sent to N places' badge makes grouped sends easy to spot.\n\nIf a report is changed and a new version is sent out, that updated version is recorded as its own separate entry, so you always have an accurate record of exactly what each recipient received.\n\nWe also added a 'Show' filter to the patient file so you can switch between Clinical documentation (reports, worksheets, scanned documents) and Non-clinical items (appointments, notes), made the Sort control easier to find, and widened the document list panel.",
+  },
+  {
     date: "27 May 2026",
     tag: "New",
     title: "Automatic sign-out after 20 minutes of inactivity",
