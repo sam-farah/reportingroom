@@ -656,7 +656,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                   ) : (
                     <span className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(m.author)} text-white flex items-center justify-center text-xs font-semibold flex-shrink-0 mt-0.5`}>{initials(m.author)}</span>
                   )}
-                  <div className="min-w-0 flex-1 rounded-md px-2 py-1 -mx-1 transition-colors group-hover:bg-muted/70">
+                  <div className="min-w-0 flex-1 rounded-md px-2 py-1 -mx-1 transition-colors group-hover:bg-blue-50 dark:group-hover:bg-blue-950/40">
                     {!grouped && (
                       <div className="flex items-baseline gap-2">
                         <span className="font-medium text-sm">{personName(m.author)}</span>
