@@ -228,9 +228,67 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
+  // Order messages so each reply sits directly under the message it replies to
+  // (its "donor"), instead of at the bottom in pure chronological order.
+  // Messages arrive sorted oldest→newest; we keep that order for top-level
+  // messages and for sibling replies, then nest replies beneath their donor.
+  const orderedMessages = useMemo(() => {
+    const childrenByParent = new Map<number, ChatMessage[]>();
+    const ids = new Set(messages.map((m) => m.id));
+    const roots: ChatMessage[] = [];
+    for (const m of messages) {
+      if (m.replyToId && ids.has(m.replyToId)) {
+        const arr = childrenByParent.get(m.replyToId) ?? [];
+        arr.push(m);
+        childrenByParent.set(m.replyToId, arr);
+      } else {
+        // No donor in this channel's loaded messages → treat as top-level.
+        roots.push(m);
+      }
+    }
+    const result: ChatMessage[] = [];
+    const seen = new Set<number>();
+    const visit = (m: ChatMessage) => {
+      if (seen.has(m.id)) return; // guard against malformed reply cycles
+      seen.add(m.id);
+      result.push(m);
+      const kids = childrenByParent.get(m.id);
+      if (kids) for (const k of kids) visit(k);
+    };
+    for (const r of roots) visit(r);
+    // Safety net: if malformed data left some messages unvisited (e.g. a cycle),
+    // append them so nothing ever disappears from the chat.
+    for (const m of messages) if (!seen.has(m.id)) { seen.add(m.id); result.push(m); }
+    return result;
+  }, [messages]);
+
+  const prevChannelRef = useRef<number | null>(null);
+  const knownMsgIdsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
+    // Channel switch → reset tracking and jump straight to the bottom.
+    if (prevChannelRef.current !== selectedId) {
+      prevChannelRef.current = selectedId;
+      knownMsgIdsRef.current = new Set(messages.map((m) => m.id));
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+    const known = knownMsgIdsRef.current;
+    const added = messages.filter((m) => !known.has(m.id));
+    knownMsgIdsRef.current = new Set(messages.map((m) => m.id));
+    if (added.length === 0) return;
+    // A reply gets nested under its (older) donor rather than at the bottom, so
+    // jumping to the bottom would hide it. Bring the reply itself into view.
+    const newest = added[added.length - 1];
+    const lastOrdered = orderedMessages[orderedMessages.length - 1];
+    if (newest.replyToId && lastOrdered && lastOrdered.id !== newest.id) {
+      const el = document.querySelector(`[data-testid="message-${newest.id}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+    }
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, selectedId]);
+  }, [messages, selectedId, orderedMessages]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const sendMutation = useMutation({
@@ -537,13 +595,14 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                 <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
               ) : messages.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-8">No messages yet. Say hello!</p>
-              ) : messages.map((m, i) => {
-                const prev = messages[i - 1];
+              ) : orderedMessages.map((m, i) => {
+                const prev = orderedMessages[i - 1];
                 const delta = prev ? new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() : 0;
                 const grouped = !!prev && prev.authorId === m.authorId && !!m.author
                   && delta >= 0 && delta < 5 * 60 * 1000 && !m.replyTo;
+                const isReply = !!m.replyTo;
                 return (
-                <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors ${highlightId === m.id ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/40"} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
+                <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors ${isReply ? "ml-6 border-l-2 border-muted-foreground/15 pl-2" : ""} ${highlightId === m.id ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/40"} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
                   {grouped ? (
                     <span className="w-8 flex-shrink-0 text-[10px] leading-5 text-muted-foreground text-right pr-1 pt-0.5 opacity-0 group-hover:opacity-100 select-none">{fmtTimeShort(m.createdAt)}</span>
                   ) : (
