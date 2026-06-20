@@ -650,7 +650,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                   && delta >= 0 && delta < 5 * 60 * 1000 && !m.replyTo;
                 const isReply = !!m.replyTo;
                 return (
-                <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors hover:bg-muted/40 ${isReply ? "ml-6 border-l-2 border-muted-foreground/15 pl-2" : ""} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
+                <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors hover:bg-muted/70 ${isReply ? "ml-6 border-l-2 border-muted-foreground/15 pl-2" : ""} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
                   {grouped ? (
                     <span className="w-8 flex-shrink-0 text-[10px] leading-5 text-muted-foreground text-right pr-1 pt-0.5 opacity-0 group-hover:opacity-100 select-none">{fmtTimeShort(m.createdAt)}</span>
                   ) : (
