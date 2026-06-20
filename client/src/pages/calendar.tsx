@@ -3279,9 +3279,20 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
                 })()}
 
                 {/* Reminder log */}
-                {reminderLogs.length > 0 && (
+                {(reminderLogs.length > 0 || viewingAppointment.createdAt) && (
                   <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reminder History</p>
+                    {viewingAppointment.createdAt && (
+                      <div className="flex items-center gap-2 text-xs pb-2 mb-1 border-b border-gray-200">
+                        <CalendarClock className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                        <span className="text-gray-700">
+                          Appointment booked {format(new Date(viewingAppointment.createdAt), "d MMM yyyy 'at' h:mm a")}
+                        </span>
+                      </div>
+                    )}
+                    {reminderLogs.length === 0 && (
+                      <p className="text-xs text-gray-400">No reminders sent yet.</p>
+                    )}
                     {reminderLogs.map((log) => (
                       <div key={log.id} className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
