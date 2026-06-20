@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   Hash, Lock, Plus, Send, Paperclip, Search, Loader2, Users, AtSign, UserPlus,
   MessageCircle, X, FileText, Download, LogOut, Circle, UserCircle, Pencil, Trash2, Check,
-  Reply, CornerDownRight, ChevronLeft,
+  Reply, ChevronLeft,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -560,12 +560,17 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                       <button
                         onClick={() => scrollToMessage(m.replyTo!.id)}
                         data-testid={`reply-preview-${m.id}`}
-                        className="flex items-center gap-1.5 mb-0.5 max-w-full text-left text-[11px] text-muted-foreground hover:text-foreground group/reply"
+                        className="group/reply flex items-stretch gap-1.5 mb-1 max-w-full text-left rounded-md bg-muted/60 hover:bg-muted border border-border/60 overflow-hidden transition-colors"
                       >
-                        <CornerDownRight className="w-3 h-3 flex-shrink-0 opacity-70" />
-                        <span className="font-medium text-foreground/80 flex-shrink-0">{m.replyTo.authorName}</span>
-                        <span className="truncate opacity-80 group-hover/reply:underline">
-                          {m.replyTo.deleted ? "Message deleted" : (m.replyTo.body || "attachment")}
+                        <span className="w-1 flex-shrink-0 bg-primary/70 group-hover/reply:bg-primary rounded-full" />
+                        <span className="flex flex-col min-w-0 py-1 pr-2">
+                          <span className="flex items-center gap-1 text-[11px] font-semibold text-primary/90">
+                            <Reply className="w-3 h-3 flex-shrink-0" />
+                            {m.replyTo.authorName}
+                          </span>
+                          <span className={`truncate text-[11px] ${m.replyTo.deleted ? "italic text-muted-foreground" : "text-muted-foreground"}`}>
+                            {m.replyTo.deleted ? "Message deleted" : (m.replyTo.body || "Attachment")}
+                          </span>
                         </span>
                       </button>
                     )}
