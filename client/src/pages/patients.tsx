@@ -270,7 +270,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const [showNotesDialog, setShowNotesDialog] = useState(false);
   const [showConsultationDialog, setShowConsultationDialog] = useState(false);
   const [viewMode, setViewMode] = useState<"active" | "archived">("active");
-  const [sortBy, setSortBy] = useState<"name_asc" | "name_desc" | "ur_asc" | "ur_desc" | "recent" | "dob_youngest" | "dob_oldest">("name_asc");
+  const [sortBy, setSortBy] = useState<"name_asc" | "name_desc" | "ur_asc" | "ur_desc" | "recent" | "oldest" | "updated" | "dob_youngest" | "dob_oldest">("name_asc");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female" | "other">("all");
   const [contactFilter, setContactFilter] = useState<"all" | "has_phone" | "has_email" | "has_medicare" | "missing_contact">("all");
   const [pageSize, setPageSize] = useState<number>(25);
@@ -2907,7 +2907,9 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                     <SelectItem value="name_desc">Name (Z–A)</SelectItem>
                     <SelectItem value="ur_asc">UR (low–high)</SelectItem>
                     <SelectItem value="ur_desc">UR (high–low)</SelectItem>
-                    <SelectItem value="recent">Recently added</SelectItem>
+                    <SelectItem value="recent">Date added (newest first)</SelectItem>
+                    <SelectItem value="oldest">Date added (oldest first)</SelectItem>
+                    <SelectItem value="updated">Recently updated</SelectItem>
                     <SelectItem value="dob_youngest">DOB (youngest first)</SelectItem>
                     <SelectItem value="dob_oldest">DOB (oldest first)</SelectItem>
                   </SelectContent>
@@ -2980,6 +2982,11 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
             const n = parseInt((p.urNumber || "").replace(/\D/g, ""), 10);
             return isNaN(n) ? Number.MAX_SAFE_INTEGER : n;
           };
+          const tsMs = (d?: Date | string | null): number => {
+            if (!d) return 0;
+            const t = new Date(d as any).getTime();
+            return isNaN(t) ? 0 : t;
+          };
           const passesViewMode = (p: Patient) => viewMode === "archived" ? p.isActive === false : p.isActive !== false;
           const passesGender = (p: Patient) => genderFilter === "all" || (p.gender || "").toLowerCase() === genderFilter;
           const passesContact = (p: Patient) => {
@@ -2998,7 +3005,9 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
               case "name_desc": return `${b.lastName} ${b.firstName}`.localeCompare(`${a.lastName} ${a.firstName}`);
               case "ur_asc":    return urNum(a) - urNum(b);
               case "ur_desc":   return urNum(b) - urNum(a);
-              case "recent":    return (b.id || 0) - (a.id || 0);
+              case "recent":    return tsMs(b.createdAt) - tsMs(a.createdAt) || (b.id || 0) - (a.id || 0);
+              case "oldest":    return tsMs(a.createdAt) - tsMs(b.createdAt) || (a.id || 0) - (b.id || 0);
+              case "updated":   return tsMs(b.updatedAt) - tsMs(a.updatedAt) || (b.id || 0) - (a.id || 0);
               case "dob_youngest": return dobToDate(b.dateOfBirth) - dobToDate(a.dateOfBirth);
               case "dob_oldest":   return dobToDate(a.dateOfBirth) - dobToDate(b.dateOfBirth);
               default: return 0;
