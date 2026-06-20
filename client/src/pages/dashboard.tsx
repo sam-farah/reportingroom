@@ -134,6 +134,16 @@ export default function Dashboard() {
     retry: false,
   });
   const chatUnreadCount = (chatChannels ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+
+  // SMS inbox unread badge — total unread patient replies across all conversations.
+  // Inbound SMS arrive via webhook (no socket), so poll to keep the badge fresh.
+  const { data: smsConversations } = useQuery<{ unreadCount: number }[]>({
+    queryKey: ["/api/sms/conversations"],
+    retry: false,
+    refetchInterval: 30000,
+  });
+  const smsUnreadCount = (smsConversations ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+
   // Keep the badge live even when the chat panel isn't open.
   useChatSocket({
     enabled: !!currentUserId,
@@ -262,6 +272,14 @@ export default function Dashboard() {
                         title={`${pendingReportsCount} report${pendingReportsCount !== 1 ? "s" : ""} pending finalisation or distribution`}
                       >
                         {pendingReportsCount > 99 ? "99+" : pendingReportsCount}
+                      </span>
+                    )}
+                    {item.id === "messages" && smsUnreadCount > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none"
+                        title={`${smsUnreadCount} unread patient repl${smsUnreadCount !== 1 ? "ies" : "y"}`}
+                      >
+                        {smsUnreadCount > 99 ? "99+" : smsUnreadCount}
                       </span>
                     )}
                     {item.id === "chat" && chatUnreadCount > 0 && (
