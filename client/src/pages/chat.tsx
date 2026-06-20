@@ -10,12 +10,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Hash, Lock, Plus, Send, Paperclip, Search, Loader2, Users, AtSign, UserPlus,
   MessageCircle, X, FileText, Download, LogOut, Circle, UserCircle, Pencil, Trash2, Check,
-  Reply, ChevronLeft,
+  Reply, ChevronLeft, Smile,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
+
+const EMOJIS = [
+  "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🙂", "😉", "😊",
+  "😍", "😘", "😎", "🤔", "🙃", "😇", "🥳", "😴", "😢", "😭",
+  "😤", "😡", "😱", "🤯", "🤗", "🤝", "👍", "👎", "👏", "🙌",
+  "🙏", "💪", "👌", "✌️", "🤞", "👋", "❤️", "🔥", "✨", "🎉",
+  "✅", "❌", "⚠️", "💯", "👀", "🩺", "🏥", "💊", "📋", "📅",
+];
 
 // ── Types mirroring the chat REST payloads ─────────────────────────────────
 interface StaffMember { id: string; firstName: string | null; lastName: string | null; email: string | null; role: string | null; }
@@ -414,6 +423,25 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
     textareaRef.current?.focus();
   };
 
+  const insertEmoji = (emoji: string) => {
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? composer.length;
+    const before = composer.slice(0, caret);
+    const after = composer.slice(caret);
+    const next = before + emoji + after;
+    const pos = caret + emoji.length;
+    setComposer(next);
+    // An emoji is a non-word char, so the caret can't be inside an @mention
+    // token after insertion — close any open mention suggestion list.
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      if (el) {
+        el.focus();
+        el.setSelectionRange(pos, pos);
+      }
+    });
+  };
+
   const addTag = (p: Patient) => {
     setPendingTags((prev) => prev.some((t) => t.patientId === p.id) ? prev : [...prev, {
       patientId: p.id, firstName: p.firstName, lastName: p.lastName, urNumber: (p as any).urNumber ?? null,
@@ -736,6 +764,28 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                 <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full flex-shrink-0 text-muted-foreground hover:text-foreground" onClick={() => { setTagPickerOpen(true); }} data-testid="button-tag-patient">
                   <UserCircle className="w-4 h-4" />
                 </Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full flex-shrink-0 text-muted-foreground hover:text-foreground" data-testid="button-emoji">
+                      <Smile className="w-4 h-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" side="top" className="w-64 p-2">
+                    <div className="grid grid-cols-8 gap-0.5">
+                      {EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => insertEmoji(emoji)}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-lg hover:bg-muted transition-colors"
+                          data-testid={`emoji-${emoji}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 <Textarea
                   ref={textareaRef}
                   value={composer}
