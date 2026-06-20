@@ -3,6 +3,7 @@ import { Search, CheckCircle, Clock, ArrowLeft, UserCheck, ClipboardList, QrCode
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useLocation } from "wouter";
@@ -56,7 +57,7 @@ export default function Kiosk() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchSeqRef = useRef(0);
-  const sigCanvasRef = useRef<HTMLCanvasElement>(null);
+  const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sigDrawing = useRef(false);
   const sigLastPt = useRef<{ x: number; y: number } | null>(null);
 
@@ -310,7 +311,7 @@ export default function Kiosk() {
       toast({ title: "Checked In", description: "Thank you. You have been checked in." });
       setTimeout(() => {
         setCheckedIn(null);
-        setSearchTerm("");
+        setSearchName("");
         setAppointments([]);
         inputRef.current?.focus();
       }, 5000);
