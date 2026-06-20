@@ -119,6 +119,7 @@ import {
   type InsertChatAttachment,
   chatMessageMentions,
   chatMessagePatientTags,
+  chatMessageReactions,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
@@ -394,6 +395,7 @@ export interface IStorage {
   markChatChannelRead(channelId: number, userId: string): Promise<void>;
   updateChatMessage(id: number, body: string, mentionUserIds: string[]): Promise<ChatMessageWithRelations>;
   deleteChatMessage(id: number): Promise<void>;
+  toggleChatReaction(messageId: number, userId: string, emoji: string): Promise<ChatMessageWithRelations>;
 }
 
 // Channel as shown in the sidebar — includes unread count, last message preview,
@@ -412,6 +414,7 @@ export type ChatMessageWithRelations = ChatMessage & {
   mentions: string[];
   patientTags: Array<{ patientId: number; firstName: string; lastName: string; urNumber: string | null }>;
   replyTo: { id: number; authorName: string; body: string; deleted: boolean } | null;
+  reactions: Array<{ emoji: string; userId: string; userName: string }>;
 };
 
 export class DatabaseStorage implements IStorage {
@@ -2245,9 +2248,14 @@ export class DatabaseStorage implements IStorage {
       : [];
     const parentMap = new Map(parentRows.map((p) => [p.id, p]));
 
+    // Reactions are fetched up-front so their authors get folded into the same
+    // name lookup below (so we can return each reactor's display name).
+    const reactionRows = await db.select().from(chatMessageReactions).where(inArray(chatMessageReactions.messageId, ids));
+
     const authorIds = Array.from(new Set([
       ...rows.map((r) => r.authorId),
       ...parentRows.map((p) => p.authorId),
+      ...reactionRows.map((rx) => rx.userId),
     ]));
 
     const authorRows = authorIds.length
@@ -2298,6 +2306,10 @@ export class DatabaseStorage implements IStorage {
               deleted: !!parent.deletedAt,
             }
           : null,
+        reactions: reactionRows
+          .filter((rx) => rx.messageId === r.id)
+          .sort((a, b) => a.id - b.id)
+          .map((rx) => ({ emoji: rx.emoji, userId: rx.userId, userName: nameOf(rx.userId) })),
       };
     });
   }
@@ -2389,6 +2401,25 @@ export class DatabaseStorage implements IStorage {
     await db.update(chatChannelMembers)
       .set({ lastReadAt: new Date() })
       .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, userId)));
+  }
+
+  // Toggle a single emoji reaction for a user on a message: remove it if the
+  // user already reacted with that emoji, otherwise add it. Returns the
+  // re-hydrated message so callers can broadcast the new reaction state.
+  async toggleChatReaction(messageId: number, userId: string, emoji: string): Promise<ChatMessageWithRelations> {
+    // Delete-first then insert-on-conflict-do-nothing keeps each step atomic, so
+    // two rapid (e.g. double-click) toggles can't collide on the unique index.
+    const deleted = await db.delete(chatMessageReactions).where(and(
+      eq(chatMessageReactions.messageId, messageId),
+      eq(chatMessageReactions.userId, userId),
+      eq(chatMessageReactions.emoji, emoji),
+    )).returning();
+    if (deleted.length === 0) {
+      await db.insert(chatMessageReactions).values({ messageId, userId, emoji }).onConflictDoNothing();
+    }
+    const [row] = await db.select().from(chatMessages).where(eq(chatMessages.id, messageId));
+    const [hydrated] = await this.hydrateChatMessages([row]);
+    return hydrated;
   }
 }
 

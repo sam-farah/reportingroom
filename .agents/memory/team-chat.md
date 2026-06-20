@@ -35,3 +35,8 @@ Never write `sql\`${col} = ANY(${jsArray})\`` for chat lookups — the Neon serv
 `apiRequest` (client/src/lib/queryClient.ts) resolves to a raw `Response`. Any useMutation whose `onSuccess` consumes the body MUST do `(await apiRequest(...)).json()` in its mutationFn. A chat mutationFn that returned the Response directly got appended to the messages cache; the render hit `m.patientTags.length` on a Response → threw → Chat is a dashboard panel with NO ErrorBoundary → the whole page blanked.
 **Why:** server returned 201 with correct JSON, so it looked like a server-shape problem; the real bug was client-side type confusion (Response vs message).
 **How to apply:** when a mutation's result feeds setQueryData/append/replace, confirm the mutationFn calls `.json()`. Consider guarding array access (`m.patientTags?.length`) since there is no top-level ErrorBoundary.
+
+## Emoji reactions
+- Reactions live in their own table with a UNIQUE (messageId, userId, emoji); a user can't double-react the same emoji. Toggle = delete-first (`.returning()`), and only if nothing was deleted, `insert(...).onConflictDoNothing()` — keeps each step atomic so a double-click can't 500 on the unique index.
+- No new WS event type: the toggle route re-hydrates the message and broadcasts the existing `message:updated`; clients already replace-by-id, so the actor's own POST-response replace and the WS replace are idempotent.
+- Hydration returns reactions as `{emoji,userId,userName}` — reactor userIds are folded into the SAME author/name lookup map (don't do a second per-message query). Client groups per-emoji for the pill (count + names via `title`, highlight if current user is in it).

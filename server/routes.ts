@@ -1950,6 +1950,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Toggle an emoji reaction on a message — any channel member, same clinic.
+  app.post("/api/chat/messages/:id/reactions", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const messageId = parseInt(req.params.id);
+      const existing = await storage.getChatMessageById(messageId);
+      if (!existing || existing.clinicId !== user.clinicId) return res.status(404).json({ error: "Not found" });
+      if (existing.deletedAt) return res.status(400).json({ error: "Cannot react to a deleted message" });
+      if (!(await storage.isChatChannelMember(existing.channelId, user.id))) return res.status(403).json({ error: "Not a member" });
+      const emoji = (req.body?.emoji ?? "").toString().trim();
+      // Guard against arbitrary/oversized payloads — emojis are short.
+      if (!emoji || emoji.length > 16) return res.status(400).json({ error: "Invalid emoji" });
+      const updated = await storage.toggleChatReaction(messageId, user.id, emoji);
+      chatHub.emitMessageUpdated(existing.channelId, updated);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error toggling reaction:", error);
+      res.status(500).json({ error: "Failed to toggle reaction" });
+    }
+  });
+
   // Patients API
   app.get("/api/patients", isAuthenticated, async (req, res) => {
     try {

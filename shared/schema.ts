@@ -9,6 +9,7 @@ import {
   integer,
   boolean,
   customType,
+  unique,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -1056,3 +1057,19 @@ export const chatMessagePatientTags = pgTable("chat_message_patient_tags", {
 export const insertChatMessagePatientTagSchema = createInsertSchema(chatMessagePatientTags).omit({ id: true });
 export type ChatMessagePatientTag = typeof chatMessagePatientTags.$inferSelect;
 export type InsertChatMessagePatientTag = z.infer<typeof insertChatMessagePatientTagSchema>;
+
+// Emoji reactions on a chat message. The unique constraint stops a user from
+// adding the same emoji twice to one message (the toggle relies on it).
+export const chatMessageReactions = pgTable("chat_message_reactions", {
+  id: serial("id").primaryKey(),
+  messageId: integer("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  emoji: varchar("emoji", { length: 16 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqReaction: unique("chat_reaction_unique").on(t.messageId, t.userId, t.emoji),
+}));
+
+export const insertChatMessageReactionSchema = createInsertSchema(chatMessageReactions).omit({ id: true, createdAt: true });
+export type ChatMessageReaction = typeof chatMessageReactions.$inferSelect;
+export type InsertChatMessageReaction = z.infer<typeof insertChatMessageReactionSchema>;

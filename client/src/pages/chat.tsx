@@ -57,6 +57,13 @@ interface ChatMessage {
   patientTags: ChatPatientTag[];
   replyToId?: number | null;
   replyTo?: { id: number; authorName: string; body: string; deleted: boolean } | null;
+  reactions?: ChatReaction[];
+}
+
+interface ChatReaction {
+  emoji: string;
+  userId: string;
+  userName: string;
 }
 
 function personName(p: { firstName?: string | null; lastName?: string | null; email?: string | null } | null | undefined): string {
@@ -70,6 +77,19 @@ function initials(p: { firstName?: string | null; lastName?: string | null; emai
   const l = (p.lastName ?? "").trim();
   if (f || l) return `${f.charAt(0)}${l.charAt(0)}`.toUpperCase() || "?";
   return (p.email ?? "?").charAt(0).toUpperCase();
+}
+// Collapse a flat reaction list into one pill per emoji, preserving first-seen
+// order, with the list of who reacted and whether the current user is among them.
+function groupReactions(reactions: ChatReaction[] | undefined, currentUserId: string | null | undefined) {
+  const order: string[] = [];
+  const map = new Map<string, { emoji: string; names: string[]; mine: boolean }>();
+  for (const r of reactions ?? []) {
+    let g = map.get(r.emoji);
+    if (!g) { g = { emoji: r.emoji, names: [], mine: false }; map.set(r.emoji, g); order.push(r.emoji); }
+    g.names.push(r.userName);
+    if (r.userId === currentUserId) g.mine = true;
+  }
+  return order.map((e) => map.get(e)!);
 }
 const AVATAR_GRADIENTS = [
   "from-rose-500 to-pink-600",
@@ -329,6 +349,17 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
     },
     onError: () => toast({ title: "Couldn't delete message", variant: "destructive" }),
   });
+
+  const reactionMutation = useMutation({
+    mutationFn: async ({ id, emoji }: { id: number; emoji: string }) =>
+      (await apiRequest(`/api/chat/messages/${id}/reactions`, "POST", { emoji })).json(),
+    onSuccess: (msg: any) => {
+      if (selectedId != null && msg) replaceMessage(selectedId, msg);
+    },
+    onError: () => toast({ title: "Couldn't update reaction", variant: "destructive" }),
+  });
+
+  const toggleReaction = (id: number, emoji: string) => reactionMutation.mutate({ id, emoji });
 
   const startEdit = (m: ChatMessage) => { setEditingId(m.id); setEditText(m.body); };
   const cancelEdit = () => { setEditingId(null); setEditText(""); };
@@ -688,9 +719,52 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                         )))}
                       </div>
                     )}
+                    {(() => {
+                      const groups = groupReactions(m.reactions, currentUserId);
+                      if (groups.length === 0) return null;
+                      return (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {groups.map((g) => (
+                            <button
+                              key={g.emoji}
+                              type="button"
+                              title={g.names.join(", ")}
+                              onClick={() => toggleReaction(m.id, g.emoji)}
+                              data-testid={`reaction-${m.id}-${g.emoji}`}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs transition-colors ${g.mine ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted/50 border-border hover:bg-muted"}`}
+                            >
+                              <span className="text-sm leading-none">{g.emoji}</span>
+                              <span className="font-medium">{g.names.length}</span>
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                   {editingId !== m.id && (
                     <span className="absolute right-2 -top-3 flex items-center rounded-md border bg-card shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" data-testid={`button-react-${m.id}`}>
+                            <Smile className="w-3.5 h-3.5" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" side="top" className="w-64 p-2">
+                          <div className="grid grid-cols-8 gap-0.5">
+                            {EMOJIS.map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => toggleReaction(m.id, emoji)}
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-lg hover:bg-muted transition-colors"
+                                data-testid={`react-pick-${m.id}-${emoji}`}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                       <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => startReply(m)} data-testid={`button-reply-${m.id}`}>
                         <Reply className="w-3.5 h-3.5" />
                       </Button>
