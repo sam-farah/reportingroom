@@ -1074,6 +1074,22 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     },
   });
 
+  const sendConsentMutation = useMutation({
+    mutationFn: async ({ id, channel }: { id: number; channel: "sms" | "email" }) => {
+      const res = await apiRequest(`/api/appointments/${id}/send-consent`, "POST", { channel });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: data.channel === "email" ? "Consent emailed" : "Consent texted",
+        description: `Sent to ${data.sentTo}`,
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send consent", description: error.message || "Could not send the consent link", variant: "destructive" });
+    },
+  });
+
   const createPatientMutation = useMutation({
     mutationFn: async (data: any): Promise<Patient> => {
       const res = await apiRequest("/api/patients", "POST", data);
@@ -3316,6 +3332,30 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                               >
                                 <MessageSquare className="w-4 h-4 mr-2" />
                                 {sendSmsRegistrationMutation.isPending ? "Sending…" : "Send Registration SMS"}
+                              </DropdownMenuItem>
+                            )}
+                            {smsConfigured && viewingAppointment.patientId && (
+                              <DropdownMenuItem
+                                disabled={!viewingAppointment.patientPhone || sendConsentMutation.isPending}
+                                title={!viewingAppointment.patientPhone ? "No phone number on file for this patient" : "Text the patient a link to sign consent for today's study"}
+                                onSelect={(e) => { e.preventDefault(); sendConsentMutation.mutate({ id: viewingAppointment.id, channel: "sms" }); }}
+                                className="text-emerald-700 focus:text-emerald-700"
+                                data-testid="menu-send-consent-sms"
+                              >
+                                <ShieldCheck className="w-4 h-4 mr-2" />
+                                {sendConsentMutation.isPending ? "Sending…" : "Send consent for today's study"}
+                              </DropdownMenuItem>
+                            )}
+                            {viewingAppointment.patientId && (
+                              <DropdownMenuItem
+                                disabled={!viewingAppointment.patientEmail || sendConsentMutation.isPending}
+                                title={!viewingAppointment.patientEmail ? "No email address on file for this patient" : "Email the patient a link to sign consent for today's study"}
+                                onSelect={(e) => { e.preventDefault(); sendConsentMutation.mutate({ id: viewingAppointment.id, channel: "email" }); }}
+                                className="text-emerald-700 focus:text-emerald-700"
+                                data-testid="menu-send-consent-email"
+                              >
+                                <Mail className="w-4 h-4 mr-2" />
+                                {sendConsentMutation.isPending ? "Sending…" : "Email consent for today's study"}
                               </DropdownMenuItem>
                             )}
                             {(() => {

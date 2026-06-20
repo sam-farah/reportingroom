@@ -156,6 +156,7 @@ export const reports = pgTable("reports", {
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
   patientId: integer("patient_id").references(() => patients.id),
   verbalConsentAt: timestamp("verbal_consent_at"), // Inherited from the appointment when verbal consent was recorded
+  writtenConsentAt: timestamp("written_consent_at"), // Inherited from the appointment when written/signed consent was recorded (kiosk or remote)
 });
 
 export const trainingPairs = pgTable("training_pairs", {
@@ -516,6 +517,21 @@ export const patientRegistrationTokens = pgTable("patient_registration_tokens", 
 
 export type PatientRegistrationToken = typeof patientRegistrationTokens.$inferSelect;
 
+// Tokens for patients to sign their study consent on their own device (sent via SMS/email)
+export const patientConsentTokens = pgTable("patient_consent_tokens", {
+  id: serial("id").primaryKey(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  patientId: integer("patient_id").notNull().references(() => patients.id),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  appointmentId: integer("appointment_id").references(() => appointments.id),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | completed
+  expiresAt: timestamp("expires_at").notNull(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PatientConsentToken = typeof patientConsentTokens.$inferSelect;
+
 // Appointments/Bookings table
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
@@ -547,6 +563,7 @@ export const appointments = pgTable("appointments", {
   copyToFax: varchar("copy_to_fax", { length: 50 }),
   copyToRecipients: jsonb("copy_to_recipients").$type<{ name?: string; email?: string; fax?: string }[]>().default([]),
   verbalConsentAt: timestamp("verbal_consent_at"), // When the sonographer recorded verbal consent for the study
+  writtenConsentAt: timestamp("written_consent_at"), // When written/signed consent was recorded (kiosk or remote device)
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({

@@ -95,6 +95,8 @@ import {
   type ReminderLog,
   patientRegistrationTokens,
   type PatientRegistrationToken,
+  patientConsentTokens,
+  type PatientConsentToken,
   patientNotes,
   loginAudit,
   type LoginAuditEntry,
@@ -291,6 +293,9 @@ export interface IStorage {
   getPatientRegistrationToken(token: string): Promise<PatientRegistrationToken | undefined>;
   getLatestPatientRegistrationToken(patientId: number): Promise<PatientRegistrationToken | undefined>;
   completePatientRegistrationToken(token: string): Promise<void>;
+  createPatientConsentToken(patientId: number, clinicId: number, appointmentId: number | null, token: string, expiresAt: Date): Promise<PatientConsentToken>;
+  getPatientConsentToken(token: string): Promise<PatientConsentToken | undefined>;
+  completePatientConsentToken(token: string): Promise<void>;
   
   // Patient document operations
   getPatientDocuments(patientId: number): Promise<PatientDocument[]>;
@@ -1105,6 +1110,7 @@ export class DatabaseStorage implements IStorage {
       sonographerId: reportData.sonographerId ? parseInt(reportData.sonographerId) : null,
       digitalWorksheetId: reportData.digitalWorksheetId,
       verbalConsentAt: reportData.verbalConsentAt ?? null,
+      writtenConsentAt: reportData.writtenConsentAt ?? null,
       isDraft: true,
       generatedAt: new Date(),
     };
@@ -1529,6 +1535,20 @@ export class DatabaseStorage implements IStorage {
 
   async completePatientRegistrationToken(token: string): Promise<void> {
     await db.update(patientRegistrationTokens).set({ status: "completed", completedAt: new Date() }).where(eq(patientRegistrationTokens.token, token));
+  }
+
+  async createPatientConsentToken(patientId: number, clinicId: number, appointmentId: number | null, token: string, expiresAt: Date): Promise<PatientConsentToken> {
+    const [row] = await db.insert(patientConsentTokens).values({ patientId, clinicId, appointmentId: appointmentId ?? undefined, token, expiresAt, status: "pending" }).returning();
+    return row;
+  }
+
+  async getPatientConsentToken(token: string): Promise<PatientConsentToken | undefined> {
+    const [row] = await db.select().from(patientConsentTokens).where(eq(patientConsentTokens.token, token));
+    return row;
+  }
+
+  async completePatientConsentToken(token: string): Promise<void> {
+    await db.update(patientConsentTokens).set({ status: "completed", completedAt: new Date() }).where(eq(patientConsentTokens.token, token));
   }
 
   async getPatientDocuments(patientId: number): Promise<PatientDocument[]> {

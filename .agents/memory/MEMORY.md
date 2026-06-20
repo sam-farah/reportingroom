@@ -10,4 +10,5 @@
 - [Worksheet labelling & merge](worksheet-labelling.md) — labelled image is a superset of the raw upload; on label, delete the raw worksheet but NEVER clear labelledWorksheetId (re-label loop); timeline filter must show primary worksheetId.
 - [Kiosk check-in privacy](kiosk-checkin-privacy.md) — public kiosk search must never list patients; return one match or ask DOB; scope to clinic-or-null; guard stale responses.
 - [Verbal consent capture](verbal-consent.md) — consent timestamp lives on the appointment; reports inherit it (like sonographer inheritance) rather than threading through the client upload flow.
+- [Remote patient consent](remote-consent.md) — send-to-device consent must strictly clinic-scope patient resolution (null-clinic appt must not name-match all clinics); wording is server-side only; "today" guard is ±24h (server UTC vs AU clinics).
 - [Appointment time timezone](appointment-time-timezone.md) — appointment times stored UTC; all server-side date/time rendering (SMS/email/certs) must format in Australia/Sydney, never server-local.

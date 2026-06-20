@@ -728,8 +728,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const pad = (n: number) => String(n).padStart(2, '0');
       return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
-    const consentStamp = (report as any).verbalConsentAt ? formatConsentDateTime((report as any).verbalConsentAt) : null;
-    const consentLine = consentStamp ? `Verbal consent obtained for study: ${consentStamp}` : null;
+    const writtenStamp = (report as any).writtenConsentAt ? formatConsentDateTime((report as any).writtenConsentAt) : null;
+    const verbalStamp = (report as any).verbalConsentAt ? formatConsentDateTime((report as any).verbalConsentAt) : null;
+    const consentLine = writtenStamp
+      ? `Informed consent obtained for this study: ${writtenStamp}`
+      : (verbalStamp ? `Verbal consent obtained for study: ${verbalStamp}` : null);
     const colW = (A4_W - textStartX - PADDING) / 2;
     const gridRows = Math.ceil(lines.length / 2);
     const leftLines = lines.slice(0, gridRows);

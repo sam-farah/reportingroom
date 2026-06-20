@@ -3176,6 +3176,13 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "20 June 2026",
     tag: "New",
+    title: "Send consent to the patient's own phone",
+    detail:
+      "You can now send a consent form straight to a patient's phone for today's study. Open the appointment, click the menu (•••), and choose \"Send consent for today's study\" (by text) or \"Email consent for today's study\".\n\nThe patient gets a link, reads the same consent wording, and signs with their finger on their own device. The signed form is saved to their file automatically — exactly like signing at the front-desk kiosk. When a patient signs (kiosk or on their phone), their report worksheet is labelled \"Informed consent obtained for this study\".",
+  },
+  {
+    date: "20 June 2026",
+    tag: "New",
     title: "Text messaging (SMS) is now live",
     detail:
       "Reporting Room can now send and receive text messages with your patients. This is switched on and working, so the features below are ready to use.\n\nTexts are sent from your clinic's own phone number, and everything stays private to your clinic.",

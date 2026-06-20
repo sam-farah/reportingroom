@@ -18,6 +18,7 @@ import PatientPortalDashboard from "@/pages/patient-portal/dashboard";
 import ForgotPassword from "@/pages/patient-portal/forgot-password";
 import ResetPassword from "@/pages/patient-portal/reset-password";
 import PatientRegistrationPage from "@/pages/patient-registration";
+import ConsentPage from "@/pages/consent";
 import ReferralFormPage from "@/pages/referral-form";
 import ReferrerPortal from "@/pages/referrer-portal";
 import IdleLogout from "@/components/idle-logout";
@@ -51,6 +52,9 @@ function Router() {
       {/* Patient Self-Registration (public) */}
       <Route path="/patient-registration/:token" component={PatientRegistrationPage} />
 
+      {/* Digital Patient Consent (public, mobile) */}
+      <Route path="/consent/:token" component={ConsentPage} />
+
       {/* Public & Referrer Portal (no auth required) */}
       <Route path="/referral-form/:clinicId" component={ReferralFormPage} />
       <Route path="/referrer-portal" component={ReferrerPortal} />
@@ -82,7 +86,7 @@ function IdleLogoutGate() {
   const { isAuthenticated, user } = useAuth();
   // Don't run idle logout on the public kiosk view — it's meant to be left running.
   const path = typeof window !== "undefined" ? window.location.pathname : "";
-  if (!isAuthenticated || !user || path.startsWith("/kiosk") || path.startsWith("/patient-portal") || path.startsWith("/referrer-portal") || path.startsWith("/referral-form") || path.startsWith("/patient-registration")) {
+  if (!isAuthenticated || !user || path.startsWith("/kiosk") || path.startsWith("/patient-portal") || path.startsWith("/referrer-portal") || path.startsWith("/referral-form") || path.startsWith("/patient-registration") || path.startsWith("/consent")) {
     return null;
   }
   return <IdleLogout />;

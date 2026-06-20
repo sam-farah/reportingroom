@@ -5,7 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq, sql as drizzleSql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
-import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor } from "./email";
+import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor, sendPatientConsentEmail } from "./email";
 import { isSmsConfigured, sendSms, normalisePhone, getSmsFromNumber, validateTwilioSignature } from "./twilio";
 import { buildReminderBody } from "./sms-templates";
 import multer from "multer";
@@ -112,6 +112,186 @@ function publicBaseUrl(req: any): string {
   if (configured) return configured.replace(/\/+$/, "");
   if (process.env.NODE_ENV === "production") return "https://reportingroom.net";
   return req.headers.origin || `${req.protocol}://${req.headers.host}`;
+}
+
+// Builds the signed consent document (A4 JPEG via sharp/SVG) and stores it on the
+// patient's file as a "Consent Form" — shared by the kiosk and remote-device flows.
+// `consentText` MUST be the server-side clinic wording (never client-supplied).
+async function generateConsentDocument(opts: {
+  appointmentId: number;
+  patient: any;
+  clinic: any;
+  sonographerName: string | null;
+  signatureDataUrl: string;
+  consentText: string;
+}): Promise<{ fileUrl: string; filename: string }> {
+  const { appointmentId, patient, clinic, sonographerName, signatureDataUrl, consentText } = opts;
+
+  const DPI = 200;
+  const A4_W = Math.round((210 / 25.4) * DPI);
+  const A4_H = Math.round((297 / 25.4) * DPI);
+  const HEADER_H = Math.round(A4_H * 0.12);
+  const PAD = Math.round(A4_W * 0.04);
+  const PRIMARY = "#0066cc";
+
+  // Logo
+  let logoBuf: Buffer | null = null;
+  let logoDims = { w: 0, h: 0 };
+  const logoUrl = clinic?.kioskLogoUrl || clinic?.logoUrl;
+  if (logoUrl) {
+    const fname = logoUrl.replace(/^\/uploads\//, "");
+    try {
+      const blob = await getFileFromDB(fname);
+      if (blob) {
+        const meta = await sharp(blob.data).metadata();
+        const maxH = HEADER_H - PAD;
+        const maxW = Math.round(A4_W * 0.18);
+        const scale = Math.min(maxW / (meta.width || 1), maxH / (meta.height || 1), 1);
+        logoDims = { w: Math.round((meta.width || 0) * scale), h: Math.round((meta.height || 0) * scale) };
+        logoBuf = await sharp(blob.data).resize(logoDims.w, logoDims.h).png().toBuffer();
+      }
+    } catch { /* logo optional */ }
+  }
+
+  const fmtDate = (d: any) => {
+    if (!d) return "";
+    if (typeof d === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return String(d);
+    const dd = String(dt.getDate()).padStart(2, "0");
+    const mm = String(dt.getMonth() + 1).padStart(2, "0");
+    return `${dd}/${mm}/${dt.getFullYear()}`;
+  };
+  const today = new Date();
+  const todayStr = fmtDate(today);
+  const fmtTime = (d: Date) =>
+    `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const todayDateTimeStr = `${todayStr} ${fmtTime(today)}`;
+  const patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
+  const headerLines = [
+    `Patient: ${patientName}`,
+    patient.dateOfBirth ? `DOB: ${fmtDate(patient.dateOfBirth)}` : null,
+    patient.urNumber ? `UR: ${patient.urNumber}` : null,
+    patient.medicareNumber ? `Medicare: ${patient.medicareNumber}` : null,
+    patient.phone ? `Phone: ${String(patient.phone).trim()}` : null,
+    sonographerName ? `Sonographer: ${sonographerName}` : null,
+    `Document: Consent Form`,
+    `Date: ${todayDateTimeStr}`,
+  ].filter(Boolean) as string[];
+
+  const escape = (s: string) =>
+    String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const headerFontSize = Math.round(A4_W * 0.0135);
+  const headerLineH = headerFontSize + Math.round(headerFontSize * 0.45);
+  const textStartX = PAD + (logoBuf ? logoDims.w + Math.round(A4_W * 0.015) : 0);
+  const half = Math.ceil(headerLines.length / 2);
+  const left = headerLines.slice(0, half);
+  const right = headerLines.slice(half);
+  const textY = Math.round((HEADER_H - half * headerLineH) / 2 + headerFontSize);
+  const colW = Math.round((A4_W - textStartX - PAD) / 2);
+  const renderCol = (lines: string[], x: number) =>
+    lines.map((l, i) =>
+      `<text x="${x}" y="${textY + i * headerLineH}" font-family="Arial, sans-serif" font-size="${headerFontSize}" fill="#333333">${escape(l)}</text>`,
+    ).join("");
+  const lineThk = Math.max(2, Math.round(A4_W * 0.003));
+
+  const bodyTop = HEADER_H + Math.round(A4_W * 0.04);
+  const bodyW = A4_W - PAD * 2;
+  const bodyFontSize = Math.round(A4_W * 0.014);
+  const bodyLineH = Math.round(bodyFontSize * 1.5);
+  const titleSize = Math.round(A4_W * 0.024);
+
+  const charPx = bodyFontSize * 0.55;
+  const maxCharsPerLine = Math.floor(bodyW / charPx);
+  const wrapText = (text: string): string[] => {
+    const out: string[] = [];
+    for (const para of text.split(/\r?\n/)) {
+      if (!para.trim()) { out.push(""); continue; }
+      const words = para.split(/\s+/);
+      let line = "";
+      for (const w of words) {
+        const candidate = line ? `${line} ${w}` : w;
+        if (candidate.length > maxCharsPerLine) {
+          if (line) out.push(line);
+          line = w;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  };
+  const wrapped = wrapText(consentText);
+
+  const bodyTextY = bodyTop + titleSize + Math.round(A4_W * 0.025);
+  const bodyEndY = bodyTextY + wrapped.length * bodyLineH;
+
+  const sigBoxY = Math.min(bodyEndY + Math.round(A4_W * 0.04), A4_H - Math.round(A4_W * 0.16));
+  const sigBoxH = Math.round(A4_W * 0.1);
+  const sigLabelY = sigBoxY - Math.round(A4_W * 0.012);
+
+  const bodyLinesSvg = wrapped.map((l, i) =>
+    `<text x="${PAD}" y="${bodyTextY + i * bodyLineH}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#222222">${escape(l)}</text>`,
+  ).join("");
+
+  const svg = `<svg width="${A4_W}" height="${A4_H}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${A4_W}" height="${A4_H}" fill="#ffffff"/>
+    ${renderCol(left, textStartX)}
+    ${renderCol(right, textStartX + colW)}
+    <line x1="0" y1="${HEADER_H - Math.floor(lineThk / 2)}" x2="${A4_W}" y2="${HEADER_H - Math.floor(lineThk / 2)}" stroke="${PRIMARY}" stroke-width="${lineThk}"/>
+    <text x="${PAD}" y="${bodyTop + titleSize}" font-family="Arial, sans-serif" font-size="${titleSize}" font-weight="bold" fill="#111111">Patient Consent</text>
+    ${bodyLinesSvg}
+    <text x="${PAD}" y="${sigLabelY}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Patient signature:</text>
+    <line x1="${PAD}" y1="${sigBoxY + sigBoxH}" x2="${PAD + Math.round(A4_W * 0.5)}" y2="${sigBoxY + sigBoxH}" stroke="#333333" stroke-width="2"/>
+    <text x="${PAD + Math.round(A4_W * 0.55)}" y="${sigBoxY + sigBoxH - 6}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Date: ${todayDateTimeStr}</text>
+  </svg>`;
+
+  const sigB64 = signatureDataUrl.split(",")[1];
+  const sigBuffer = Buffer.from(sigB64, "base64");
+  const sigMeta = await sharp(sigBuffer).metadata();
+  const sigMaxW = Math.round(A4_W * 0.5);
+  const sigMaxH = sigBoxH - 4;
+  const sigScale = Math.min(sigMaxW / (sigMeta.width || 1), sigMaxH / (sigMeta.height || 1), 1);
+  const sigW = Math.round((sigMeta.width || 0) * sigScale);
+  const sigH = Math.round((sigMeta.height || 0) * sigScale);
+  const sigResized = await sharp(sigBuffer)
+    .resize(sigW, sigH, { fit: "inside" })
+    .flatten({ background: "#ffffff" })
+    .png()
+    .toBuffer();
+
+  const composites: sharp.OverlayOptions[] = [];
+  if (logoBuf) {
+    composites.push({ input: logoBuf, left: PAD, top: Math.round((HEADER_H - logoDims.h) / 2) });
+  }
+  composites.push({ input: sigResized, left: PAD, top: sigBoxY + (sigBoxH - sigH) });
+
+  const finalImg = await sharp(Buffer.from(svg))
+    .composite(composites)
+    .jpeg({ quality: 92 })
+    .toBuffer();
+
+  const newFilename = crypto.randomBytes(16).toString("hex");
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  const outPath = path.join(uploadsDir, newFilename);
+  fs.writeFileSync(outPath, finalImg);
+  saveFileToDB(newFilename, outPath, "image/jpeg", `consent-${appointmentId}.jpg`).catch(console.error);
+
+  const isoDate = today.toISOString().slice(0, 10);
+  await storage.createPatientDocument({
+    patientId: patient.id,
+    title: "Consent Form",
+    documentDate: isoDate,
+    fileUrl: `/uploads/${newFilename}`,
+    filename: newFilename,
+    originalName: `consent-${patientName.replace(/\s+/g, "-")}-${isoDate}.jpg`,
+    notes: null,
+  } as any);
+
+  return { fileUrl: `/uploads/${newFilename}`, filename: newFilename };
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -375,12 +555,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid appointment ID" });
-      const { signatureDataUrl, consentText } = req.body || {};
+      const { signatureDataUrl } = req.body || {};
       if (!signatureDataUrl || typeof signatureDataUrl !== "string" || !signatureDataUrl.startsWith("data:image/")) {
         return res.status(400).json({ error: "Signature is required" });
-      }
-      if (!consentText || typeof consentText !== "string") {
-        return res.status(400).json({ error: "Consent text is required" });
       }
 
       const appointment = await storage.getAppointment(id);
@@ -400,6 +577,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const clinic = appointment.clinicId ? await storage.getClinic(appointment.clinicId) : null;
 
+      // Consent wording always comes from the server-side clinic setting (never the client).
+      const consentText = (clinic?.kioskConsentText || "").trim();
+      if (!consentText) {
+        return res.status(400).json({ error: "No consent wording has been set up for this clinic." });
+      }
+
       // Resolve the scheduled sonographer (for the consent document header).
       let sonographer: any = null;
       if (appointment.sonographerId) {
@@ -409,185 +592,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? `${sonographer.title ? sonographer.title + " " : ""}${sonographer.name}`.trim()
         : null;
 
-      // Build the labelled consent image (A4) using sharp + SVG.
-      const DPI = 200;
-      const A4_W = Math.round((210 / 25.4) * DPI);
-      const A4_H = Math.round((297 / 25.4) * DPI);
-      const HEADER_H = Math.round(A4_H * 0.12);
-      const PAD = Math.round(A4_W * 0.04);
-      const PRIMARY = "#0066cc";
+      await generateConsentDocument({
+        appointmentId: id,
+        patient,
+        clinic,
+        sonographerName,
+        signatureDataUrl,
+        consentText,
+      });
 
-      // Logo
-      let logoBuf: Buffer | null = null;
-      let logoDims = { w: 0, h: 0 };
-      const logoUrl = clinic?.kioskLogoUrl || clinic?.logoUrl;
-      if (logoUrl) {
-        const fname = logoUrl.replace(/^\/uploads\//, "");
-        try {
-          const blob = await getFileFromDB(fname);
-          if (blob) {
-            const meta = await sharp(blob.data).metadata();
-            const maxH = HEADER_H - PAD;
-            const maxW = Math.round(A4_W * 0.18);
-            const scale = Math.min(maxW / (meta.width || 1), maxH / (meta.height || 1), 1);
-            logoDims = { w: Math.round((meta.width || 0) * scale), h: Math.round((meta.height || 0) * scale) };
-            logoBuf = await sharp(blob.data).resize(logoDims.w, logoDims.h).png().toBuffer();
-          }
-        } catch { /* logo optional */ }
-      }
-
-      const fmtDate = (d: any) => {
-        if (!d) return "";
-        if (typeof d === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
-        const dt = new Date(d);
-        if (isNaN(dt.getTime())) return String(d);
-        const dd = String(dt.getDate()).padStart(2, "0");
-        const mm = String(dt.getMonth() + 1).padStart(2, "0");
-        return `${dd}/${mm}/${dt.getFullYear()}`;
-      };
-      const today = new Date();
-      const todayStr = fmtDate(today);
-      const fmtTime = (d: Date) =>
-        `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      const todayDateTimeStr = `${todayStr} ${fmtTime(today)}`;
-      const patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
-      const headerLines = [
-        `Patient: ${patientName}`,
-        patient.dateOfBirth ? `DOB: ${fmtDate(patient.dateOfBirth)}` : null,
-        patient.urNumber ? `UR: ${patient.urNumber}` : null,
-        patient.medicareNumber ? `Medicare: ${patient.medicareNumber}` : null,
-        patient.phone ? `Phone: ${String(patient.phone).trim()}` : null,
-        appointment.scanType ? `Examination: ${appointment.scanType}` : null,
-        sonographerName ? `Sonographer: ${sonographerName}` : null,
-        `Document: Consent Form`,
-        `Date: ${todayDateTimeStr}`,
-      ].filter(Boolean) as string[];
-
-      const escape = (s: string) =>
-        String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-      const headerFontSize = Math.round(A4_W * 0.0135);
-      const headerLineH = headerFontSize + Math.round(headerFontSize * 0.45);
-      const textStartX = PAD + (logoBuf ? logoDims.w + Math.round(A4_W * 0.015) : 0);
-      const half = Math.ceil(headerLines.length / 2);
-      const left = headerLines.slice(0, half);
-      const right = headerLines.slice(half);
-      const textY = Math.round((HEADER_H - half * headerLineH) / 2 + headerFontSize);
-      const colW = Math.round((A4_W - textStartX - PAD) / 2);
-      const renderCol = (lines: string[], x: number) =>
-        lines.map((l, i) =>
-          `<text x="${x}" y="${textY + i * headerLineH}" font-family="Arial, sans-serif" font-size="${headerFontSize}" fill="#333333">${escape(l)}</text>`,
-        ).join("");
-      const lineThk = Math.max(2, Math.round(A4_W * 0.003));
-
-      // Body: title + consent text wrapped + signature
-      const bodyTop = HEADER_H + Math.round(A4_W * 0.04);
-      const bodyW = A4_W - PAD * 2;
-      const bodyFontSize = Math.round(A4_W * 0.014);
-      const bodyLineH = Math.round(bodyFontSize * 1.5);
-      const titleSize = Math.round(A4_W * 0.024);
-
-      // Word-wrap consent text
-      const charPx = bodyFontSize * 0.55;
-      const maxCharsPerLine = Math.floor(bodyW / charPx);
-      const wrapText = (text: string): string[] => {
-        const out: string[] = [];
-        for (const para of text.split(/\r?\n/)) {
-          if (!para.trim()) { out.push(""); continue; }
-          const words = para.split(/\s+/);
-          let line = "";
-          for (const w of words) {
-            const candidate = line ? `${line} ${w}` : w;
-            if (candidate.length > maxCharsPerLine) {
-              if (line) out.push(line);
-              line = w;
-            } else {
-              line = candidate;
-            }
-          }
-          if (line) out.push(line);
-        }
-        return out;
-      };
-      const wrapped = wrapText(consentText);
-
-      const bodyTextY = bodyTop + titleSize + Math.round(A4_W * 0.025);
-      const bodyEndY = bodyTextY + wrapped.length * bodyLineH;
-
-      // Signature placement
-      const sigBoxY = Math.min(bodyEndY + Math.round(A4_W * 0.04), A4_H - Math.round(A4_W * 0.16));
-      const sigBoxH = Math.round(A4_W * 0.1);
-      const sigLabelY = sigBoxY - Math.round(A4_W * 0.012);
-
-      const bodyLinesSvg = wrapped.map((l, i) =>
-        `<text x="${PAD}" y="${bodyTextY + i * bodyLineH}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#222222">${escape(l)}</text>`,
-      ).join("");
-
-      const svg = `<svg width="${A4_W}" height="${A4_H}" xmlns="http://www.w3.org/2000/svg">
-        <rect width="${A4_W}" height="${A4_H}" fill="#ffffff"/>
-        ${renderCol(left, textStartX)}
-        ${renderCol(right, textStartX + colW)}
-        <line x1="0" y1="${HEADER_H - Math.floor(lineThk / 2)}" x2="${A4_W}" y2="${HEADER_H - Math.floor(lineThk / 2)}" stroke="${PRIMARY}" stroke-width="${lineThk}"/>
-        <text x="${PAD}" y="${bodyTop + titleSize}" font-family="Arial, sans-serif" font-size="${titleSize}" font-weight="bold" fill="#111111">Patient Consent</text>
-        ${bodyLinesSvg}
-        <text x="${PAD}" y="${sigLabelY}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Patient signature:</text>
-        <line x1="${PAD}" y1="${sigBoxY + sigBoxH}" x2="${PAD + Math.round(A4_W * 0.5)}" y2="${sigBoxY + sigBoxH}" stroke="#333333" stroke-width="2"/>
-        <text x="${PAD + Math.round(A4_W * 0.55)}" y="${sigBoxY + sigBoxH - 6}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Date: ${todayDateTimeStr}</text>
-      </svg>`;
-
-      // Decode signature image
-      const sigB64 = signatureDataUrl.split(",")[1];
-      const sigBuffer = Buffer.from(sigB64, "base64");
-      const sigMeta = await sharp(sigBuffer).metadata();
-      const sigMaxW = Math.round(A4_W * 0.5);
-      const sigMaxH = sigBoxH - 4;
-      const sigScale = Math.min(sigMaxW / (sigMeta.width || 1), sigMaxH / (sigMeta.height || 1), 1);
-      const sigW = Math.round((sigMeta.width || 0) * sigScale);
-      const sigH = Math.round((sigMeta.height || 0) * sigScale);
-      const sigResized = await sharp(sigBuffer)
-        .resize(sigW, sigH, { fit: "inside" })
-        .flatten({ background: "#ffffff" })
-        .png()
-        .toBuffer();
-
-      const composites: sharp.OverlayOptions[] = [];
-      if (logoBuf) {
-        composites.push({
-          input: logoBuf,
-          left: PAD,
-          top: Math.round((HEADER_H - logoDims.h) / 2),
-        });
-      }
-      composites.push({ input: sigResized, left: PAD, top: sigBoxY + (sigBoxH - sigH) });
-
-      const finalImg = await sharp(Buffer.from(svg))
-        .composite(composites)
-        .jpeg({ quality: 92 })
-        .toBuffer();
-
-      // Persist file (disk + DB blob)
-      const newFilename = crypto.randomBytes(16).toString("hex");
-      const uploadsDir = path.join(process.cwd(), "uploads");
-      fs.mkdirSync(uploadsDir, { recursive: true });
-      const outPath = path.join(uploadsDir, newFilename);
-      fs.writeFileSync(outPath, finalImg);
-      saveFileToDB(newFilename, outPath, "image/jpeg", `consent-${id}.jpg`).catch(console.error);
-
-      const isoDate = today.toISOString().slice(0, 10);
-      await storage.createPatientDocument({
-        patientId: patient.id,
-        title: "Consent Form",
-        documentDate: isoDate,
-        fileUrl: `/uploads/${newFilename}`,
-        filename: newFilename,
-        originalName: `consent-${patientName.replace(/\s+/g, "-")}-${isoDate}.jpg`,
-        notes: null,
-      } as any);
-
-      // Now perform the check-in
+      // Record written consent + perform the check-in
       const updated = await storage.updateAppointment(id, {
         status: "checked_in",
         checkedInAt: new Date(),
+        writtenConsentAt: new Date(),
       });
 
       res.json({
@@ -1220,6 +1238,135 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Send SMS registration error:", error);
       res.status(500).json({ error: error?.message || "Failed to send registration SMS" });
+    }
+  });
+
+  // Send the digital consent link to a patient's own device (SMS or email) for today's study.
+  app.post("/api/appointments/:id/send-consent", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+
+      const channel = (req.body?.channel === "email" ? "email" : "sms") as "sms" | "email";
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid appointment ID" });
+      const appointment = await storage.getAppointment(id);
+      // Allow legacy appointments with no clinic set, but never cross clinics.
+      if (!appointment || (appointment.clinicId != null && appointment.clinicId !== user.clinicId)) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+
+      // This is consent for "today's study" — only allow appointments around the
+      // current day. A ±1 day window absorbs server(UTC)-vs-clinic timezone skew
+      // while still rejecting clearly past or far-future appointments.
+      const aptTime = new Date(appointment.appointmentDate).getTime();
+      const nowTime = Date.now();
+      if (isNaN(aptTime) || Math.abs(aptTime - nowTime) > 24 * 60 * 60 * 1000) {
+        return res.status(400).json({ error: "Consent links can only be sent for today's appointments." });
+      }
+
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic) return res.status(404).json({ error: "Clinic not found" });
+      if (!(clinic.kioskConsentText || "").trim()) {
+        return res.status(400).json({ error: "No consent wording has been set up for this clinic yet." });
+      }
+
+      // Resolve the patient — strictly scoped to the requester's clinic so one
+      // clinic can never send a consent link to another clinic's patient.
+      let patient: any = null;
+      if (appointment.patientId) {
+        const linked = await storage.getPatient(appointment.patientId);
+        // Allow legacy patients with no clinic set, but never another clinic's patient.
+        if (linked && !(linked.clinicId != null && linked.clinicId !== user.clinicId)) {
+          patient = linked;
+        }
+      }
+      if (!patient) {
+        const all = await storage.getAllPatients().catch(() => [] as any[]);
+        patient = all.find((p: any) =>
+          p.clinicId === user.clinicId &&
+          `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim().toLowerCase() === (appointment.patientName || "").trim().toLowerCase()
+        ) || null;
+      }
+      if (!patient) return res.status(404).json({ error: "No patient record is linked to this appointment." });
+
+      // Create a fresh consent token + short link (24-hour expiry — it's for today's study).
+      const token = crypto.randomBytes(9).toString("base64url");
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await storage.createPatientConsentToken(patient.id, user.clinicId, appointment.id, token, expiresAt);
+
+      const host = publicBaseUrl(req);
+      const consentUrl = `${host}/c/${token}`;
+      const firstName = (patient.firstName || "").trim() || "there";
+
+      if (channel === "email") {
+        const toEmail = (patient.email || "").trim();
+        if (!toEmail) return res.status(400).json({ error: "No email address on file for this patient" });
+        try {
+          await sendPatientConsentEmail({
+            toEmail,
+            patientName: firstName,
+            consentUrl,
+            clinicName: clinic.name,
+            clinicLogoUrl: clinic.logoUrl || null,
+            clinicPhone: clinic.phone || null,
+          });
+        } catch (sendErr: any) {
+          return res.status(502).json({ error: sendErr?.message || "Failed to send consent email" });
+        }
+        return res.json({ success: true, channel, sentTo: toEmail });
+      }
+
+      // SMS channel
+      if (!isSmsConfigured()) {
+        return res.status(503).json({ error: "SMS is not set up yet. Add your Twilio credentials to enable messaging." });
+      }
+      const to = normalisePhone(patient.phone);
+      if (!to) return res.status(400).json({ error: "No valid phone number on file for this patient" });
+
+      const body = `Hi ${firstName}, please read and sign your consent for today's study at ${clinic.name}: ${consentUrl}`;
+      const fromNumber = getSmsFromNumber()!;
+      const statusHost = `${req.protocol}://${req.get("host")}`;
+
+      let result;
+      try {
+        result = await sendSms({ to, body, statusCallback: `${statusHost}/api/sms/webhook/status` });
+      } catch (sendErr: any) {
+        await storage.createSmsMessage({
+          clinicId: user.clinicId,
+          patientId: patient.id,
+          direction: "outbound",
+          body,
+          fromNumber,
+          toNumber: to,
+          status: "failed",
+          errorMessage: sendErr?.message || "Send failed",
+          sentBy: user.id,
+        }).catch(() => {});
+        return res.status(502).json({ error: sendErr?.message || "Failed to send consent SMS" });
+      }
+
+      try {
+        await storage.createSmsMessage({
+          clinicId: user.clinicId,
+          patientId: patient.id,
+          direction: "outbound",
+          body,
+          fromNumber,
+          toNumber: to,
+          status: result.status,
+          twilioSid: result.sid,
+          sentBy: user.id,
+        });
+      } catch (persistErr: any) {
+        console.error(`Consent SMS SENT for patient ${patient.id} but failed to log it:`, persistErr?.message || persistErr);
+      }
+
+      res.json({ success: true, channel, sentTo: to });
+    } catch (error: any) {
+      console.error("Send consent error:", error);
+      res.status(500).json({ error: error?.message || "Failed to send consent" });
     }
   });
 
@@ -2957,6 +3104,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Public: short link → mobile consent page
+  app.get("/c/:token", (req, res) => {
+    const token = encodeURIComponent(req.params.token);
+    res.redirect(302, `/consent/${token}`);
+  });
+
+  // Public: load consent page data from token
+  app.get("/api/consent/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const record = await storage.getPatientConsentToken(token);
+      if (!record) return res.status(404).json({ error: "Consent link not found" });
+      if (record.status === "completed") return res.status(410).json({ error: "This consent has already been signed" });
+      if (new Date() > record.expiresAt) return res.status(410).json({ error: "This consent link has expired" });
+
+      const patient = await storage.getPatient(record.patientId);
+      const clinic = await storage.getClinic(record.clinicId);
+      if (!patient || !clinic) return res.status(404).json({ error: "Record not found" });
+
+      const consentText = (clinic.kioskConsentText || "").trim();
+      if (!consentText) return res.status(404).json({ error: "No consent wording is available" });
+
+      res.json({
+        patientName: `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim(),
+        clinicName: clinic.name,
+        clinicLogoUrl: clinic.kioskLogoUrl || clinic.logoUrl || null,
+        consentText,
+      });
+    } catch (error) {
+      console.error("Get consent page error:", error);
+      res.status(500).json({ error: "Failed to load consent" });
+    }
+  });
+
+  // Public: submit signed consent
+  app.post("/api/consent/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { signatureDataUrl } = req.body || {};
+      if (!signatureDataUrl || typeof signatureDataUrl !== "string" || !signatureDataUrl.startsWith("data:image/")) {
+        return res.status(400).json({ error: "Signature is required" });
+      }
+
+      const record = await storage.getPatientConsentToken(token);
+      if (!record) return res.status(404).json({ error: "Consent link not found" });
+      if (record.status === "completed") return res.status(410).json({ error: "This consent has already been signed" });
+      if (new Date() > record.expiresAt) return res.status(410).json({ error: "This consent link has expired" });
+
+      const patient = await storage.getPatient(record.patientId);
+      const clinic = await storage.getClinic(record.clinicId);
+      if (!patient || !clinic) return res.status(404).json({ error: "Record not found" });
+
+      // Wording always comes from the server-side clinic setting (never the client).
+      const consentText = (clinic.kioskConsentText || "").trim();
+      if (!consentText) return res.status(400).json({ error: "No consent wording has been set up for this clinic." });
+
+      const appointment = record.appointmentId ? await storage.getAppointment(record.appointmentId) : null;
+      let sonographerName: string | null = null;
+      if (appointment?.sonographerId) {
+        const sonographer = await storage.getSonographer(appointment.sonographerId).catch(() => null);
+        sonographerName = sonographer
+          ? `${sonographer.title ? sonographer.title + " " : ""}${sonographer.name}`.trim()
+          : null;
+      }
+
+      await generateConsentDocument({
+        appointmentId: record.appointmentId ?? 0,
+        patient,
+        clinic,
+        sonographerName,
+        signatureDataUrl,
+        consentText,
+      });
+
+      if (record.appointmentId) {
+        await storage.updateAppointment(record.appointmentId, { writtenConsentAt: new Date() });
+      }
+      await storage.completePatientConsentToken(token);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Submit consent error:", error);
+      res.status(500).json({ error: "Failed to save consent" });
+    }
+  });
+
   // Worksheets API
   app.get("/api/worksheets", isAuthenticated, async (req, res) => {
     try {
@@ -4102,6 +4335,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Inherit written (signed) consent timestamp from the patient's most recent
+      // appointment where the consent form was signed (kiosk or remote device).
+      let reportWrittenConsentAt: Date | null = null;
+      if (worksheet.patientId) {
+        try {
+          const apts = await storage.getPatientAppointments(worksheet.patientId);
+          const withConsent = (apts || [])
+            .filter((a: any) => a.writtenConsentAt)
+            .sort((a: any, b: any) =>
+              new Date(b.writtenConsentAt).getTime() - new Date(a.writtenConsentAt).getTime()
+            );
+          if (withConsent.length > 0) reportWrittenConsentAt = withConsent[0].writtenConsentAt;
+        } catch (e) {
+          console.warn('Failed to inherit written consent for report:', e);
+        }
+      }
+
       const report = await storage.createReport({
         worksheetId,
         patientName: reportData.patientName,
@@ -4117,6 +4367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientId: worksheet.patientId ?? null,
         patientUrNumber: linkedPatientForReport?.urNumber ?? null,
         verbalConsentAt: reportVerbalConsentAt,
+        writtenConsentAt: reportWrittenConsentAt,
       });
 
       syncReportToPatientFolder(report.id).catch(err => console.error('Background report sync error:', err));
@@ -5606,12 +5857,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Inherit written (signed) consent timestamp from the patient's most recent
+      // appointment where the consent form was signed (kiosk or remote device).
+      let draftWrittenConsentAt: Date | null = null;
+      if (worksheet.patientId) {
+        try {
+          const apts = await storage.getPatientAppointments(worksheet.patientId);
+          const withConsent = (apts || [])
+            .filter((a: any) => a.writtenConsentAt)
+            .sort((a: any, b: any) =>
+              new Date(b.writtenConsentAt).getTime() - new Date(a.writtenConsentAt).getTime()
+            );
+          if (withConsent.length > 0) draftWrittenConsentAt = withConsent[0].writtenConsentAt;
+        } catch (e) {
+          console.warn('Failed to inherit written consent for draft report:', e);
+        }
+      }
+
       const draftReport = await storage.createDraftReport({
         digitalWorksheetId: worksheet.id,
         patientName: worksheet.patientName,
         patientDob: worksheet.patientDob,
         examDate: worksheet.examDate,
         verbalConsentAt: draftVerbalConsentAt,
+        writtenConsentAt: draftWrittenConsentAt,
         studyType: worksheet.studyType || templateName.replace('Template', '').trim() || 'Vascular Study',
         indication: `${templateName} ultrasound examination requested. Patient presented for vascular assessment.`,
         findings: aiGeneratedFindings || `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`,
