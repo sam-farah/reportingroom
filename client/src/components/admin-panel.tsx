@@ -3175,6 +3175,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "20 June 2026",
+    tag: "New",
+    title: "Patient consent forms can now be signed at the kiosk",
+    detail:
+      "Patients can now read and sign their consent form right at the check-in kiosk. When a patient checks in, the consent wording you've set up is shown on screen, they sign on the screen with their finger or a stylus, and tap 'I Agree & Check In' to complete check-in.\n\nA neatly formatted, signed copy is saved straight into the patient's file as a 'Consent Form' document. The form includes your clinic logo, the patient's details, the booked examination, and the scheduled sonographer.\n\nTo set or change the consent wording, go to Admin → Clinic Settings and update the kiosk consent text.",
+  },
+  {
+    date: "20 June 2026",
     tag: "Improve",
     title: "Only the labelled worksheet is kept (no duplicate raw upload)",
     detail:
