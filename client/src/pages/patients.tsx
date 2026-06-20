@@ -1876,7 +1876,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
         {/* Main Content - EMR Style Split View */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel - Document List (hidden on mobile when detail is showing) */}
-          <div className={`${mobileShowDetail ? 'hidden' : 'flex'} md:flex w-full md:w-80 bg-white dark:bg-gray-800 border-r flex-col`}>
+          <div className={`${mobileShowDetail ? 'hidden' : 'flex'} md:flex w-full md:w-96 bg-white dark:bg-gray-800 border-r flex-col`}>
             <div className="p-3 border-b bg-gray-50 dark:bg-gray-700 flex flex-col gap-2">
               <div className="flex gap-1 flex-wrap">
                 <button
