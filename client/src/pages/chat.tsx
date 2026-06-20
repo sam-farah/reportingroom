@@ -128,7 +128,6 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-  const [highlightId, setHighlightId] = useState<number | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false); // mobile: show conversation pane vs. channel list
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
@@ -440,16 +439,6 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
     textareaRef.current?.focus();
   };
 
-  // Scroll to (and briefly highlight) the original message a reply points at.
-  const scrollToMessage = (id: number) => {
-    const el = document.querySelector(`[data-testid="message-${id}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      setHighlightId(id);
-      window.setTimeout(() => setHighlightId((cur) => (cur === id ? null : cur)), 1600);
-    }
-  };
-
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && selectedId != null) uploadMutation.mutate(file);
@@ -602,26 +591,13 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                   && delta >= 0 && delta < 5 * 60 * 1000 && !m.replyTo;
                 const isReply = !!m.replyTo;
                 return (
-                <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors ${isReply ? "ml-6 border-l-2 border-muted-foreground/15 pl-2" : ""} ${highlightId === m.id ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/40"} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
+                <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors hover:bg-muted/40 ${isReply ? "ml-6 border-l-2 border-muted-foreground/15 pl-2" : ""} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
                   {grouped ? (
                     <span className="w-8 flex-shrink-0 text-[10px] leading-5 text-muted-foreground text-right pr-1 pt-0.5 opacity-0 group-hover:opacity-100 select-none">{fmtTimeShort(m.createdAt)}</span>
                   ) : (
                     <span className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(m.author)} text-white flex items-center justify-center text-xs font-semibold flex-shrink-0 mt-0.5`}>{initials(m.author)}</span>
                   )}
                   <div className="min-w-0 flex-1">
-                    {m.replyTo && (
-                      <button
-                        onClick={() => scrollToMessage(m.replyTo!.id)}
-                        data-testid={`reply-preview-${m.id}`}
-                        className="group/reply flex items-end gap-1.5 mb-0.5 max-w-full text-left text-xs text-muted-foreground"
-                      >
-                        <span className="w-[22px] h-[10px] flex-shrink-0 mb-[3px] border-l-2 border-t-2 border-muted-foreground/30 group-hover/reply:border-muted-foreground/50 rounded-tl-[7px]" />
-                        <span className="font-semibold flex-shrink-0 text-foreground/60 group-hover/reply:text-foreground transition-colors">{m.replyTo.authorName}</span>
-                        <span className={`truncate group-hover/reply:text-foreground/80 transition-colors ${m.replyTo.deleted ? "italic" : ""}`}>
-                          {m.replyTo.deleted ? "Original message was deleted" : (m.replyTo.body || "Attachment")}
-                        </span>
-                      </button>
-                    )}
                     {!grouped && (
                       <div className="flex items-baseline gap-2">
                         <span className="font-medium text-sm">{personName(m.author)}</span>
