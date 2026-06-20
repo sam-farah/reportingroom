@@ -389,6 +389,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const clinic = appointment.clinicId ? await storage.getClinic(appointment.clinicId) : null;
 
+      // Resolve the scheduled sonographer (for the consent document header).
+      let sonographer: any = null;
+      if (appointment.sonographerId) {
+        sonographer = await storage.getSonographer(appointment.sonographerId).catch(() => null);
+      }
+      const sonographerName = sonographer
+        ? `${sonographer.title ? sonographer.title + " " : ""}${sonographer.name}`.trim()
+        : null;
+
       // Build the labelled consent image (A4) using sharp + SVG.
       const DPI = 200;
       const A4_W = Math.round((210 / 25.4) * DPI);
@@ -434,6 +443,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patient.urNumber ? `UR: ${patient.urNumber}` : null,
         patient.medicareNumber ? `Medicare: ${patient.medicareNumber}` : null,
         patient.phone ? `Phone: ${String(patient.phone).trim()}` : null,
+        appointment.scanType ? `Examination: ${appointment.scanType}` : null,
+        sonographerName ? `Sonographer: ${sonographerName}` : null,
         `Document: Consent Form`,
         `Date: ${todayStr}`,
       ].filter(Boolean) as string[];
