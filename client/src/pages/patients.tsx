@@ -2899,9 +2899,12 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1.5">
-                <Label className="text-xs text-gray-500">Sort</Label>
                 <Select value={sortBy} onValueChange={(v) => { setSortBy(v as any); setPage(1); }}>
-                  <SelectTrigger className="h-8 w-[180px] text-sm" data-testid="select-patient-sort"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-[210px] text-sm font-medium border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100" data-testid="select-patient-sort">
+                    <ArrowDownUp className="w-4 h-4 mr-1.5 shrink-0" />
+                    <span className="text-gray-500 mr-1">Sort:</span>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="name_asc">Name (A–Z)</SelectItem>
                     <SelectItem value="name_desc">Name (Z–A)</SelectItem>
