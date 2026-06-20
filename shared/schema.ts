@@ -155,6 +155,7 @@ export const reports = pgTable("reports", {
   archivedAt: timestamp("archived_at"),
   generatedAt: timestamp("generated_at").defaultNow().notNull(),
   patientId: integer("patient_id").references(() => patients.id),
+  verbalConsentAt: timestamp("verbal_consent_at"), // Inherited from the appointment when verbal consent was recorded
 });
 
 export const trainingPairs = pgTable("training_pairs", {
@@ -545,6 +546,7 @@ export const appointments = pgTable("appointments", {
   copyToEmail: varchar("copy_to_email", { length: 255 }),
   copyToFax: varchar("copy_to_fax", { length: 50 }),
   copyToRecipients: jsonb("copy_to_recipients").$type<{ name?: string; email?: string; fax?: string }[]>().default([]),
+  verbalConsentAt: timestamp("verbal_consent_at"), // When the sonographer recorded verbal consent for the study
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({

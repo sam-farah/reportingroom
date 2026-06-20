@@ -1102,6 +1102,7 @@ export class DatabaseStorage implements IStorage {
       physicianId: 1, // Default to first physician
       sonographerId: reportData.sonographerId ? parseInt(reportData.sonographerId) : null,
       digitalWorksheetId: reportData.digitalWorksheetId,
+      verbalConsentAt: reportData.verbalConsentAt ?? null,
       isDraft: true,
       generatedAt: new Date(),
     };

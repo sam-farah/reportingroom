@@ -910,6 +910,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateData: any = {
         ...rest,
         appointmentDate: rest.appointmentDate ? new Date(rest.appointmentDate) : undefined,
+        verbalConsentAt: rest.verbalConsentAt ? new Date(rest.verbalConsentAt) : undefined,
       };
       // Auto-set studyStartedAt when the study first starts
       if (req.body.status === 'in_progress' || req.body.status === 'completed') {
@@ -3869,6 +3870,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Inherit verbal consent timestamp from the patient's most recent
+      // appointment where verbal consent was recorded by the sonographer.
+      let reportVerbalConsentAt: Date | null = null;
+      if (worksheet.patientId) {
+        try {
+          const apts = await storage.getPatientAppointments(worksheet.patientId);
+          const withConsent = (apts || [])
+            .filter((a: any) => a.verbalConsentAt)
+            .sort((a: any, b: any) =>
+              new Date(b.verbalConsentAt).getTime() - new Date(a.verbalConsentAt).getTime()
+            );
+          if (withConsent.length > 0) reportVerbalConsentAt = withConsent[0].verbalConsentAt;
+        } catch (e) {
+          console.warn('Failed to inherit verbal consent for report:', e);
+        }
+      }
+
       const report = await storage.createReport({
         worksheetId,
         patientName: reportData.patientName,
@@ -3883,6 +3901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         logoUrl: clinic?.logoUrl || logoUrl,
         patientId: worksheet.patientId ?? null,
         patientUrNumber: linkedPatientForReport?.urNumber ?? null,
+        verbalConsentAt: reportVerbalConsentAt,
       });
 
       syncReportToPatientFolder(report.id).catch(err => console.error('Background report sync error:', err));
@@ -5354,11 +5373,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const draftLinkedPatient = worksheet.patientId ? await storage.getPatient(worksheet.patientId) : null;
+
+      // Inherit verbal consent timestamp from the patient's most recent
+      // appointment where verbal consent was recorded by the sonographer.
+      let draftVerbalConsentAt: Date | null = null;
+      if (worksheet.patientId) {
+        try {
+          const apts = await storage.getPatientAppointments(worksheet.patientId);
+          const withConsent = (apts || [])
+            .filter((a: any) => a.verbalConsentAt)
+            .sort((a: any, b: any) =>
+              new Date(b.verbalConsentAt).getTime() - new Date(a.verbalConsentAt).getTime()
+            );
+          if (withConsent.length > 0) draftVerbalConsentAt = withConsent[0].verbalConsentAt;
+        } catch (e) {
+          console.warn('Failed to inherit verbal consent for draft report:', e);
+        }
+      }
+
       const draftReport = await storage.createDraftReport({
         digitalWorksheetId: worksheet.id,
         patientName: worksheet.patientName,
         patientDob: worksheet.patientDob,
         examDate: worksheet.examDate,
+        verbalConsentAt: draftVerbalConsentAt,
         studyType: worksheet.studyType || templateName.replace('Template', '').trim() || 'Vascular Study',
         indication: `${templateName} ultrasound examination requested. Patient presented for vascular assessment.`,
         findings: aiGeneratedFindings || `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`,

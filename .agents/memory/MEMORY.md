@@ -8,3 +8,4 @@
 - [Team Chat](team-chat.md) — WS at `/ws/chat` (session-cookie auth), every route clinic-checks then membership-checks; client patient IDs must be re-validated to clinic (PHI leak risk); dedupe own messages by id.
 - [Worksheet labelling & merge](worksheet-labelling.md) — labelled image is a superset of the raw upload; on label, delete the raw worksheet but NEVER clear labelledWorksheetId (re-label loop); timeline filter must show primary worksheetId.
 - [Kiosk check-in privacy](kiosk-checkin-privacy.md) — public kiosk search must never list patients; return one match or ask DOB; scope to clinic-or-null; guard stale responses.
+- [Verbal consent capture](verbal-consent.md) — consent timestamp lives on the appointment; reports inherit it (like sonographer inheritance) rather than threading through the client upload flow.

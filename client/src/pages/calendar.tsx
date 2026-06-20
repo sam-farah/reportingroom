@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal, ShieldCheck } from "lucide-react";
 import jsPDF from "jspdf";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -625,6 +625,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const [emailingCertificate, setEmailingCertificate] = useState(false);
   const [showBeginStudy, setShowBeginStudy] = useState(false);
   const [showIdCheck, setShowIdCheck] = useState(false);
+  const [showVerbalConsent, setShowVerbalConsent] = useState(false);
   const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [desktopDatePickerOpen, setDesktopDatePickerOpen] = useState(false);
@@ -2861,7 +2862,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
           </DialogContent>
         </Dialog>
 
-        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); setShowIdCheck(false); } }}>
+        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); setShowIdCheck(false); setShowVerbalConsent(false); } }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
@@ -2872,6 +2873,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   >
                     <ArrowLeft className="w-4 h-4" />
                     Patient ID Check
+                  </button>
+                ) : showVerbalConsent ? (
+                  <button
+                    className="flex items-center gap-1.5 text-base font-semibold text-gray-700 hover:text-gray-900"
+                    onClick={() => { setShowVerbalConsent(false); setShowIdCheck(true); }}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Verbal Consent
                   </button>
                 ) : showBeginStudy ? (
                   <button
@@ -2965,7 +2974,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                         className="flex-1 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
                         onClick={() => {
                           setShowIdCheck(false);
-                          setShowBeginStudy(true);
+                          setShowVerbalConsent(true);
                         }}
                       >
                         Confirmed — Continue
@@ -2975,8 +2984,47 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   );
                 })()}
 
+                {/* Verbal Consent sub-panel */}
+                {showVerbalConsent && !showIdCheck && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-500">
+                      Confirm that verbal consent has been obtained from <span className="font-medium text-gray-800">{viewingAppointment.patientName}</span> for this study before proceeding.
+                    </p>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <ShieldCheck className="w-4 h-4 text-amber-700" />
+                      </div>
+                      <div className="text-sm text-amber-800">
+                        Pressing the button below records the date and time that verbal consent was obtained. This will appear on the labelled worksheet.
+                      </div>
+                    </div>
+                    <button
+                      className="w-full py-3 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 transition-colors disabled:opacity-60"
+                      disabled={updateMutation.isPending}
+                      onClick={() => {
+                        const now = new Date().toISOString();
+                        updateMutation.mutate(
+                          { id: viewingAppointment.id, data: { verbalConsentAt: now } },
+                          {
+                            // Only advance to the worksheet options once the consent
+                            // timestamp is confirmed saved. On failure the global
+                            // onError shows a destructive toast and we stay put.
+                            onSuccess: () => {
+                              toast({ title: "Verbal consent recorded", description: "Consent date and time saved for this study." });
+                              setShowVerbalConsent(false);
+                              setShowBeginStudy(true);
+                            },
+                          }
+                        );
+                      }}
+                    >
+                      Verbal Consent obtained for study
+                    </button>
+                  </div>
+                )}
+
                 {/* Begin Study sub-panel */}
-                {showBeginStudy && !showIdCheck && (
+                {showBeginStudy && !showIdCheck && !showVerbalConsent && (
                   <div className="space-y-3">
                     <p className="text-sm text-gray-500">
                       Choose how you'd like to start the study for <span className="font-medium text-gray-800">{viewingAppointment.patientName}</span>:
@@ -3047,7 +3095,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                 )}
 
                 {/* Normal appointment detail view */}
-                {!showBeginStudy && (<>
+                {!showBeginStudy && !showVerbalConsent && (<>
                 {(() => {
                   const linkedPatient = viewingAppointment.patientId
                     ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)

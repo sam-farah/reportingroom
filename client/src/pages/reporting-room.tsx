@@ -720,13 +720,30 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       `Scan: ${report.studyType}`,
       sonoLabel ? `Sonographer: ${sonoLabel}` : null,
     ].filter(Boolean) as string[];
+    // Verbal consent line — rendered full-width directly beneath the grid (under
+    // the sonographer) so the long text never overlaps the second column.
+    const formatConsentDateTime = (iso: string) => {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    const consentStamp = (report as any).verbalConsentAt ? formatConsentDateTime((report as any).verbalConsentAt) : null;
+    const consentLine = consentStamp ? `Verbal consent obtained for study: ${consentStamp}` : null;
     const colW = (A4_W - textStartX - PADDING) / 2;
-    const leftLines = lines.slice(0, Math.ceil(lines.length / 2));
-    const rightLines = lines.slice(Math.ceil(lines.length / 2));
+    const gridRows = Math.ceil(lines.length / 2);
+    const leftLines = lines.slice(0, gridRows);
+    const rightLines = lines.slice(gridRows);
     const lineH = infoFontSize + Math.round(infoFontSize * 0.45);
-    const textY = (HEADER_HEIGHT - Math.ceil(lines.length / 2) * lineH) / 2 + infoFontSize;
+    const totalRows = gridRows + (consentLine ? 1 : 0);
+    const textY = (HEADER_HEIGHT - totalRows * lineH) / 2 + infoFontSize;
     leftLines.forEach((line, i) => ctx.fillText(line, textStartX, textY + i * lineH));
     rightLines.forEach((line, i) => ctx.fillText(line, textStartX + colW, textY + i * lineH));
+    if (consentLine) {
+      ctx.font = `bold ${infoFontSize}px Arial, sans-serif`;
+      ctx.fillText(consentLine, textStartX, textY + gridRows * lineH);
+      ctx.font = `${infoFontSize}px Arial, sans-serif`;
+    }
 
     const wsAreaH = A4_H - HEADER_HEIGHT;
     const wsScale = Math.min(A4_W / wsImg.width, wsAreaH / wsImg.height);
