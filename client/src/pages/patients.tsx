@@ -3066,8 +3066,8 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
           const filtered = patients.filter(p => passesViewMode(p) && passesGender(p) && passesContact(p));
           const sorted = [...filtered].sort((a, b) => {
             switch (sortBy) {
-              case "name_asc":  return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
-              case "name_desc": return `${b.lastName} ${b.firstName}`.localeCompare(`${a.lastName} ${a.firstName}`);
+              case "name_asc":  return `${(a.lastName ?? "").trim()} ${(a.firstName ?? "").trim()}`.trim().localeCompare(`${(b.lastName ?? "").trim()} ${(b.firstName ?? "").trim()}`.trim());
+              case "name_desc": return `${(b.lastName ?? "").trim()} ${(b.firstName ?? "").trim()}`.trim().localeCompare(`${(a.lastName ?? "").trim()} ${(a.firstName ?? "").trim()}`.trim());
               case "ur_asc":    return urNum(a) - urNum(b);
               case "ur_desc":   return urNum(b) - urNum(a);
               case "recent":    return tsMs(b.createdAt) - tsMs(a.createdAt) || (b.id || 0) - (a.id || 0);

@@ -324,7 +324,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const all = await storage.getAllPatients().catch(() => [] as any[]);
         patient = all.find((p: any) =>
           (!appointment.clinicId || p.clinicId === appointment.clinicId) &&
-          `${p.firstName} ${p.lastName}`.toLowerCase() === (appointment.patientName || "").toLowerCase()
+          `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim().toLowerCase() === (appointment.patientName || "").trim().toLowerCase()
         ) || null;
       }
 
@@ -382,7 +382,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const all = await storage.getAllPatients().catch(() => [] as any[]);
         patient = all.find((p: any) =>
           (!appointment.clinicId || p.clinicId === appointment.clinicId) &&
-          `${p.firstName} ${p.lastName}`.toLowerCase() === (appointment.patientName || "").toLowerCase()
+          `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim().toLowerCase() === (appointment.patientName || "").trim().toLowerCase()
         ) || null;
       }
       if (!patient) return res.status(404).json({ error: "Patient record not found" });
@@ -2476,11 +2476,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Trim stray leading/trailing whitespace off name fields so they don't break
+  // alphabetical sorting (a leading space sorts before every letter) or display.
+  const trimPatientNames = (body: any) => {
+    const out = { ...body };
+    if (typeof out.firstName === "string") out.firstName = out.firstName.trim();
+    if (typeof out.lastName === "string") out.lastName = out.lastName.trim();
+    return out;
+  };
+
   app.post("/api/patients", isAuthenticated, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
       const patient = await storage.createPatient({
-        ...req.body,
+        ...trimPatientNames(req.body),
         clinicId: user?.clinicId ?? null,
       });
       res.status(201).json(patient);
@@ -2493,7 +2502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/patients/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const patient = await storage.updatePatient(id, req.body);
+      const patient = await storage.updatePatient(id, trimPatientNames(req.body));
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
