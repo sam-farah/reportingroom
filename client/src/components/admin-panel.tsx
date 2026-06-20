@@ -3176,6 +3176,20 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "20 June 2026",
     tag: "New",
+    title: "Record verbal consent before starting a study",
+    detail:
+      "When a sonographer begins a study from the calendar, there's now a dedicated consent step. After confirming the patient's identity (the 3-point ID check), a new screen appears with a 'Verbal Consent obtained for study' button. Pressing it records the exact date and time consent was given, and only then are the worksheet options shown.\n\nThat consent date and time is then automatically stamped onto the labelled worksheet, on its own line directly beneath the sonographer's name — so every report carries a clear record that verbal consent was obtained, and exactly when.",
+  },
+  {
+    date: "20 June 2026",
+    tag: "Improve",
+    title: "Signed consent forms now show the exact time",
+    detail:
+      "The consent forms patients sign at the check-in kiosk now record the exact time consent was given, not just the date. The time appears both in the document header and next to the patient's signature, giving you a precise, audit-ready record on every signed form.",
+  },
+  {
+    date: "20 June 2026",
+    tag: "New",
     title: "Patient consent forms can now be signed at the kiosk",
     detail:
       "Patients can now read and sign their consent form right at the check-in kiosk. When a patient checks in, the consent wording you've set up is shown on screen, they sign on the screen with their finger or a stylus, and tap 'I Agree & Check In' to complete check-in.\n\nA neatly formatted, signed copy is saved straight into the patient's file as a 'Consent Form' document. The form includes your clinic logo, the patient's details, the booked examination, and the scheduled sonographer.\n\nTo set or change the consent wording, go to Admin → Clinic Settings and update the kiosk consent text.",
