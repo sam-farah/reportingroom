@@ -351,6 +351,9 @@ export default function Kiosk() {
                 </p>
               </div>
               <div
+                ref={(el) => {
+                  if (el && el.scrollHeight <= el.clientHeight + 8) setConsentScrolled(true);
+                }}
                 className="border rounded-lg p-5 bg-gray-50 max-h-72 overflow-y-auto whitespace-pre-wrap text-gray-800 text-base leading-relaxed"
                 onScroll={(e) => {
                   const t = e.currentTarget;
