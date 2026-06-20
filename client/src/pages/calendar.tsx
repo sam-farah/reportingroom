@@ -2896,7 +2896,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
         </Dialog>
 
         <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); setShowIdCheck(false); setShowVerbalConsent(false); } }}>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {showIdCheck ? (
