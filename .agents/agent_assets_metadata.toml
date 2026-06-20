@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Vy493ejG3tvllON1Cca7L"
+uri = "file://screenshots/_consent_preview.jpg"
+type = "image"
+title = "Consent form header (current output)"
