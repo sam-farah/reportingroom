@@ -974,7 +974,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const unarchiveDocumentMutation = makeArchiveMutation("patient-documents", "documents", "unarchive");
 
   const [historyTab, setHistoryTab] = useState<'active' | 'archived' | 'completed' | 'finalized'>('active');
-  const [docSortOrder, setDocSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [docSortOrder, setDocSortOrder] = useState<'newest' | 'oldest' | 'type'>('newest');
 
   const resetForm = () => {
     setFormData({
@@ -1289,6 +1289,10 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   ].sort((a, b) => {
     const ta = new Date((a.ts as any) || a.date).getTime() || 0;
     const tb = new Date((b.ts as any) || b.date).getTime() || 0;
+    if (docSortOrder === 'type') {
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return tb - ta;
+    }
     return docSortOrder === 'newest' ? tb - ta : ta - tb;
   });
 
@@ -1903,14 +1907,21 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   );
                 })()}
               </div>
-              <button
-                onClick={() => setDocSortOrder(o => o === 'newest' ? 'oldest' : 'newest')}
-                className="text-xs font-semibold px-2 py-1 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-1 flex-shrink-0"
-                title={docSortOrder === 'newest' ? 'Sorted newest first — click for oldest first' : 'Sorted oldest first — click for newest first'}
-              >
-                <ArrowDownUp className="w-3 h-3" />
-                {docSortOrder === 'newest' ? 'Newest' : 'Oldest'}
-              </button>
+              <Select value={docSortOrder} onValueChange={(v) => setDocSortOrder(v as any)}>
+                <SelectTrigger
+                  className="h-8 w-[170px] text-xs font-medium border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 flex-shrink-0"
+                  data-testid="select-patient-file-sort"
+                >
+                  <ArrowDownUp className="w-3.5 h-3.5 mr-1 shrink-0" />
+                  <span className="text-gray-500 mr-1">Sort:</span>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="type">By type</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex-1 overflow-auto">
               {historyTab === 'finalized' ? (
