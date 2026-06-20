@@ -650,13 +650,13 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                   && delta >= 0 && delta < 5 * 60 * 1000 && !m.replyTo;
                 const isReply = !!m.replyTo;
                 return (
-                <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors hover:bg-muted/70 ${isReply ? "ml-6 border-l-2 border-muted-foreground/15 pl-2" : ""} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
+                <div key={m.id} className={`group relative flex gap-2 px-2 rounded ${isReply ? "ml-6 border-l-2 border-muted-foreground/15 pl-2" : ""} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
                   {grouped ? (
                     <span className="w-8 flex-shrink-0 text-[10px] leading-5 text-muted-foreground text-right pr-1 pt-0.5 opacity-0 group-hover:opacity-100 select-none">{fmtTimeShort(m.createdAt)}</span>
                   ) : (
                     <span className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(m.author)} text-white flex items-center justify-center text-xs font-semibold flex-shrink-0 mt-0.5`}>{initials(m.author)}</span>
                   )}
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 rounded-md px-2 py-1 -mx-1 transition-colors group-hover:bg-muted/70">
                     {!grouped && (
                       <div className="flex items-baseline gap-2">
                         <span className="font-medium text-sm">{personName(m.author)}</span>
