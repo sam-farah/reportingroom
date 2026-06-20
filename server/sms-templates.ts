@@ -2,7 +2,7 @@
 // manual "Send SMS reminder" route so the wording stays identical.
 
 export const DEFAULT_REMINDER_TEMPLATE =
-  "Hi {patient}, this is a reminder of your {scan} appointment at {clinic} on {date} at {time}. Reply here if you need to reschedule.";
+  "Hi {patient}, this is a reminder of your appointment at {clinic} on {date} at {time}. Reply here if you need to reschedule.";
 
 // Appointment times are stored in UTC; clinics operate in Australian local time, so
 // always render reminders in the clinic timezone (matches the email reminder path).
