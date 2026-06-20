@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -605,7 +605,7 @@ function PatientApptSearchDialog({
   );
 }
 
-export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string, tab?: "upload" | "draw") => void }) {
+export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppointmentId, onAppointmentEditConsumed }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string, tab?: "upload" | "draw") => void; initialEditAppointmentId?: number | null; onAppointmentEditConsumed?: () => void }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -1384,6 +1384,33 @@ export default function Calendar({ onOpenPatient, onBeginStudy }: { onOpenPatien
     setViewingAppointment(null);
     setIsBookingDialogOpen(true);
   };
+
+  // When opened from the patient file ("Edit appointment"), fetch that
+  // appointment by id (it may fall outside the calendar's visible range) and
+  // open the edit dialog straight away.
+  const consumedEditIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!initialEditAppointmentId) return;
+    if (consumedEditIdRef.current === initialEditAppointmentId) return;
+    consumedEditIdRef.current = initialEditAppointmentId;
+    (async () => {
+      try {
+        const res = await fetch(`/api/appointments/${initialEditAppointmentId}`, { credentials: "include" });
+        if (res.ok) {
+          const appt: Appointment = await res.json();
+          setCurrentDate(new Date(appt.appointmentDate));
+          handleEditAppointment(appt);
+        } else {
+          toast({ title: "Couldn't open appointment", description: "This appointment may have been removed.", variant: "destructive" });
+        }
+      } catch {
+        toast({ title: "Couldn't open appointment", description: "Please try again.", variant: "destructive" });
+      } finally {
+        onAppointmentEditConsumed?.();
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEditAppointmentId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

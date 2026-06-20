@@ -70,6 +70,7 @@ export default function Dashboard() {
   const [activePanel, setActivePanel] = useState<Panel>("calendar");
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
   const [openPatientEditId, setOpenPatientEditId] = useState<number | null>(null);
+  const [openAppointmentEditId, setOpenAppointmentEditId] = useState<number | null>(null);
   const [dicomDialogOpen, setDicomDialogOpen] = useState(false);
   const [dicomPendingPath, setDicomPendingPath] = useState<string>("/ui/app/");
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
@@ -307,9 +308,11 @@ export default function Dashboard() {
         <Calendar
           onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}
           onBeginStudy={(patientId, patientName, tab) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setPreLinkedTab(tab ?? "upload"); setActivePanel(tab === "draw" ? "draw" : "user"); }}
+          initialEditAppointmentId={openAppointmentEditId ?? undefined}
+          onAppointmentEditConsumed={() => setOpenAppointmentEditId(null)}
         />
       ) : activePanel === "patients" ? (
-        <Patients initialPatientId={openPatientId ?? undefined} initialEditPatientId={openPatientEditId ?? undefined} onPatientOpened={() => { setOpenPatientId(null); setOpenPatientEditId(null); }} />
+        <Patients initialPatientId={openPatientId ?? undefined} initialEditPatientId={openPatientEditId ?? undefined} onPatientOpened={() => { setOpenPatientId(null); setOpenPatientEditId(null); }} onEditAppointment={(appointmentId) => { setOpenAppointmentEditId(appointmentId); setActivePanel("calendar"); }} />
       ) : activePanel === "requests" ? (
         <Requests
           onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}

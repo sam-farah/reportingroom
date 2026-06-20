@@ -256,7 +256,7 @@ function formatDob(dob: string | null | undefined): string {
   return dob;
 }
 
-export default function Patients({ initialPatientId, initialEditPatientId, onPatientOpened }: { initialPatientId?: number; initialEditPatientId?: number; onPatientOpened?: () => void } = {}) {
+export default function Patients({ initialPatientId, initialEditPatientId, onPatientOpened, onEditAppointment }: { initialPatientId?: number; initialEditPatientId?: number; onPatientOpened?: () => void; onEditAppointment?: (appointmentId: number) => void } = {}) {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -1686,9 +1686,23 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       return (
         <div className="h-full overflow-auto">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg">
-            <div className="border-b pb-4 mb-4">
-              <h2 className="text-xl font-bold">{appointment.scanType}</h2>
-              <p className="text-gray-600">{appointment.appointmentDate ? format(new Date(appointment.appointmentDate), "PPP p") : ''}</p>
+            <div className="border-b pb-4 mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold">{appointment.scanType}</h2>
+                <p className="text-gray-600">{appointment.appointmentDate ? format(new Date(appointment.appointmentDate), "PPP p") : ''}</p>
+              </div>
+              {onEditAppointment && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-shrink-0"
+                  onClick={() => onEditAppointment(appointment.id)}
+                  data-testid="button-edit-appointment"
+                >
+                  <Calendar className="w-4 h-4 mr-1.5" />
+                  Edit appointment
+                </Button>
+              )}
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
