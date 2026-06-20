@@ -3175,6 +3175,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "20 June 2026",
+    tag: "Improve",
+    title: "Consent is only ever asked once a day",
+    detail:
+      "If a patient has already signed consent today — whether at the front-desk kiosk or on their own phone — the system won't ask them again. A second consent form is never created for the same day. If they open a consent link they've already completed, they'll simply see an \"Already signed\" message.",
+  },
+  {
+    date: "20 June 2026",
     tag: "New",
     title: "Send consent to the patient's own phone",
     detail:

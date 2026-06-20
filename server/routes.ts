@@ -294,6 +294,43 @@ async function generateConsentDocument(opts: {
   return { fileUrl: `/uploads/${newFilename}`, filename: newFilename };
 }
 
+// Once-per-day consent rule: a patient should only be asked/recorded for consent
+// once on a given day, regardless of channel (front-desk kiosk or remote link).
+// Every signed consent is stored as a "Consent Form" patient document dated today,
+// so the presence of one for today's date means consent is already complete.
+async function hasConsentFormToday(patientId: number): Promise<boolean> {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  try {
+    const docs = await storage.getPatientDocuments(patientId);
+    return docs.some((d: any) =>
+      !d.isArchived &&
+      d.title === "Consent Form" &&
+      String(d.documentDate).slice(0, 10) === todayIso
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Thrown inside a consent lock when clinic wording is missing; mapped to 400.
+class ConsentWordingError extends Error {}
+
+// Serialise consent writes per patient so concurrent submissions (a double-tap,
+// two open tabs, or kiosk + remote link signed at the same moment) can't both
+// pass the once-per-day check and create duplicate Consent Forms. The app runs
+// as a single Node process, so an in-memory per-patient lock is sufficient.
+const consentChains = new Map<number, Promise<unknown>>();
+function withConsentLock<T>(patientId: number, fn: () => Promise<T>): Promise<T> {
+  const prev = consentChains.get(patientId) ?? Promise.resolve();
+  const run = prev.then(() => fn(), () => fn());
+  const tail = run.catch(() => {});
+  consentChains.set(patientId, tail);
+  tail.then(() => {
+    if (consentChains.get(patientId) === tail) consentChains.delete(patientId);
+  });
+  return run;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Backfill any existing on-disk files to DB so they survive future resets
   backfillFilesToDB(uploadDir).catch(() => {});
@@ -575,31 +612,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       if (!patient) return res.status(404).json({ error: "Patient record not found" });
 
-      const clinic = appointment.clinicId ? await storage.getClinic(appointment.clinicId) : null;
+      // Once-per-day, serialised per patient so two near-simultaneous submissions
+      // can't both create a Consent Form. If one already exists for today (kiosk
+      // or remote), don't create a second — just complete the check-in.
+      let alreadyConsented = false;
+      try {
+        alreadyConsented = await withConsentLock(patient.id, async () => {
+          if (await hasConsentFormToday(patient.id)) return true;
 
-      // Consent wording always comes from the server-side clinic setting (never the client).
-      const consentText = (clinic?.kioskConsentText || "").trim();
-      if (!consentText) {
-        return res.status(400).json({ error: "No consent wording has been set up for this clinic." });
+          const clinic = appointment.clinicId ? await storage.getClinic(appointment.clinicId) : null;
+          // Consent wording always comes from the server-side clinic setting (never the client).
+          const consentText = (clinic?.kioskConsentText || "").trim();
+          if (!consentText) throw new ConsentWordingError("No consent wording has been set up for this clinic.");
+
+          // Resolve the scheduled sonographer (for the consent document header).
+          let sonographer: any = null;
+          if (appointment.sonographerId) {
+            sonographer = await storage.getSonographer(appointment.sonographerId).catch(() => null);
+          }
+          const sonographerName = sonographer
+            ? `${sonographer.title ? sonographer.title + " " : ""}${sonographer.name}`.trim()
+            : null;
+
+          await generateConsentDocument({
+            appointmentId: id,
+            patient,
+            clinic,
+            sonographerName,
+            signatureDataUrl,
+            consentText,
+          });
+          return false;
+        });
+      } catch (e) {
+        if (e instanceof ConsentWordingError) return res.status(400).json({ error: e.message });
+        throw e;
       }
-
-      // Resolve the scheduled sonographer (for the consent document header).
-      let sonographer: any = null;
-      if (appointment.sonographerId) {
-        sonographer = await storage.getSonographer(appointment.sonographerId).catch(() => null);
-      }
-      const sonographerName = sonographer
-        ? `${sonographer.title ? sonographer.title + " " : ""}${sonographer.name}`.trim()
-        : null;
-
-      await generateConsentDocument({
-        appointmentId: id,
-        patient,
-        clinic,
-        sonographerName,
-        signatureDataUrl,
-        consentText,
-      });
 
       // Record written consent + perform the check-in
       const updated = await storage.updateAppointment(id, {
@@ -610,6 +658,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({
         success: true,
+        alreadyConsented,
         appointment: { id: updated?.id, patientName: updated?.patientName, status: updated?.status },
       });
     } catch (error) {
@@ -3131,6 +3180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clinicName: clinic.name,
         clinicLogoUrl: clinic.kioskLogoUrl || clinic.logoUrl || null,
         consentText,
+        alreadyConsentedToday: await hasConsentFormToday(patient.id),
       });
     } catch (error) {
       console.error("Get consent page error:", error);
@@ -3160,22 +3210,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const consentText = (clinic.kioskConsentText || "").trim();
       if (!consentText) return res.status(400).json({ error: "No consent wording has been set up for this clinic." });
 
-      const appointment = record.appointmentId ? await storage.getAppointment(record.appointmentId) : null;
-      let sonographerName: string | null = null;
-      if (appointment?.sonographerId) {
-        const sonographer = await storage.getSonographer(appointment.sonographerId).catch(() => null);
-        sonographerName = sonographer
-          ? `${sonographer.title ? sonographer.title + " " : ""}${sonographer.name}`.trim()
-          : null;
-      }
+      // Once-per-day, serialised per patient so two near-simultaneous submissions
+      // can't both create a Consent Form. If one already exists for today (kiosk
+      // or remote), don't create a duplicate — just complete this link.
+      const alreadyConsented = await withConsentLock(patient.id, async () => {
+        if (await hasConsentFormToday(patient.id)) return true;
 
-      await generateConsentDocument({
-        appointmentId: record.appointmentId ?? 0,
-        patient,
-        clinic,
-        sonographerName,
-        signatureDataUrl,
-        consentText,
+        const appointment = record.appointmentId ? await storage.getAppointment(record.appointmentId) : null;
+        let sonographerName: string | null = null;
+        if (appointment?.sonographerId) {
+          const sonographer = await storage.getSonographer(appointment.sonographerId).catch(() => null);
+          sonographerName = sonographer
+            ? `${sonographer.title ? sonographer.title + " " : ""}${sonographer.name}`.trim()
+            : null;
+        }
+
+        await generateConsentDocument({
+          appointmentId: record.appointmentId ?? 0,
+          patient,
+          clinic,
+          sonographerName,
+          signatureDataUrl,
+          consentText,
+        });
+        return false;
       });
 
       if (record.appointmentId) {
@@ -3183,7 +3241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       await storage.completePatientConsentToken(token);
 
-      res.json({ success: true });
+      res.json({ success: true, alreadyConsented });
     } catch (error) {
       console.error("Submit consent error:", error);
       res.status(500).json({ error: "Failed to save consent" });

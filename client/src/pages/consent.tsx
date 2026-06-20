@@ -10,6 +10,7 @@ interface ConsentData {
   clinicName: string;
   clinicLogoUrl: string | null;
   consentText: string;
+  alreadyConsentedToday?: boolean;
 }
 
 export default function ConsentPage() {
@@ -144,15 +145,19 @@ export default function ConsentPage() {
     );
   }
 
-  if (submitted) {
+  if (submitted || data.alreadyConsentedToday) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <Card className="w-full max-w-md shadow-lg">
           <CardContent className="p-8 text-center space-y-3">
             <CheckCircle2 className="h-14 w-14 text-emerald-500 mx-auto" />
-            <h1 className="text-2xl font-bold text-slate-900">Thank you</h1>
+            <h1 className="text-2xl font-bold text-slate-900">
+              {data.alreadyConsentedToday && !submitted ? "Already signed" : "Thank you"}
+            </h1>
             <p className="text-slate-600">
-              Your consent has been recorded for your study at {data.clinicName}. You can close this page.
+              {data.alreadyConsentedToday && !submitted
+                ? `Your consent has already been recorded for today's study at ${data.clinicName}. There's nothing more to do — you can close this page.`
+                : `Your consent has been recorded for your study at ${data.clinicName}. You can close this page.`}
             </p>
           </CardContent>
         </Card>
