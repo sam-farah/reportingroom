@@ -1899,18 +1899,6 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   <CheckCircle className="w-3 h-3" />
                   Sent {transmittedReports.length > 0 && `(${transmittedReports.length})`}
                 </button>
-                {(() => {
-                  const finalisedReports = patientReports.filter(r => r.isFinalized && !(r as any).isArchived);
-                  return (
-                    <button
-                      onClick={() => setHistoryTab('finalized')}
-                      className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${historyTab === 'finalized' ? 'bg-violet-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      <ClipboardCheck className="w-3 h-3" />
-                      Finalised {finalisedReports.length > 0 && `(${finalisedReports.length})`}
-                    </button>
-                  );
-                })()}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Select value={docCategoryFilter} onValueChange={(v) => setDocCategoryFilter(v as any)}>
