@@ -3175,6 +3175,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "20 June 2026",
+    tag: "Improve",
+    title: "Only the labelled worksheet is kept (no duplicate raw upload)",
+    detail:
+      "When a worksheet is automatically labelled with the patient's details (name, DOB, UR and exam information stamped across the top), the original un-labelled upload is no longer kept as a separate copy. The labelled version already contains the full worksheet underneath the header, so keeping both just doubled up the storage and cluttered the file.\n\nFrom now on, each labelled worksheet appears once in the patient's file — the tidy, labelled version — and the redundant raw upload is removed automatically. Worksheets that were labelled before this change are unaffected.",
+  },
+  {
+    date: "20 June 2026",
     tag: "New",
     title: "Filter a patient's file by Clinical or Non-clinical",
     detail:

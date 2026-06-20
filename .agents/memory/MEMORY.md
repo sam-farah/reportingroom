@@ -6,3 +6,4 @@
 - [Private clinic onboarding](onboarding-private-superadmin.md) — no public sign-up; POST /api/clinics/register is disabled (403); super admins create clinics via /api/admin/clinics.
 - [Twilio webhook & reminder safety](twilio-webhook-security.md) — verify X-Twilio-Signature on public webhooks; deterministic clinic attribution (no guessing); claim reminders atomically, roll back only on send failure.
 - [Team Chat](team-chat.md) — WS at `/ws/chat` (session-cookie auth), every route clinic-checks then membership-checks; client patient IDs must be re-validated to clinic (PHI leak risk); dedupe own messages by id.
+- [Worksheet labelling & merge](worksheet-labelling.md) — labelled image is a superset of the raw upload; on label, delete the raw worksheet but NEVER clear labelledWorksheetId (re-label loop); timeline filter must show primary worksheetId.

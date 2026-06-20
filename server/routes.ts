@@ -32,7 +32,7 @@ import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./servic
 import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
 import { createBackupArchive, getBackupInfo } from "./services/backup";
 import { autoTrainFromDistribution, getTrainingAuditSummary, sweepUntrainedDistributions } from "./services/auto-training";
-import { saveFileToDB, getFileFromDB, detectMimeType, backfillFilesToDB } from "./services/fileStorage";
+import { saveFileToDB, getFileFromDB, deleteFileFromDB, detectMimeType, backfillFilesToDB } from "./services/fileStorage";
 import { chatHub } from "./chat-ws";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
@@ -2896,6 +2896,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // patient + exam metadata onto the new worksheet so it shows up in the
       // patient's file. Without this, freshly-uploaded worksheets are orphaned
       // (no patientId set) and never appear under the patient.
+      let rawWorksheetToDelete: number | null = null;
       try {
         const existingReport = await storage.getReport(reportId);
         const targetPatientId = updates.patientId ?? existingReport?.patientId;
@@ -2916,6 +2917,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.updateWorksheet(updates.labelledWorksheetId, carryFields as any);
           }
         }
+
+        // When a labelled (header-stamped) copy is being attached to a report,
+        // the raw upload is now redundant — the labelled image already contains
+        // the full original worksheet below the header. To avoid storing two
+        // copies, merge them: copy the original's display name + OCR status onto
+        // the labelled worksheet, repoint the report's primary worksheetId to the
+        // labelled copy, and delete the raw original (row + stored files).
+        // Keeping labelledWorksheetId set prevents the client re-labelling loop.
+        if (typeof updates.labelledWorksheetId === 'number') {
+          const originalWsId = existingReport?.worksheetId ?? null;
+          const labelledId = updates.labelledWorksheetId;
+          if (originalWsId && originalWsId !== labelledId) {
+            const original = await storage.getWorksheet(originalWsId);
+            if (original) {
+              await storage.updateWorksheet(labelledId, {
+                originalName: original.originalName,
+                ocrProcessed: original.ocrProcessed ?? false,
+              } as any);
+            }
+            // Repoint the report's primary worksheet to the labelled copy so the
+            // original can be safely deleted without a dangling reference.
+            updates.worksheetId = labelledId;
+            rawWorksheetToDelete = originalWsId;
+          }
+        }
       } catch (e) {
         console.warn('Failed to propagate patient link to new worksheet:', e);
       }
@@ -2923,6 +2949,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Apply all other field updates first
       if (Object.keys(updates).length > 0) {
         await storage.updateReport(reportId, updates);
+      }
+
+      // Now that the report no longer references the raw original worksheet,
+      // delete it (row + stored files) so only the labelled copy remains.
+      // Guard: skip if any OTHER report still references the original worksheet.
+      if (rawWorksheetToDelete) {
+        try {
+          const stillReferenced = (await storage.getAllReports()).some(
+            (r) => r.id !== reportId &&
+              ((r as any).worksheetId === rawWorksheetToDelete ||
+               (r as any).labelledWorksheetId === rawWorksheetToDelete)
+          );
+          if (!stillReferenced) {
+            const raw = await storage.getWorksheet(rawWorksheetToDelete);
+            await storage.deleteWorksheet(rawWorksheetToDelete);
+            if (raw?.filename) {
+              try { fs.unlinkSync(path.join(uploadDir, raw.filename)); } catch {}
+              await deleteFileFromDB(raw.filename);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to delete raw worksheet after labelling:', e);
+        }
       }
 
       // Handle finalization separately so timestamps & userId are properly recorded

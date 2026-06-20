@@ -171,6 +171,7 @@ export interface IStorage {
   getWorksheet(id: number): Promise<Worksheet | undefined>;
   createWorksheet(worksheet: InsertWorksheet): Promise<Worksheet>;
   updateWorksheet(id: number, worksheet: Partial<InsertWorksheet>): Promise<Worksheet | undefined>;
+  deleteWorksheet(id: number): Promise<void>;
   
   getAllReports(): Promise<Report[]>;
   getReport(id: number): Promise<Report | undefined>;
@@ -695,6 +696,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(worksheets.id, id))
       .returning();
     return worksheet;
+  }
+
+  async deleteWorksheet(id: number): Promise<void> {
+    await db.delete(worksheets).where(eq(worksheets.id, id));
   }
 
   async getAllReports(): Promise<Report[]> {

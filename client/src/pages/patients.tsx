@@ -1240,7 +1240,11 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       .filter(w => {
         const isLabelledByName = (w.originalName || '').toLowerCase().startsWith('labelled-');
         const isReferencedAsLabelled = patientReports.some(r => (r as any).labelledWorksheetId === w.id);
-        return !isLabelledByName && !isReferencedAsLabelled;
+        // After labelling, the raw upload is removed and the labelled copy
+        // becomes the report's primary worksheet. Keep showing a worksheet that
+        // is a report's primary worksheetId even if it's also the labelled copy.
+        const isPrimaryForReport = patientReports.some(r => (r as any).worksheetId === w.id);
+        return (!isLabelledByName && !isReferencedAsLabelled) || isPrimaryForReport;
       })
       .map(w => ({
       type: 'worksheet' as const,

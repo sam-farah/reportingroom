@@ -31,6 +31,14 @@ export async function saveFileToDB(
   }
 }
 
+export async function deleteFileFromDB(filename: string): Promise<void> {
+  try {
+    await db.delete(fileBlobs).where(eq(fileBlobs.filename, filename));
+  } catch (err) {
+    console.error(`[fileStorage] Failed to delete ${filename} from DB:`, err);
+  }
+}
+
 export async function getFileFromDB(
   filename: string,
 ): Promise<{ data: Buffer; mimeType: string | null; originalName: string | null } | null> {
