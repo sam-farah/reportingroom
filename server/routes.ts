@@ -1068,7 +1068,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const id = parseInt(req.params.id);
       const appointment = await storage.getAppointment(id);
-      if (!appointment || appointment.clinicId !== user.clinicId) {
+      // Allow legacy appointments with no clinic set (single-tenant data), but never let one
+      // clinic act on another clinic's appointment.
+      if (!appointment || (appointment.clinicId != null && appointment.clinicId !== user.clinicId)) {
         return res.status(404).json({ error: "Appointment not found" });
       }
 
@@ -1141,7 +1143,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const id = parseInt(req.params.id);
       const patient = await storage.getPatient(id);
-      if (!patient || patient.clinicId !== user.clinicId) {
+      // Allow legacy patients with no clinic set, but never let one clinic text another's patient.
+      if (!patient || (patient.clinicId != null && patient.clinicId !== user.clinicId)) {
         return res.status(404).json({ error: "Patient not found" });
       }
 
