@@ -436,6 +436,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       const today = new Date();
       const todayStr = fmtDate(today);
+      const fmtTime = (d: Date) =>
+        `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      const todayDateTimeStr = `${todayStr} ${fmtTime(today)}`;
       const patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
       const headerLines = [
         `Patient: ${patientName}`,
@@ -446,7 +449,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         appointment.scanType ? `Examination: ${appointment.scanType}` : null,
         sonographerName ? `Sonographer: ${sonographerName}` : null,
         `Document: Consent Form`,
-        `Date: ${todayStr}`,
+        `Date: ${todayDateTimeStr}`,
       ].filter(Boolean) as string[];
 
       const escape = (s: string) =>
@@ -518,7 +521,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ${bodyLinesSvg}
         <text x="${PAD}" y="${sigLabelY}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Patient signature:</text>
         <line x1="${PAD}" y1="${sigBoxY + sigBoxH}" x2="${PAD + Math.round(A4_W * 0.5)}" y2="${sigBoxY + sigBoxH}" stroke="#333333" stroke-width="2"/>
-        <text x="${PAD + Math.round(A4_W * 0.55)}" y="${sigBoxY + sigBoxH - 6}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Date: ${todayStr}</text>
+        <text x="${PAD + Math.round(A4_W * 0.55)}" y="${sigBoxY + sigBoxH - 6}" font-family="Arial, sans-serif" font-size="${bodyFontSize}" fill="#555555">Date: ${todayDateTimeStr}</text>
       </svg>`;
 
       // Decode signature image
