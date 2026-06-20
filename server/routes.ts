@@ -1156,12 +1156,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create a fresh registration token + link (7-day expiry, same as the email flow).
       const crypto = await import("crypto");
-      const token = crypto.randomBytes(32).toString("hex");
+      // Short, URL-safe token keeps the texted link compact (still ~72 bits of entropy, unguessable).
+      const token = crypto.randomBytes(9).toString("base64url");
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await storage.createPatientRegistrationToken(id, user.clinicId, token, expiresAt);
 
       const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
-      const registrationUrl = `${host}/patient-registration/${token}`;
+      const registrationUrl = `${host}/r/${token}`;
 
       const firstName = (patient.firstName || "").trim() || "there";
       const body = `Hi ${firstName}, please complete your registration for ${clinic.name} before your appointment: ${registrationUrl}`;
@@ -2861,6 +2862,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to generate link" });
     }
+  });
+
+  // Public short link for registration texts. Keeps the SMS compact and on the clinic's
+  // own domain (e.g. reportingroom.net/r/<token>), 302-redirecting to the full form route.
+  app.get("/r/:token", (req, res) => {
+    const token = encodeURIComponent(req.params.token);
+    res.redirect(302, `/patient-registration/${token}`);
   });
 
   // Public: load patient registration form data from token
