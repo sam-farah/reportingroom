@@ -19,6 +19,7 @@ interface KioskAppointment {
 
 interface KioskSettings {
   clinicName: string;
+  clinicId: number | null;
   kioskLogoUrl: string | null;
   kioskWelcomeText: string;
   kioskInstructions: string;
@@ -39,6 +40,8 @@ export default function Kiosk() {
   const [, setLocation] = useLocation();
   const [searchName, setSearchName] = useState("");
   const [appointments, setAppointments] = useState<KioskAppointment[]>([]);
+  const [searchStatus, setSearchStatus] = useState<"idle" | "single" | "multiple" | "ambiguous" | "none">("idle");
+  const [dobValue, setDobValue] = useState("");
   const [searching, setSearching] = useState(false);
   const [checkedIn, setCheckedIn] = useState<number | null>(null);
   const [checkingIn, setCheckingIn] = useState<number | null>(null);
@@ -52,6 +55,7 @@ export default function Kiosk() {
   const [submittingConsent, setSubmittingConsent] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchSeqRef = useRef(0);
   const sigCanvasRef = useRef<HTMLCanvasElement>(null);
   const sigDrawing = useRef(false);
   const sigLastPt = useRef<{ x: number; y: number } | null>(null);
@@ -67,9 +71,16 @@ export default function Kiosk() {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
+    // Changing the name resets any in-progress DOB confirmation and immediately
+    // clears any visible card, and invalidates in-flight responses (so a slow
+    // earlier search can never paint a stale patient over the new query).
+    searchSeqRef.current++;
+    setDobValue("");
+    setAppointments([]);
+    setRegStatus({});
+
     if (searchName.trim().length === 0) {
-      setAppointments([]);
-      setRegStatus({});
+      setSearchStatus("idle");
       return;
     }
 
@@ -123,18 +134,34 @@ export default function Kiosk() {
     return () => clearInterval(interval);
   }, [registerFor, toast]);
 
-  const searchAppointments = async (query: string) => {
+  const searchAppointments = async (query: string, dob?: string) => {
+    const seq = ++searchSeqRef.current;
     setSearching(true);
     try {
-      const res = await fetch(`/api/kiosk/appointments/today?search=${encodeURIComponent(query)}`);
+      const url = `/api/kiosk/appointments/today?search=${encodeURIComponent(query)}`
+        + (dob ? `&dob=${encodeURIComponent(dob)}` : "")
+        + (settings?.clinicId ? `&clinicId=${settings.clinicId}` : "");
+      const res = await fetch(url);
+      // Ignore any response that has been superseded by a newer search, so a slow
+      // earlier request can never paint a stale patient over the current one.
+      if (seq !== searchSeqRef.current) return;
       if (res.ok) {
         const data = await res.json();
-        setAppointments(data);
+        if (seq !== searchSeqRef.current) return;
+        if (data?.status === "single" && data.appointment) {
+          setAppointments([data.appointment]);
+          setSearchStatus("single");
+        } else {
+          // multiple | ambiguous | none — never show other patients' details.
+          setAppointments([]);
+          setRegStatus({});
+          setSearchStatus(data?.status ?? "none");
+        }
       }
     } catch (error) {
       console.error("Search error:", error);
     } finally {
-      setSearching(false);
+      if (seq === searchSeqRef.current) setSearching(false);
     }
   };
 
@@ -164,6 +191,8 @@ export default function Kiosk() {
           setSearchName("");
           setAppointments([]);
           setRegStatus({});
+          setSearchStatus("idle");
+          setDobValue("");
           inputRef.current?.focus();
         }, 5000);
       } else {
@@ -500,10 +529,56 @@ export default function Kiosk() {
             <p className="text-lg text-gray-400 animate-pulse">Searching...</p>
           )}
 
-          {!searching && searchName.trim().length > 0 && appointments.length === 0 && (
+          {/* More than one person matches the name: ask for date of birth to
+              privately confirm identity. We never list the matching patients. */}
+          {!searching && searchStatus === "multiple" && (
+            <div className="bg-white rounded-2xl p-8 shadow-md text-left">
+              <p className="text-xl text-gray-700 font-medium">
+                We found more than one booking under that name.
+              </p>
+              <p className="text-base text-gray-500 mt-2">
+                Please enter your date of birth to find your appointment.
+              </p>
+              <div className="mt-5">
+                <Input
+                  type="date"
+                  value={dobValue}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDobValue(v);
+                    if (v && v.replace(/[^0-9]/g, "").length >= 8) {
+                      searchAppointments(searchName.trim(), v);
+                    }
+                  }}
+                  className="w-full h-16 px-6 text-2xl rounded-2xl border-2 border-gray-200 focus:border-teal-500 focus:ring-teal-500"
+                />
+                <Button
+                  onClick={() => dobValue && searchAppointments(searchName.trim(), dobValue)}
+                  disabled={!dobValue}
+                  className="mt-4 bg-teal-600 hover:bg-teal-700 text-white text-xl px-8 py-6 rounded-xl h-auto"
+                >
+                  Find My Appointment
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Even the date of birth didn't single them out (same name + same DOB). */}
+          {!searching && searchStatus === "ambiguous" && (
+            <div className="bg-white rounded-2xl p-8 shadow-md">
+              <p className="text-xl text-gray-700 font-medium">
+                We couldn't confirm your booking.
+              </p>
+              <p className="text-base text-gray-500 mt-2">
+                Please see reception and they'll check you in.
+              </p>
+            </div>
+          )}
+
+          {!searching && searchStatus === "none" && searchName.trim().length > 0 && (
             <div className="bg-white rounded-2xl p-8 shadow-md">
               <p className="text-xl text-gray-500">
-                No appointments found for today matching "{searchName}"
+                No appointment found for today matching "{searchName}"
               </p>
               <p className="text-base text-gray-400 mt-2">
                 Please check your name or ask reception for help
@@ -513,9 +588,6 @@ export default function Kiosk() {
 
           {appointments.length > 0 && (
             <div className="space-y-4">
-              <p className="text-lg text-gray-500 mb-4">
-                {appointments.length} appointment{appointments.length !== 1 ? 's' : ''} found for today
-              </p>
               {appointments.map((apt) => {
                 const status = regStatus[apt.id];
                 const needsRegistration = status && !status.registered;

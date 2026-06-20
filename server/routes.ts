@@ -221,33 +221,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Kiosk endpoints - no authentication required for patient self-check-in
+  // Public kiosk search. PRIVACY: this is shown on a shared, public screen, so it
+  // must NEVER return a list of patients' names/details. We only ever return ONE
+  // appointment's details, and only once it has been uniquely identified.
+  //   - exactly one name match            -> { status: "single", appointment }
+  //   - more than one name match          -> { status: "multiple" }  (no details; ask for DOB)
+  //   - name + DOB resolves to one        -> { status: "single", appointment }
+  //   - name + DOB still more than one    -> { status: "ambiguous" } (no details; see reception)
+  //   - no match                          -> { status: "none" }
   app.get("/api/kiosk/appointments/today", async (req, res) => {
     try {
-      const { search } = req.query;
+      const { search, dob, clinicId } = req.query;
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
       const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      
+
       if (!search || typeof search !== 'string' || search.trim().length < 2) {
-        return res.json([]);
+        return res.json({ status: "none" });
       }
 
-      let todayAppointments = await storage.getAppointmentsByDateRange(startOfDay, endOfDay);
+      // Resolve which clinic this kiosk belongs to (param, else the first clinic),
+      // mirroring /api/kiosk/settings. Appointments MUST be scoped to this clinic so
+      // a kiosk can never surface another tenant's patients.
+      let resolvedClinicId: number | null = null;
+      if (clinicId && typeof clinicId === 'string') {
+        const id = parseInt(clinicId);
+        if (!isNaN(id)) resolvedClinicId = id;
+      }
+      if (!resolvedClinicId) {
+        const clinics = await storage.getAllClinics();
+        resolvedClinicId = clinics[0]?.id ?? null;
+      }
+      if (!resolvedClinicId) {
+        return res.json({ status: "none" });
+      }
+
+      const todayAppointments = await storage.getAppointmentsByDateRange(startOfDay, endOfDay);
       const searchLower = search.toLowerCase().trim();
-      todayAppointments = todayAppointments.filter(apt => 
+      // Scope to this clinic OR legacy/unattributed appointments (clinicId null).
+      // A different KNOWN clinic's appointments are excluded so they can never leak
+      // onto this kiosk; null-clinic rows (older bookings) stay checkable.
+      let matched = todayAppointments.filter(apt =>
+        (apt.clinicId === resolvedClinicId || apt.clinicId == null) &&
         apt.patientName.toLowerCase().includes(searchLower)
       );
 
-      const safeAppointments = todayAppointments.map(apt => ({
+      // If a date of birth was supplied, use it to privately narrow the matches.
+      const normDob = (s: string | null | undefined) => (s || "").replace(/[^0-9]/g, "");
+      const dobProvided = typeof dob === 'string' && normDob(dob).length >= 8;
+      if (dobProvided) {
+        const target = normDob(dob as string);
+        const withDob = [] as typeof matched;
+        for (const apt of matched) {
+          let d: string | null | undefined = apt.patientDob;
+          if (!d && apt.patientId) {
+            const p = await storage.getPatient(apt.patientId).catch(() => null);
+            d = p?.dateOfBirth ?? null;
+          }
+          if (d && normDob(d) === target) withDob.push(apt);
+        }
+        matched = withDob;
+      }
+
+      const safe = (apt: typeof matched[number]) => ({
         id: apt.id,
         patientName: apt.patientName,
         appointmentDate: apt.appointmentDate,
         duration: apt.duration,
         scanType: apt.scanType,
         status: apt.status,
-      }));
+      });
 
-      res.json(safeAppointments);
+      if (matched.length === 1) {
+        return res.json({ status: "single", appointment: safe(matched[0]) });
+      }
+      if (matched.length === 0) {
+        return res.json({ status: "none" });
+      }
+      // More than one match: never reveal who they are.
+      return res.json({ status: dobProvided ? "ambiguous" : "multiple" });
     } catch (error) {
       console.error("Kiosk search error:", error);
       res.status(500).json({ error: "Failed to search appointments" });
