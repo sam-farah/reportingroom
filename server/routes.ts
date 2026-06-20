@@ -514,7 +514,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!patient) {
         const all = await storage.getAllPatients().catch(() => [] as any[]);
         patient = all.find((p: any) =>
-          (!appointment.clinicId || p.clinicId === appointment.clinicId) &&
+          p.clinicId === appointment.clinicId &&
           `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim().toLowerCase() === (appointment.patientName || "").trim().toLowerCase()
         ) || null;
       }
@@ -569,7 +569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!patient) {
         const all = await storage.getAllPatients().catch(() => [] as any[]);
         patient = all.find((p: any) =>
-          (!appointment.clinicId || p.clinicId === appointment.clinicId) &&
+          p.clinicId === appointment.clinicId &&
           `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim().toLowerCase() === (appointment.patientName || "").trim().toLowerCase()
         ) || null;
       }
