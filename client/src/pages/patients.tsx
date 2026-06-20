@@ -440,6 +440,14 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   });
 
   // Transmitted reports (distributions with a stored PDF) for this patient
+  type TransmittedRecipient = {
+    distributionId: number;
+    name: string;
+    email: string | null;
+    method: string;
+    sentAt: string;
+    confirmedBy: string | null;
+  };
   type TransmittedReport = {
     distributionId: number;
     reportId: number;
@@ -451,6 +459,8 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     recipientName: string | null;
     confirmedBy: string | null;
     hasPdf: boolean;
+    recipients: TransmittedRecipient[];
+    recipientCount: number;
   };
   const { data: transmittedReports = [] } = useQuery<TransmittedReport[]>({
     queryKey: ["/api/patients", selectedPatient?.id, "transmitted-reports"],
@@ -2039,10 +2049,24 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                                 <Badge variant="outline" className="text-xs px-1.5 py-0 text-emerald-700 border-emerald-300 bg-emerald-50">
                                   {tr.method === "copy_html" ? "copy" : tr.method}
                                 </Badge>
-                                {tr.recipientName && (
-                                  <span className="text-xs text-gray-500 truncate">→ {tr.recipientName}</span>
+                                {tr.recipientCount > 1 && (
+                                  <Badge variant="outline" className="text-xs px-1.5 py-0 text-gray-600 border-gray-300">
+                                    Sent to {tr.recipientCount} places
+                                  </Badge>
                                 )}
                               </div>
+                              {tr.recipients && tr.recipients.length > 0 && (
+                                <div className="mt-1 space-y-0.5">
+                                  {tr.recipients.map((r) => (
+                                    <div key={r.distributionId} className="text-xs text-gray-500 truncate">
+                                      → {r.name}
+                                      <span className="text-gray-400">
+                                        {" · "}{r.method === "copy_html" ? "copy" : r.method}{" · "}{safeDateFormat(r.sentAt, "d MMM yyyy")}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

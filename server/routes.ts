@@ -2249,26 +2249,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const patientId = parseInt(req.params.id);
       if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
       const allReports = await storage.getPatientReports(patientId);
-      const result: any[] = [];
+      const groups: any[] = [];
       for (const report of allReports) {
         const dists = await storage.getReportDistributions(report.id);
-        for (const d of dists) {
-          result.push({
+        // Walk in creation order so a primary send (which carries the PDF blob)
+        // precedes its CC rows. Group by the content version that was actually
+        // sent: identical PDFs collapse into one entry that lists every place it
+        // went; a different version sent later becomes its own entry.
+        const ordered = [...dists].sort((a, b) => a.id - b.id);
+        const byKey = new Map<string, any>();
+        let currentContentKey: string | null = null;
+        for (const d of ordered) {
+          let key: string;
+          if (d.pdfBlob) {
+            key = "v:" + crypto.createHash("sha1").update(d.pdfBlob).digest("hex");
+            currentContentKey = key;
+          } else if (d.method !== "copy_html" && currentContentKey) {
+            // CC / secondary recipient of the most recent sent version.
+            key = currentContentKey;
+          } else {
+            // Manual copy-HTML record or an orphan row with no PDF — its own entry.
+            key = "x:" + d.id;
+          }
+          let g = byKey.get(key);
+          if (!g) {
+            g = {
+              reportId: report.id,
+              studyType: report.studyType,
+              examDate: report.examDate,
+              patientName: report.patientName,
+              distributionId: d.id,
+              hasPdf: !!d.pdfBlob,
+              sentAt: d.sentAt,
+              recipients: [] as any[],
+            };
+            byKey.set(key, g);
+          }
+          // Prefer a representative row that actually holds the PDF (for viewing).
+          if (d.pdfBlob && !g.hasPdf) {
+            g.hasPdf = true;
+            g.distributionId = d.id;
+          }
+          if (new Date(d.sentAt).getTime() > new Date(g.sentAt).getTime()) g.sentAt = d.sentAt;
+          g.recipients.push({
             distributionId: d.id,
-            reportId: report.id,
-            studyType: report.studyType,
-            examDate: report.examDate,
-            patientName: report.patientName,
-            sentAt: d.sentAt,
+            name: d.recipientName || d.recipientEmail || "Unknown recipient",
+            email: d.recipientEmail || null,
             method: d.method,
-            recipientName: d.recipientName,
-            confirmedBy: d.confirmedBy,
-            hasPdf: !!d.pdfBlob,
+            sentAt: d.sentAt,
+            confirmedBy: d.confirmedBy || null,
           });
         }
+        for (const g of Array.from(byKey.values())) {
+          g.recipients.sort((a: any, b: any) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+          g.recipientCount = g.recipients.length;
+          g.method = g.recipients[0]?.method || "email";
+          g.recipientName = g.recipients[0]?.name || null;
+          g.confirmedBy = g.recipients[0]?.confirmedBy || null;
+          groups.push(g);
+        }
       }
-      result.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
-      res.json(result);
+      groups.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+      res.json(groups);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch transmitted reports" });
     }
