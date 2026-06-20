@@ -378,6 +378,7 @@ export interface IStorage {
   claimAppointmentSmsReminder(appointmentId: number): Promise<boolean>;
   clearAppointmentSmsReminder(appointmentId: number): Promise<void>;
   getSmsEnabledClinics(): Promise<Clinic[]>;
+  getSmsActiveClinics(): Promise<Clinic[]>;
   // Team Chat (staff-to-staff)
   createChatChannel(data: { clinicId: number; type: string; name?: string | null; description?: string | null; isPrivate?: boolean; createdBy: string }, memberUserIds: string[]): Promise<ChatChannel>;
   getChatChannel(id: number): Promise<ChatChannel | undefined>;
@@ -1999,7 +2000,7 @@ export class DatabaseStorage implements IStorage {
     const patientMap = new Map<number, Patient>();
     if (patientIds.length > 0) {
       const rows = await db.select().from(patients).where(
-        and(eq(patients.clinicId, clinicId), sql`${patients.id} = ANY(${patientIds})`)
+        and(eq(patients.clinicId, clinicId), inArray(patients.id, patientIds))
       );
       for (const p of rows) patientMap.set(p.id, p);
     }
@@ -2033,7 +2034,7 @@ export class DatabaseStorage implements IStorage {
     if (unreadIds.length === 0) return;
     await db.update(smsMessages)
       .set({ readAt: new Date() })
-      .where(sql`${smsMessages.id} = ANY(${unreadIds})`);
+      .where(inArray(smsMessages.id, unreadIds));
   }
 
   async updateSmsStatusBySid(sid: string, status: string, errorMessage?: string | null): Promise<void> {
@@ -2090,6 +2091,13 @@ export class DatabaseStorage implements IStorage {
 
   async getSmsEnabledClinics(): Promise<Clinic[]> {
     return db.select().from(clinics).where(and(eq(clinics.smsRemindersEnabled, true), eq(clinics.isActive, true)));
+  }
+
+  // All active clinics — used for inbound SMS attribution. The Twilio number is
+  // global/shared, so two-way replies must be routable to any active clinic, NOT
+  // just clinics that have appointment reminders switched on.
+  async getSmsActiveClinics(): Promise<Clinic[]> {
+    return db.select().from(clinics).where(eq(clinics.isActive, true));
   }
 
   // ── Team Chat ───────────────────────────────────────────────────────────

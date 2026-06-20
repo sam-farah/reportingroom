@@ -1230,10 +1230,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let patientId: number | null = null;
 
         if (toMatchesOurNumber) {
-          const enabledClinics = await storage.getSmsEnabledClinics();
+          const candidateClinics = await storage.getSmsActiveClinics();
           // Find every clinic that has this sender on file as a patient.
           const matches: { clinicId: number; patientId: number }[] = [];
-          for (const c of enabledClinics) {
+          for (const c of candidateClinics) {
             const match = await storage.findPatientByPhone(c.id, from);
             if (match) matches.push({ clinicId: c.id, patientId: match.id });
           }
@@ -1242,9 +1242,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Unambiguous patient match — safe to link.
             clinicId = matches[0].clinicId;
             patientId = matches[0].patientId;
-          } else if (matches.length === 0 && enabledClinics.length === 1) {
+          } else if (matches.length === 0 && candidateClinics.length === 1) {
             // No patient on file but only one clinic uses this number — attribute to it, unlinked.
-            clinicId = enabledClinics[0].id;
+            clinicId = candidateClinics[0].id;
           } else if (matches.length > 1) {
             // Same phone in multiple clinics — ambiguous. Do NOT guess; log for manual review.
             console.warn(`Inbound SMS from ${from} matched ${matches.length} clinics; not attributed to avoid cross-clinic leak.`);

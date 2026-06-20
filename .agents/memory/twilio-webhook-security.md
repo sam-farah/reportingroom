@@ -17,10 +17,11 @@ Three rules the architect review insisted on for the SMS patient-correspondence 
 ## 2. Inbound clinic attribution must be deterministic, never a guess
 Single global Twilio number is shared across clinics. Do NOT fall back to "first SMS-enabled clinic".
 - Only attribute when inbound `To` matches the configured number.
-- Link to a patient only on a SINGLE unambiguous phone match across enabled clinics.
-- If exactly one enabled clinic exists and no patient matches → attribute unlinked to it.
+- Candidate set is ALL ACTIVE clinics, NOT clinics with appointment reminders enabled. Two-way replies must work even when the reminder toggle is off — gating inbound on the reminder flag silently drops every reply. (Use a separate "active clinics" query for inbound; the reminder-enabled query is only for the send scheduler.)
+- Link to a patient only on a SINGLE unambiguous phone match across candidate clinics.
+- If exactly one candidate clinic exists and no patient matches → attribute unlinked to it.
 - If the phone matches patients in >1 clinic → refuse and log; do not guess.
-**Why:** guessing leaks one clinic's patient reply into another clinic's inbox.
+**Why:** guessing leaks one clinic's patient reply into another clinic's inbox; and coupling inbound routing to the reminder flag makes replies vanish with no error.
 
 ## 3. Reminder scheduler: claim atomically, roll back ONLY on send failure
 - Claim each appointment before sending: `UPDATE appointments SET sms_reminder_sent_at=now() WHERE id=? AND sms_reminder_sent_at IS NULL RETURNING id` (`claimAppointmentSmsReminder`). Skip if the claim returns nothing — prevents concurrent ticks double-sending.
