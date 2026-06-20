@@ -541,7 +541,7 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                 const prev = messages[i - 1];
                 const delta = prev ? new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() : 0;
                 const grouped = !!prev && prev.authorId === m.authorId && !!m.author
-                  && delta >= 0 && delta < 5 * 60 * 1000;
+                  && delta >= 0 && delta < 5 * 60 * 1000 && !m.replyTo;
                 return (
                 <div key={m.id} className={`group relative flex gap-2 px-2 rounded transition-colors ${highlightId === m.id ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted/40"} ${grouped ? "py-0.5" : "mt-2 py-0.5"}`} data-testid={`message-${m.id}`}>
                   {grouped ? (
@@ -550,29 +550,24 @@ export default function Chat({ onOpenPatient }: { onOpenPatient?: (patientId: nu
                     <span className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(m.author)} text-white flex items-center justify-center text-xs font-semibold flex-shrink-0 mt-0.5`}>{initials(m.author)}</span>
                   )}
                   <div className="min-w-0 flex-1">
+                    {m.replyTo && (
+                      <button
+                        onClick={() => scrollToMessage(m.replyTo!.id)}
+                        data-testid={`reply-preview-${m.id}`}
+                        className="group/reply flex items-end gap-1.5 mb-0.5 max-w-full text-left text-xs text-muted-foreground"
+                      >
+                        <span className="w-[22px] h-[10px] flex-shrink-0 mb-[3px] border-l-2 border-t-2 border-muted-foreground/30 group-hover/reply:border-muted-foreground/50 rounded-tl-[7px]" />
+                        <span className="font-semibold flex-shrink-0 text-foreground/60 group-hover/reply:text-foreground transition-colors">{m.replyTo.authorName}</span>
+                        <span className={`truncate group-hover/reply:text-foreground/80 transition-colors ${m.replyTo.deleted ? "italic" : ""}`}>
+                          {m.replyTo.deleted ? "Original message was deleted" : (m.replyTo.body || "Attachment")}
+                        </span>
+                      </button>
+                    )}
                     {!grouped && (
                       <div className="flex items-baseline gap-2">
                         <span className="font-medium text-sm">{personName(m.author)}</span>
                         <span className="text-[11px] text-muted-foreground">{fmtTime(m.createdAt)}</span>
                       </div>
-                    )}
-                    {m.replyTo && (
-                      <button
-                        onClick={() => scrollToMessage(m.replyTo!.id)}
-                        data-testid={`reply-preview-${m.id}`}
-                        className="group/reply flex items-stretch gap-1.5 mb-1 max-w-full text-left rounded-md bg-muted/60 hover:bg-muted border border-border/60 overflow-hidden transition-colors"
-                      >
-                        <span className="w-1 flex-shrink-0 bg-primary/70 group-hover/reply:bg-primary rounded-full" />
-                        <span className="flex flex-col min-w-0 py-1 pr-2">
-                          <span className="flex items-center gap-1 text-[11px] font-semibold text-primary/90">
-                            <Reply className="w-3 h-3 flex-shrink-0" />
-                            {m.replyTo.authorName}
-                          </span>
-                          <span className={`truncate text-[11px] ${m.replyTo.deleted ? "italic text-muted-foreground" : "text-muted-foreground"}`}>
-                            {m.replyTo.deleted ? "Message deleted" : (m.replyTo.body || "Attachment")}
-                          </span>
-                        </span>
-                      </button>
                     )}
                     {editingId === m.id ? (
                       <div className="mt-1 space-y-1.5">
