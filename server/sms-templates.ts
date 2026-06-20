@@ -4,21 +4,22 @@
 export const DEFAULT_REMINDER_TEMPLATE =
   "Hi {patient}, this is a reminder of your {scan} appointment at {clinic} on {date} at {time}. Reply here if you need to reschedule.";
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
+// Appointment times are stored in UTC; clinics operate in Australian local time, so
+// always render reminders in the clinic timezone (matches the email reminder path).
+const CLINIC_TZ = "Australia/Sydney";
 
 export function formatReminderDate(d: Date): string {
-  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`; // dd-MM-yyyy (AU)
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: CLINIC_TZ, day: "2-digit", month: "2-digit", year: "numeric",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
+  return `${get("day")}-${get("month")}-${get("year")}`; // dd-MM-yyyy (AU)
 }
 
 export function formatReminderTime(d: Date): string {
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "pm" : "am";
-  h = h % 12;
-  if (h === 0) h = 12;
-  return `${h}:${pad(m)}${ampm}`;
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: CLINIC_TZ, hour: "numeric", minute: "2-digit", hour12: true,
+  }).format(d).replace(/\s/g, "").toLowerCase(); // e.g. "1:00pm"
 }
 
 export function fillTemplate(template: string, vars: Record<string, string>): string {

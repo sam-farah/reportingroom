@@ -367,6 +367,7 @@ export interface IStorage {
   // SMS messaging
   createSmsMessage(data: InsertSmsMessage): Promise<SmsMessage>;
   getSmsThread(clinicId: number, patientId: number): Promise<SmsMessage[]>;
+  getSmsRemindersByAppointment(appointmentId: number): Promise<SmsMessage[]>;
   getSmsThreadByPhone(clinicId: number, phone: string): Promise<SmsMessage[]>;
   getSmsConversations(clinicId: number): Promise<Array<{ patientId: number | null; phone: string; patientName: string | null; lastMessage: SmsMessage; unreadCount: number }>>;
   markSmsThreadRead(clinicId: number, patientId: number): Promise<void>;
@@ -1956,6 +1957,16 @@ export class DatabaseStorage implements IStorage {
   async getSmsThread(clinicId: number, patientId: number): Promise<SmsMessage[]> {
     return db.select().from(smsMessages)
       .where(and(eq(smsMessages.clinicId, clinicId), eq(smsMessages.patientId, patientId)))
+      .orderBy(smsMessages.createdAt);
+  }
+
+  async getSmsRemindersByAppointment(appointmentId: number): Promise<SmsMessage[]> {
+    return db.select().from(smsMessages)
+      .where(and(
+        eq(smsMessages.appointmentId, appointmentId),
+        eq(smsMessages.isReminder, true),
+        eq(smsMessages.direction, "outbound"),
+      ))
       .orderBy(smsMessages.createdAt);
   }
 

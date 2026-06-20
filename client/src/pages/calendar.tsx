@@ -238,6 +238,14 @@ const STATUS_COLORS: Record<string, string> = {
 
 type ViewMode = "day" | "week" | "month";
 
+type ReminderHistoryEntry = {
+  id: string;
+  channel: "email" | "sms";
+  sentAt: string;
+  openedAt: string | null;
+  status: string | null;
+};
+
 export function TasksPanel() {
   const { toast } = useToast();
   const [tab, setTab] = useState<"active" | "done">("active");
@@ -998,7 +1006,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     },
   });
 
-  const { data: reminderLogs = [] } = useQuery<ReminderLog[]>({
+  const { data: reminderLogs = [] } = useQuery<ReminderHistoryEntry[]>({
     queryKey: ["/api/appointments", viewingAppointment?.id, "reminder-logs"],
     enabled: !!viewingAppointment?.id,
   });
@@ -1044,6 +1052,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     },
     onSuccess: (data: any) => {
       toast({ title: "Text reminder sent", description: `Appointment reminder texted to ${data.sentTo}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments", viewingAppointment?.id, "reminder-logs"] });
     },
     onError: (error: any) => {
       toast({ title: "Failed to send text reminder", description: error.message || "Could not send SMS reminder", variant: "destructive" });
@@ -3428,12 +3437,21 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                     {reminderLogs.map((log) => (
                       <div key={log.id} className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
-                          <Mail className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          {log.channel === "sms" ? (
+                            <MessageSquare className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                          ) : (
+                            <Mail className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          )}
                           <span className="text-gray-700">
-                            Sent {format(new Date(log.sentAt), "d MMM yyyy 'at' h:mm a")}
+                            {log.channel === "sms" ? "Texted" : "Emailed"} {format(new Date(log.sentAt), "d MMM yyyy 'at' h:mm a")}
                           </span>
                         </div>
-                        {log.openedAt ? (
+                        {log.channel === "sms" ? (
+                          <span className="text-blue-600 font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+                            {log.status === "delivered" ? "Delivered" : log.status === "failed" ? "Failed" : "Sent"}
+                          </span>
+                        ) : log.openedAt ? (
                           <span className="text-emerald-600 font-medium flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                             Opened {format(new Date(log.openedAt), "d MMM 'at' h:mm a")}

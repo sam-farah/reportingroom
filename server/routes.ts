@@ -1599,8 +1599,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get reminder logs for an appointment
   app.get("/api/appointments/:id/reminder-logs", isAuthenticated, async (req, res) => {
     try {
-      const logs = await storage.getReminderLogsByAppointment(parseInt(req.params.id));
-      res.json(logs);
+      const appointmentId = parseInt(req.params.id);
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const appointment = await storage.getAppointment(appointmentId);
+      // Allow legacy appointments with no clinic set, but never expose another clinic's data.
+      if (!appointment || (appointment.clinicId != null && appointment.clinicId !== user.clinicId)) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+      const [emailLogs, smsReminders] = await Promise.all([
+        storage.getReminderLogsByAppointment(appointmentId),
+        storage.getSmsRemindersByAppointment(appointmentId),
+      ]);
+      const emailEntries = emailLogs.map((log) => ({
+        id: `email-${log.id}`,
+        channel: "email" as const,
+        sentAt: log.sentAt,
+        openedAt: log.openedAt,
+        status: null as string | null,
+      }));
+      const smsEntries = smsReminders.map((m) => ({
+        id: `sms-${m.id}`,
+        channel: "sms" as const,
+        sentAt: m.createdAt,
+        openedAt: null,
+        status: m.status,
+      }));
+      const merged = [...emailEntries, ...smsEntries].sort(
+        (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
+      );
+      res.json(merged);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch reminder logs" });
     }
