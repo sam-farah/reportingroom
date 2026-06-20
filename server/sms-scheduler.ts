@@ -5,32 +5,9 @@
 
 import { storage } from "./storage";
 import { isSmsConfigured, sendSms, normalisePhone, getSmsFromNumber } from "./twilio";
+import { buildReminderBody } from "./sms-templates";
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // every 15 minutes
-
-const DEFAULT_TEMPLATE =
-  "Hi {patient}, this is a reminder of your {scan} appointment at {clinic} on {date} at {time}. Reply here if you need to reschedule.";
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function formatDate(d: Date): string {
-  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`; // dd-MM-yyyy (AU)
-}
-
-function formatTime(d: Date): string {
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "pm" : "am";
-  h = h % 12;
-  if (h === 0) h = 12;
-  return `${h}:${pad(m)}${ampm}`;
-}
-
-function fillTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_m, key) => vars[key] ?? "");
-}
 
 async function runOnce(host: string | null): Promise<void> {
   if (!isSmsConfigured()) return;
@@ -58,15 +35,7 @@ async function runOnce(host: string | null): Promise<void> {
         continue;
       }
 
-      const apptDate = new Date(appt.appointmentDate);
-      const template = clinic.smsReminderTemplate?.trim() || DEFAULT_TEMPLATE;
-      const body = fillTemplate(template, {
-        patient: (appt.patientName || "").split(" ")[0] || appt.patientName || "there",
-        scan: appt.scanType || "scan",
-        clinic: clinic.name,
-        date: formatDate(apptDate),
-        time: formatTime(apptDate),
-      });
+      const body = buildReminderBody(appt, clinic);
 
       // The SEND is the only thing we roll the claim back for. Once Twilio has accepted the
       // message the patient has (or will) receive it, so we must NOT retry even if the

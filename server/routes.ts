@@ -7,6 +7,7 @@ import { eq, sql as drizzleSql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
 import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor } from "./email";
 import { isSmsConfigured, sendSms, normalisePhone, getSmsFromNumber, validateTwilioSignature } from "./twilio";
+import { buildReminderBody } from "./sms-templates";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1052,6 +1053,159 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Send reminder error:", error);
       res.status(500).json({ error: error?.message || "Failed to send reminder" });
+    }
+  });
+
+  // Manually send an appointment reminder by SMS (staff-triggered, independent of the
+  // automated scheduler/toggle). Uses the clinic's reminder template and the patient's phone.
+  app.post("/api/appointments/:id/send-sms-reminder", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      if (!isSmsConfigured()) {
+        return res.status(503).json({ error: "SMS is not set up yet. Add your Twilio credentials to enable messaging." });
+      }
+
+      const id = parseInt(req.params.id);
+      const appointment = await storage.getAppointment(id);
+      if (!appointment || appointment.clinicId !== user.clinicId) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+
+      const to = normalisePhone(appointment.patientPhone);
+      if (!to) return res.status(400).json({ error: "No valid phone number on file for this patient" });
+
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic) return res.status(404).json({ error: "Clinic not found" });
+
+      const body = buildReminderBody(appointment, clinic);
+      const fromNumber = getSmsFromNumber()!;
+      const host = `${req.protocol}://${req.get("host")}`;
+
+      let result;
+      try {
+        result = await sendSms({ to, body, statusCallback: `${host}/api/sms/webhook/status` });
+      } catch (sendErr: any) {
+        await storage.createSmsMessage({
+          clinicId: user.clinicId,
+          patientId: appointment.patientId ?? null,
+          appointmentId: id,
+          direction: "outbound",
+          body,
+          fromNumber,
+          toNumber: to,
+          status: "failed",
+          errorMessage: sendErr?.message || "Send failed",
+          isReminder: true,
+          sentBy: user.id,
+        }).catch(() => {});
+        return res.status(502).json({ error: sendErr?.message || "Failed to send SMS reminder" });
+      }
+
+      // Send succeeded — the patient has (or will) receive it. Persist the record, but a
+      // logging failure must NOT be reported as a send failure, or an operator retry would
+      // double-text the patient.
+      try {
+        await storage.createSmsMessage({
+          clinicId: user.clinicId,
+          patientId: appointment.patientId ?? null,
+          appointmentId: id,
+          direction: "outbound",
+          body,
+          fromNumber,
+          toNumber: to,
+          status: result.status,
+          twilioSid: result.sid,
+          isReminder: true,
+          sentBy: user.id,
+        });
+      } catch (persistErr: any) {
+        console.error(`SMS reminder SENT for appointment ${id} but failed to log it:`, persistErr?.message || persistErr);
+      }
+
+      res.json({ success: true, sentTo: to });
+    } catch (error: any) {
+      console.error("Send SMS reminder error:", error);
+      res.status(500).json({ error: error?.message || "Failed to send SMS reminder" });
+    }
+  });
+
+  // Manually text a patient a link to the self-registration form (staff-triggered).
+  app.post("/api/patients/:id/send-sms-registration", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      if (!isSmsConfigured()) {
+        return res.status(503).json({ error: "SMS is not set up yet. Add your Twilio credentials to enable messaging." });
+      }
+
+      const id = parseInt(req.params.id);
+      const patient = await storage.getPatient(id);
+      if (!patient || patient.clinicId !== user.clinicId) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
+
+      const to = normalisePhone(patient.phone);
+      if (!to) return res.status(400).json({ error: "No valid phone number on file for this patient" });
+
+      const clinic = await storage.getClinic(user.clinicId);
+      if (!clinic) return res.status(404).json({ error: "Clinic not found" });
+
+      // Create a fresh registration token + link (7-day expiry, same as the email flow).
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await storage.createPatientRegistrationToken(id, user.clinicId, token, expiresAt);
+
+      const host = req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const registrationUrl = `${host}/patient-registration/${token}`;
+
+      const firstName = (patient.firstName || "").trim() || "there";
+      const body = `Hi ${firstName}, please complete your registration for ${clinic.name} before your appointment: ${registrationUrl}`;
+
+      const fromNumber = getSmsFromNumber()!;
+      const statusHost = `${req.protocol}://${req.get("host")}`;
+
+      let result;
+      try {
+        result = await sendSms({ to, body, statusCallback: `${statusHost}/api/sms/webhook/status` });
+      } catch (sendErr: any) {
+        await storage.createSmsMessage({
+          clinicId: user.clinicId,
+          patientId: patient.id,
+          direction: "outbound",
+          body,
+          fromNumber,
+          toNumber: to,
+          status: "failed",
+          errorMessage: sendErr?.message || "Send failed",
+          sentBy: user.id,
+        }).catch(() => {});
+        return res.status(502).json({ error: sendErr?.message || "Failed to send registration SMS" });
+      }
+
+      // Send succeeded — persist the record, but never report a logging failure as a send
+      // failure (an operator retry would re-text the patient another link).
+      try {
+        await storage.createSmsMessage({
+          clinicId: user.clinicId,
+          patientId: patient.id,
+          direction: "outbound",
+          body,
+          fromNumber,
+          toNumber: to,
+          status: result.status,
+          twilioSid: result.sid,
+          sentBy: user.id,
+        });
+      } catch (persistErr: any) {
+        console.error(`Registration SMS SENT for patient ${patient.id} but failed to log it:`, persistErr?.message || persistErr);
+      }
+
+      res.json({ success: true, sentTo: to });
+    } catch (error: any) {
+      console.error("Send SMS registration error:", error);
+      res.status(500).json({ error: error?.message || "Failed to send registration SMS" });
     }
   });
 

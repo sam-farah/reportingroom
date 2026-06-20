@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal, ShieldCheck, MessageSquare } from "lucide-react";
 import jsPDF from "jspdf";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1032,6 +1032,39 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     },
   });
 
+  const { data: smsStatus } = useQuery<{ configured: boolean; fromNumber: string | null }>({
+    queryKey: ["/api/sms/status"],
+  });
+  const smsConfigured = !!smsStatus?.configured;
+
+  const sendSmsReminderMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/appointments/${id}/send-sms-reminder`, "POST");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Text reminder sent", description: `Appointment reminder texted to ${data.sentTo}` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send text reminder", description: error.message || "Could not send SMS reminder", variant: "destructive" });
+    },
+  });
+
+  const sendSmsRegistrationMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/patients/${id}/send-sms-registration`, "POST");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Registration link texted", description: `Sent to ${data.sentTo}` });
+      setRegistrationPromptPatient(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send registration text", description: error.message || "Could not send registration SMS", variant: "destructive" });
+      setRegistrationPromptPatient(null);
+    },
+  });
+
   const createPatientMutation = useMutation({
     mutationFn: async (data: any): Promise<Patient> => {
       const res = await apiRequest("/api/patients", "POST", data);
@@ -1042,7 +1075,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       setIsCreatingPatient(false);
       setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", address: "", city: "", state: "", zipCode: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
       queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
-      if (patient.email) {
+      if (patient.email || patient.phone) {
         setRegistrationPromptPatient(patient);
       } else {
         toast({ title: "Patient file created", description: `${patient.firstName} ${patient.lastName} has been registered.` });
@@ -3252,6 +3285,30 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                               <Mail className="w-4 h-4 mr-2" />
                               {sendReminderMutation.isPending ? "Sending…" : "Send Reminder"}
                             </DropdownMenuItem>
+                            {smsConfigured && (
+                              <DropdownMenuItem
+                                disabled={!viewingAppointment.patientPhone || sendSmsReminderMutation.isPending}
+                                title={!viewingAppointment.patientPhone ? "No phone number on file for this patient" : "Text the patient an appointment reminder"}
+                                onSelect={(e) => { e.preventDefault(); sendSmsReminderMutation.mutate(viewingAppointment.id); }}
+                                className="text-sky-700 focus:text-sky-700"
+                                data-testid="menu-send-sms-reminder"
+                              >
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                {sendSmsReminderMutation.isPending ? "Sending…" : "Send SMS Reminder"}
+                              </DropdownMenuItem>
+                            )}
+                            {smsConfigured && viewingAppointment.patientId && (
+                              <DropdownMenuItem
+                                disabled={!viewingAppointment.patientPhone || sendSmsRegistrationMutation.isPending}
+                                title={!viewingAppointment.patientPhone ? "No phone number on file for this patient" : "Text the patient a registration form link"}
+                                onSelect={(e) => { e.preventDefault(); if (viewingAppointment.patientId) sendSmsRegistrationMutation.mutate(viewingAppointment.patientId); }}
+                                className="text-sky-700 focus:text-sky-700"
+                                data-testid="menu-send-sms-registration"
+                              >
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                {sendSmsRegistrationMutation.isPending ? "Sending…" : "Send Registration SMS"}
+                              </DropdownMenuItem>
+                            )}
                             {(() => {
                               const aptDate = new Date(viewingAppointment.appointmentDate);
                               const today = new Date();
@@ -3557,18 +3614,34 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                 <span className="font-semibold">{registrationPromptPatient?.firstName} {registrationPromptPatient?.lastName}</span> has been added.
                 Would you like to send them a registration form so they can fill in their own details?
               </p>
-              <p className="text-xs text-gray-400">The form will be sent to <span className="font-medium">{registrationPromptPatient?.email}</span></p>
+              <p className="text-xs text-gray-400">
+                {registrationPromptPatient?.email && <>Email: <span className="font-medium">{registrationPromptPatient?.email}</span></>}
+                {registrationPromptPatient?.email && smsConfigured && registrationPromptPatient?.phone && <> · </>}
+                {smsConfigured && registrationPromptPatient?.phone && <>SMS: <span className="font-medium">{registrationPromptPatient?.phone}</span></>}
+              </p>
             </div>
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2 justify-end flex-wrap">
               <Button variant="outline" size="sm" onClick={() => { toast({ title: "Patient file created", description: `${registrationPromptPatient?.firstName} ${registrationPromptPatient?.lastName} has been registered.` }); setRegistrationPromptPatient(null); }}>
                 Skip
               </Button>
+              {smsConfigured && registrationPromptPatient?.phone && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-sky-700 border-sky-200 hover:bg-sky-50"
+                  disabled={sendSmsRegistrationMutation.isPending}
+                  onClick={() => registrationPromptPatient && sendSmsRegistrationMutation.mutate(registrationPromptPatient.id)}
+                >
+                  <MessageSquare className="w-4 h-4 mr-1" />
+                  {sendSmsRegistrationMutation.isPending ? "Sending…" : "Text Link"}
+                </Button>
+              )}
               <Button
                 size="sm"
-                disabled={sendRegistrationMutation.isPending}
+                disabled={!registrationPromptPatient?.email || sendRegistrationMutation.isPending}
                 onClick={() => registrationPromptPatient && sendRegistrationMutation.mutate(registrationPromptPatient.id)}
               >
-                {sendRegistrationMutation.isPending ? "Sending…" : "Send Registration Form"}
+                {sendRegistrationMutation.isPending ? "Sending…" : "Email Form"}
               </Button>
             </div>
           </DialogContent>

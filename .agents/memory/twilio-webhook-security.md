@@ -28,3 +28,10 @@ Single global Twilio number is shared across clinics. Do NOT fall back to "first
 - Put `sendSms()` in its own try. On send failure → `clearAppointmentSmsReminder` (release claim) + continue.
 - After a successful send the claim STAYS. `createSmsMessage()` goes in a SEPARATE try that only logs on failure.
 **Why:** the subtle bug — if DB logging is in the same try as a successful send, a transient DB error rolls back the claim and the next tick re-sends, texting the patient twice. Never roll back a claim after Twilio has accepted the message.
+
+## 4. Manual (staff-triggered) send routes: success once Twilio accepts; never 500 on logging failure
+Same duplicate-text trap as the scheduler, just operator-driven. Applies to any manual SMS endpoint (e.g. `/api/appointments/:id/send-sms-reminder`, `/api/patients/:id/send-sms-registration`, and the generic `/api/sms/send`).
+- Wrap the post-send `createSmsMessage()` in its OWN try and only `console.error` on failure — return `{ success: true }` regardless once `sendSms()` resolves.
+- If the persist is left in the outer try, a logging error returns 500, the operator clicks "send" again, and the patient gets two texts.
+- Manual reminders/links must gate ONLY on `isSmsConfigured()` + clinic-scope, NOT on the `smsRemindersEnabled` toggle (that flag is for the automated scheduler; manual sends are independent of it). Reminder body comes from the shared builder in `server/sms-templates.ts` so manual + automated wording stay identical.
+**Why:** a human retrying a "failed" button is the manual analogue of the scheduler's double-tick.
