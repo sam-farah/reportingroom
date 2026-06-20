@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Mail, Clock, CheckCircle, XCircle, Trash2, Users, Copy, Link2, Check } from "lucide-react";
+import { Plus, Mail, Clock, CheckCircle, XCircle, Trash2, Users, Copy, Link2, Check, Phone } from "lucide-react";
 import { z } from "zod";
 
 function copyToClipboard(text: string): Promise<boolean> {
@@ -67,6 +67,7 @@ interface StaffMember {
   email: string;
   firstName?: string;
   lastName?: string;
+  phoneNumber?: string | null;
   role: string;
   joinedAt?: string;
   isActive: boolean;
@@ -148,6 +149,22 @@ export default function StaffManagement() {
   });
 
   const [confirmRemoveMember, setConfirmRemoveMember] = useState<StaffMember | null>(null);
+  const [editPhoneMember, setEditPhoneMember] = useState<StaffMember | null>(null);
+  const [editPhoneValue, setEditPhoneValue] = useState("");
+
+  const updatePhoneMutation = useMutation({
+    mutationFn: async ({ id, phoneNumber }: { id: string; phoneNumber: string }) => {
+      return await apiRequest(`/api/staff/${id}`, "PATCH", { phoneNumber });
+    },
+    onSuccess: () => {
+      toast({ title: "Mobile number updated", description: "The team member's sign-in code will go to this number." });
+      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
+      setEditPhoneMember(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update", description: error.message || "Please try again.", variant: "destructive" });
+    },
+  });
 
   const deactivateStaffMutation = useMutation({
     mutationFn: async (staffId: string) => {
@@ -340,6 +357,14 @@ export default function StaffManagement() {
                         }
                       </div>
                       <div className="text-sm text-gray-500">{member.email}</div>
+                      <div className="text-sm mt-0.5 flex items-center gap-1">
+                        <Phone className="h-3 w-3 text-gray-400" />
+                        {member.phoneNumber ? (
+                          <span className="text-gray-600">{member.phoneNumber}</span>
+                        ) : (
+                          <span className="text-amber-600">No mobile — cannot sign in</span>
+                        )}
+                      </div>
                       <div className="flex items-center space-x-2 mt-1">
                         <Badge variant="secondary" className="text-xs">
                           {member.role}
@@ -351,16 +376,28 @@ export default function StaffManagement() {
                         )}
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setConfirmRemoveMember(member)}
-                      disabled={member.id === user.id}
-                      className="text-red-600 hover:text-red-800"
-                      title="Remove from team"
-                    >
-                      <XCircle className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setEditPhoneMember(member); setEditPhoneValue(member.phoneNumber ?? ""); }}
+                        className="text-blue-600 hover:text-blue-800"
+                        title="Edit mobile number"
+                        data-testid={`button-edit-phone-${member.id}`}
+                      >
+                        <Phone className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmRemoveMember(member)}
+                        disabled={member.id === user.id}
+                        className="text-red-600 hover:text-red-800"
+                        title="Remove from team"
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -454,6 +491,45 @@ export default function StaffManagement() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Mobile Number Dialog */}
+      <Dialog open={!!editPhoneMember} onOpenChange={(open) => { if (!open) setEditPhoneMember(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Mobile Number</DialogTitle>
+            <DialogDescription>
+              This number receives the 6-digit sign-in code for{" "}
+              <strong>
+                {editPhoneMember?.firstName && editPhoneMember?.lastName
+                  ? `${editPhoneMember.firstName} ${editPhoneMember.lastName}`
+                  : editPhoneMember?.email}
+              </strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <Input
+              type="tel"
+              autoComplete="tel"
+              placeholder="0412 345 678"
+              value={editPhoneValue}
+              onChange={(e) => setEditPhoneValue(e.target.value)}
+              data-testid="input-staff-phone"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditPhoneMember(null)} disabled={updatePhoneMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => editPhoneMember && updatePhoneMutation.mutate({ id: editPhoneMember.id, phoneNumber: editPhoneValue })}
+                disabled={updatePhoneMutation.isPending || !editPhoneValue.trim()}
+                data-testid="button-save-staff-phone"
+              >
+                {updatePhoneMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm Remove Dialog */}
       <Dialog open={!!confirmRemoveMember} onOpenChange={(open) => { if (!open) setConfirmRemoveMember(null); }}>

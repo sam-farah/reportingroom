@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, XCircle, Loader2, UserPlus, LogIn } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, UserPlus, LogIn, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -39,10 +39,23 @@ const registerSchema = z.object({
   confirmPassword: z.string(),
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
+  phoneNumber: z.string().min(6, "A mobile number is required for sign-in codes"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"],
 });
+
+// apiRequest throws Error("<status>: <body>"); pull out a clean message.
+function parseErrorMessage(error: Error): string {
+  const raw = error?.message || "";
+  const m = raw.match(/^\d{3}:\s*([\s\S]*)$/);
+  if (!m) return raw;
+  try {
+    return JSON.parse(m[1]).message || m[1];
+  } catch {
+    return m[1];
+  }
+}
 
 export default function InvitationPage() {
   const { token } = useParams();
@@ -63,8 +76,13 @@ export default function InvitationPage() {
 
   const registerForm = useForm({
     resolver: zodResolver(registerSchema),
-    defaultValues: { email: "", password: "", confirmPassword: "", firstName: "", lastName: "" },
+    defaultValues: { email: "", password: "", confirmPassword: "", firstName: "", lastName: "", phoneNumber: "" },
   });
+
+  // Two-step sign-in state for the "Sign In" tab (existing accounts need an SMS code).
+  const [twoFactorStep, setTwoFactorStep] = useState(false);
+  const [phoneHint, setPhoneHint] = useState("");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
 
   useEffect(() => {
     if (token) {
@@ -98,7 +116,31 @@ export default function InvitationPage() {
 
   const loginMutation = useMutation({
     mutationFn: async (data: z.infer<typeof loginSchema>) => {
-      return await apiRequest("/api/auth/login", "POST", data);
+      const res = await apiRequest("/api/auth/login", "POST", data);
+      return await res.json();
+    },
+    onSuccess: (res: any) => {
+      if (res?.requiresTwoFactor) {
+        setPhoneHint(res.phoneHint || "");
+        setTwoFactorStep(true);
+        setTwoFactorCode("");
+        toast({ title: "Code sent", description: `We've texted a 6-digit code to ${res.phoneHint || "your mobile"}.` });
+      }
+    },
+    onError: (error: Error) => {
+      const msg = parseErrorMessage(error);
+      toast({
+        title: "Login Failed",
+        description: msg || "Invalid email or password.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const verify2faMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const res = await apiRequest("/api/auth/verify-2fa", "POST", { code });
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
@@ -106,8 +148,8 @@ export default function InvitationPage() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Login Failed",
-        description: error.message || "Invalid email or password.",
+        title: "Verification failed",
+        description: parseErrorMessage(error) || "Incorrect code. Please try again.",
         variant: "destructive",
       });
     },
@@ -327,6 +369,20 @@ export default function InvitationPage() {
                   />
                   <FormField
                     control={registerForm.control}
+                    name="phoneNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mobile Number</FormLabel>
+                        <FormControl>
+                          <Input type="tel" autoComplete="tel" placeholder="0412 345 678" {...field} />
+                        </FormControl>
+                        <p className="text-xs text-gray-500">We'll text you a 6-digit code each time you sign in.</p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={registerForm.control}
                     name="password"
                     render={({ field }) => (
                       <FormItem>
@@ -363,43 +419,83 @@ export default function InvitationPage() {
             </TabsContent>
 
             <TabsContent value="login" className="space-y-4 mt-4">
-              <Form {...loginForm}>
-                <form onSubmit={loginForm.handleSubmit((data) => loginMutation.mutate(data))} className="space-y-3">
-                  <FormField
-                    control={loginForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={loginForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
-                    {loginMutation.isPending ? (
-                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Signing in...</>
+              {!twoFactorStep ? (
+                <Form {...loginForm}>
+                  <form onSubmit={loginForm.handleSubmit((data) => loginMutation.mutate(data))} className="space-y-3">
+                    <FormField
+                      control={loginForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input type="email" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={loginForm.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <Input type="password" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
+                      {loginMutation.isPending ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Signing in...</>
+                      ) : (
+                        <><LogIn className="w-4 h-4 mr-2" />Sign In & Join</>
+                      )}
+                    </Button>
+                  </form>
+                </Form>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                    <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>We've texted a 6-digit code{phoneHint ? ` to ${phoneHint}` : " to your mobile"}. Enter it below to finish signing in.</span>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Verification code</label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      placeholder="123456"
+                      className="text-center text-2xl tracking-[0.5em] font-mono"
+                      value={twoFactorCode}
+                      onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    />
+                  </div>
+                  <Button
+                    className="w-full"
+                    disabled={verify2faMutation.isPending || twoFactorCode.length !== 6}
+                    onClick={() => verify2faMutation.mutate(twoFactorCode)}
+                  >
+                    {verify2faMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verifying...</>
                     ) : (
-                      <><LogIn className="w-4 h-4 mr-2" />Sign In & Join</>
+                      <><ShieldCheck className="w-4 h-4 mr-2" />Verify &amp; Join</>
                     )}
                   </Button>
-                </form>
-              </Form>
+                  <button
+                    type="button"
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                    onClick={() => { setTwoFactorStep(false); setTwoFactorCode(""); }}
+                  >
+                    Back
+                  </button>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>

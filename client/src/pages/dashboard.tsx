@@ -1,9 +1,12 @@
-import { useState } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone, MessageSquare, MessageCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone, MessageSquare, MessageCircle, Loader2 } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useChatSocket } from "@/hooks/useChatSocket";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -78,6 +81,7 @@ export default function Dashboard() {
   const [preLinkedExamDate, setPreLinkedExamDate] = useState<string>("");
   const [preLinkedTab, setPreLinkedTab] = useState<"upload" | "draw">("upload");
   const [openReportId, setOpenReportId] = useState<number | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -216,7 +220,13 @@ export default function Dashboard() {
               )}
             </button>
 
-            <div className="hidden sm:flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setAccountOpen(true)}
+              className="hidden sm:flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-gray-100 transition-colors"
+              title="My account"
+              data-testid="button-my-account"
+            >
               <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                 <User className="w-3.5 h-3.5 text-blue-600" />
               </div>
@@ -226,7 +236,7 @@ export default function Dashboard() {
                 </div>
                 <Badge variant="outline" className="text-[10px] py-0 px-1 h-4 mt-0.5">{roleLabel}</Badge>
               </div>
-            </div>
+            </button>
 
             <Button
               variant="ghost"
@@ -432,6 +442,77 @@ export default function Dashboard() {
         <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} preLinkedExamDate={preLinkedExamDate} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedExamDate(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       )}
 
+      <AccountDialog open={accountOpen} onOpenChange={setAccountOpen} currentPhone={(user as any)?.phoneNumber ?? ""} />
+
     </div>
+  );
+}
+
+function AccountDialog({ open, onOpenChange, currentPhone }: { open: boolean; onOpenChange: (v: boolean) => void; currentPhone: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [phone, setPhone] = useState(currentPhone);
+
+  useEffect(() => {
+    if (open) setPhone(currentPhone);
+  }, [open, currentPhone]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/api/auth/profile", "PATCH", { phoneNumber: phone });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Mobile number updated", description: "Your sign-in code will be sent to this number." });
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      const raw = error?.message || "";
+      let msg = raw;
+      const m = raw.match(/^\d{3}:\s*([\s\S]*)$/);
+      if (m) {
+        try { msg = JSON.parse(m[1]).message || m[1]; } catch { msg = m[1]; }
+      }
+      toast({ title: "Could not update", description: msg || "Please try again.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <User className="w-5 h-5 text-blue-600" />
+            My Account
+          </DialogTitle>
+          <DialogDescription>
+            Your mobile number is used to text you a 6-digit code each time you sign in.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 pt-1">
+          <div>
+            <label className="text-sm font-medium text-gray-700">Mobile number</label>
+            <Input
+              type="tel"
+              autoComplete="tel"
+              placeholder="0412 345 678"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              data-testid="input-account-phone"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saveMutation.isPending}>
+              Cancel
+            </Button>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !phone.trim()} data-testid="button-save-account-phone">
+              {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Save
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

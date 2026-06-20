@@ -18,6 +18,7 @@ const registerSchema = z.object({
   confirmPassword: z.string(),
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
+  phoneNumber: z.string().min(6, "A mobile number is required for sign-in codes"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"],
@@ -38,6 +39,7 @@ export default function RegisterPage() {
       confirmPassword: "",
       firstName: "",
       lastName: "",
+      phoneNumber: "",
     },
   });
 
@@ -115,6 +117,20 @@ export default function RegisterPage() {
                     <FormControl>
                       <Input type="email" autoComplete="username" placeholder="you@example.com" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phoneNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Mobile Number</FormLabel>
+                    <FormControl>
+                      <Input type="tel" autoComplete="tel" placeholder="0412 345 678" {...field} />
+                    </FormControl>
+                    <p className="text-xs text-gray-500">We'll text you a 6-digit code each time you sign in.</p>
                     <FormMessage />
                   </FormItem>
                 )}

@@ -6441,6 +6441,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update the signed-in user's own mobile number (used for the SMS sign-in code)
+  app.patch('/api/auth/profile', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { phoneNumber } = req.body;
+      const phone = normalisePhone(phoneNumber);
+      if (!phone) {
+        return res.status(400).json({ message: "Please enter a valid mobile number." });
+      }
+      const updated = await storage.updateUserPhone(userId, phone);
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { passwordHash, twoFactorCodeHash, twoFactorCodeExpiresAt, twoFactorAttempts, twoFactorLastSentAt, ...safe } = updated as any;
+      res.json(safe);
+    } catch (error) {
+      console.error("Error updating own phone:", error);
+      res.status(500).json({ message: "Failed to update mobile number" });
+    }
+  });
+
+  // Owner/admin: set a staff member's mobile number (clinic-scoped)
+  app.patch('/api/staff/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      if (!currentUser?.clinicId) {
+        return res.status(400).json({ message: "User not associated with a clinic" });
+      }
+      if (currentUser.role !== 'clinic_owner' && currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Only clinic owners and admins can manage staff" });
+      }
+      const targetId = req.params.id;
+      const target = await storage.getUser(targetId);
+      if (!target || target.clinicId !== currentUser.clinicId) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+      const { phoneNumber } = req.body;
+      const phone = normalisePhone(phoneNumber);
+      if (!phone) {
+        return res.status(400).json({ message: "Please enter a valid mobile number." });
+      }
+      const updated = await storage.updateUserPhone(targetId, phone);
+      if (!updated) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+      const { passwordHash, twoFactorCodeHash, twoFactorCodeExpiresAt, twoFactorAttempts, twoFactorLastSentAt, ...safe } = updated as any;
+      res.json(safe);
+    } catch (error) {
+      console.error("Error updating staff phone:", error);
+      res.status(500).json({ message: "Failed to update mobile number" });
+    }
+  });
+
   // Login audit — clinic-scoped, owner/admin only
   app.get('/api/audit/logins', isAuthenticated, async (req: any, res) => {
     try {

@@ -197,6 +197,8 @@ export const FieldEncryption = {
     'indication',
     'address',
     'phone',
+    'phoneNumber',
+    'phone_number',
     'email'
   ],
 

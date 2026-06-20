@@ -4,6 +4,47 @@ import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { storage } from "./storage";
+import { sendSms, normalisePhone, isSmsConfigured } from "./twilio";
+
+// Strip every sensitive field from a user row before sending it to the client.
+function stripSensitive(user: any) {
+  const {
+    passwordHash,
+    twoFactorCodeHash,
+    twoFactorCodeExpiresAt,
+    twoFactorAttempts,
+    twoFactorLastSentAt,
+    ...safe
+  } = user;
+  return safe;
+}
+
+// Show only the last 3 digits of a mobile number, e.g. "•••• ••• 123".
+function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const last3 = digits.slice(-3);
+  return `•••• ••• ${last3}`;
+}
+
+const TWO_FACTOR_TTL_MS = 5 * 60 * 1000; // codes expire after 5 minutes
+const TWO_FACTOR_MAX_ATTEMPTS = 5;
+const TWO_FACTOR_RESEND_COOLDOWN_MS = 30 * 1000;
+const PENDING_2FA_TTL_MS = 10 * 60 * 1000; // pending login must verify within 10 min
+
+// Generate a 6-digit numeric code, hash it, store it on the user, and SMS it.
+// Returns a masked phone hint for the UI. Throws if the SMS send fails.
+async function issueTwoFactorCode(user: any): Promise<string> {
+  const phone = normalisePhone(user.phoneNumber);
+  if (!phone) throw new Error("NO_PHONE");
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+  const codeHash = await bcrypt.hash(code, 10);
+  await storage.setUserTwoFactorCode(user.id, codeHash, new Date(Date.now() + TWO_FACTOR_TTL_MS));
+  await sendSms({
+    to: phone,
+    body: `Your Reporting Room verification code is ${code}. It expires in 5 minutes. If you didn't try to sign in, ignore this message.`,
+  });
+  return maskPhone(phone);
+}
 
 function clientIp(req: any): string | null {
   const xf = (req.headers?.["x-forwarded-for"] || "") as string;
@@ -27,6 +68,7 @@ async function safeAudit(entry: any): Promise<void> {
 declare module "express-session" {
   interface SessionData {
     userId: string;
+    pending2fa?: { userId: string; at: number };
   }
 }
 
@@ -94,7 +136,7 @@ export async function setupAuth(app: Express) {
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, firstName, lastName } = req.body;
+      const { email, password, firstName, lastName, phoneNumber } = req.body;
 
       if (!email || !password) {
         return res.status(400).json({ message: "Email and password are required" });
@@ -102,6 +144,12 @@ export async function setupAuth(app: Express) {
 
       if (password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+
+      // A mobile number is mandatory — it's required for the SMS sign-in code.
+      const phone = normalisePhone(phoneNumber);
+      if (!phone) {
+        return res.status(400).json({ message: "A valid mobile number is required" });
       }
 
       const existingUser = await storage.getUserByEmail(email);
@@ -117,6 +165,7 @@ export async function setupAuth(app: Express) {
         email,
         firstName: firstName || null,
         lastName: lastName || null,
+        phoneNumber: phone,
         passwordHash,
         role: "sonographer",
         isActive: true,
@@ -124,13 +173,12 @@ export async function setupAuth(app: Express) {
 
       req.session.userId = user.id;
 
-      const { passwordHash: _, ...safeUser } = user;
       req.session.save((err) => {
         if (err) {
           console.error("Session save error:", err);
           return res.status(500).json({ message: "Registration failed. Please try again." });
         }
-        res.status(201).json(safeUser);
+        res.status(201).json(stripSensitive(user));
       });
     } catch (error) {
       console.error("Registration error:", error);
@@ -163,20 +211,132 @@ export async function setupAuth(app: Express) {
         return res.status(403).json({ message: "Your account has been deactivated" });
       }
 
-      req.session.userId = user.id;
+      // Password is correct — now require the SMS second factor for everyone.
+      if (!isSmsConfigured()) {
+        return res.status(503).json({ message: "Two-step sign-in is temporarily unavailable. Please contact your clinic administrator." });
+      }
+      if (!normalisePhone(user.phoneNumber)) {
+        await safeAudit({ userId: user.id, email, clinicId: user.clinicId ?? null, eventType: "login_failed", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: "no_phone" });
+        return res.status(403).json({ code: "NO_PHONE", message: "No mobile number is on file for your account. Please ask your clinic administrator to add one before you can sign in." });
+      }
 
-      const { passwordHash: _, ...safeUser } = user;
+      let phoneHint: string;
+      try {
+        phoneHint = await issueTwoFactorCode(user);
+      } catch (smsErr: any) {
+        if (smsErr?.message === "NO_PHONE") {
+          return res.status(403).json({ code: "NO_PHONE", message: "No mobile number is on file for your account. Please ask your clinic administrator to add one before you can sign in." });
+        }
+        console.error("2FA SMS send error:", smsErr);
+        return res.status(502).json({ message: "We couldn't send your verification code by SMS. Please try again shortly." });
+      }
+
+      // Hold the login as "pending" — the session is NOT authenticated until the
+      // code is verified (req.session.userId is only set in /verify-2fa).
+      (req.session as any).pending2fa = { userId: user.id, at: Date.now() };
       req.session.save((err) => {
         if (err) {
           console.error("Session save error:", err);
           return res.status(500).json({ message: "Login failed. Please try again." });
         }
-        void safeAudit({ userId: user.id, email, clinicId: user.clinicId ?? null, eventType: "login_success", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: null });
-        res.json(safeUser);
+        res.json({ requiresTwoFactor: true, phoneHint });
       });
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Login failed. Please try again." });
+    }
+  });
+
+  // Step 2 of login: verify the 6-digit SMS code and complete authentication.
+  app.post("/api/auth/verify-2fa", async (req: any, res) => {
+    try {
+      const { code } = req.body;
+      const pending = req.session?.pending2fa;
+      if (!pending?.userId || (Date.now() - pending.at) > PENDING_2FA_TTL_MS) {
+        delete req.session.pending2fa;
+        return res.status(440).json({ message: "Your sign-in session expired. Please sign in again." });
+      }
+      if (!code || !/^\d{6}$/.test(String(code).trim())) {
+        return res.status(400).json({ message: "Please enter the 6-digit code." });
+      }
+
+      const user = await storage.getUser(pending.userId);
+      if (!user || !user.twoFactorCodeHash || !user.twoFactorCodeExpiresAt) {
+        return res.status(400).json({ message: "Your code has expired. Please request a new one." });
+      }
+      if (new Date(user.twoFactorCodeExpiresAt).getTime() < Date.now()) {
+        await storage.clearUserTwoFactorCode(user.id);
+        return res.status(400).json({ message: "Your code has expired. Please request a new one." });
+      }
+      // Atomically count this attempt FIRST, then compare. Doing the increment
+      // before the bcrypt compare means concurrent requests each get a distinct,
+      // serialized attempt number from the DB, so the max-attempt ceiling cannot
+      // be raced past by firing many verifications in parallel.
+      const attempts = await storage.incrementTwoFactorAttempts(user.id);
+      if (attempts > TWO_FACTOR_MAX_ATTEMPTS) {
+        await storage.clearUserTwoFactorCode(user.id);
+        delete req.session.pending2fa;
+        await safeAudit({ userId: user.id, email: user.email, clinicId: user.clinicId ?? null, eventType: "login_failed", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: "2fa_too_many_attempts" });
+        return res.status(429).json({ message: "Too many incorrect codes. Please sign in again." });
+      }
+
+      const valid = await bcrypt.compare(String(code).trim(), user.twoFactorCodeHash);
+      if (!valid) {
+        await safeAudit({ userId: user.id, email: user.email, clinicId: user.clinicId ?? null, eventType: "login_failed", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: "bad_2fa_code" });
+        const left = Math.max(0, TWO_FACTOR_MAX_ATTEMPTS - attempts);
+        if (left <= 0) {
+          await storage.clearUserTwoFactorCode(user.id);
+          delete req.session.pending2fa;
+          return res.status(429).json({ message: "Too many incorrect codes. Please sign in again." });
+        }
+        return res.status(401).json({ message: `Incorrect code. ${left} attempt${left === 1 ? "" : "s"} remaining.` });
+      }
+
+      // Success — clear the code, authenticate the session.
+      await storage.clearUserTwoFactorCode(user.id);
+      delete req.session.pending2fa;
+      req.session.userId = user.id;
+      req.session.save((err: any) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ message: "Login failed. Please try again." });
+        }
+        void safeAudit({ userId: user.id, email: user.email, clinicId: user.clinicId ?? null, eventType: "login_success", ipAddress: clientIp(req), userAgent: clientUserAgent(req), failureReason: null });
+        res.json(stripSensitive(user));
+      });
+    } catch (error) {
+      console.error("Verify 2FA error:", error);
+      res.status(500).json({ message: "Verification failed. Please try again." });
+    }
+  });
+
+  // Resend a fresh SMS code for an in-progress login (rate-limited).
+  app.post("/api/auth/resend-2fa", async (req: any, res) => {
+    try {
+      const pending = req.session?.pending2fa;
+      if (!pending?.userId || (Date.now() - pending.at) > PENDING_2FA_TTL_MS) {
+        delete req.session.pending2fa;
+        return res.status(440).json({ message: "Your sign-in session expired. Please sign in again." });
+      }
+      const user = await storage.getUser(pending.userId);
+      if (!user) {
+        delete req.session.pending2fa;
+        return res.status(440).json({ message: "Your sign-in session expired. Please sign in again." });
+      }
+      if (user.twoFactorLastSentAt && (Date.now() - new Date(user.twoFactorLastSentAt).getTime()) < TWO_FACTOR_RESEND_COOLDOWN_MS) {
+        return res.status(429).json({ message: "Please wait a few seconds before requesting another code." });
+      }
+      let phoneHint: string;
+      try {
+        phoneHint = await issueTwoFactorCode(user);
+      } catch (smsErr: any) {
+        console.error("2FA resend error:", smsErr);
+        return res.status(502).json({ message: "We couldn't send your verification code by SMS. Please try again shortly." });
+      }
+      res.json({ requiresTwoFactor: true, phoneHint });
+    } catch (error) {
+      console.error("Resend 2FA error:", error);
+      res.status(500).json({ message: "Could not resend the code. Please try again." });
     }
   });
 
@@ -186,8 +346,7 @@ export async function setupAuth(app: Express) {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      const { passwordHash: _, ...safeUser } = user;
-      res.json(safeUser);
+      res.json(stripSensitive(user));
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });

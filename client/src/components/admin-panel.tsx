@@ -3175,6 +3175,13 @@ function WaitAnalyticsPanel() {
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
     date: "20 June 2026",
+    tag: "New",
+    title: "Two-step sign-in by text message",
+    detail:
+      "Signing in is now more secure. After entering your password, we text a 6-digit code to your mobile number — you enter that code to finish signing in. A mobile number is now required for every account: you can set or change your own under \"My Account\" (click your name in the top-right), and clinic owners/admins can set a team member's number on the Team page. If no mobile number is on file, that person can't sign in until one is added.",
+  },
+  {
+    date: "20 June 2026",
     tag: "Improve",
     title: "Consent is only ever asked once a day",
     detail:

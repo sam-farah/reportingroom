@@ -135,6 +135,10 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
+  updateUserPhone(userId: string, phoneNumber: string | null): Promise<User | undefined>;
+  setUserTwoFactorCode(userId: string, codeHash: string, expiresAt: Date): Promise<void>;
+  clearUserTwoFactorCode(userId: string): Promise<void>;
+  incrementTwoFactorAttempts(userId: string): Promise<number>;
   
   // Clinic operations
   getAllClinics(): Promise<Clinic[]>;
@@ -430,18 +434,23 @@ export class DatabaseStorage implements IStorage {
 
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+    return user ? (FieldEncryption.decryptFields(user) as User) : undefined;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user || undefined;
+    return user ? (FieldEncryption.decryptFields(user) as User) : undefined;
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    const values = { ...userData } as any;
+    // Encrypt the mobile number at rest (it's an auth channel + PII).
+    if (values.phoneNumber && typeof values.phoneNumber === "string" && !FieldEncryption.isEncrypted(values.phoneNumber)) {
+      values.phoneNumber = MedicalDataEncryption.encryptMedicalData(values.phoneNumber);
+    }
     const result = await db
       .insert(users)
-      .values(userData)
+      .values(values)
       .onConflictDoUpdate({
         target: users.id,
         set: {
@@ -454,6 +463,50 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return (result as any)[0] as User;
+  }
+
+  async updateUserPhone(userId: string, phoneNumber: string | null): Promise<User | undefined> {
+    const stored = phoneNumber && !FieldEncryption.isEncrypted(phoneNumber)
+      ? MedicalDataEncryption.encryptMedicalData(phoneNumber)
+      : phoneNumber;
+    const [user] = await db
+      .update(users)
+      .set({ phoneNumber: stored, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return user ? (FieldEncryption.decryptFields(user) as User) : undefined;
+  }
+
+  async setUserTwoFactorCode(userId: string, codeHash: string, expiresAt: Date): Promise<void> {
+    await db
+      .update(users)
+      .set({
+        twoFactorCodeHash: codeHash,
+        twoFactorCodeExpiresAt: expiresAt,
+        twoFactorAttempts: 0,
+        twoFactorLastSentAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async clearUserTwoFactorCode(userId: string): Promise<void> {
+    await db
+      .update(users)
+      .set({
+        twoFactorCodeHash: null,
+        twoFactorCodeExpiresAt: null,
+        twoFactorAttempts: 0,
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async incrementTwoFactorAttempts(userId: string): Promise<number> {
+    const [row] = await db
+      .update(users)
+      .set({ twoFactorAttempts: sql`${users.twoFactorAttempts} + 1` })
+      .where(eq(users.id, userId))
+      .returning({ attempts: users.twoFactorAttempts });
+    return row?.attempts ?? 0;
   }
 
   // Clinic operations
