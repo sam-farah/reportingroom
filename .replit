@@ -53,4 +53,4 @@ APP_URL = "https://reportingroom.net"
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 20000
+timeoutMs = 180000
