@@ -51,6 +51,29 @@ if (Capacitor.isNativePlatform()) {
     passive: true,
     capture: true,
   });
+
+  // ── TEMPORARY build marker (native only) ──
+  // A tiny badge in the bottom-right corner so we can confirm at a glance
+  // that the iPad is actually running the latest build. Remove once the
+  // sync pipeline is verified.
+  const badge = document.createElement("div");
+  badge.textContent = "BUILD 2026-06-21 #1";
+  badge.style.cssText = [
+    "position:fixed",
+    "bottom:4px",
+    "right:6px",
+    "z-index:2147483647",
+    "font:600 10px -apple-system,system-ui,sans-serif",
+    "color:#fff",
+    "background:rgba(220,38,38,0.85)",
+    "padding:2px 6px",
+    "border-radius:6px",
+    "pointer-events:none",
+  ].join(";");
+  document.addEventListener("DOMContentLoaded", () =>
+    document.body.appendChild(badge),
+  );
+  if (document.body) document.body.appendChild(badge);
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
