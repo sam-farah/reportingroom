@@ -10,6 +10,7 @@
 - [Worksheet labelling & merge](worksheet-labelling.md) — labelled image is a superset of the raw upload; on label, delete the raw worksheet but NEVER clear labelledWorksheetId (re-label loop); timeline filter must show primary worksheetId.
 - [Kiosk check-in privacy](kiosk-checkin-privacy.md) — public kiosk search must never list patients; return one match or ask DOB; scope to clinic-or-null; guard stale responses.
 - [Verbal consent capture](verbal-consent.md) — consent timestamp lives on the appointment; reports inherit it (like sonographer inheritance) rather than threading through the client upload flow.
+- [Capacitor local plugin registration](capacitor-local-plugin-registration.md) — app-local iOS plugins fail isPluginAvailable in Cap 6+; register via registerPluginInstance in a CAPBridgeViewController subclass, not the .m macro.
 - [PencilKit / worksheet drawing](pencilkit-drawing.md) — TWO separate drawing UIs (draw.tsx is the primary one, drawing-canvas.tsx the other); native export must crop to template aspect, re-import must keep canvas geometry stable.
 - [Report → patient file linking](report-patient-linking.md) — patient file queries reports strictly by patientId; worksheet-without-patient → orphaned report; auto-link only on unambiguous UR or single name+DOB match.
 - [Appointment clinic scoping & kiosk registered-state](appointment-clinic-scoping.md) — set appointment clinicId from session (never client); null clinic_id breaks kiosk consent/registration; "registered" = ANY completed token, not just latest.
