@@ -6,3 +6,9 @@ id = "Vy493ejG3tvllON1Cca7L"
 uri = "file://screenshots/_consent_preview.jpg"
 type = "image"
 title = "Consent form header (current output)"
+
+[[outputs]]
+id = "zJjjft3E2jn3YqUBTz7JL"
+uri = "file://exports/reporting-room-ipad.zip"
+type = "unspecified"
+title = "Reporting Room — iPad project (for Xcode on a Mac)"
