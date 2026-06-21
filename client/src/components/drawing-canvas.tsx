@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Palette, Eraser, RotateCcw, Save, Maximize2, X, ZoomIn, ZoomOut, Minimize } from 'lucide-react';
+import { Palette, Eraser, RotateCcw, Save, Maximize2, X, ZoomIn, ZoomOut, Minimize, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { isPencilKitAvailable, presentPencilCanvas } from '@/lib/pencilkit';
 
 interface DrawingCanvasProps {
   onWorksheetCreated: (imageData: string, templateName: string) => void;
@@ -477,9 +478,12 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateKey>('lower-limb-arterial');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoomBadge, setZoomBadge] = useState(1);
+  const [pencilKitPending, setPencilKitPending] = useState(false);
 
   const compactRef = useRef<DrawingSurfaceHandle | null>(null);
   const fullRef = useRef<DrawingSurfaceHandle | null>(null);
+
+  const hasPencilKit = isPencilKitAvailable();
 
   const saveFromFullscreen = () => {
     const data = fullRef.current?.toDataURL();
@@ -488,6 +492,24 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
     setIsFullscreen(false);
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     toast({ title: 'Worksheet Created', description: `${VASCULAR_TEMPLATES[selectedTemplate].name} worksheet has been created successfully` });
+  };
+
+  // Open native PencilKit canvas with the current template rendered as background.
+  const openPencilKit = async () => {
+    setPencilKitPending(true);
+    try {
+      // Render the template to a data URL to use as PencilKit background.
+      const bgDataUrl = compactRef.current?.toDataURL() ?? undefined;
+      const result = await presentPencilCanvas({ backgroundDataUrl: bgDataUrl });
+      onWorksheetCreated(result.dataUrl, VASCULAR_TEMPLATES[selectedTemplate].name);
+      toast({ title: 'Worksheet Created', description: `${VASCULAR_TEMPLATES[selectedTemplate].name} worksheet has been created successfully` });
+    } catch (err: any) {
+      if (err?.message !== 'cancelled') {
+        toast({ title: 'PencilKit Error', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      }
+    } finally {
+      setPencilKitPending(false);
+    }
   };
 
   return (
@@ -506,33 +528,48 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
         </div>
 
         <div className="flex flex-wrap gap-2 items-center">
-          <Button variant={currentTool === 'pen' ? 'default' : 'outline'} size="sm" onClick={() => setCurrentTool('pen')}>
-            <Palette className="w-3 h-3 mr-1" /> Pen
-          </Button>
-          <Button variant={currentTool === 'eraser' ? 'default' : 'outline'} size="sm" onClick={() => setCurrentTool('eraser')}>
-            <Eraser className="w-3 h-3 mr-1" /> Eraser
-          </Button>
+          {hasPencilKit ? (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={openPencilKit}
+              disabled={pencilKitPending}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Pencil className="w-3 h-3 mr-1" />
+              {pencilKitPending ? 'Opening…' : 'Draw with Apple Pencil'}
+            </Button>
+          ) : (
+            <>
+              <Button variant={currentTool === 'pen' ? 'default' : 'outline'} size="sm" onClick={() => setCurrentTool('pen')}>
+                <Palette className="w-3 h-3 mr-1" /> Pen
+              </Button>
+              <Button variant={currentTool === 'eraser' ? 'default' : 'outline'} size="sm" onClick={() => setCurrentTool('eraser')}>
+                <Eraser className="w-3 h-3 mr-1" /> Eraser
+              </Button>
 
-          <Separator orientation="vertical" className="h-6" />
+              <Separator orientation="vertical" className="h-6" />
 
-          <Button variant="outline" size="sm" onClick={() => compactRef.current?.zoomOut()}>
-            <ZoomOut className="w-3 h-3" />
-          </Button>
-          <span className="text-xs tabular-nums w-10 text-center">{Math.round(zoomBadge * 100)}%</span>
-          <Button variant="outline" size="sm" onClick={() => compactRef.current?.zoomIn()}>
-            <ZoomIn className="w-3 h-3" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => compactRef.current?.resetView()}>
-            <Minimize className="w-3 h-3 mr-1" /> Reset
-          </Button>
+              <Button variant="outline" size="sm" onClick={() => compactRef.current?.zoomOut()}>
+                <ZoomOut className="w-3 h-3" />
+              </Button>
+              <span className="text-xs tabular-nums w-10 text-center">{Math.round(zoomBadge * 100)}%</span>
+              <Button variant="outline" size="sm" onClick={() => compactRef.current?.zoomIn()}>
+                <ZoomIn className="w-3 h-3" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => compactRef.current?.resetView()}>
+                <Minimize className="w-3 h-3 mr-1" /> Reset
+              </Button>
 
-          <Separator orientation="vertical" className="h-6" />
+              <Separator orientation="vertical" className="h-6" />
 
-          <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm"><Maximize2 className="w-3 h-3 mr-1" /> Full Screen</Button>
-            </DialogTrigger>
-          </Dialog>
+              <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm"><Maximize2 className="w-3 h-3 mr-1" /> Full Screen</Button>
+                </DialogTrigger>
+              </Dialog>
+            </>
+          )}
         </div>
 
         <div className="border border-gray-300 rounded-lg overflow-hidden" style={{ height: 320 }}>

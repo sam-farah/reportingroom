@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { isPencilKitAvailable, presentPencilCanvas } from '@/lib/pencilkit';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { capitalizeWords } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -59,7 +60,10 @@ export default function Clinic() {
   const [signatureMode, setSignatureMode] = useState<"upload" | "draw">("upload");
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [pencilKitSignatureDataUrl, setPencilKitSignatureDataUrl] = useState<string | null>(null);
+  const [pencilKitSigPending, setPencilKitSigPending] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hasPencilKit = isPencilKitAvailable();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -379,10 +383,13 @@ export default function Clinic() {
           signatureUrl = url;
         }
       } else if (signatureMode === "draw") {
-        const blob = await getCanvasBlob();
-        if (blob) {
+        // PencilKit capture takes precedence over HTML5 canvas when available
+        const sigBlob = pencilKitSignatureDataUrl
+          ? dataUrlToBlob(pencilKitSignatureDataUrl)
+          : await getCanvasBlob();
+        if (sigBlob) {
           const formData = new FormData();
-          formData.append('signature', blob, 'signature.png');
+          formData.append('signature', sigBlob, 'signature.png');
           
           const uploadResponse = await fetch('/api/upload-signature', {
             method: 'POST',
@@ -646,13 +653,27 @@ export default function Clinic() {
   };
 
   const clearCanvas = () => {
+    setPencilKitSignatureDataUrl(null);
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const openPencilKitSignature = async () => {
+    setPencilKitSigPending(true);
+    try {
+      const result = await presentPencilCanvas({});
+      setPencilKitSignatureDataUrl(result.dataUrl);
+      toast({ title: 'Signature captured', description: 'Tap Save to store the signature.' });
+    } catch (err: any) {
+      if (err?.message !== 'cancelled') {
+        toast({ title: 'PencilKit Error', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      }
+    } finally {
+      setPencilKitSigPending(false);
+    }
   };
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -741,6 +762,15 @@ export default function Clinic() {
       }
       canvas.toBlob(resolve, 'image/png');
     });
+  };
+
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const [header, data] = dataUrl.split(',');
+    const mimeType = header.match(/:(.*?);/)?.[1] ?? 'image/png';
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mimeType });
   };
 
   const handleSignatureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1881,34 +1911,60 @@ export default function Clinic() {
                     </TabsContent>
                     
                     <TabsContent value="draw" className="space-y-3">
-                      <div className="border border-gray-300 rounded-lg p-2 bg-white">
-                        <canvas
-                          ref={canvasRef}
-                          width={400}
-                          height={150}
-                          className="border border-gray-200 rounded cursor-crosshair touch-none"
-                          style={{ width: '100%', height: '150px', maxWidth: '400px' }}
-                          onMouseDown={startDrawing}
-                          onMouseMove={draw}
-                          onMouseUp={stopDrawing}
-                          onMouseLeave={stopDrawing}
-                          onTouchStart={startDrawing}
-                          onTouchMove={draw}
-                          onTouchEnd={stopDrawing}
-                        />
-                        <div className="flex justify-between items-center mt-2">
-                          <span className="text-xs text-gray-500">Draw new signature above</span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={clearCanvas}
-                          >
-                            <RotateCcw className="w-3 h-3 mr-1" />
-                            Clear
-                          </Button>
+                      {hasPencilKit ? (
+                        <div className="border border-gray-300 rounded-lg p-4 bg-white space-y-3">
+                          {pencilKitSignatureDataUrl ? (
+                            <img
+                              src={pencilKitSignatureDataUrl}
+                              alt="Captured signature"
+                              className="border border-gray-200 rounded w-full max-h-40 object-contain bg-white"
+                            />
+                          ) : (
+                            <div className="h-24 flex items-center justify-center bg-gray-50 border border-dashed border-gray-300 rounded text-sm text-gray-400">
+                              Tap below to draw your signature
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              onClick={openPencilKitSignature}
+                              disabled={pencilKitSigPending}
+                              className="flex-1"
+                            >
+                              <Pen className="w-4 h-4 mr-2" />
+                              {pencilKitSigPending ? 'Opening…' : pencilKitSignatureDataUrl ? 'Redraw with Apple Pencil' : 'Draw with Apple Pencil'}
+                            </Button>
+                            {pencilKitSignatureDataUrl && (
+                              <Button type="button" variant="outline" size="sm" onClick={clearCanvas}>
+                                <RotateCcw className="w-3 h-3 mr-1" /> Clear
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="border border-gray-300 rounded-lg p-2 bg-white">
+                          <canvas
+                            ref={canvasRef}
+                            width={400}
+                            height={150}
+                            className="border border-gray-200 rounded cursor-crosshair touch-none"
+                            style={{ width: '100%', height: '150px', maxWidth: '400px' }}
+                            onMouseDown={startDrawing}
+                            onMouseMove={draw}
+                            onMouseUp={stopDrawing}
+                            onMouseLeave={stopDrawing}
+                            onTouchStart={startDrawing}
+                            onTouchMove={draw}
+                            onTouchEnd={stopDrawing}
+                          />
+                          <div className="flex justify-between items-center mt-2">
+                            <span className="text-xs text-gray-500">Draw new signature above</span>
+                            <Button type="button" variant="outline" size="sm" onClick={clearCanvas}>
+                              <RotateCcw className="w-3 h-3 mr-1" /> Clear
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -2019,6 +2075,37 @@ export default function Clinic() {
                     </TabsContent>
                     
                     <TabsContent value="draw" className="space-y-3">
+                      {hasPencilKit ? (
+                        <div className="border border-gray-300 rounded-lg p-4 bg-white space-y-3">
+                          {pencilKitSignatureDataUrl ? (
+                            <img
+                              src={pencilKitSignatureDataUrl}
+                              alt="Captured signature"
+                              className="border border-gray-200 rounded w-full max-h-40 object-contain bg-white"
+                            />
+                          ) : (
+                            <div className="h-24 flex items-center justify-center bg-gray-50 border border-dashed border-gray-300 rounded text-sm text-gray-400">
+                              Tap below to draw your signature
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              onClick={openPencilKitSignature}
+                              disabled={pencilKitSigPending}
+                              className="flex-1"
+                            >
+                              <Pen className="w-4 h-4 mr-2" />
+                              {pencilKitSigPending ? 'Opening…' : pencilKitSignatureDataUrl ? 'Redraw with Apple Pencil' : 'Draw with Apple Pencil'}
+                            </Button>
+                            {pencilKitSignatureDataUrl && (
+                              <Button type="button" variant="outline" size="sm" onClick={clearCanvas}>
+                                <RotateCcw className="w-3 h-3 mr-1" /> Clear
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
                       <div className="space-y-3">
                         <canvas
                           ref={canvasRef}
@@ -2044,6 +2131,7 @@ export default function Clinic() {
                           </Button>
                         </div>
                       </div>
+                      )}
                     </TabsContent>
                   </Tabs>
                 </div>

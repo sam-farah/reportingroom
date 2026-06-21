@@ -237,3 +237,68 @@ npx cap sync ios
 # 3. Open Xcode, increment CFBundleVersion, archive and upload
 npx cap open ios
 ```
+
+---
+
+## PencilKit Drawing (Phase 2)
+
+The app includes a custom Capacitor plugin (`PencilKitPlugin`) that routes
+worksheet annotation and physician signature capture to Apple's native
+**PencilKit** engine on iPad. On the web the existing HTML5 canvas is used
+unchanged — no configuration needed.
+
+### How it works
+
+| Surface | iPad (native app) | Web browser |
+|---|---|---|
+| Worksheet annotation | Native `PKCanvasView` modal with system tool palette | HTML5 canvas with zoom & pressure |
+| Physician signature | Native `PKCanvasView` modal | HTML5 canvas |
+
+The plugin lives entirely in the iOS project — no npm package is required.
+
+### Native source files
+
+| File | Purpose |
+|---|---|
+| `ios/App/App/PencilKitPlugin.swift` | Main plugin — presents `PKCanvasView`, composites background+strokes, returns PNG data URL |
+| `ios/App/App/PencilKitPlugin.m` | Objective-C Capacitor registration (required for plugin discovery) |
+| `client/src/lib/pencilkit.ts` | TypeScript bridge — detects availability, calls plugin, exports `isPencilKitAvailable()` and `presentPencilCanvas()` |
+
+### First-time Xcode setup
+
+The plugin files are already committed and Capacitor discovers them
+automatically via the `.m` registration file. After running `pod install`
+and `npx cap sync ios` the plugin is ready — no extra CocoaPods entries
+or Xcode build phase changes are required.
+
+PencilKit is part of the iOS SDK (no third-party dependency). The minimum
+deployment target is iOS 14, which is already set in the `Podfile`.
+
+### Verify the plugin loads
+
+1. Run the app in the **iPad Simulator** (or a real iPad).
+2. Open the worksheet drawing view — you should see a **"Draw with Apple Pencil"** button instead of the Pen / Eraser toolbar.
+3. Tapping it opens the native PKCanvasView with the system tool picker.
+4. Tap **Done** — the composited PNG is returned and the worksheet is saved identically to the HTML5 path.
+
+For signatures (Admin → Physicians → Edit → Draw New tab), the same
+"Draw with Apple Pencil" / "Redraw" flow appears on iPad.
+
+### Troubleshooting
+
+**"PencilKit plugin not found" or button doesn't appear**
+- Ensure `npx cap sync ios` was run after cloning.
+- Check Xcode build errors — `PencilKitPlugin.m` must compile cleanly.
+- In the WKWebView console (Safari → Develop → [device]) check that
+  `window.Capacitor.Plugins.PencilKit` is defined.
+
+**Drawing appears offset or cropped**
+- The canvas is laid out below the 56 pt toolbar. If the device has an
+  unusual safe-area inset, adjust the `topAnchor` constant in
+  `PencilKitPlugin.swift` → `setupBackground` / `setupCanvas`.
+
+**Strokes not visible after Done**
+- The compositing path uses `canvasView.drawing.image(from:scale:)`.
+  Confirm the canvas view's `bounds` are non-zero at export time.
+  A zero-size bounds means the view was not yet laid out — this cannot
+  happen in practice because the user must have drawn something to tap Done.
