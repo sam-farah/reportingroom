@@ -146,3 +146,22 @@ button,
 a {
   touch-action: manipulation;
 }
+
+/* ──────────────────────────────────────────────────────────────
+   iOS scroll-freeze safety net (NATIVE app only)
+   Radix UI (dialogs, selects, dropdowns) uses react-remove-scroll, which
+   locks the page by setting `overflow: hidden !important` on
+   <body data-scroll-locked> while a menu/dialog is open. On iOS WKWebView
+   this lock can fail to release after the menu closes, which freezes
+   scrolling on EVERY screen until the app is restarted. These rules force
+   the body to stay scrollable so the app can never get permanently stuck.
+   Scoped to `html.native-app` (set in main.tsx only inside the Capacitor
+   shell) so normal desktop/web dialog scroll-locking is left untouched.
+   A JS recovery in main.tsx additionally clears a stale lock on touch.
+   ────────────────────────────────────────────────────────────── */
+html.native-app body[data-scroll-locked] {
+  overflow: auto !important;
+  overscroll-behavior: auto !important;
+  margin-right: 0 !important;
+  position: static !important;
+}
