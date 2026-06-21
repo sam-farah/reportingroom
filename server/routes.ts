@@ -1700,7 +1700,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!patientId) {
         const user = await storage.getUser(req.session.userId!);
         if (user?.clinicId) {
-          const candidates = await storage.getPatients(user.clinicId);
+          const allPatients = await storage.getAllPatients();
+          const candidates = allPatients.filter((p) => p.clinicId === user.clinicId);
           const norm = (s: string | null | undefined) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
           const aptName = norm(appointment.patientName);
           const aptDob = norm(appointment.patientDob);

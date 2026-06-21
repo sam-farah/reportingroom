@@ -37,7 +37,7 @@ function detectMeetingProvider(url: string): { name: string; color: string } | n
 function renderBodyWithLinks(body: string) {
   const parts: (string | { url: string })[] = [];
   let lastIndex = 0;
-  for (const m of body.matchAll(URL_REGEX)) {
+  for (const m of Array.from(body.matchAll(URL_REGEX))) {
     if (m.index! > lastIndex) parts.push(body.slice(lastIndex, m.index));
     parts.push({ url: m[0] });
     lastIndex = m.index! + m[0].length;

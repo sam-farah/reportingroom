@@ -287,7 +287,7 @@ function PatientMatchAudit({ requestId, onOpenPatient, onOpenPatientDetails }: {
               Possible {linkedPatient ? "alternatives" : "matches"} found
             </p>
             <div className="space-y-1.5">
-              {candidates.map((c) => (
+              {candidates.map((c: MatchAuditCandidate) => (
                 <div key={c.id} className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded p-2">
                   <Link2 className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
                   <div className="min-w-0 flex-1">
@@ -300,7 +300,7 @@ function PatientMatchAudit({ requestId, onOpenPatient, onOpenPatientDetails }: {
                       {c.phone && <span className="text-xs text-gray-500">{c.phone}</span>}
                     </div>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {c.reasons.map((r) => (
+                      {c.reasons.map((r: string) => (
                         <span key={r} className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">{r}</span>
                       ))}
                     </div>

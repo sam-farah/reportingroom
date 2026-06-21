@@ -1283,14 +1283,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAppointment(appointment: InsertAppointment): Promise<Appointment> {
-    const [newAppointment] = await db.insert(appointments).values(appointment).returning();
+    const [newAppointment] = await db.insert(appointments).values(appointment as typeof appointments.$inferInsert).returning();
     return newAppointment;
   }
 
   async updateAppointment(id: number, appointment: Partial<InsertAppointment>): Promise<Appointment | undefined> {
     const [updated] = await db
       .update(appointments)
-      .set({ ...appointment, updatedAt: new Date() })
+      .set({ ...appointment, updatedAt: new Date() } as Partial<typeof appointments.$inferInsert>)
       .where(eq(appointments.id, id))
       .returning();
     return updated;

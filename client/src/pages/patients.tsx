@@ -688,7 +688,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       });
       if (!blob) return file;
       const baseName = file.name.replace(/\.[^.]+$/, "");
-      return new File([blob], `${baseName}-labelled.jpg`, { type: "image/jpeg" });
+      return new (globalThis.File)([blob], `${baseName}-labelled.jpg`, { type: "image/jpeg" });
     } catch {
       return file;
     }

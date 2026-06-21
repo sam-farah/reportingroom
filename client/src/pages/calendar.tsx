@@ -498,7 +498,7 @@ function PatientApptSearchDialog({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-medium text-gray-900">
-              {format(new Date(a.appointmentDate), "EEE d MMM yyyy")} · {a.appointmentTime}
+              {format(new Date(a.appointmentDate), "EEE d MMM yyyy")} · {format(new Date(a.appointmentDate), "h:mm a")}
             </div>
             <div className="text-xs text-gray-600 mt-0.5 truncate">{a.scanType}</div>
             {a.notes && <div className="text-[11px] text-gray-500 mt-1 line-clamp-2">{a.notes}</div>}
@@ -1179,7 +1179,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     setSelectedPatient(null);
     setPatientSearch("");
     setIsCreatingPatient(false);
-    setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
+    setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", address: "", city: "", state: "", zipCode: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
   };
 
   // Strip a "(Left)" / "(Right)" / "(Bilateral)" suffix that the online referral
@@ -2460,7 +2460,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                                 ))}
                                 <div
                                   className="p-3 flex items-center gap-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer border-t"
-                                  onClick={() => { setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" }); setIsCreatingPatient(true); setShowPatientResults(false); }}
+                                  onClick={() => { setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", address: "", city: "", state: "", zipCode: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" }); setIsCreatingPatient(true); setShowPatientResults(false); }}
                                 >
                                   <UserPlus className="w-4 h-4" />
                                   Create new patient file

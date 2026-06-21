@@ -42,7 +42,7 @@ export default function ReferralFormPage() {
 
   // Restore any saved draft so switching to another window — or a phone
   // reloading the page in the background — doesn't wipe what's been typed.
-  const [form, setForm] = useState(() => {
+  const [form, setForm] = useState<typeof defaultForm>(() => {
     try {
       const raw = localStorage.getItem(draftKey);
       const saved = raw ? JSON.parse(raw) : null;
