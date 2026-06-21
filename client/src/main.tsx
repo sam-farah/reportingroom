@@ -57,7 +57,7 @@ if (Capacitor.isNativePlatform()) {
   // latest build. TAP it to see live diagnostics (plugin availability, scroll
   // state, content height) straight from the device. Remove once verified.
   const badge = document.createElement("div");
-  badge.textContent = "BUILD #3 · tap";
+  badge.textContent = "BUILD #4 · tap";
   badge.style.cssText = [
     "position:fixed",
     "bottom:4px",

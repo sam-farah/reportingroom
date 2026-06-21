@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Save, RotateCcw, Download, Eraser, PenTool, Type, FileText, Undo, Highlighter, Minus, Search, UserCheck, X } from "lucide-react";
-import { resolveUrl } from "@/lib/api";
+import { resolveUrl, loadImageElement } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -309,15 +309,20 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   // Initialize canvas when template is selected and worksheet is created
   useEffect(() => {
     if (selectedTemplate && currentWorksheet && canvasRef.current) {
-      const loadTemplate = () => {
+      const loadTemplate = async () => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        const img = new Image();
-        img.onload = () => {
+        try {
+          // Load via fetch -> data URL (NOT a raw cross-origin <img>) so the
+          // canvas is never tainted. A tainted canvas makes toDataURL() throw
+          // "The operation is insecure", which broke Apple Pencil on the iPad
+          // app where the worksheet template is served from a different origin.
+          const img = await loadImageElement(selectedTemplate.imageUrl);
+
           // Calculate dimensions to fit the available space
           const containerWidth = isFullscreen ? window.innerWidth - 280 : canvas.parentElement?.clientWidth || 800;
           const containerHeight = isFullscreen ? window.innerHeight - 120 : 600;
@@ -342,8 +347,9 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
           setDrawingHistory([initialState]);
           
           console.log(`Template loaded: ${canvas.width}x${canvas.height}, Fullscreen: ${isFullscreen}`);
-        };
-        img.src = resolveUrl(selectedTemplate.imageUrl);
+        } catch (err) {
+          console.error('Failed to load template image', err);
+        }
       };
 
       // Load template immediately

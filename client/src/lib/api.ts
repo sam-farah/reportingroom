@@ -25,6 +25,36 @@ export function resolveUrl(path: string): string {
 }
 
 /**
+ * Loads an image into a same-origin data URL so it can be drawn onto a <canvas>
+ * without tainting it.
+ *
+ * A raw cross-origin <img> (e.g. a worksheet template served from the deployed
+ * backend in the native iPad app) taints the canvas, which makes
+ * canvas.toDataURL() throw "The operation is insecure".  Setting crossOrigin
+ * isn't reliable here because the same template is also rendered as a plain
+ * <img> elsewhere, so a non-CORS copy can already be cached.  Fetching the
+ * bytes (via the native HTTP stack under Capacitor) and converting to a data
+ * URL sidesteps both the CORS check and the image cache entirely.
+ */
+export async function loadImageElement(path: string): Promise<HTMLImageElement> {
+  const res = await fetch(resolveUrl(path), { credentials: "include" });
+  if (!res.ok) throw new Error(`Failed to load image (${res.status})`);
+  const blob = await res.blob();
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+  return await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+/**
  * Installs a global fetch interceptor that transparently rewrites all
  * server-relative paths (starting with "/") to the configured backend base
  * URL.  This covers every raw fetch() call in the app without requiring
