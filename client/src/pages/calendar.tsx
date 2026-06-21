@@ -3032,7 +3032,18 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                         className="flex-1 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
                         onClick={() => {
                           setShowIdCheck(false);
-                          setShowVerbalConsent(true);
+                          // Skip the verbal-consent step if the patient has already
+                          // given consent for this study — e.g. they signed at the
+                          // front-desk kiosk or on their own device (writtenConsentAt),
+                          // or verbal consent was already recorded (verbalConsentAt).
+                          const alreadyConsented = !!(
+                            viewingAppointment.writtenConsentAt || viewingAppointment.verbalConsentAt
+                          );
+                          if (alreadyConsented) {
+                            setShowBeginStudy(true);
+                          } else {
+                            setShowVerbalConsent(true);
+                          }
                         }}
                       >
                         Confirmed — Continue
@@ -3084,6 +3095,16 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                 {/* Begin Study sub-panel */}
                 {showBeginStudy && !showIdCheck && !showVerbalConsent && (
                   <div className="space-y-3">
+                    {(viewingAppointment.writtenConsentAt || viewingAppointment.verbalConsentAt) && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-start gap-2.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                        <div className="text-sm text-emerald-800">
+                          {viewingAppointment.writtenConsentAt
+                            ? "Written consent already signed for this study — no need to record it again."
+                            : "Verbal consent already recorded for this study."}
+                        </div>
+                      </div>
+                    )}
                     <p className="text-sm text-gray-500">
                       Choose how you'd like to start the study for <span className="font-medium text-gray-800">{viewingAppointment.patientName}</span>:
                     </p>
