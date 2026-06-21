@@ -272,7 +272,7 @@ and `npx cap sync ios` the plugin is ready — no extra CocoaPods entries
 or Xcode build phase changes are required.
 
 PencilKit is part of the iOS SDK (no third-party dependency). The minimum
-deployment target is iOS 14, which is already set in the `Podfile`.
+deployment target is iOS 15, which is already set in the `Podfile`.
 
 ### Verify the plugin loads
 
