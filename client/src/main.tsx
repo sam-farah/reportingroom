@@ -52,28 +52,43 @@ if (Capacitor.isNativePlatform()) {
     capture: true,
   });
 
-  // ── TEMPORARY build marker (native only) ──
-  // A tiny badge in the bottom-right corner so we can confirm at a glance
-  // that the iPad is actually running the latest build. Remove once the
-  // sync pipeline is verified.
+  // ── TEMPORARY build marker + diagnostics (native only) ──
+  // A tiny badge in the bottom-right corner confirms the iPad is running the
+  // latest build. TAP it to see live diagnostics (plugin availability, scroll
+  // state, content height) straight from the device. Remove once verified.
   const badge = document.createElement("div");
-  badge.textContent = "BUILD 2026-06-21 #1";
+  badge.textContent = "BUILD #2 · tap";
   badge.style.cssText = [
     "position:fixed",
     "bottom:4px",
     "right:6px",
     "z-index:2147483647",
-    "font:600 10px -apple-system,system-ui,sans-serif",
+    "font:600 11px -apple-system,system-ui,sans-serif",
     "color:#fff",
-    "background:rgba(220,38,38,0.85)",
-    "padding:2px 6px",
+    "background:rgba(220,38,38,0.9)",
+    "padding:4px 8px",
     "border-radius:6px",
-    "pointer-events:none",
+    "pointer-events:auto",
   ].join(";");
-  document.addEventListener("DOMContentLoaded", () =>
-    document.body.appendChild(badge),
-  );
-  if (document.body) document.body.appendChild(badge);
+  badge.addEventListener("click", () => {
+    const cap = (window as any).Capacitor;
+    const info = {
+      platform: cap?.getPlatform?.(),
+      pencilKit_isPluginAvailable: cap?.isPluginAvailable?.("PencilKit"),
+      pencilKit_legacyGlobal: !!cap?.Plugins?.PencilKit,
+      body_overflowY: getComputedStyle(document.body).overflowY,
+      html_overflowY: getComputedStyle(document.documentElement).overflowY,
+      scrollLocked_attr: document.body.hasAttribute("data-scroll-locked"),
+      innerHeight: window.innerHeight,
+      bodyScrollHeight: document.body.scrollHeight,
+      contentTallerThanScreen:
+        document.body.scrollHeight > window.innerHeight + 4,
+    };
+    alert("Diagnostics:\n\n" + JSON.stringify(info, null, 2));
+  });
+  const attach = () => document.body && document.body.appendChild(badge);
+  document.addEventListener("DOMContentLoaded", attach);
+  attach();
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

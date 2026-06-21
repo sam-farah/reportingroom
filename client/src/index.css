@@ -159,6 +159,17 @@ a {
    shell) so normal desktop/web dialog scroll-locking is left untouched.
    A JS recovery in main.tsx additionally clears a stale lock on touch.
    ────────────────────────────────────────────────────────────── */
+/* Base rule: inside the native shell the document must ALWAYS be able to
+   scroll vertically with iOS momentum, regardless of any third-party lock. */
+html.native-app,
+html.native-app body {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: auto;
+}
+
 html.native-app body[data-scroll-locked] {
   overflow: auto !important;
   overscroll-behavior: auto !important;

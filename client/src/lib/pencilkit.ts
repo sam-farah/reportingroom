@@ -9,6 +9,18 @@
  * (see ios/App/App/PencilKitPlugin.swift).
  */
 
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+interface PencilKitNativePlugin {
+  present(options: { backgroundDataUrl?: string | null }): Promise<{ dataUrl: string }>;
+  isAvailable(): Promise<{ available: boolean }>;
+}
+
+// registerPlugin returns a proxy bound to the native "PencilKit" plugin.
+// This is the supported way to reach a custom native plugin in Capacitor 6+;
+// the legacy `Capacitor.Plugins.PencilKit` global is NOT reliably populated.
+const PencilKit = registerPlugin<PencilKitNativePlugin>('PencilKit');
+
 export interface PencilKitOptions {
   /** PNG/JPEG data URL to render as a non-erasable background behind the strokes.
    *  Pass the template canvas.toDataURL() here so the worksheet grid shows. */
@@ -25,11 +37,10 @@ export interface PencilKitResult {
  *  This is only true inside the Capacitor iOS app on a device/simulator. */
 export function isPencilKitAvailable(): boolean {
   try {
-    const cap = (window as any).Capacitor;
-    if (!cap) return false;
-    if (cap.getPlatform() !== 'ios') return false;
-    const plugin = cap.Plugins?.PencilKit;
-    return !!plugin;
+    return (
+      Capacitor.getPlatform() === 'ios' &&
+      Capacitor.isPluginAvailable('PencilKit')
+    );
   } catch {
     return false;
   }
@@ -41,12 +52,10 @@ export function isPencilKitAvailable(): boolean {
 export async function presentPencilCanvas(
   options: PencilKitOptions = {}
 ): Promise<PencilKitResult> {
-  const cap = (window as any).Capacitor;
-  const plugin = cap?.Plugins?.PencilKit;
-  if (!plugin) {
+  if (!isPencilKitAvailable()) {
     throw new Error('PencilKit plugin is not available on this platform');
   }
-  const result = await plugin.present({
+  const result = await PencilKit.present({
     backgroundDataUrl: options.backgroundDataUrl ?? null,
   });
   return result as PencilKitResult;
