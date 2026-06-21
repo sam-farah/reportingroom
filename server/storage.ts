@@ -296,6 +296,7 @@ export interface IStorage {
   createPatientRegistrationToken(patientId: number, clinicId: number, token: string, expiresAt: Date): Promise<PatientRegistrationToken>;
   getPatientRegistrationToken(token: string): Promise<PatientRegistrationToken | undefined>;
   getLatestPatientRegistrationToken(patientId: number): Promise<PatientRegistrationToken | undefined>;
+  hasCompletedRegistration(patientId: number): Promise<boolean>;
   completePatientRegistrationToken(token: string): Promise<void>;
   createPatientConsentToken(patientId: number, clinicId: number, appointmentId: number | null, token: string, expiresAt: Date): Promise<PatientConsentToken>;
   getPatientConsentToken(token: string): Promise<PatientConsentToken | undefined>;
@@ -1584,6 +1585,17 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(patientRegistrationTokens.createdAt))
       .limit(1);
     return row;
+  }
+
+  async hasCompletedRegistration(patientId: number): Promise<boolean> {
+    const [row] = await db.select({ id: patientRegistrationTokens.id })
+      .from(patientRegistrationTokens)
+      .where(and(
+        eq(patientRegistrationTokens.patientId, patientId),
+        eq(patientRegistrationTokens.status, "completed"),
+      ))
+      .limit(1);
+    return !!row;
   }
 
   async completePatientRegistrationToken(token: string): Promise<void> {

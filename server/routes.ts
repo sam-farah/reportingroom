@@ -561,7 +561,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const latest = await storage.getLatestPatientRegistrationToken(patient.id);
-      const completedRegistration = latest?.status === "completed";
+      // A patient counts as registered if they have EVER completed a registration.
+      // (Checking only the latest token wrongly marked patients "not registered"
+      // once a newer pending token existed — e.g. a re-sent link masked an older
+      // completed registration.)
+      const completedRegistration = await storage.hasCompletedRegistration(patient.id);
       const hasCoreFields = !!(patient.address && patient.emergencyContactName);
       const registered = completedRegistration || hasCoreFields;
 
@@ -569,15 +573,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ registered: true, hasPatient: true });
       }
 
+      // Token + registration are scoped to the patient's clinic. Fall back to the
+      // patient's clinic when the appointment has no clinic set (legacy data).
+      const clinicId = appointment.clinicId ?? patient.clinicId ?? null;
+
       // Reuse an unexpired pending token if available; otherwise create one
       let token = (latest && latest.status === "pending" && new Date() < latest.expiresAt) ? latest.token : null;
-      if (!token) {
+      if (!token && clinicId != null) {
         const crypto = await import("crypto");
         token = crypto.randomBytes(32).toString("hex");
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-        await storage.createPatientRegistrationToken(patient.id, appointment.clinicId!, token, expiresAt);
+        await storage.createPatientRegistrationToken(patient.id, clinicId, token, expiresAt);
       }
 
+      if (!token) {
+        // No clinic could be resolved, so no registration link can be issued.
+        return res.json({ registered: false, hasPatient: true });
+      }
       const host = publicBaseUrl(req);
       const registrationUrl = `${host}/patient-registration/${token}`;
       res.json({ registered: false, hasPatient: true, registrationUrl, token });
@@ -620,7 +632,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         alreadyConsented = await withConsentLock(patient.id, async () => {
           if (await hasConsentFormToday(patient.id)) return true;
 
-          const clinic = appointment.clinicId ? await storage.getClinic(appointment.clinicId) : null;
+          // Resolve the clinic from the appointment, falling back to the patient's
+          // clinic when the appointment has no clinic set (legacy data). Without
+          // this, a null appointment.clinicId left the consent wording empty and
+          // wrongly reported "no consent wording set up for this clinic".
+          const consentClinicId = appointment.clinicId ?? patient.clinicId ?? null;
+          const clinic = consentClinicId != null ? await storage.getClinic(consentClinicId) : null;
           // Consent wording always comes from the server-side clinic setting (never the client).
           const consentText = (clinic?.kioskConsentText || "").trim();
           if (!consentText) throw new ConsentWordingError("No consent wording has been set up for this clinic.");
@@ -917,12 +934,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/appointments", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req as any).user?.id ?? null;
+      const user = await storage.getUser(req.session.userId!);
+      const userId = user?.id ?? null;
+      // Always scope the appointment to the creator's clinic. Never trust a
+      // client-supplied clinicId — leaving it unset produced appointments with
+      // a null clinic_id, which broke clinic-scoped consent and reminders.
+      const clinicId = user?.clinicId ?? null;
+      if (clinicId == null) {
+        return res.status(400).json({ error: "Your account is not linked to a clinic." });
+      }
       const startDate = new Date(req.body.appointmentDate);
       const force = req.body.force === true || req.query.force === "true";
       if (!force) {
         const conflicts = await findApptConflicts({
-          clinicId: req.body.clinicId ?? null,
+          clinicId,
           startDate,
           durationMinutes: parseInt(req.body.duration) || 30,
         });
@@ -941,9 +966,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       }
-      const { force: _f, ...rest } = req.body;
+      const { force: _f, clinicId: _clientClinicId, ...rest } = req.body;
       const appointmentData = {
         ...rest,
+        clinicId,
         createdBy: userId,
         appointmentDate: startDate,
       };
