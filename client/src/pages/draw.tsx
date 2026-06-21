@@ -1044,10 +1044,13 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
 
   // Drawing interface (when patient session is active)
   return (
-    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'container mx-auto p-6'}`}>
-      <div className={`flex items-center justify-between ${isFullscreen ? 'p-4 bg-gray-50 border-b' : 'mb-6'}`}>
-        <div>
-          <h1 className={`${isFullscreen ? 'text-xl' : 'text-3xl'} font-bold text-gray-900`}>
+    <div
+      className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white flex flex-col' : 'container mx-auto p-6'}`}
+      style={isFullscreen ? { paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' } : undefined}
+    >
+      <div className={`flex items-center justify-between gap-2 flex-wrap ${isFullscreen ? 'p-4 bg-gray-50 border-b shrink-0' : 'mb-6'}`}>
+        <div className="min-w-0">
+          <h1 className={`${isFullscreen ? 'text-xl' : 'text-3xl'} font-bold text-gray-900 truncate`}>
             Drawing: {selectedTemplate.name} - {currentWorksheet.patientName}
           </h1>
           {!isFullscreen && (
@@ -1056,7 +1059,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
             </p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           <Button 
             onClick={toggleFullscreen} 
             variant="outline"
