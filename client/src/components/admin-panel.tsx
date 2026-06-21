@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Brain, Upload, ChartLine, UserRound, History, Plus, Play, Edit, Trash2, Database, DollarSign, Activity, Building, TrendingUp, Users, FileText, Calendar, AlertTriangle, HardDrive, Download, RefreshCw, Palette, ExternalLink, Eye, Monitor, Image, CheckCircle, Loader2, Star, X } from "lucide-react";
+import { resolveUrl } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { Button } from "@/components/ui/button";
@@ -2211,7 +2212,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                           className={`border rounded-lg overflow-hidden hover:shadow-md transition-shadow ${pinned ? 'ring-2 ring-amber-300 bg-amber-50/40' : ''}`}
                         >
                           <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center overflow-hidden relative">
-                            <img src={ws.imageUrl} alt={ws.name} className="w-full h-full object-contain" />
+                            <img src={resolveUrl(ws.imageUrl)} alt={ws.name} className="w-full h-full object-contain" />
                             <button
                               type="button"
                               title={pinned ? 'Unpin from favourites' : 'Pin as favourite'}

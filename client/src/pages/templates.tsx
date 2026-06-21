@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Settings, Trash2, FileText, Download, Eye, BookOpen, Edit, Info, Hash, ArrowLeft } from "lucide-react";
+import { resolveUrl } from "@/lib/api";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -848,7 +849,7 @@ export default function Templates() {
                 <CardContent>
                   <div className="mb-3">
                     <img 
-                      src={worksheet.imageUrl} 
+                      src={resolveUrl(worksheet.imageUrl)} 
                       alt={worksheet.name}
                       className="w-full h-32 object-cover rounded border"
                     />

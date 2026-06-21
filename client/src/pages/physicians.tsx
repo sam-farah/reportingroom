@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest } from "@/lib/queryClient";
+import { resolveUrl } from "@/lib/api";
 import type { Physician, InsertPhysician, Sonographer, InsertSonographerData, Clinic, User, UserInvitation } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1023,7 +1024,7 @@ export default function Clinic() {
                         <span className="text-xs font-medium text-gray-600">Signature:</span>
                         <div className="mt-1 p-2 bg-gray-50 rounded border">
                           <img 
-                            src={physician.signatureUrl} 
+                            src={resolveUrl(physician.signatureUrl)} 
                             alt="Physician signature" 
                             className="max-h-12 max-w-full object-contain"
                           />
@@ -1831,7 +1832,7 @@ export default function Clinic() {
                       <span className="text-xs font-medium text-gray-600">Current Signature:</span>
                       <div className="mt-1 p-2 bg-gray-50 rounded border">
                         <img 
-                          src={editingPhysician.signatureUrl} 
+                          src={resolveUrl(editingPhysician.signatureUrl)} 
                           alt="Current signature" 
                           className="max-h-16 max-w-full object-contain"
                         />
@@ -1982,7 +1983,7 @@ export default function Clinic() {
                       <span className="text-xs font-medium text-gray-600">Current Signature:</span>
                       <div className="mt-1 p-2 bg-gray-50 rounded border">
                         <img 
-                          src={editingPhysician.signatureUrl} 
+                          src={resolveUrl(editingPhysician.signatureUrl)} 
                           alt="Current signature" 
                           className="max-h-16 max-w-full object-contain"
                         />

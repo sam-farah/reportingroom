@@ -15,3 +15,4 @@
 - [User field encryption](user-field-encryption.md) — users table isn't auto-encrypted like reports; to encrypt a user column you must hand-encrypt every write + add decryptFields to getUser/getUserByEmail; never feed encryptFields output to Drizzle.
 - [Remote patient consent](remote-consent.md) — send-to-device consent must strictly clinic-scope patient resolution (null-clinic appt must not name-match all clinics); wording is server-side only; "today" guard is ±24h (server UTC vs AU clinics).
 - [Appointment time timezone](appointment-time-timezone.md) — appointment times stored UTC; all server-side date/time rendering (SMS/email/certs) must format in Australia/Sydney, never server-local.
+- [Capacitor iPad shell & CORS](capacitor-ipad-cors.md) — CORS allowlist must include localhost + *.replit.dev patterns or Replit's own dev origin gets blocked; resolveUrl() in api.ts is the single URL-resolution hook.

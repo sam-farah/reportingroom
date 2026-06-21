@@ -11,6 +11,9 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@capacitor/cli": "^7.6.7",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^0.10.4",
@@ -46,6 +49,7 @@
     "@tanstack/react-query": "^5.60.5",
     "@types/archiver": "^7.0.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
     "@types/crypto-js": "^4.2.2",
     "@types/memoizee": "^0.4.12",
     "@types/multer": "^2.0.0",
@@ -56,6 +60,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "connect-pg-simple": "^10.0.0",
+    "cors": "^2.8.6",
     "crypto-js": "^4.2.0",
     "date-fns": "^3.6.0",
     "docx": "^9.5.1",

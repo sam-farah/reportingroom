@@ -24,7 +24,8 @@ import { Badge } from "@/components/ui/badge";
 
 async function fetchAsDataUrl(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, { credentials: "include" });
+    const { resolveUrl } = await import("@/lib/api");
+    const res = await fetch(resolveUrl(url), { credentials: "include" });
     if (!res.ok) return null;
     const blob = await res.blob();
     return await new Promise<string>((resolve, reject) => {

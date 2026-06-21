@@ -2,7 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <!--
+      viewport: width=device-width keeps the layout responsive on all screen
+      sizes.  viewport-fit=cover extends the content into notch/safe-area
+      regions so the app fills the full iPad screen.  CSS env() variables then
+      add the right padding so nothing is hidden behind the notch or home bar.
+      user-scalable=no prevents accidental double-tap zoom on touch, which is
+      distracting in a clinical workflow app.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
+    />
+    <!--
+      mobile-web-app-capable / apple-mobile-web-app-capable: enables
+      fullscreen standalone mode when the app is added to the iPad home screen
+      (before the native Capacitor shell is installed).
+    -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Reporting Room" />
     <title>Reporting Room - AI-Powered Medical Reporting</title>
     <meta name="description" content="Comprehensive medical reporting system with AI-powered OCR, customizable templates, and professional report generation for healthcare professionals." />
   </head>

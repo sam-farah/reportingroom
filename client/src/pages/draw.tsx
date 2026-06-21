@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Save, RotateCcw, Download, Eraser, PenTool, Type, FileText, Undo, Highlighter, Minus, Search, UserCheck, X } from "lucide-react";
+import { resolveUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -339,7 +340,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
           
           console.log(`Template loaded: ${canvas.width}x${canvas.height}, Fullscreen: ${isFullscreen}`);
         };
-        img.src = selectedTemplate.imageUrl;
+        img.src = resolveUrl(selectedTemplate.imageUrl);
       };
 
       // Load template immediately
@@ -806,7 +807,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
               <CardContent className="p-4">
                 <div className="aspect-[4/3] bg-gray-100 rounded-lg mb-3 overflow-hidden">
                   <img 
-                    src={template.imageUrl} 
+                    src={resolveUrl(template.imageUrl)} 
                     alt={template.name}
                     className="w-full h-full object-contain"
                   />

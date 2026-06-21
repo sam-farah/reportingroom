@@ -66,6 +66,12 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    /* Extend body to fill all four safe-area insets on iPad (notch, home bar).
+       This prevents white bars on the edges when running as a Capacitor app. */
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
   }
 }
 
@@ -85,4 +91,58 @@
   .medical-bg-secondary {
     @apply bg-[var(--medical-secondary)];
   }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   iPad / touch-screen improvements
+   These rules apply on any touch-capable device (including iPad)
+   and do not affect the desktop web layout.
+   ────────────────────────────────────────────────────────────── */
+
+@media (pointer: coarse) {
+  /* Ensure all interactive elements meet Apple's 44×44 pt minimum tap target.
+     We increase the minimum height for buttons, links, and form controls
+     while keeping the visual size driven by padding (so they don't look
+     oversized on desktop). */
+  button,
+  [role="button"],
+  a,
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  [role="menuitem"],
+  [role="option"],
+  [role="tab"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Give inputs and selects a comfortable touch height */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS zoom-on-focus when font-size < 16px */
+  }
+
+  /* Increase spacing between list items and table rows so they are easy to tap */
+  li + li {
+    margin-top: 2px;
+  }
+}
+
+/* Smooth momentum scrolling inside scrollable panels on iOS */
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-auto,
+[data-radix-scroll-area-viewport] {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fix: prevent double-tap zoom on interactive elements; Capacitor sets
+   touch-action globally but some third-party components override it. */
+button,
+[role="button"],
+a {
+  touch-action: manipulation;
 }

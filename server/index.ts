@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { securityMiddleware } from "./middleware/security";
@@ -42,6 +43,71 @@ if (!encryptionValidation.valid) {
 }
 
 const app = express();
+
+// ── CORS for the native iPad (Capacitor) app ───────────────────────────────
+// The web build and backend share one origin so browsers don't need CORS for
+// web requests.  The Capacitor WKWebView runs from capacitor://localhost so
+// it IS a different origin — it needs explicit CORS headers to send cookies.
+//
+// credentials: true is mandatory for session cookies.  Per the CORS spec this
+// means we cannot use "*" — origins must be an explicit list.
+//
+// Policy: allowlist is built from:
+//   (a) hardcoded native origins (capacitor://localhost, https://localhost)
+//   (b) this app's own Replit origins derived from runtime env vars
+//   (c) CORS_ORIGIN env var for any additional origins (comma-separated)
+//   (d) localhost/127.0.0.1 to allow internal server-to-server requests in dev
+//
+// Unknown origins are silently denied (no CORS headers) — the browser rejects
+// the cross-origin response.  We do NOT throw, which would produce a 500.
+{
+  // (a) Native Capacitor origins
+  const nativeOrigins = ["capacitor://localhost", "https://localhost"];
+
+  // (b) This app's own Replit hosting origins (specific, not wildcard)
+  const replitOwnOrigins: string[] = [];
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    replitOwnOrigins.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
+  }
+  if (process.env.PUBLIC_URL) {
+    replitOwnOrigins.push(process.env.PUBLIC_URL.replace(/\/$/, ""));
+  }
+
+  // (c) Operator-supplied extra origins
+  const extraOrigins = (process.env.CORS_ORIGIN ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const allowedOrigins = new Set([
+    ...nativeOrigins,
+    ...replitOwnOrigins,
+    ...extraOrigins,
+  ]);
+
+  // (d) Localhost is always trusted: the dev Vite proxy and any internal
+  //     scheduled-task HTTP calls use http://localhost:<port> as origin.
+  const isLocalhost = (o: string) =>
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // No origin header = same-origin browser request or server-to-server.
+        if (!origin || allowedOrigins.has(origin) || isLocalhost(origin)) {
+          callback(null, true);
+        } else {
+          // Silently deny — don't throw, which would produce an unhandled 500.
+          callback(null, false);
+        }
+      },
+      credentials: true,
+      methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    })
+  );
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 // Apply security middleware for regulatory compliance
 app.use(securityMiddleware.addSecurityHeaders);

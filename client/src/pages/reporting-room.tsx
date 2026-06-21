@@ -1153,10 +1153,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const updateState = !reportArg;
     if (updateState) setDistributeLoading(true);
 
-    // Helper to fetch a URL and return a base64 data-URI
+    // Helper to fetch a URL and return a base64 data-URI.
+    // resolveUrl prepends the backend base URL when running as a native app.
     const toBase64 = async (url: string): Promise<string | null> => {
       try {
-        const res = await fetch(url, { credentials: 'include' });
+        const { resolveUrl } = await import("@/lib/api");
+        const res = await fetch(resolveUrl(url), { credentials: 'include' });
         if (!res.ok) return null;
         const blob = await res.blob();
         return await new Promise((resolve) => {
