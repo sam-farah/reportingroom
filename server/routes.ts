@@ -3638,7 +3638,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const userId = req.session.userId!;
-      
+
+      // Safety net: if this report isn't linked to a patient, try to link it
+      // before finalizing so the finalized report actually shows up in the
+      // patient's file. Reports generated from a worksheet that was uploaded
+      // without selecting a patient end up with patientId = null; finalizing
+      // such a report would otherwise leave it orphaned.
+      //
+      // For a medical record, mis-filing is worse than not filing, so the auto-
+      // link is deliberately conservative: it only ever runs within the
+      // finalizing user's own clinic, and it only links when the match is
+      // UNAMBIGUOUS — an exact UR-number match, or exactly one patient whose
+      // full name AND date of birth both match. Any ambiguity (no match, or
+      // more than one candidate) is left for a human to resolve manually.
+      try {
+        const existing = await storage.getReport(id);
+        if (existing && !existing.patientId) {
+          const user = await storage.getUser(userId);
+          if (user?.clinicId) {
+            const clinicPatients = (await storage.getAllPatients()).filter(
+              (p) => p.clinicId === user.clinicId,
+            );
+            let matched: { id: number; urNumber: string | null } | undefined;
+
+            // 1) Exact UR-number match (UR numbers are unique within a clinic).
+            if (existing.patientUrNumber) {
+              const byUr = clinicPatients.filter((p) => p.urNumber === existing.patientUrNumber);
+              if (byUr.length === 1) matched = byUr[0];
+            }
+
+            // 2) Fall back to name + DOB, but only when BOTH are present and
+            //    exactly one patient matches — never link on name alone.
+            if (!matched && existing.patientName && existing.patientDob) {
+              const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+              const target = norm(existing.patientName);
+              const byNameDob = clinicPatients.filter(
+                (p) =>
+                  norm(`${p.firstName} ${p.lastName}`) === target &&
+                  p.dateOfBirth === existing.patientDob,
+              );
+              if (byNameDob.length === 1) matched = byNameDob[0];
+            }
+
+            if (matched) {
+              await storage.updateReport(id, {
+                patientId: matched.id,
+                patientUrNumber: existing.patientUrNumber ?? matched.urNumber ?? null,
+              } as any);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("finalize: patient-link backfill failed:", e);
+      }
+
       const report = await storage.finalizeReport(id, userId);
       if (!report) {
         return res.status(404).json({ error: "Report not found" });
