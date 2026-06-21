@@ -361,7 +361,7 @@ export default function InvitationPage() {
                       <FormItem>
                         <FormLabel>Email</FormLabel>
                         <FormControl>
-                          <Input type="email" {...field} />
+                          <Input type="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -429,7 +429,7 @@ export default function InvitationPage() {
                         <FormItem>
                           <FormLabel>Email</FormLabel>
                           <FormControl>
-                            <Input type="email" {...field} />
+                            <Input type="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
