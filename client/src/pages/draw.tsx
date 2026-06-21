@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { isPencilKitAvailable, presentPencilCanvas } from "@/lib/pencilkit";
 import type { WorksheetTemplate, DigitalWorksheet, Sonographer, Patient } from "@shared/schema";
 
 interface DrawingTool {
@@ -37,6 +38,8 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   const [showPatientDialog, setShowPatientDialog] = useState(false);
   const [showCreateDraftDialog, setShowCreateDraftDialog] = useState(false);
   const [templateImage, setTemplateImage] = useState<HTMLImageElement | null>(null);
+  const [pencilKitPending, setPencilKitPending] = useState(false);
+  const hasPencilKit = isPencilKitAvailable();
   const [pendingPoints, setPendingPoints] = useState<{x: number, y: number}[]>([]);
   // Pinch-to-zoom state for the canvas (custom, since viewport meta blocks native pinch)
   const [zoom, setZoom] = useState({ scale: 1, offsetX: 0, offsetY: 0 });
@@ -676,6 +679,63 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     setDrawingHistory([resetState]);
   };
 
+  // Open the native iOS PencilKit canvas (Apple Pencil) with the current
+  // worksheet (template + any existing marks) as the background. On Done, the
+  // composited result replaces the canvas so Create Draft Report / Export work
+  // unchanged. Only reachable inside the Capacitor iOS app.
+  const openPencilKit = async () => {
+    if (!canvasRef.current) return;
+    setPencilKitPending(true);
+    try {
+      const bgDataUrl = canvasRef.current.toDataURL('image/png');
+      const result = await presentPencilCanvas({ backgroundDataUrl: bgDataUrl });
+      const img = new Image();
+      img.src = result.dataUrl;
+      // Await decode so the button stays disabled until the import is finished
+      // (prevents overlapping opens) and we never draw a half-loaded image.
+      await img.decode();
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      // Keep the canvas at its existing template geometry so the web tools
+      // (Clear / Undo / Eraser, which redraw templateImage at canvas dims)
+      // keep working. Draw the result aspect-fit and centred — no distortion.
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
+      const dw = img.naturalWidth * scale;
+      const dh = img.naturalHeight * scale;
+      const dx = (cw - dw) / 2;
+      const dy = (ch - dh) / 2;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.drawImage(img, dx, dy, dw, dh);
+      ctx.restore();
+      const newState = canvas.toDataURL('image/jpeg', 0.8);
+      setDrawingHistory(prev => [...prev, newState].slice(-5));
+      toast({
+        title: "Drawing captured",
+        description: "Your Apple Pencil drawing has been added to the worksheet.",
+      });
+    } catch (err: any) {
+      // The user tapping Cancel rejects with "cancelled" — not an error.
+      if (err?.message !== 'cancelled') {
+        toast({
+          title: "PencilKit Error",
+          description: err?.message ?? "Unknown error",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setPencilKitPending(false);
+    }
+  };
+
   const createPatientWorksheet = () => {
     if (!selectedTemplate || !patientInfo.patientName || !patientInfo.sonographerId) {
       toast({
@@ -1025,6 +1085,17 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
             <Undo className="w-4 h-4 mr-2" />
             Undo
           </Button>
+          {hasPencilKit && (
+            <Button
+              onClick={openPencilKit}
+              disabled={pencilKitPending}
+              size={isFullscreen ? "sm" : "default"}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <PenTool className="w-4 h-4 mr-2" />
+              {pencilKitPending ? "Opening…" : "Draw with Apple Pencil"}
+            </Button>
+          )}
           <Button 
             onClick={() => setShowCreateDraftDialog(true)}
             size={isFullscreen ? "sm" : "default"}

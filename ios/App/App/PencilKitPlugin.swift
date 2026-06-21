@@ -228,18 +228,29 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
     // MARK: Export
 
     /// Composite background + PencilKit strokes → PNG data URL.
-    /// The output size matches the canvas view's pixel bounds so that the
-    /// result is interchangeable with canvas.toDataURL('image/png').
-    ///
-    /// The background image is drawn using the same aspect-fit rect that
-    /// UIImageView uses at display time — i.e. the image is scaled to fit
-    /// inside the canvas bounds while preserving its aspect ratio — ensuring
-    /// that what the user sees while drawing exactly matches the exported PNG.
+    /// When a template background is present, the output is cropped to the
+    /// template's aspect-fit rect so the PNG keeps the template's aspect ratio
+    /// (no letterbox margins) and is interchangeable with canvas.toDataURL().
+    /// With no background the full canvas bounds are exported. Either way the
+    /// strokes stay aligned with whatever the user drew over.
     private func exportComposited(completion: @escaping (Result<String, Error>) -> Void) {
         let bounds = canvasView.bounds
         let scale = UIScreen.main.scale
 
-        UIGraphicsBeginImageContextWithOptions(bounds.size, false, scale)
+        // When a template background is present, export ONLY the region the
+        // template occupies (its aspect-fit rect). This makes the output image
+        // keep the template's aspect ratio — no letterbox margins — so it drops
+        // cleanly onto the web canvas (which is sized to that same ratio) with
+        // no distortion. Strokes outside the template area are intentionally
+        // cropped. With no background (e.g. signatures) we export the full canvas.
+        let exportRect: CGRect
+        if let bgView = backgroundImageView, let bgImage = bgView.image {
+            exportRect = aspectFitRect(imageSize: bgImage.size, inRect: bounds)
+        } else {
+            exportRect = bounds
+        }
+
+        UIGraphicsBeginImageContextWithOptions(exportRect.size, false, scale)
         defer { UIGraphicsEndImageContext() }
 
         guard let ctx = UIGraphicsGetCurrentContext() else {
@@ -250,19 +261,19 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
 
         // White background
         ctx.setFillColor(UIColor.white.cgColor)
-        ctx.fill(CGRect(origin: .zero, size: bounds.size))
+        ctx.fill(CGRect(origin: .zero, size: exportRect.size))
 
-        // Template background image — use the same aspect-fit rect as UIImageView(.scaleAspectFit)
-        // so the exported image is pixel-identical to what the user drew over.
+        // Template background image — fills the export rect exactly.
         if let bgView = backgroundImageView, let bgImage = bgView.image {
-            let destRect = aspectFitRect(imageSize: bgImage.size, inRect: bounds)
-            bgImage.draw(in: destRect)
+            bgImage.draw(in: CGRect(origin: .zero, size: exportRect.size))
         }
 
-        // PencilKit strokes (rendered at screen scale for full resolution)
+        // PencilKit strokes — capture just the export rect region (at screen
+        // scale for full resolution) and draw it at the origin so the strokes
+        // stay aligned with the template they were drawn over.
         let drawing = canvasView.drawing
-        let strokeImage = drawing.image(from: canvasView.bounds, scale: scale)
-        strokeImage.draw(in: bounds)
+        let strokeImage = drawing.image(from: exportRect, scale: scale)
+        strokeImage.draw(in: CGRect(origin: .zero, size: exportRect.size))
 
         guard let composited = UIGraphicsGetImageFromCurrentImageContext(),
               let pngData = composited.pngData() else {
