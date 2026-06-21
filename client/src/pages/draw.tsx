@@ -1116,9 +1116,9 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         </div>
       </div>
 
-      <div className={`${isFullscreen ? 'flex h-full' : 'grid grid-cols-1 lg:grid-cols-4 gap-6'}`}>
+      <div className={`${isFullscreen ? 'flex flex-1 min-h-0' : 'grid grid-cols-1 lg:grid-cols-4 gap-6'}`}>
         {/* Drawing Tools */}
-        <div className={`${isFullscreen ? 'w-64 border-r bg-gray-50 p-4 overflow-y-auto' : ''}`}>
+        <div className={`${isFullscreen ? 'w-64 shrink-0 border-r bg-gray-50 p-4 overflow-y-auto' : ''}`}>
           <Card className={`${isFullscreen ? 'border-0 shadow-none bg-transparent' : 'lg:col-span-1'}`}>
             <CardHeader className={isFullscreen ? 'px-0 pb-2' : ''}>
               <CardTitle className={`${isFullscreen ? 'text-base' : 'text-lg'}`}>Drawing Tools</CardTitle>
