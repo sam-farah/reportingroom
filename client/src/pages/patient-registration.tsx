@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, AlertCircle, Loader2, User, Phone, Mail, Shield, Heart, MapPin } from "lucide-react";
+import { CheckCircle, AlertCircle, Loader2, User, Phone, Mail, Shield, Heart, MapPin, MessageSquare } from "lucide-react";
 
 type FormState = {
   firstName: string;
@@ -12,6 +12,7 @@ type FormState = {
   dateOfBirth: string;
   phone: string;
   email: string;
+  preferredContactMethod: string;
   address: string;
   city: string;
   state: string;
@@ -48,6 +49,7 @@ export default function PatientRegistrationPage() {
     dateOfBirth: "",
     phone: "",
     email: "",
+    preferredContactMethod: "",
     address: "",
     city: "",
     state: "",
@@ -77,6 +79,7 @@ export default function PatientRegistrationPage() {
           dateOfBirth: data.patient.dateOfBirth || "",
           phone: data.patient.phone || "",
           email: data.patient.email || "",
+          preferredContactMethod: data.patient.preferredContactMethod || "",
           address: data.patient.address || "",
           city: data.patient.city || "",
           state: data.patient.state || "",
@@ -257,6 +260,30 @@ export default function PatientRegistrationPage() {
                   placeholder="e.g. jane@example.com"
                   className="mt-1"
                 />
+              </div>
+              <div>
+                <Label className="text-sm">How would you prefer we contact you?</Label>
+                <div className="grid grid-cols-3 gap-2 mt-1.5">
+                  {[
+                    { value: "phone", label: "Phone call", Icon: Phone },
+                    { value: "sms", label: "Text message", Icon: MessageSquare },
+                    { value: "email", label: "Email", Icon: Mail },
+                  ].map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => field("preferredContactMethod", form.preferredContactMethod === value ? "" : value)}
+                      className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border p-3 text-xs font-medium transition ${
+                        form.preferredContactMethod === value
+                          ? "border-blue-600 bg-blue-50 text-blue-700 ring-1 ring-blue-600"
+                          : "border-gray-200 text-gray-600 hover:border-gray-300"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope, Loader2, Check, ArrowDownUp } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope, Loader2, Check, ArrowDownUp, Star } from "lucide-react";
 import ConsultationDialog from "@/components/consultation-dialog";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
@@ -311,6 +311,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
     gender: "",
     phone: "",
     email: "",
+    preferredContactMethod: "",
     address: "",
     city: "",
     state: "",
@@ -996,6 +997,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       gender: "",
       phone: "",
       email: "",
+      preferredContactMethod: "",
       address: "",
       city: "",
       state: "",
@@ -1023,6 +1025,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
       gender: patient.gender || "",
       phone: patient.phone || "",
       email: patient.email || "",
+      preferredContactMethod: patient.preferredContactMethod || "",
       address: patient.address || "",
       city: patient.city || "",
       state: patient.state || "",
@@ -2392,6 +2395,18 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   <Phone className="w-3.5 h-3.5" /> Contact
                 </div>
                 <div className="p-3 space-y-3">
+                  {selectedPatient.preferredContactMethod && (
+                    <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/40 dark:border-blue-900 px-3 py-2">
+                      <Star className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <span className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Preferred Contact</span>
+                      <Badge className="bg-blue-600 hover:bg-blue-600 text-white">
+                        {selectedPatient.preferredContactMethod === "phone" ? "Phone call"
+                          : selectedPatient.preferredContactMethod === "sms" ? "Text message"
+                          : selectedPatient.preferredContactMethod === "email" ? "Email"
+                          : selectedPatient.preferredContactMethod}
+                      </Badge>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-x-6">
                     <div>
                       <div className="text-xs text-gray-400 mb-0.5">Phone</div>
@@ -2706,6 +2721,18 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 <div>
                   <Label>Email</Label>
                   <Input type="email" autoComplete="off" value={formData.email} onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Preferred Contact Method</Label>
+                  <Select value={formData.preferredContactMethod || "none"} onValueChange={(value) => setFormData(prev => ({ ...prev, preferredContactMethod: value === "none" ? "" : value }))}>
+                    <SelectTrigger><SelectValue placeholder="Not specified" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not specified</SelectItem>
+                      <SelectItem value="phone">Phone call</SelectItem>
+                      <SelectItem value="sms">Text message</SelectItem>
+                      <SelectItem value="email">Email</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label>Emergency Contact Name</Label>
@@ -3303,6 +3330,18 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                     value={formData.email}
                     onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                   />
+                </div>
+                <div>
+                  <Label htmlFor="preferredContactMethod">Preferred Contact Method</Label>
+                  <Select value={formData.preferredContactMethod || "none"} onValueChange={(value) => setFormData(prev => ({ ...prev, preferredContactMethod: value === "none" ? "" : value }))}>
+                    <SelectTrigger id="preferredContactMethod"><SelectValue placeholder="Not specified" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not specified</SelectItem>
+                      <SelectItem value="phone">Phone call</SelectItem>
+                      <SelectItem value="sms">Text message</SelectItem>
+                      <SelectItem value="email">Email</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="col-span-2">
                   <Label htmlFor="address">Address</Label>

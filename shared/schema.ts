@@ -328,6 +328,7 @@ export const patients = pgTable("patients", {
   gender: varchar("gender", { length: 20 }),
   phone: varchar("phone", { length: 50 }),
   email: varchar("email", { length: 255 }),
+  preferredContactMethod: varchar("preferred_contact_method", { length: 20 }),
   address: text("address"),
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 50 }),
