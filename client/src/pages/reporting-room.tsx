@@ -725,8 +725,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const formatConsentDateTime = (iso: string) => {
       const d = new Date(iso);
       if (isNaN(d.getTime())) return null;
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      // Always show consent time in clinic (Sydney) time, regardless of the
+      // device's timezone, so the labelled worksheet matches the signed form.
+      const datePart = d.toLocaleDateString('en-AU', { timeZone: 'Australia/Sydney', day: '2-digit', month: '2-digit', year: 'numeric' });
+      const timePart = d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Sydney', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+      return `${datePart} ${timePart}`;
     };
     const writtenStamp = (report as any).writtenConsentAt ? formatConsentDateTime((report as any).writtenConsentAt) : null;
     const verbalStamp = (report as any).verbalConsentAt ? formatConsentDateTime((report as any).verbalConsentAt) : null;

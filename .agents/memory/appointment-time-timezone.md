@@ -8,7 +8,10 @@ formatting that uses local-clock methods (`Date#getHours`, `getDate`, etc.) rend
 wrong wall-clock time — e.g. a 1pm AEST booking texts/emails as 3am.
 
 **Rule:** all server-side rendering of appointment date/time (SMS reminders, email
-reminders, certificates) must format via `Intl.DateTimeFormat(..., { timeZone: "Australia/Sydney" })`.
+reminders, certificates, signed consent documents) must format via
+`Intl.DateTimeFormat(..., { timeZone: "Australia/Sydney" })` (or `toLocale*String`
+with the same `timeZone`). This also applies to any *client* rendering that must be
+clinic-time regardless of device (e.g. the consent line on the labelled worksheet).
 
 **Why:** clinics are Australian and operate in local time; the email reminder path
 (`server/email.ts`) already hardcodes `Australia/Sydney`. The SMS path originally used

@@ -153,19 +153,21 @@ async function generateConsentDocument(opts: {
     } catch { /* logo optional */ }
   }
 
+  // All consent dates/times are rendered in the clinic's local timezone, never
+  // the server's UTC clock — otherwise a morning consent shows as the previous
+  // evening (e.g. 08:00 Sydney -> 21:00 UTC). Matches the SMS/email convention.
+  const CLINIC_TZ = "Australia/Sydney";
   const fmtDate = (d: any) => {
     if (!d) return "";
     if (typeof d === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
     const dt = new Date(d);
     if (isNaN(dt.getTime())) return String(d);
-    const dd = String(dt.getDate()).padStart(2, "0");
-    const mm = String(dt.getMonth() + 1).padStart(2, "0");
-    return `${dd}/${mm}/${dt.getFullYear()}`;
+    return dt.toLocaleDateString("en-AU", { timeZone: CLINIC_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
   };
   const today = new Date();
   const todayStr = fmtDate(today);
   const fmtTime = (d: Date) =>
-    `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    d.toLocaleTimeString("en-AU", { timeZone: CLINIC_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const todayDateTimeStr = `${todayStr} ${fmtTime(today)}`;
   const patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
   const headerLines = [
@@ -280,7 +282,9 @@ async function generateConsentDocument(opts: {
   fs.writeFileSync(outPath, finalImg);
   saveFileToDB(newFilename, outPath, "image/jpeg", `consent-${appointmentId}.jpg`).catch(console.error);
 
-  const isoDate = today.toISOString().slice(0, 10);
+  // Sydney calendar date (yyyy-mm-dd) so the filed date matches the displayed
+  // date and the once-per-day rule rolls over at local midnight, not UTC.
+  const isoDate = today.toLocaleDateString("en-CA", { timeZone: CLINIC_TZ });
   await storage.createPatientDocument({
     patientId: patient.id,
     title: "Consent Form",
@@ -299,7 +303,9 @@ async function generateConsentDocument(opts: {
 // Every signed consent is stored as a "Consent Form" patient document dated today,
 // so the presence of one for today's date means consent is already complete.
 async function hasConsentFormToday(patientId: number): Promise<boolean> {
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // Compare against the clinic's local date so the once-per-day rule matches the
+  // date stamped on the stored Consent Form (both Australia/Sydney).
+  const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
   try {
     const docs = await storage.getPatientDocuments(patientId);
     return docs.some((d: any) =>

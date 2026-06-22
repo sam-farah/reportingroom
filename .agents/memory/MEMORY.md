@@ -10,6 +10,8 @@
 - [Worksheet labelling & merge](worksheet-labelling.md) — labelled image is a superset of the raw upload; on label, delete the raw worksheet but NEVER clear labelledWorksheetId (re-label loop); timeline filter must show primary worksheetId.
 - [Kiosk check-in privacy](kiosk-checkin-privacy.md) — public kiosk search must never list patients; return one match or ask DOB; scope to clinic-or-null; guard stale responses.
 - [Verbal consent capture](verbal-consent.md) — consent timestamp lives on the appointment; reports inherit it (like sonographer inheritance) rather than threading through the client upload flow.
+- [Server time rendering = clinic TZ](appointment-time-timezone.md) — server is UTC; render all patient-facing times (appointments, SMS/email, consent docs, worksheet labels) in Australia/Sydney, never local Date#getHours/getDate.
+- [Remote/kiosk consent](remote-consent.md) — clinic-scope patient resolution; once-per-day dedupe uses the Sydney date (never widen to UTC, or morning consents get falsely skipped).
 - [Canvas taint in Capacitor build](canvas-taint-capacitor.md) — backend images drawn to a canvas read via toDataURL must load as data URLs (loadImageElement), not raw cross-origin <img>, or it taints → "operation is insecure".
 - [Capacitor local plugin registration](capacitor-local-plugin-registration.md) — app-local iOS plugins fail isPluginAvailable in Cap 6+; register via registerPluginInstance in a CAPBridgeViewController subclass, not the .m macro.
 - [PencilKit / worksheet drawing](pencilkit-drawing.md) — TWO separate drawing UIs (draw.tsx is the primary one, drawing-canvas.tsx the other); native export must crop to template aspect, re-import must keep canvas geometry stable.
