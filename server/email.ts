@@ -1,6 +1,7 @@
 import sgMail from "@sendgrid/mail";
 import fs from "fs";
 import path from "path";
+import { resolveClinicTimeZone } from "@shared/timezones";
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 
@@ -254,6 +255,7 @@ export async function sendAppointmentReminder(params: {
   clinicEmail: string | null;
   clinicLogoUrl: string | null;
   reminderInstructions: string | null;
+  clinicTimezone?: string | null;
   trackingToken?: string;
 }): Promise<void> {
   // Try to embed logo as base64 data URL
@@ -271,7 +273,7 @@ export async function sendAppointmentReminder(params: {
     } catch {}
   }
 
-  const tzOpts = { timeZone: 'Australia/Sydney' };
+  const tzOpts = { timeZone: resolveClinicTimeZone({ timezone: params.clinicTimezone }) };
   const dateStr = params.appointmentDate.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', ...tzOpts });
   const timeStr = params.appointmentDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: true, ...tzOpts });
 
@@ -550,12 +552,14 @@ export async function sendPatientBookingConfirmation(params: {
   appointmentDate: Date;
   duration: number;
   referringDoctorName?: string;
+  clinicTimezone?: string | null;
 }): Promise<void> {
+  const bookingTz = resolveClinicTimeZone({ timezone: params.clinicTimezone });
   const dateStr = params.appointmentDate.toLocaleDateString("en-AU", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "Australia/Sydney"
+    weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: bookingTz
   });
   const timeStr = params.appointmentDate.toLocaleTimeString("en-AU", {
-    hour: "2-digit", minute: "2-digit", timeZone: "Australia/Sydney"
+    hour: "2-digit", minute: "2-digit", timeZone: bookingTz
   });
 
   const html = `

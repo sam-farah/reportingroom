@@ -62,6 +62,7 @@ export const clinics = pgTable("clinics", {
   smsReminderLeadHours: integer("sms_reminder_lead_hours").notNull().default(24), // How many hours before the appointment to send the SMS
   dicomApiKey: varchar("dicom_api_key", { length: 100 }), // API key for DICOM Modality Worklist bridge
   publicHolidayRegion: varchar("public_holiday_region", { length: 20 }), // e.g. "AU-VIC", "AU-NSW", "AU", "NZ", "US", "GB", "CA" — used to fetch & display public holidays on the calendar
+  timezone: varchar("timezone", { length: 64 }).notNull().default('Australia/Sydney'), // IANA timezone for rendering all patient-facing dates/times (appointments, reminders, consent, certificates)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

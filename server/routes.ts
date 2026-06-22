@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
+import { resolveClinicTimeZone, DEFAULT_CLINIC_TIMEZONE, clinicIsoDate, isValidClinicTimeZone } from "@shared/timezones";
 import { eq, sql as drizzleSql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
 import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor, sendPatientConsentEmail } from "./email";
@@ -156,7 +157,7 @@ async function generateConsentDocument(opts: {
   // All consent dates/times are rendered in the clinic's local timezone, never
   // the server's UTC clock — otherwise a morning consent shows as the previous
   // evening (e.g. 08:00 Sydney -> 21:00 UTC). Matches the SMS/email convention.
-  const CLINIC_TZ = "Australia/Sydney";
+  const CLINIC_TZ = resolveClinicTimeZone(clinic);
   const fmtDate = (d: any) => {
     if (!d) return "";
     if (typeof d === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
@@ -302,10 +303,13 @@ async function generateConsentDocument(opts: {
 // once on a given day, regardless of channel (front-desk kiosk or remote link).
 // Every signed consent is stored as a "Consent Form" patient document dated today,
 // so the presence of one for today's date means consent is already complete.
-async function hasConsentFormToday(patientId: number): Promise<boolean> {
+async function hasConsentFormToday(
+  patientId: number,
+  timezone: string = DEFAULT_CLINIC_TIMEZONE,
+): Promise<boolean> {
   // Compare against the clinic's local date so the once-per-day rule matches the
-  // date stamped on the stored Consent Form (both Australia/Sydney).
-  const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+  // date stamped on the stored Consent Form (both in the clinic's timezone).
+  const todayIso = clinicIsoDate(new Date(), timezone);
   try {
     const docs = await storage.getPatientDocuments(patientId);
     return docs.some((d: any) =>
@@ -636,14 +640,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let alreadyConsented = false;
       try {
         alreadyConsented = await withConsentLock(patient.id, async () => {
-          if (await hasConsentFormToday(patient.id)) return true;
-
           // Resolve the clinic from the appointment, falling back to the patient's
           // clinic when the appointment has no clinic set (legacy data). Without
           // this, a null appointment.clinicId left the consent wording empty and
           // wrongly reported "no consent wording set up for this clinic".
           const consentClinicId = appointment.clinicId ?? patient.clinicId ?? null;
           const clinic = consentClinicId != null ? await storage.getClinic(consentClinicId) : null;
+          // The once-per-day check uses the clinic's timezone so it agrees with the
+          // local date stamped on the stored Consent Form.
+          if (await hasConsentFormToday(patient.id, resolveClinicTimeZone(clinic))) return true;
           // Consent wording always comes from the server-side clinic setting (never the client).
           const consentText = (clinic?.kioskConsentText || "").trim();
           if (!consentText) throw new ConsentWordingError("No consent wording has been set up for this clinic.");
@@ -1139,6 +1144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clinicPhone: clinic.phone || null,
         clinicEmail: clinic.email || null,
         clinicLogoUrl: clinic.logoUrl || null,
+        clinicTimezone: clinic.timezone,
         reminderInstructions: await (async () => {
           if (appointment.scanType) {
             const specific = await storage.getScanPrepInstruction(user.clinicId!, appointment.scanType);
@@ -1742,8 +1748,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         documentDate = clientAppointmentDate;
       } else {
         const apptDate = appointment.appointmentDate ? new Date(appointment.appointmentDate as any) : new Date();
+        const certClinic = appointment.clinicId != null
+          ? await storage.getClinic(appointment.clinicId).catch(() => null)
+          : null;
         const parts = new Intl.DateTimeFormat("en-CA", {
-          timeZone: "Australia/Sydney",
+          timeZone: resolveClinicTimeZone(certClinic),
           year: "numeric",
           month: "2-digit",
           day: "2-digit",
@@ -3217,7 +3226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clinicName: clinic.name,
         clinicLogoUrl: clinic.kioskLogoUrl || clinic.logoUrl || null,
         consentText,
-        alreadyConsentedToday: await hasConsentFormToday(patient.id),
+        alreadyConsentedToday: await hasConsentFormToday(patient.id, resolveClinicTimeZone(clinic)),
       });
     } catch (error) {
       console.error("Get consent page error:", error);
@@ -3251,7 +3260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // can't both create a Consent Form. If one already exists for today (kiosk
       // or remote), don't create a duplicate — just complete this link.
       const alreadyConsented = await withConsentLock(patient.id, async () => {
-        if (await hasConsentFormToday(patient.id)) return true;
+        if (await hasConsentFormToday(patient.id, resolveClinicTimeZone(clinic))) return true;
 
         const appointment = record.appointmentId ? await storage.getAppointment(record.appointmentId) : null;
         let sonographerName: string | null = null;
@@ -5587,10 +5596,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Unauthorized to update this clinic" });
       }
 
-      const { name, address, phone, fax, email, publicHolidayRegion } = req.body;
+      const { name, address, phone, fax, email, publicHolidayRegion, timezone } = req.body;
       
       if (!name || !email) {
         return res.status(400).json({ error: "Clinic name and email are required" });
+      }
+
+      if (timezone !== undefined && !isValidClinicTimeZone(timezone)) {
+        return res.status(400).json({ error: "Invalid timezone" });
       }
 
       const updatedClinic = await storage.updateClinic(clinicId, {
@@ -5600,6 +5613,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fax,
         email,
         ...(publicHolidayRegion !== undefined ? { publicHolidayRegion: publicHolidayRegion || null } : {}),
+        ...(timezone !== undefined ? { timezone } : {}),
       } as any);
 
       if (!updatedClinic) {
@@ -6302,6 +6316,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { ownerEmail, ...clinicFields } = req.body;
       const clinicData = insertClinicSchema.parse(clinicFields);
+
+      if (clinicData.timezone !== undefined && !isValidClinicTimeZone(clinicData.timezone)) {
+        return res.status(400).json({ message: "Invalid timezone" });
+      }
 
       if (!ownerEmail || !ownerEmail.includes("@")) {
         return res.status(400).json({ message: "A valid owner email is required" });
@@ -7954,6 +7972,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           appointmentDate: apptStart,
           duration: durationMins,
           referringDoctorName: referrerFullNameForEmail || undefined,
+          clinicTimezone: (clinic as any)?.timezone ?? null,
         }).catch(console.error);
       }
 

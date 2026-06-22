@@ -8,6 +8,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest } from "@/lib/queryClient";
 import { resolveUrl } from "@/lib/api";
 import type { Physician, InsertPhysician, Sonographer, InsertSonographerData, Clinic, User, UserInvitation } from "@shared/schema";
+import { AU_NZ_TIMEZONE_OPTIONS } from "@shared/timezones";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +94,7 @@ export default function Clinic() {
     fax: "",
     email: "",
     publicHolidayRegion: "",
+    timezone: "Australia/Sydney",
   });
 
   // Initialize clinic form when clinic data is loaded
@@ -105,6 +107,7 @@ export default function Clinic() {
         fax: clinic.fax || "",
         email: clinic.email || "",
         publicHolidayRegion: (clinic as any).publicHolidayRegion || "",
+        timezone: (clinic as any).timezone || "Australia/Sydney",
       });
     }
   }, [clinic]);
@@ -1604,6 +1607,24 @@ export default function Clinic() {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground mt-1">Selected holidays appear as an amber all-day banner at the top of each day in the Calendar.</p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Label htmlFor="clinic-timezone">Timezone</Label>
+                    <Select
+                      value={(clinicForm as any).timezone || "Australia/Sydney"}
+                      onValueChange={(v) => setClinicForm(prev => ({ ...prev, timezone: v } as any))}
+                    >
+                      <SelectTrigger id="clinic-timezone">
+                        <SelectValue placeholder="Select timezone" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AU_NZ_TIMEZONE_OPTIONS.map((tz) => (
+                          <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">Appointment reminders, consent forms and certificates all use this clinic's local time.</p>
                   </div>
 
                   <div>

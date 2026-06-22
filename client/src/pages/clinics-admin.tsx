@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertClinicSchema } from "@shared/schema";
+import { AU_NZ_TIMEZONE_OPTIONS } from "@shared/timezones";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Plus, Loader2, Copy, Check, Mail, Users, MapPin } from "lucide-react";
 
 type ClinicRow = {
@@ -54,6 +56,7 @@ export default function ClinicsAdmin() {
       city: "",
       state: "",
       zipCode: "",
+      timezone: "Australia/Sydney",
       ownerEmail: "",
     },
   });
@@ -220,6 +223,25 @@ export default function ClinicsAdmin() {
                   </FormItem>
                 )} />
               </div>
+              <FormField control={form.control} name="timezone" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Timezone *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? "Australia/Sydney"}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-clinic-timezone">
+                        <SelectValue placeholder="Select timezone" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {AU_NZ_TIMEZONE_OPTIONS.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Used for appointment reminders, consent forms and certificates.</p>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <div className="border-t pt-3 mt-1">
                 <FormField control={form.control} name="ownerEmail" render={({ field }) => (
                   <FormItem>

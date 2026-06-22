@@ -9,15 +9,23 @@ wrong wall-clock time — e.g. a 1pm AEST booking texts/emails as 3am.
 
 **Rule:** all server-side rendering of appointment date/time (SMS reminders, email
 reminders, certificates, signed consent documents) must format via
-`Intl.DateTimeFormat(..., { timeZone: "Australia/Sydney" })` (or `toLocale*String`
-with the same `timeZone`). This also applies to any *client* rendering that must be
-clinic-time regardless of device (e.g. the consent line on the labelled worksheet).
+`Intl.DateTimeFormat(..., { timeZone })` (or `toLocale*String` with the same
+`timeZone`) where `timeZone` is the CLINIC's timezone, not a hard-coded one. Resolve
+it with `resolveClinicTimeZone(clinic)` from `shared/timezones.ts` (falls back to the
+`DEFAULT_CLINIC_TIMEZONE = "Australia/Sydney"` when missing/invalid). This also applies
+to any *client* rendering that must be clinic-time regardless of device (e.g. the
+consent line on the labelled worksheet — `resolveClinicTimeZone(clinicData)`).
 
-**Why:** clinics are Australian and operate in local time; the email reminder path
-(`server/email.ts`) already hardcodes `Australia/Sydney`. The SMS path originally used
-server-local methods and drifted by the UTC offset.
+**Why:** clinics are Australian/NZ and operate in their own local time. The app used to
+hard-code `Australia/Sydney` everywhere, which renders the wrong wall-clock date/time for
+QLD/WA/NT (no daylight saving) and NZ. There is now a per-clinic `clinics.timezone`
+column (NOT NULL, default `Australia/Sydney` for backward compat), editable in the
+super-admin clinic create form and the clinic settings form, validated server-side with
+`isValidClinicTimeZone` on both write routes.
 
-**How to apply:** when adding any new patient-facing message that includes a time,
-reuse the shared builders in `server/sms-templates.ts` or copy the email tz approach.
-Note: `Australia/Sydney` observes DST (correct for NSW/VIC/TAS/ACT) but is wrong for
-QLD/WA — there is currently no per-clinic timezone field, so Sydney is the app-wide default.
+**How to apply:** when adding any new patient-facing message that includes a date/time,
+load the clinic and pass `resolveClinicTimeZone(clinic)` to the formatter (server) or
+`resolveClinicTimeZone(clinicData)` (client). Reuse the shared builders in
+`server/sms-templates.ts`/`server/email.ts` which already take a timezone param. Never
+re-introduce a hard-coded `Australia/Sydney`. Out of scope (intentionally still
+clinic-agnostic): report "Generated" date and the OpenAI examDate.

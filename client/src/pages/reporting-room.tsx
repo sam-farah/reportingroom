@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer } from "@shared/schema";
+import { resolveClinicTimeZone } from "@shared/timezones";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -238,7 +239,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   });
 
   // Fetch full clinic data (includes logoUrl for report header)
-  const { data: clinicData } = useQuery<{ id: number; name: string; address?: string; phone?: string; fax?: string; email?: string; logoUrl?: string }>({
+  const { data: clinicData } = useQuery<{ id: number; name: string; address?: string; phone?: string; fax?: string; email?: string; logoUrl?: string; timezone?: string }>({
     queryKey: ["/api/clinic"],
     retry: false,
   });
@@ -725,10 +726,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const formatConsentDateTime = (iso: string) => {
       const d = new Date(iso);
       if (isNaN(d.getTime())) return null;
-      // Always show consent time in clinic (Sydney) time, regardless of the
+      // Always show consent time in the clinic's local time, regardless of the
       // device's timezone, so the labelled worksheet matches the signed form.
-      const datePart = d.toLocaleDateString('en-AU', { timeZone: 'Australia/Sydney', day: '2-digit', month: '2-digit', year: 'numeric' });
-      const timePart = d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Sydney', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+      const consentTz = resolveClinicTimeZone(clinicData);
+      const datePart = d.toLocaleDateString('en-AU', { timeZone: consentTz, day: '2-digit', month: '2-digit', year: 'numeric' });
+      const timePart = d.toLocaleTimeString('en-AU', { timeZone: consentTz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
       return `${datePart} ${timePart}`;
     };
     const writtenStamp = (report as any).writtenConsentAt ? formatConsentDateTime((report as any).writtenConsentAt) : null;
