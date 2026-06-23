@@ -4096,6 +4096,222 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Multi-report combined distribution ──
+  // Reports have no clinicId column, so we clinic-scope via the patient: the
+  // supplied patientId must belong to the caller's clinic, and EVERY report
+  // must belong to that same patient. This both enforces tenant isolation and
+  // guarantees all reports in a combined send are for one patient.
+  async function validateClinicReports(
+    userClinicId: number,
+    patientId: number,
+    reportIds: number[],
+  ): Promise<{ ok: true; reports: any[] } | { ok: false; status: number; error: string }> {
+    if (!Array.isArray(reportIds) || reportIds.length === 0) {
+      return { ok: false, status: 400, error: "reportIds is required" };
+    }
+    if (!Number.isInteger(patientId)) {
+      return { ok: false, status: 400, error: "patientId is required" };
+    }
+    const patient = await storage.getPatient(patientId);
+    if (!patient || patient.clinicId !== userClinicId) {
+      return { ok: false, status: 403, error: "Patient not found in your clinic" };
+    }
+    const reports: any[] = [];
+    for (const rid of reportIds) {
+      if (!Number.isInteger(rid)) {
+        return { ok: false, status: 400, error: `Invalid report ID: ${rid}` };
+      }
+      const report = await storage.getReport(rid);
+      if (!report || report.patientId !== patientId) {
+        return { ok: false, status: 403, error: `Report ${rid} does not belong to this patient` };
+      }
+      reports.push(report);
+    }
+    return { ok: true, reports };
+  }
+
+  app.post("/api/reports/distribute-email", isAuthenticated, async (req: any, res) => {
+    try {
+      const { reportIds, patientId, toEmail, toName, ccEmails, subject, reportHtml, pdfBase64, worksheetIncluded } = req.body;
+      if (!toEmail || !reportHtml) {
+        return res.status(400).json({ error: "toEmail and reportHtml are required" });
+      }
+
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const primaryEmail = String(toEmail).trim();
+      if (!EMAIL_RE.test(primaryEmail)) {
+        return res.status(400).json({ error: `Invalid recipient email: ${primaryEmail}` });
+      }
+
+      const rawCcs: string[] = Array.isArray(ccEmails) ? ccEmails : [];
+      const cleanedCcs: string[] = [];
+      const invalidCcs: string[] = [];
+      for (const raw of rawCcs) {
+        const v = String(raw || "").trim();
+        if (!v) continue;
+        if (v.toLowerCase() === primaryEmail.toLowerCase()) continue;
+        if (cleanedCcs.some((c) => c.toLowerCase() === v.toLowerCase())) continue;
+        if (!EMAIL_RE.test(v)) invalidCcs.push(v);
+        else cleanedCcs.push(v);
+      }
+      if (invalidCcs.length > 0) {
+        return res.status(400).json({
+          error: `Invalid CC email${invalidCcs.length > 1 ? "s" : ""}: ${invalidCcs.join(", ")}`,
+        });
+      }
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(403).json({ error: "No clinic associated" });
+
+      const valid = await validateClinicReports(user.clinicId, parseInt(patientId), (reportIds || []).map((n: any) => parseInt(n)));
+      if (!valid.ok) return res.status(valid.status).json({ error: valid.error });
+
+      const clinic = await storage.getClinic(user.clinicId);
+      const clinicName = clinic?.name || "Nexus Vascular Imaging";
+      const resolvedPatientName = valid.reports[0]?.patientName || req.body.patientName || "Patient";
+      const ids = valid.reports.map((r) => r.id);
+
+      console.log(
+        `[distribute-email] reports=[${ids.join(",")}] to=${primaryEmail} cc=[${cleanedCcs.join(", ")}]`
+      );
+
+      // Send a single combined email
+      await sendReportEmail({
+        toEmail: primaryEmail,
+        toName: toName || primaryEmail,
+        ccEmails: cleanedCcs,
+        subject: subject || `Medical Report — ${resolvedPatientName}`,
+        reportHtml,
+        clinicName,
+        patientName: resolvedPatientName,
+        pdfBase64: pdfBase64 || undefined,
+      });
+
+      const combinedNote =
+        ids.length > 1 ? `Combined distribution of ${ids.length} reports (#${ids.join(", #")})` : null;
+      const ccNote = cleanedCcs.length > 0 ? `CC: ${cleanedCcs.join(", ")}` : null;
+      const primaryNotes = [combinedNote, ccNote].filter(Boolean).join(" — ") || null;
+
+      // Log a distribution row per report so each report's history reflects the send
+      for (const rid of ids) {
+        await storage.createReportDistribution({
+          reportId: rid,
+          clinicId: user.clinicId,
+          method: "email",
+          recipientName: toName || null,
+          recipientEmail: primaryEmail,
+          notes: primaryNotes,
+          worksheetIncluded: !!worksheetIncluded,
+          pdfBlob: pdfBase64 || null,
+          confirmedAt: new Date(),
+          confirmedBy: user.email || null,
+        });
+        for (const ccAddr of cleanedCcs) {
+          await storage.createReportDistribution({
+            reportId: rid,
+            clinicId: user.clinicId,
+            method: "email",
+            recipientName: null,
+            recipientEmail: ccAddr,
+            notes: `Sent as CC alongside primary recipient ${primaryEmail}`,
+            worksheetIncluded: !!worksheetIncluded,
+            pdfBlob: null,
+            confirmedAt: new Date(),
+            confirmedBy: user.email || null,
+          });
+        }
+        if (pdfBase64) await storage.archiveReport(rid);
+      }
+
+      const summary =
+        cleanedCcs.length > 0
+          ? `${ids.length} report${ids.length > 1 ? "s" : ""} sent to ${primaryEmail} (cc: ${cleanedCcs.join(", ")})`
+          : `${ids.length} report${ids.length > 1 ? "s" : ""} sent to ${primaryEmail}`;
+      res.json({ success: true, message: summary, primaryRecipient: primaryEmail, ccRecipients: cleanedCcs });
+    } catch (error: any) {
+      console.error("Distribute email error:", error);
+      res.status(500).json({ error: "Failed to send email", details: error?.message });
+    }
+  });
+
+  app.post("/api/reports/distribute-fax", isAuthenticated, async (req: any, res) => {
+    try {
+      const { reportIds, patientId, faxNumber, pdfBase64 } = req.body;
+      if (!faxNumber) return res.status(400).json({ error: "faxNumber is required" });
+      if (!pdfBase64) return res.status(400).json({ error: "A report PDF is required to send a fax" });
+
+      const digitsOnly = String(faxNumber).replace(/\D/g, "").replace(/^0/, "");
+      if (!digitsOnly) return res.status(400).json({ error: "Invalid fax number" });
+      const faxEmail = `613${digitsOnly}@fax.sipcity.com.au`;
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(403).json({ error: "No clinic associated" });
+
+      const valid = await validateClinicReports(user.clinicId, parseInt(patientId), (reportIds || []).map((n: any) => parseInt(n)));
+      if (!valid.ok) return res.status(valid.status).json({ error: valid.error });
+
+      const clinic = await storage.getClinic(user.clinicId);
+      const clinicName = clinic?.name || "Nexus Vascular Imaging";
+      const resolvedPatientName = valid.reports[0]?.patientName || req.body.patientName || "Patient";
+      const ids = valid.reports.map((r) => r.id);
+
+      const sgMail = (await import("@sendgrid/mail")).default;
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+
+      const message: any = {
+        to: faxEmail,
+        from: { email: "admin@nexusvascularimaging.com", name: clinicName },
+        subject: `Medical Report — ${resolvedPatientName}`,
+        text: `Please find attached the medical report${ids.length > 1 ? "s" : ""} for ${resolvedPatientName} from ${clinicName}.`,
+        html: `<p>Please find attached the medical report${ids.length > 1 ? "s" : ""} for <strong>${resolvedPatientName}</strong> from ${clinicName}.</p>`,
+        attachments: [] as any[],
+      };
+      if (pdfBase64) {
+        message.attachments.push({
+          content: pdfBase64,
+          filename: `Report_${resolvedPatientName.replace(/\s+/g, "_")}.pdf`,
+          type: "application/pdf",
+          disposition: "attachment",
+        });
+      }
+
+      await sgMail.send(message);
+
+      const combinedNote =
+        ids.length > 1 ? `Combined distribution of ${ids.length} reports (#${ids.join(", #")})` : null;
+      for (const rid of ids) {
+        await storage.createReportDistribution({
+          reportId: rid,
+          clinicId: user.clinicId,
+          method: "fax",
+          recipientName: `Fax: ${faxNumber}`,
+          recipientEmail: faxEmail,
+          notes: combinedNote,
+          worksheetIncluded: true,
+          pdfBlob: pdfBase64 || null,
+          confirmedAt: new Date(),
+          confirmedBy: user.email || null,
+        });
+        if (pdfBase64) await storage.archiveReport(rid);
+      }
+
+      // Log fax in patient activity history once (all reports share the patient)
+      const sentByName = user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email : "staff";
+      await storage.createPatientNote({
+        patientId: valid.reports[0].patientId,
+        clinicId: user.clinicId,
+        type: "fax",
+        content: `${ids.length} report${ids.length > 1 ? "s" : ""} faxed to ${faxNumber} by ${sentByName}.`,
+        createdBy: user.id ?? null,
+      });
+
+      res.json({ success: true, faxEmail });
+    } catch (error: any) {
+      console.error("Distribute fax error:", error?.response?.body || error);
+      res.status(500).json({ error: "Failed to send fax", details: error?.message });
+    }
+  });
+
   // ── Scan Type Content Templates ──
   app.get("/api/content-templates", isAuthenticated, async (req: any, res) => {
     try {

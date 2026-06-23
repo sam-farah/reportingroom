@@ -12,8 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope, Loader2, Check, ArrowDownUp, Star } from "lucide-react";
+import { Plus, Search, User, Phone, Mail, Calendar, FileText, ClipboardList, Edit, Trash2, ChevronLeft, MapPin, File, Clock, CheckCircle, AlertCircle, X, Upload, CreditCard, ShieldCheck, ShieldAlert, Heart, Archive, ClipboardCheck, Send, MessageSquare, Printer, CalendarDays, Layers, Download, ExternalLink, Link, Eye, Stethoscope, Loader2, Check, ArrowDownUp, Star, Share2 } from "lucide-react";
 import ConsultationDialog from "@/components/consultation-dialog";
+import ReportDistributeDialog from "@/components/report-distribute-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
@@ -985,6 +987,19 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const unarchiveDocumentMutation = makeArchiveMutation("patient-documents", "documents", "unarchive");
 
   const [historyTab, setHistoryTab] = useState<'active' | 'archived' | 'completed' | 'finalized'>('active');
+  const [selectedReportIds, setSelectedReportIds] = useState<Set<number>>(new Set());
+  const [distributeDialogOpen, setDistributeDialogOpen] = useState(false);
+  const toggleReportSelection = (id: number) => {
+    setSelectedReportIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  useEffect(() => {
+    setSelectedReportIds(new Set());
+  }, [selectedPatient?.id, historyTab]);
   const [docSortOrder, setDocSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [docCategoryFilter, setDocCategoryFilter] = useState<'all' | 'clinical' | 'non-clinical'>('all');
 
@@ -2123,6 +2138,20 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                           onClick={() => { setSelectedDocument({ type: doc.type, id: doc.id }); setMobileShowDetail(true); }}
                         >
                           <div className="flex items-start gap-3">
+                            {doc.type === 'report' && (
+                              <div
+                                className="pt-2 flex-shrink-0"
+                                onClick={(e) => { e.stopPropagation(); toggleReportSelection(doc.id); }}
+                                title="Select for distribution"
+                              >
+                                <Checkbox
+                                  checked={selectedReportIds.has(doc.id)}
+                                  onCheckedChange={() => toggleReportSelection(doc.id)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  aria-label="Select report for distribution"
+                                />
+                              </div>
+                            )}
                             <div className={`p-2 rounded ${
                               doc.type === 'report' ? 'bg-green-100 text-green-600' :
                               doc.type === 'worksheet' ? 'bg-purple-100 text-purple-600' :
@@ -2279,7 +2308,43 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
               </div>
             )}
 
+            {/* Floating multi-report distribute bar */}
+            {historyTab === 'active' && selectedReportIds.size > 0 && (
+              <div className="border-t bg-blue-50 dark:bg-blue-900/30 px-3 py-2.5 flex items-center gap-2 sticky bottom-0">
+                <span className="text-xs font-semibold text-blue-800 dark:text-blue-200">
+                  {selectedReportIds.size} report{selectedReportIds.size > 1 ? 's' : ''} selected
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-gray-500 hover:text-gray-700 ml-auto"
+                  onClick={() => setSelectedReportIds(new Set())}
+                >
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => setDistributeDialogOpen(true)}
+                >
+                  <Share2 className="w-3.5 h-3.5 mr-1" />
+                  Distribute
+                </Button>
+              </div>
+            )}
+
           </div>
+
+          {/* Multi-report Distribute Dialog */}
+          {selectedPatient && (
+            <ReportDistributeDialog
+              open={distributeDialogOpen}
+              onOpenChange={(open) => { setDistributeDialogOpen(open); if (!open) setSelectedReportIds(new Set()); }}
+              reports={patientReports.filter((r) => selectedReportIds.has(r.id))}
+              patientId={selectedPatient.id}
+              patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+            />
+          )}
 
           {/* Consultation Dialog (currently disabled in UI via feature flag) */}
           {selectedPatient && (
