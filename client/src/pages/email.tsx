@@ -16,10 +16,11 @@ import type { EmailThread, EmailMessage, EmailAttachment, Patient } from "@share
 type Conversation = EmailThread & { patientName: string | null };
 
 interface EmailStatus {
-  configured: boolean;
   connected: boolean;
   address: string | null;
-  provider: string;
+  provider: string | null;
+  displayName?: string | null;
+  connectionError?: string | null;
   syncStatus: "idle" | "syncing" | "error";
   backfillCompleted: boolean;
   lastSyncedAt: string | null;
@@ -303,13 +304,14 @@ export default function Email() {
           <Mail className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <h3 className="text-lg font-semibold text-gray-900 mb-1">No mailbox connected yet</h3>
           <p className="text-sm text-gray-500 max-w-md mx-auto mb-4">
-            Connect your clinic's Microsoft 365 email in <span className="font-medium">Admin → Clinic Settings → Email Inbox</span> to
-            read and reply to your whole mailbox here, and link conversations to patient files.
+            Connect your clinic's mailbox in <span className="font-medium">Admin → Clinic Settings → Email Inbox</span> to
+            read and reply to your whole mailbox here, and link conversations to patient files. You can use Microsoft 365,
+            Google, or any IMAP/SMTP provider.
           </p>
-          {status && !status.configured && (
+          {status?.connectionError && (
             <div className="inline-flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 text-left">
               <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <span>Microsoft 365 isn't linked yet. An admin can connect it from the Admin panel.</span>
+              <span>Last connection error: {status.connectionError}</span>
             </div>
           )}
         </div>

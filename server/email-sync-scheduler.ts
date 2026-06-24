@@ -11,7 +11,7 @@
 // lifecycle of server/sms-scheduler.ts.
 
 import { storage } from "./storage";
-import { mailProvider, isEmailConfigured, BACKFILL_WINDOW_DAYS } from "./mail";
+import { resolveClinicMailProvider, BACKFILL_WINDOW_DAYS } from "./mail";
 import type { NormalizedMessage } from "./mail";
 
 const CHECK_INTERVAL_MS = 2 * 60 * 1000; // poll every 2 minutes
@@ -91,9 +91,14 @@ async function syncMailbox(clinicId: number): Promise<number> {
   inFlight.add(clinicId);
   let ingested = 0;
   try {
-    const state = await storage.getMailboxSyncState(clinicId);
-    if (!state || !state.connected) return 0;
-    if (!(await isEmailConfigured())) return 0;
+    // The clinic's connection record (resolved into a provider) is the gate — a
+    // non-null provider means a mailbox is connected for this clinic.
+    const provider = await resolveClinicMailProvider(clinicId);
+    if (!provider) return 0;
+
+    // Cursors/backfill progress live in mailbox_sync_state (one row per clinic).
+    let state = await storage.getMailboxSyncState(clinicId);
+    if (!state) state = await storage.upsertMailboxSyncState(clinicId, {});
 
     await storage.upsertMailboxSyncState(clinicId, { syncStatus: "syncing", lastError: null });
 
@@ -104,7 +109,7 @@ async function syncMailbox(clinicId: number): Promise<number> {
       let pages = 0;
       let done = false;
       while (pages < MAX_BACKFILL_PAGES_PER_RUN) {
-        const page = await mailProvider.backfillPage({ cursor, windowStart });
+        const page = await provider.backfillPage({ cursor, windowStart });
         await ingestMessages(clinicId, page.messages);
         ingested += page.messages.length;
         pages += 1;
@@ -121,7 +126,7 @@ async function syncMailbox(clinicId: number): Promise<number> {
       const since = state.lastSyncedAt
         ? new Date(new Date(state.lastSyncedAt).getTime() - INCREMENTAL_OVERLAP_MS)
         : new Date(Date.now() - BACKFILL_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-      const messages = await mailProvider.fetchSince(since);
+      const messages = await provider.fetchSince(since);
       await ingestMessages(clinicId, messages);
       ingested += messages.length;
       await storage.upsertMailboxSyncState(clinicId, { lastSyncedAt: new Date() });
@@ -141,11 +146,11 @@ async function syncMailbox(clinicId: number): Promise<number> {
 }
 
 async function runOnce(): Promise<void> {
-  if (!(await isEmailConfigured())) return;
-  const mailboxes = await storage.getConnectedMailboxes();
-  for (const mb of mailboxes) {
-    await syncMailbox(mb.clinicId).catch(err =>
-      console.error(`[email-sync] clinic ${mb.clinicId} error:`, err),
+  // Every clinic with a connected mailbox (any provider) gets a sync pass.
+  const connections = await storage.listConnectedMailboxConnections();
+  for (const conn of connections) {
+    await syncMailbox(conn.clinicId).catch(err =>
+      console.error(`[email-sync] clinic ${conn.clinicId} error:`, err),
     );
   }
 }

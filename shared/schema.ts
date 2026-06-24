@@ -1108,15 +1108,17 @@ export type InsertChatMessageReaction = z.infer<typeof insertChatMessageReaction
 // message. All PII-bearing text columns are encrypted at rest in the storage layer
 // (same AES scheme as patient data). Provider-neutral so Gmail/IMAP can be added.
 
-// One row per clinic — binds the (global) mail connector to a single clinic and
-// holds the incremental-sync cursors. `connected` is the single source of truth
-// for whether this clinic's mailbox is live.
+// One row per clinic — holds ONLY the incremental-sync cursors/status for that
+// clinic's mailbox. The connection itself (provider, address, credentials, live
+// status) lives in `mailbox_connections`; the `provider`/`connectedAddress`/
+// `connected` columns below are LEGACY from the old global-mailbox design, kept
+// for migration compatibility and no longer the source of truth.
 export const mailboxSyncState = pgTable("mailbox_sync_state", {
   id: serial("id").primaryKey(),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id).unique(),
-  provider: varchar("provider", { length: 20 }).notNull().default("outlook"), // outlook | gmail | imap
-  connectedAddress: varchar("connected_address", { length: 320 }), // the mailbox address (e.g. reception@clinic.com)
-  connected: boolean("connected").notNull().default(false),
+  provider: varchar("provider", { length: 20 }).notNull().default("outlook"), // LEGACY — see mailbox_connections
+  connectedAddress: varchar("connected_address", { length: 320 }), // LEGACY — see mailbox_connections
+  connected: boolean("connected").notNull().default(false), // LEGACY — see mailbox_connections
   deltaLink: text("delta_link"), // provider incremental-sync cursor (Graph @odata.deltaLink)
   backfillCompleted: boolean("backfill_completed").notNull().default(false),
   backfillNextLink: text("backfill_next_link"), // provider paging cursor while backfilling history
@@ -1205,3 +1207,41 @@ export const emailAttachments = pgTable("email_attachments", {
 export const insertEmailAttachmentSchema = createInsertSchema(emailAttachments).omit({ id: true, createdAt: true });
 export type EmailAttachment = typeof emailAttachments.$inferSelect;
 export type InsertEmailAttachment = z.infer<typeof insertEmailAttachmentSchema>;
+
+// Per-clinic mailbox connection. Each clinic owns ONE connection and picks how it
+// connects: Microsoft 365 OAuth (our Azure app), Google OAuth (our Google app), or
+// generic IMAP/SMTP. This is the source of truth for "is this clinic connected and
+// how". All secrets (OAuth refresh/access tokens, IMAP/SMTP password) are AES-encrypted
+// at rest in the storage layer (same scheme as patient PII) and never logged. The
+// mailbox address/displayName are plaintext. Cursors/backfill state stay in
+// mailbox_sync_state (one row per clinic), keyed by the same clinicId.
+export const mailboxConnections = pgTable("mailbox_connections", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id).unique(),
+  provider: varchar("provider", { length: 20 }).notNull(), // microsoft_oauth | google_oauth | imap_smtp
+  status: varchar("status", { length: 20 }).notNull().default("connected"), // connected | error
+  connectedAddress: varchar("connected_address", { length: 320 }), // plaintext mailbox address
+  displayName: varchar("display_name", { length: 255 }), // plaintext account display name
+  // OAuth (microsoft_oauth | google_oauth) — encrypted at rest
+  refreshToken: text("refresh_token"), // encrypted at rest
+  accessToken: text("access_token"), // encrypted at rest, cached until accessTokenExpiresAt
+  accessTokenExpiresAt: timestamp("access_token_expires_at"),
+  scope: text("scope"),
+  providerAccountId: varchar("provider_account_id", { length: 255 }),
+  // IMAP/SMTP (imap_smtp)
+  imapHost: varchar("imap_host", { length: 255 }),
+  imapPort: integer("imap_port"),
+  imapSecure: boolean("imap_secure").notNull().default(true),
+  smtpHost: varchar("smtp_host", { length: 255 }),
+  smtpPort: integer("smtp_port"),
+  smtpSecure: boolean("smtp_secure").notNull().default(true),
+  username: varchar("username", { length: 320 }), // plaintext login (often the email address)
+  password: text("password"), // encrypted at rest (app password)
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertMailboxConnectionSchema = createInsertSchema(mailboxConnections).omit({ id: true, createdAt: true, updatedAt: true });
+export type MailboxConnection = typeof mailboxConnections.$inferSelect;
+export type InsertMailboxConnection = z.infer<typeof insertMailboxConnectionSchema>;

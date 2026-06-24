@@ -2,6 +2,25 @@
 // through this contract so additional providers (Gmail, generic IMAP) can be
 // added later without touching the sync engine, storage, routes, or UI.
 
+import type { MailboxConnection } from "@shared/schema";
+
+// New OAuth tokens to persist after a refresh. The factory wires saveTokens to
+// storage.upsertMailboxConnection so providers never import storage directly.
+export interface ProviderTokenUpdate {
+  accessToken: string;
+  accessTokenExpiresAt: Date;
+  refreshToken?: string;
+}
+
+// Everything a per-clinic provider instance needs: the clinic's connection row
+// (with secrets ALREADY decrypted by the storage layer) plus a callback to
+// persist refreshed OAuth tokens.
+export interface MailContext {
+  clinicId: number;
+  connection: MailboxConnection;
+  saveTokens: (u: ProviderTokenUpdate) => Promise<void>;
+}
+
 export interface NormalizedRecipient {
   name?: string | null;
   address: string;

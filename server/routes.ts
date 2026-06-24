@@ -9,7 +9,18 @@ import { setupAuth, isAuthenticated } from "./auth";
 import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor, sendPatientConsentEmail } from "./email";
 import { isSmsConfigured, sendSms, normalisePhone, getSmsFromNumber, validateTwilioSignature } from "./twilio";
 import { buildReminderBody } from "./sms-templates";
-import { mailProvider, isEmailConfigured } from "./mail";
+import {
+  resolveClinicMailProvider,
+  isEmailConfigured,
+  isOAuthServerConfigured,
+  signState,
+  verifyState,
+  buildAuthUrl,
+  exchangeCode,
+  fetchOAuthIdentity,
+  type OAuthProviderKey,
+} from "./mail";
+import { testImapSmtpConnection } from "./mail/imap";
 import { syncMailboxNow } from "./email-sync-scheduler";
 import sanitizeHtml from "sanitize-html";
 import multer from "multer";
@@ -1743,13 +1754,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
-      const configured = await isEmailConfigured();
+      const connection = await storage.getMailboxConnection(user.clinicId);
       const state = await storage.getMailboxSyncState(user.clinicId);
+      const connected = !!connection && connection.status === "connected";
       res.json({
-        configured,
-        connected: !!state?.connected && configured,
-        address: state?.connectedAddress ?? null,
-        provider: state?.provider ?? "outlook",
+        // Which connection methods this deployment can offer (server creds present).
+        availableMethods: {
+          microsoft_oauth: isOAuthServerConfigured("microsoft_oauth"),
+          google_oauth: isOAuthServerConfigured("google_oauth"),
+          imap_smtp: true,
+        },
+        connected,
+        provider: connection?.provider ?? null,
+        address: connection?.connectedAddress ?? null,
+        displayName: connection?.displayName ?? null,
+        connectionError: connection?.lastError ?? null,
         syncStatus: state?.syncStatus ?? "idle",
         backfillCompleted: !!state?.backfillCompleted,
         lastSyncedAt: state?.lastSyncedAt ?? null,
@@ -1761,33 +1780,152 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Connect this clinic's mailbox to the configured connector. The connector is a
-  // single mailbox for the whole deployment, so only one clinic may own it.
-  app.post("/api/email/connect", isAuthenticated, async (req, res) => {
+  // Build the OAuth redirect URI for THIS deployment from the incoming request, so
+  // it matches whatever public URL the clinic uses (must be registered in our
+  // Azure/Google app).
+  const buildOAuthRedirectUri = (req: any, provider: string): string => {
+    const proto = ((req.headers["x-forwarded-proto"] as string) || req.protocol || "https")
+      .split(",")[0]
+      .trim();
+    const host = (req.headers["x-forwarded-host"] as string) || req.get("host");
+    return `${proto}://${host}/api/email/oauth/${provider}/callback`;
+  };
+
+  // Connect this clinic via generic IMAP/SMTP. Credentials are TESTED before saving
+  // so a bad host/password fails fast instead of silently never syncing.
+  app.post("/api/email/connect/imap", isAuthenticated, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
-      if (!(await isEmailConfigured())) {
-        return res.status(503).json({ error: "Email is not set up yet. Connect a Microsoft 365 mailbox first." });
+      if (!["clinic_owner", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ error: "Only an owner or admin can change the clinic mailbox." });
       }
-      // Enforce single-owner atomically: connectMailboxAtomic takes a global
-      // advisory lock so two clinics can't both win the single shared mailbox under
-      // concurrent requests. The Graph address lookup happens before the lock so we
-      // never hold a DB transaction open across a network call.
-      const address = await mailProvider.getConnectedAddress();
-      const result = await storage.connectMailboxAtomic(user.clinicId, {
-        provider: mailProvider.name,
-        address,
+      const b = req.body || {};
+      const imapHost = String(b.imapHost || "").trim();
+      const smtpHost = String(b.smtpHost || "").trim();
+      const username = String(b.username || "").trim();
+      const password = String(b.password || "");
+      const imapPort = Number(b.imapPort);
+      const smtpPort = Number(b.smtpPort);
+      if (!imapHost || !smtpHost || !username || !password) {
+        return res.status(400).json({ error: "IMAP host, SMTP host, username and password are all required." });
+      }
+      if (!Number.isFinite(imapPort) || !Number.isFinite(smtpPort)) {
+        return res.status(400).json({ error: "IMAP and SMTP ports must be numbers." });
+      }
+      const imapSecure = b.imapSecure !== false;
+      const smtpSecure = b.smtpSecure !== false;
+      const test = await testImapSmtpConnection({
+        imapHost, imapPort, imapSecure, smtpHost, smtpPort, smtpSecure, username, password,
       });
-      if (!result.ok || !result.state) {
-        return res.status(409).json({ error: "This mailbox is already connected to another clinic." });
+      if (!test.ok) {
+        return res.status(400).json({ error: test.error || "Could not connect with those settings." });
       }
-      // Kick off the first sync without blocking the response.
+      const connectedAddress = String(b.connectedAddress || username).trim();
+      await storage.upsertMailboxConnection(user.clinicId, {
+        provider: "imap_smtp",
+        status: "connected",
+        connectedAddress,
+        displayName: connectedAddress,
+        imapHost, imapPort, imapSecure,
+        smtpHost, smtpPort, smtpSecure,
+        username, password,
+        // Clear any OAuth fields left from a previous provider.
+        refreshToken: null, accessToken: null, accessTokenExpiresAt: null, scope: null, providerAccountId: null,
+        lastError: null,
+      });
+      await storage.resetMailboxSyncState(user.clinicId);
       syncMailboxNow(user.clinicId).catch(err => console.error("[email] initial sync error:", err));
-      res.json({ connected: true, address: result.state.connectedAddress });
+      res.json({ connected: true, address: connectedAddress });
     } catch (error: any) {
-      console.error("Email connect error:", error);
+      console.error("Email IMAP connect error:", error);
       res.status(500).json({ error: error?.message || "Failed to connect mailbox" });
+    }
+  });
+
+  // Begin an OAuth connect (Microsoft 365 or Google). Redirects the browser to the
+  // provider with a signed, expiring state that binds this clinic + user.
+  app.get("/api/email/oauth/:provider/start", isAuthenticated, async (req, res) => {
+    try {
+      const provider = req.params.provider as OAuthProviderKey;
+      if (provider !== "microsoft_oauth" && provider !== "google_oauth") {
+        return res.status(400).send("Unknown sign-in method");
+      }
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).send("No clinic");
+      if (!["clinic_owner", "admin"].includes(user.role || "")) {
+        return res.status(403).send("Only an owner or admin can change the clinic mailbox.");
+      }
+      if (!isOAuthServerConfigured(provider)) {
+        return res.status(503).send("This sign-in method is not available on this server.");
+      }
+      const redirectUri = buildOAuthRedirectUri(req, provider);
+      // Bind this connect attempt to the session: the nonce must come back on the
+      // callback and is consumed once, defeating state replay.
+      const nonce = crypto.randomBytes(12).toString("hex");
+      req.session.pendingOAuthNonce = nonce;
+      const state = signState({ provider, clinicId: user.clinicId, userId: user.id, nonce });
+      res.redirect(buildAuthUrl(provider, { redirectUri, state }));
+    } catch (error: any) {
+      console.error("Email OAuth start error:", error);
+      res.status(500).send("Could not start sign-in.");
+    }
+  });
+
+  // OAuth callback — exchanges the code, discovers the address, saves the per-clinic
+  // connection, then bounces back to the app.
+  app.get("/api/email/oauth/:provider/callback", async (req, res) => {
+    const provider = req.params.provider as OAuthProviderKey;
+    const fail = (reason: string) =>
+      res.redirect(`/?email=error&reason=${encodeURIComponent(String(reason).slice(0, 120))}`);
+    try {
+      if (provider !== "microsoft_oauth" && provider !== "google_oauth") return fail("unknown_provider");
+      const q = req.query as any;
+      if (q.error) return fail(String(q.error_description || q.error));
+      const parsed = verifyState(typeof q.state === "string" ? q.state : null);
+      if (!parsed || parsed.provider !== provider) return fail("invalid_state");
+      // Defense in depth: the signed state must belong to the current session user.
+      if (!req.session?.userId || req.session.userId !== parsed.userId) return fail("session_mismatch");
+      // Single-use nonce: must match the one issued at /start, then consume it so a
+      // captured callback URL cannot be replayed.
+      if (!req.session.pendingOAuthNonce || req.session.pendingOAuthNonce !== parsed.nonce) {
+        return fail("invalid_state");
+      }
+      delete req.session.pendingOAuthNonce;
+      // Re-load the user NOW and confirm they still own/administer the signed clinic —
+      // role or clinic membership may have changed between /start and callback.
+      const currentUser = await storage.getUser(req.session.userId);
+      if (
+        !currentUser?.clinicId ||
+        currentUser.clinicId !== parsed.clinicId ||
+        !["clinic_owner", "admin"].includes(currentUser.role || "")
+      ) {
+        return fail("not_authorized");
+      }
+      if (!q.code) return fail("no_code");
+      const redirectUri = buildOAuthRedirectUri(req, provider);
+      const tokens = await exchangeCode(provider, { code: String(q.code), redirectUri });
+      const identity = await fetchOAuthIdentity(provider, tokens.accessToken);
+      await storage.upsertMailboxConnection(parsed.clinicId, {
+        provider,
+        status: "connected",
+        connectedAddress: identity.address,
+        displayName: identity.displayName,
+        providerAccountId: identity.accountId,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken ?? null,
+        accessTokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+        scope: tokens.scope ?? null,
+        // Clear any IMAP fields left from a previous provider.
+        imapHost: null, imapPort: null, smtpHost: null, smtpPort: null, username: null, password: null,
+        lastError: null,
+      });
+      await storage.resetMailboxSyncState(parsed.clinicId);
+      syncMailboxNow(parsed.clinicId).catch(err => console.error("[email] initial sync error:", err));
+      res.redirect(`/?email=connected`);
+    } catch (error: any) {
+      console.error("Email OAuth callback error:", error);
+      fail(error?.message || "connect_failed");
     }
   });
 
@@ -1796,7 +1934,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
-      await storage.upsertMailboxSyncState(user.clinicId, { connected: false });
+      if (!["clinic_owner", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ error: "Only an owner or admin can change the clinic mailbox." });
+      }
+      await storage.deleteMailboxConnection(user.clinicId);
+      await storage.resetMailboxSyncState(user.clinicId);
       res.json({ connected: false });
     } catch (error: any) {
       console.error("Email disconnect error:", error);
@@ -1809,8 +1951,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
-      const state = await storage.getMailboxSyncState(user.clinicId);
-      if (!state?.connected || !(await isEmailConfigured())) {
+      if (!(await isEmailConfigured(user.clinicId))) {
         return res.status(503).json({ error: "Mailbox is not connected." });
       }
       const count = await syncMailboxNow(user.clinicId);
@@ -1863,10 +2004,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!message) return res.status(404).json({ error: "Message not found" });
       let html: string | null = message.bodyHtml ?? null;
       if (!html) {
-        if (!(await isEmailConfigured())) {
+        const provider = await resolveClinicMailProvider(user.clinicId);
+        if (!provider) {
           return res.json({ html: null, snippet: message.snippet ?? null });
         }
-        const body = await mailProvider.getMessageBody(message.graphId);
+        const body = await provider.getMessageBody(message.graphId);
         html = body.html || (body.text ? textToHtml(body.text) : null);
         if (html) await storage.cacheEmailMessageBody(user.clinicId, messageId, html);
       }
@@ -1887,8 +2029,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(messageId)) return res.status(400).json({ error: "Invalid message id" });
       const message = await storage.getEmailMessageById(user.clinicId, messageId);
       if (!message) return res.status(404).json({ error: "Message not found" });
-      if (message.hasAttachments && (await isEmailConfigured())) {
-        const metas = await mailProvider.listAttachments(message.graphId).catch(() => []);
+      const attachProvider = message.hasAttachments
+        ? await resolveClinicMailProvider(user.clinicId)
+        : null;
+      if (attachProvider) {
+        const metas = await attachProvider.listAttachments(message.graphId).catch(() => []);
         for (const a of metas) {
           await storage.upsertEmailAttachment({
             clinicId: user.clinicId,
@@ -1920,8 +2065,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!att) return res.status(404).json({ error: "Attachment not found" });
       const message = await storage.getEmailMessageById(user.clinicId, att.messageId);
       if (!message) return res.status(404).json({ error: "Message not found" });
-      if (!(await isEmailConfigured())) return res.status(503).json({ error: "Mailbox is not connected." });
-      const bytes = await mailProvider.getAttachmentBytes(message.graphId, att.graphAttachmentId);
+      const provider = await resolveClinicMailProvider(user.clinicId);
+      if (!provider) return res.status(503).json({ error: "Mailbox is not connected." });
+      const bytes = await provider.getAttachmentBytes(message.graphId, att.graphAttachmentId);
       if (!bytes) return res.status(404).json({ error: "Attachment unavailable" });
       res.setHeader("Content-Type", bytes.contentType || "application/octet-stream");
       res.setHeader("Content-Disposition", `attachment; filename="${(bytes.name || "attachment").replace(/"/g, "")}"`);
@@ -1937,8 +2083,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
-      const state = await storage.getMailboxSyncState(user.clinicId);
-      if (!state?.connected || !(await isEmailConfigured())) {
+      const provider = await resolveClinicMailProvider(user.clinicId);
+      if (!provider) {
         return res.status(503).json({ error: "Mailbox is not connected." });
       }
       const { to, cc, subject, body } = req.body || {};
@@ -1947,7 +2093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const text = typeof body === "string" ? body : "";
       if (toList.length === 0) return res.status(400).json({ error: "At least one recipient is required" });
       if (!text.trim()) return res.status(400).json({ error: "Message body is required" });
-      await mailProvider.sendNew({ to: toList, cc: ccList, subject: String(subject || "").trim(), html: textToHtml(text) });
+      await provider.sendNew({ to: toList, cc: ccList, subject: String(subject || "").trim(), html: textToHtml(text) });
       // Pull the just-sent message into the inbox.
       syncMailboxNow(user.clinicId).catch(err => console.error("[email] post-send sync error:", err));
       res.json({ sent: true });
@@ -1964,8 +2110,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       const threadId = parseInt(req.params.id);
       if (isNaN(threadId)) return res.status(400).json({ error: "Invalid thread id" });
-      const state = await storage.getMailboxSyncState(user.clinicId);
-      if (!state?.connected || !(await isEmailConfigured())) {
+      const provider = await resolveClinicMailProvider(user.clinicId);
+      if (!provider) {
         return res.status(503).json({ error: "Mailbox is not connected." });
       }
       const thread = await storage.getEmailThreadById(user.clinicId, threadId);
@@ -1975,7 +2121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const messages = await storage.getEmailThreadMessages(user.clinicId, threadId);
       const last = messages[messages.length - 1];
       if (!last) return res.status(400).json({ error: "Nothing to reply to in this thread" });
-      await mailProvider.reply({ providerMessageId: last.graphId, html: textToHtml(text) });
+      await provider.reply({ providerMessageId: last.graphId, html: textToHtml(text) });
       syncMailboxNow(user.clinicId).catch(err => console.error("[email] post-reply sync error:", err));
       res.json({ sent: true });
     } catch (error: any) {

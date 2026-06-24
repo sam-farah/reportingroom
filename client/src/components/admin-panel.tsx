@@ -142,21 +142,41 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
 
-  // Email inbox connection state
+  // Email inbox connection state (per-clinic, multi-provider).
   const { data: emailStatus } = useQuery<{
-    configured: boolean; connected: boolean; address: string | null;
-    syncStatus: string; backfillCompleted: boolean; lastSyncedAt: string | null; lastError: string | null;
+    connected: boolean;
+    provider: string | null;
+    address: string | null;
+    displayName: string | null;
+    connectionError: string | null;
+    syncStatus: string;
+    backfillCompleted: boolean;
+    lastSyncedAt: string | null;
+    lastError: string | null;
+    availableMethods: { microsoft_oauth: boolean; google_oauth: boolean; imap_smtp: boolean };
   }>({
     queryKey: ["/api/email/status"],
     refetchInterval: 30000,
   });
-  const connectEmailMutation = useMutation({
-    mutationFn: () => apiRequest("/api/email/connect", "POST"),
+  const providerLabel = (p: string | null | undefined) =>
+    p === "microsoft_oauth" ? "Microsoft 365" : p === "google_oauth" ? "Google" : p === "imap_smtp" ? "IMAP/SMTP" : "your mailbox";
+  const [emailMethod, setEmailMethod] = useState<"imap_smtp" | null>(null);
+  const blankImapForm = {
+    connectedAddress: "",
+    imapHost: "", imapPort: "993", imapSecure: true,
+    smtpHost: "", smtpPort: "465", smtpSecure: true,
+    username: "", password: "",
+  };
+  const [imapForm, setImapForm] = useState(blankImapForm);
+  const imapConnectMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("/api/email/connect/imap", "POST", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/email/status"] });
       toast({ title: "Mailbox connected", description: "Your clinic email is now syncing into the app." });
+      setEmailMethod(null);
+      setImapForm(blankImapForm);
     },
-    onError: (err: any) => toast({ title: "Couldn't connect", description: err?.message || "Please try again.", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Couldn't connect", description: err?.message || "Please check your settings and try again.", variant: "destructive" }),
   });
   const disconnectEmailMutation = useMutation({
     mutationFn: () => apiRequest("/api/email/disconnect", "POST"),
@@ -1058,21 +1078,17 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 <span>📧</span> Email Inbox
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Connect your clinic's Microsoft 365 mailbox to read and reply to email inside the app, and link conversations to patient files.
+                Connect your clinic's mailbox to read and reply to email inside the app, and link conversations to patient files. Choose Microsoft 365, Google, or any IMAP/SMTP provider.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              {!emailStatus?.configured ? (
-                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-                  <span className="mt-0.5">⚠️</span>
-                  <span>Microsoft 365 isn't linked to this app yet. Once it's connected by your developer, you'll be able to switch on your mailbox here.</span>
-                </div>
-              ) : emailStatus?.connected ? (
+              {emailStatus?.connected ? (
                 <>
                   <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-800">
                     <span className="mt-0.5">✅</span>
                     <span>
-                      Connected to <span className="font-medium">{emailStatus.address || "your mailbox"}</span>.
+                      Connected via <span className="font-medium">{providerLabel(emailStatus.provider)}</span>
+                      {emailStatus.address ? <> to <span className="font-medium">{emailStatus.address}</span></> : null}.
                       {emailStatus.backfillCompleted
                         ? " Your mail is up to date."
                         : " Importing your email history now — this can take a little while."}
@@ -1095,19 +1111,116 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 </>
               ) : (
                 <>
-                  <div className="text-sm text-muted-foreground">
-                    Microsoft 365 is linked. Connect it to this clinic to start syncing email into your inbox.
-                  </div>
-                  <div className="flex justify-end">
+                  {emailStatus?.connectionError && (
+                    <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+                      <span className="mt-0.5">⚠️</span>
+                      <span>Last connection error: {emailStatus.connectionError}</span>
+                    </div>
+                  )}
+                  <p className="text-sm text-muted-foreground">Choose how this clinic connects its mailbox:</p>
+                  <div className="grid gap-2 sm:grid-cols-3">
                     <Button
-                      size="sm"
-                      onClick={() => connectEmailMutation.mutate()}
-                      disabled={connectEmailMutation.isPending}
-                      data-testid="button-connect-email"
+                      variant="outline"
+                      className="justify-start"
+                      disabled={!emailStatus?.availableMethods?.microsoft_oauth}
+                      onClick={() => { window.location.href = "/api/email/oauth/microsoft_oauth/start"; }}
+                      data-testid="button-connect-microsoft"
                     >
-                      {connectEmailMutation.isPending ? "Connecting…" : "Connect mailbox"}
+                      Sign in with Microsoft
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="justify-start"
+                      disabled={!emailStatus?.availableMethods?.google_oauth}
+                      onClick={() => { window.location.href = "/api/email/oauth/google_oauth/start"; }}
+                      data-testid="button-connect-google"
+                    >
+                      Sign in with Google
+                    </Button>
+                    <Button
+                      variant={emailMethod === "imap_smtp" ? "default" : "outline"}
+                      className="justify-start"
+                      onClick={() => setEmailMethod(emailMethod === "imap_smtp" ? null : "imap_smtp")}
+                      data-testid="button-connect-imap"
+                    >
+                      IMAP / SMTP
                     </Button>
                   </div>
+                  {(!emailStatus?.availableMethods?.microsoft_oauth || !emailStatus?.availableMethods?.google_oauth) && (
+                    <p className="text-xs text-muted-foreground">
+                      {(!emailStatus?.availableMethods?.microsoft_oauth && !emailStatus?.availableMethods?.google_oauth)
+                        ? "Microsoft and Google sign-in aren't set up on this server yet — you can still connect any mailbox via IMAP/SMTP."
+                        : !emailStatus?.availableMethods?.microsoft_oauth
+                          ? "Microsoft sign-in isn't set up on this server yet."
+                          : "Google sign-in isn't set up on this server yet."}
+                    </p>
+                  )}
+
+                  {emailMethod === "imap_smtp" && (
+                    <div className="space-y-3 rounded-md border p-3">
+                      <p className="text-sm font-medium">Connect via IMAP / SMTP</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1 sm:col-span-2">
+                          <Label className="text-xs">Email address</Label>
+                          <Input value={imapForm.connectedAddress} onChange={(e) => setImapForm(f => ({ ...f, connectedAddress: e.target.value }))} placeholder="reception@clinic.com" data-testid="input-imap-address" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">IMAP host</Label>
+                          <Input value={imapForm.imapHost} onChange={(e) => setImapForm(f => ({ ...f, imapHost: e.target.value }))} placeholder="imap.provider.com" data-testid="input-imap-host" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">IMAP port</Label>
+                          <Input value={imapForm.imapPort} onChange={(e) => setImapForm(f => ({ ...f, imapPort: e.target.value }))} inputMode="numeric" data-testid="input-imap-port" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">SMTP host</Label>
+                          <Input value={imapForm.smtpHost} onChange={(e) => setImapForm(f => ({ ...f, smtpHost: e.target.value }))} placeholder="smtp.provider.com" data-testid="input-smtp-host" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">SMTP port</Label>
+                          <Input value={imapForm.smtpPort} onChange={(e) => setImapForm(f => ({ ...f, smtpPort: e.target.value }))} inputMode="numeric" data-testid="input-smtp-port" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Username</Label>
+                          <Input value={imapForm.username} onChange={(e) => setImapForm(f => ({ ...f, username: e.target.value }))} placeholder="usually your email address" data-testid="input-imap-username" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Password</Label>
+                          <Input type="password" value={imapForm.password} onChange={(e) => setImapForm(f => ({ ...f, password: e.target.value }))} placeholder="app password" data-testid="input-imap-password" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={imapForm.imapSecure} onChange={(e) => setImapForm(f => ({ ...f, imapSecure: e.target.checked }))} />
+                          IMAP SSL/TLS
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={imapForm.smtpSecure} onChange={(e) => setImapForm(f => ({ ...f, smtpSecure: e.target.checked }))} />
+                          SMTP SSL/TLS
+                        </label>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          onClick={() => imapConnectMutation.mutate({
+                            connectedAddress: imapForm.connectedAddress.trim() || imapForm.username.trim(),
+                            imapHost: imapForm.imapHost.trim(),
+                            imapPort: Number(imapForm.imapPort),
+                            imapSecure: imapForm.imapSecure,
+                            smtpHost: imapForm.smtpHost.trim(),
+                            smtpPort: Number(imapForm.smtpPort),
+                            smtpSecure: imapForm.smtpSecure,
+                            username: imapForm.username.trim(),
+                            password: imapForm.password,
+                          })}
+                          disabled={imapConnectMutation.isPending}
+                          data-testid="button-imap-save"
+                        >
+                          {imapConnectMutation.isPending ? "Testing & connecting…" : "Test & connect"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </CardContent>

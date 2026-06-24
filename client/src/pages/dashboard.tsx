@@ -73,6 +73,7 @@ const PAGE_TITLES: Record<Panel, string> = {
 export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [activePanel, setActivePanel] = useState<Panel>("calendar");
   const [openPatientId, setOpenPatientId] = useState<number | null>(null);
   const [openPatientEditId, setOpenPatientEditId] = useState<number | null>(null);
@@ -85,6 +86,31 @@ export default function Dashboard() {
   const [preLinkedTab, setPreLinkedTab] = useState<"upload" | "draw">("upload");
   const [openReportId, setOpenReportId] = useState<number | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+
+  // After an OAuth email connect, the provider bounces back to "/?email=connected|error".
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("email");
+    if (result !== "connected" && result !== "error") return;
+    if (result === "connected") {
+      toast({ title: "Mailbox connected", description: "Your clinic email is now syncing into the app." });
+      setActivePanel("admin");
+      queryClient.invalidateQueries({ queryKey: ["/api/email/status"] });
+    } else {
+      toast({
+        title: "Couldn't connect mailbox",
+        description: params.get("reason") || "Please try again.",
+        variant: "destructive",
+      });
+      setActivePanel("admin");
+    }
+    // Clean the query string so a refresh doesn't re-toast.
+    params.delete("email");
+    params.delete("reason");
+    const qs = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = async () => {
     try {

@@ -125,6 +125,9 @@ import {
   mailboxSyncState,
   type MailboxSyncState,
   type InsertMailboxSyncState,
+  mailboxConnections,
+  type MailboxConnection,
+  type InsertMailboxConnection,
   emailThreads,
   type EmailThread,
   type InsertEmailThread,
@@ -136,7 +139,7 @@ import {
   type InsertEmailAttachment,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, ne, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
+import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Email message content (subject/snippet/full body) is encrypted at rest with the
@@ -162,6 +165,15 @@ const decryptEmailMessageRow = (m: EmailMessage): EmailMessage => ({
   subject: decEmailField(m.subject),
   snippet: decEmailField(m.snippet),
   bodyHtml: decEmailField(m.bodyHtml),
+});
+// Per-clinic mailbox connection: OAuth tokens and the IMAP/SMTP password are the
+// only secrets and are encrypted at rest (same AES scheme); address/host/username
+// stay plaintext so the settings UI can show them.
+const decryptMailboxConnectionRow = (c: MailboxConnection): MailboxConnection => ({
+  ...c,
+  refreshToken: decEmailField(c.refreshToken),
+  accessToken: decEmailField(c.accessToken),
+  password: decEmailField(c.password),
 });
 
 // Interface for storage operations
@@ -429,9 +441,13 @@ export interface IStorage {
   getSmsActiveClinics(): Promise<Clinic[]>;
   // Email inbox (two-way mailbox)
   getMailboxSyncState(clinicId: number): Promise<MailboxSyncState | undefined>;
-  getConnectedMailboxes(): Promise<MailboxSyncState[]>;
   upsertMailboxSyncState(clinicId: number, data: Partial<InsertMailboxSyncState>): Promise<MailboxSyncState>;
-  connectMailboxAtomic(clinicId: number, data: { provider: string; address: string | null }): Promise<{ ok: boolean; state?: MailboxSyncState }>;
+  resetMailboxSyncState(clinicId: number): Promise<void>;
+  // Per-clinic mailbox connection (multi-provider). Secrets encrypted at rest.
+  getMailboxConnection(clinicId: number): Promise<MailboxConnection | undefined>;
+  upsertMailboxConnection(clinicId: number, data: Partial<InsertMailboxConnection>): Promise<MailboxConnection>;
+  deleteMailboxConnection(clinicId: number): Promise<void>;
+  listConnectedMailboxConnections(): Promise<MailboxConnection[]>;
   getEmailMessageByGraphId(clinicId: number, graphId: string): Promise<EmailMessage | undefined>;
   upsertEmailThread(clinicId: number, conversationId: string, data: Partial<InsertEmailThread>): Promise<EmailThread>;
   getEmailThreadByConversation(clinicId: number, conversationId: string): Promise<EmailThread | undefined>;
@@ -2262,10 +2278,6 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getConnectedMailboxes(): Promise<MailboxSyncState[]> {
-    return db.select().from(mailboxSyncState).where(eq(mailboxSyncState.connected, true));
-  }
-
   async upsertMailboxSyncState(clinicId: number, data: Partial<InsertMailboxSyncState>): Promise<MailboxSyncState> {
     const existing = await this.getMailboxSyncState(clinicId);
     if (existing) {
@@ -2281,30 +2293,55 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  // Connect this clinic to the single global mailbox, race-safe. A Postgres
-  // transaction-scoped advisory lock serializes ALL connect attempts, so two
-  // clinics calling /connect concurrently can never both end up connected.
-  // Returns { ok: false } (no write) when another clinic already owns the mailbox.
-  async connectMailboxAtomic(clinicId: number, data: { provider: string; address: string | null }): Promise<{ ok: boolean; state?: MailboxSyncState }> {
-    return db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(4827710)`);
-      const others = await tx.select().from(mailboxSyncState)
-        .where(and(eq(mailboxSyncState.connected, true), ne(mailboxSyncState.clinicId, clinicId)));
-      if (others.length > 0) return { ok: false };
-      const existing = await tx.select().from(mailboxSyncState)
-        .where(eq(mailboxSyncState.clinicId, clinicId));
-      if (existing[0]) {
-        const [row] = await tx.update(mailboxSyncState)
-          .set({ provider: data.provider, connected: true, connectedAddress: data.address, lastError: null, updatedAt: new Date() })
-          .where(eq(mailboxSyncState.clinicId, clinicId))
-          .returning();
-        return { ok: true, state: row };
-      }
-      const [row] = await tx.insert(mailboxSyncState)
-        .values({ clinicId, provider: data.provider, connected: true, connectedAddress: data.address })
+  // Clear sync cursors/status for a clinic (used on connect/disconnect so a new
+  // mailbox starts a fresh backfill and a removed one leaves no stale cursor).
+  async resetMailboxSyncState(clinicId: number): Promise<void> {
+    await db.update(mailboxSyncState)
+      .set({
+        deltaLink: null,
+        backfillNextLink: null,
+        backfillCompleted: false,
+        lastSyncedAt: null,
+        syncStatus: "idle",
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(mailboxSyncState.clinicId, clinicId));
+  }
+
+  // ── Per-clinic mailbox connection (multi-provider) ───────────────────────
+  // One row per clinic; this is the source of truth for "connected + how".
+  async getMailboxConnection(clinicId: number): Promise<MailboxConnection | undefined> {
+    const [row] = await db.select().from(mailboxConnections).where(eq(mailboxConnections.clinicId, clinicId));
+    return row ? decryptMailboxConnectionRow(row) : undefined;
+  }
+
+  async upsertMailboxConnection(clinicId: number, data: Partial<InsertMailboxConnection>): Promise<MailboxConnection> {
+    const enc: any = { ...data };
+    if (enc.refreshToken !== undefined) enc.refreshToken = encEmailField(enc.refreshToken);
+    if (enc.accessToken !== undefined) enc.accessToken = encEmailField(enc.accessToken);
+    if (enc.password !== undefined) enc.password = encEmailField(enc.password);
+    const existing = await db.select().from(mailboxConnections).where(eq(mailboxConnections.clinicId, clinicId));
+    if (existing[0]) {
+      const [row] = await db.update(mailboxConnections)
+        .set({ ...enc, updatedAt: new Date() })
+        .where(eq(mailboxConnections.clinicId, clinicId))
         .returning();
-      return { ok: true, state: row };
-    });
+      return decryptMailboxConnectionRow(row);
+    }
+    const [row] = await db.insert(mailboxConnections)
+      .values({ clinicId, ...enc })
+      .returning();
+    return decryptMailboxConnectionRow(row);
+  }
+
+  async deleteMailboxConnection(clinicId: number): Promise<void> {
+    await db.delete(mailboxConnections).where(eq(mailboxConnections.clinicId, clinicId));
+  }
+
+  async listConnectedMailboxConnections(): Promise<MailboxConnection[]> {
+    const rows = await db.select().from(mailboxConnections).where(eq(mailboxConnections.status, "connected"));
+    return rows.map(decryptMailboxConnectionRow);
   }
 
   async getEmailMessageByGraphId(clinicId: number, graphId: string): Promise<EmailMessage | undefined> {
