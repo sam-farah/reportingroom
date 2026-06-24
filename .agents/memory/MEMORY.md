@@ -10,6 +10,7 @@
 - [Worksheet labelling & merge](worksheet-labelling.md) — labelled image is a superset of the raw upload; on label, delete the raw worksheet but NEVER clear labelledWorksheetId (re-label loop); timeline filter must show primary worksheetId.
 - [Kiosk check-in privacy](kiosk-checkin-privacy.md) — public kiosk search must never list patients; return one match or ask DOB; scope to clinic-or-null; guard stale responses.
 - [Verbal consent capture](verbal-consent.md) — consent timestamp lives on the appointment; reports inherit it (like sonographer inheritance) rather than threading through the client upload flow.
+- [Email inbox](email-inbox.md) — single GLOBAL connector mailbox (atomic single-owner via advisory lock); manual unlink must persist source; sanitize inbound HTML; addresses plaintext.
 - [Appointment/consent time rendering](appointment-time-timezone.md) — server is UTC; render ALL patient-facing date/times via resolveClinicTimeZone(clinic) (per-clinic clinics.timezone, default Sydney), never hard-coded or server-local.
 - [Remote/kiosk consent](remote-consent.md) — strictly clinic-scope patient resolution (null-clinic appt must not name-match all clinics); wording server-side only; send guard ±24h; once-per-day dedupe uses clinic-tz date via resolveClinicTimeZone (never widen to UTC).
 - [Canvas taint in Capacitor build](canvas-taint-capacitor.md) — backend images drawn to a canvas read via toDataURL must load as data URLs (loadImageElement), not raw cross-origin <img>, or it taints → "operation is insecure".

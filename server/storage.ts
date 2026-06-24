@@ -136,7 +136,7 @@ import {
   type InsertEmailAttachment,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
+import { eq, ne, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Email message content (subject/snippet/full body) is encrypted at rest with the
@@ -431,6 +431,7 @@ export interface IStorage {
   getMailboxSyncState(clinicId: number): Promise<MailboxSyncState | undefined>;
   getConnectedMailboxes(): Promise<MailboxSyncState[]>;
   upsertMailboxSyncState(clinicId: number, data: Partial<InsertMailboxSyncState>): Promise<MailboxSyncState>;
+  connectMailboxAtomic(clinicId: number, data: { provider: string; address: string | null }): Promise<{ ok: boolean; state?: MailboxSyncState }>;
   getEmailMessageByGraphId(clinicId: number, graphId: string): Promise<EmailMessage | undefined>;
   upsertEmailThread(clinicId: number, conversationId: string, data: Partial<InsertEmailThread>): Promise<EmailThread>;
   getEmailThreadByConversation(clinicId: number, conversationId: string): Promise<EmailThread | undefined>;
@@ -2280,6 +2281,32 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  // Connect this clinic to the single global mailbox, race-safe. A Postgres
+  // transaction-scoped advisory lock serializes ALL connect attempts, so two
+  // clinics calling /connect concurrently can never both end up connected.
+  // Returns { ok: false } (no write) when another clinic already owns the mailbox.
+  async connectMailboxAtomic(clinicId: number, data: { provider: string; address: string | null }): Promise<{ ok: boolean; state?: MailboxSyncState }> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(4827710)`);
+      const others = await tx.select().from(mailboxSyncState)
+        .where(and(eq(mailboxSyncState.connected, true), ne(mailboxSyncState.clinicId, clinicId)));
+      if (others.length > 0) return { ok: false };
+      const existing = await tx.select().from(mailboxSyncState)
+        .where(eq(mailboxSyncState.clinicId, clinicId));
+      if (existing[0]) {
+        const [row] = await tx.update(mailboxSyncState)
+          .set({ provider: data.provider, connected: true, connectedAddress: data.address, lastError: null, updatedAt: new Date() })
+          .where(eq(mailboxSyncState.clinicId, clinicId))
+          .returning();
+        return { ok: true, state: row };
+      }
+      const [row] = await tx.insert(mailboxSyncState)
+        .values({ clinicId, provider: data.provider, connected: true, connectedAddress: data.address })
+        .returning();
+      return { ok: true, state: row };
+    });
+  }
+
   async getEmailMessageByGraphId(clinicId: number, graphId: string): Promise<EmailMessage | undefined> {
     const [row] = await db.select().from(emailMessages)
       .where(and(eq(emailMessages.clinicId, clinicId), eq(emailMessages.graphId, graphId)));
@@ -2420,8 +2447,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async linkEmailThreadToPatient(clinicId: number, threadId: number, patientId: number | null, source: "auto" | "manual"): Promise<EmailThread | undefined> {
+    // Persist the source even when unlinking (patientId == null). A "manual" unlink
+    // must keep patientLinkSource = "manual" so the sync engine's auto-linker (which
+    // only links threads whose source !== "manual") never silently re-links it.
     const [row] = await db.update(emailThreads)
-      .set({ patientId, patientLinkSource: patientId == null ? null : source, updatedAt: new Date() })
+      .set({ patientId, patientLinkSource: source, updatedAt: new Date() })
       .where(and(eq(emailThreads.clinicId, clinicId), eq(emailThreads.id, threadId)))
       .returning();
     return row ? decryptEmailThreadRow(row) : undefined;

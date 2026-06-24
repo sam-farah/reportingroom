@@ -11,6 +11,7 @@ import { isSmsConfigured, sendSms, normalisePhone, getSmsFromNumber, validateTwi
 import { buildReminderBody } from "./sms-templates";
 import { mailProvider, isEmailConfigured } from "./mail";
 import { syncMailboxNow } from "./email-sync-scheduler";
+import sanitizeHtml from "sanitize-html";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1708,6 +1709,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return escaped.replace(/\r?\n/g, "<br>");
   };
 
+  // Helper: sanitize inbound email HTML before it is sent to the browser. Email
+  // bodies come from external senders and are rendered with dangerouslySetInnerHTML,
+  // so they're attacker-controlled — strip scripts, event handlers, <style>/<iframe>,
+  // and any javascript: URLs while keeping common formatting/layout markup.
+  const sanitizeEmailHtml = (dirty: string): string =>
+    sanitizeHtml(dirty, {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+        "img", "h1", "h2", "u", "s", "span", "center", "font",
+        "table", "thead", "tbody", "tfoot", "tr", "td", "th", "col", "colgroup",
+      ]),
+      allowedAttributes: {
+        "*": ["style", "class", "align", "dir", "width", "height", "valign", "bgcolor", "color"],
+        a: ["href", "name", "target", "rel", "title"],
+        img: ["src", "alt", "title", "width", "height", "style"],
+        font: ["color", "face", "size"],
+        table: ["border", "cellpadding", "cellspacing", "width", "bgcolor", "style"],
+        td: ["colspan", "rowspan", "width", "height", "valign", "align", "bgcolor", "style"],
+        th: ["colspan", "rowspan", "width", "height", "valign", "align", "bgcolor", "style"],
+      },
+      allowedSchemes: ["http", "https", "mailto", "tel"],
+      allowedSchemesByTag: { img: ["http", "https", "data"] },
+      allowProtocolRelative: false,
+      transformTags: {
+        a: sanitizeHtml.simpleTransform("a", { target: "_blank", rel: "noopener noreferrer" }),
+      },
+      // Remove these tags AND their text content entirely.
+      nonTextTags: ["style", "script", "textarea", "option", "noscript"],
+    });
+
   // Connection + sync status for the clinic's mailbox.
   app.get("/api/email/status", isAuthenticated, async (req, res) => {
     try {
@@ -1740,22 +1770,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!(await isEmailConfigured())) {
         return res.status(503).json({ error: "Email is not set up yet. Connect a Microsoft 365 mailbox first." });
       }
-      // Enforce single-owner: refuse if another clinic already holds the mailbox.
-      const owners = await storage.getConnectedMailboxes();
-      const otherOwner = owners.find(o => o.clinicId !== user.clinicId);
-      if (otherOwner) {
+      // Enforce single-owner atomically: connectMailboxAtomic takes a global
+      // advisory lock so two clinics can't both win the single shared mailbox under
+      // concurrent requests. The Graph address lookup happens before the lock so we
+      // never hold a DB transaction open across a network call.
+      const address = await mailProvider.getConnectedAddress();
+      const result = await storage.connectMailboxAtomic(user.clinicId, {
+        provider: mailProvider.name,
+        address,
+      });
+      if (!result.ok || !result.state) {
         return res.status(409).json({ error: "This mailbox is already connected to another clinic." });
       }
-      const address = await mailProvider.getConnectedAddress();
-      const state = await storage.upsertMailboxSyncState(user.clinicId, {
-        provider: mailProvider.name,
-        connected: true,
-        connectedAddress: address,
-        lastError: null,
-      });
       // Kick off the first sync without blocking the response.
       syncMailboxNow(user.clinicId).catch(err => console.error("[email] initial sync error:", err));
-      res.json({ connected: true, address: state.connectedAddress });
+      res.json({ connected: true, address: result.state.connectedAddress });
     } catch (error: any) {
       console.error("Email connect error:", error);
       res.status(500).json({ error: error?.message || "Failed to connect mailbox" });
@@ -1832,16 +1861,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(messageId)) return res.status(400).json({ error: "Invalid message id" });
       const message = await storage.getEmailMessageById(user.clinicId, messageId);
       if (!message) return res.status(404).json({ error: "Message not found" });
-      if (message.bodyHtml) {
-        return res.json({ html: message.bodyHtml });
+      let html: string | null = message.bodyHtml ?? null;
+      if (!html) {
+        if (!(await isEmailConfigured())) {
+          return res.json({ html: null, snippet: message.snippet ?? null });
+        }
+        const body = await mailProvider.getMessageBody(message.graphId);
+        html = body.html || (body.text ? textToHtml(body.text) : null);
+        if (html) await storage.cacheEmailMessageBody(user.clinicId, messageId, html);
       }
-      if (!(await isEmailConfigured())) {
-        return res.json({ html: null, snippet: message.snippet ?? null });
-      }
-      const body = await mailProvider.getMessageBody(message.graphId);
-      const html = body.html || (body.text ? textToHtml(body.text) : null);
-      if (html) await storage.cacheEmailMessageBody(user.clinicId, messageId, html);
-      res.json({ html });
+      // Always sanitize before returning — bodies are rendered as raw HTML in the client.
+      res.json({ html: html ? sanitizeEmailHtml(html) : null });
     } catch (error: any) {
       console.error("Email body error:", error);
       res.status(500).json({ error: error?.message || "Failed to load message body" });
