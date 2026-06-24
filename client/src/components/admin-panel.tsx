@@ -142,6 +142,31 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
 
+  // Email inbox connection state
+  const { data: emailStatus } = useQuery<{
+    configured: boolean; connected: boolean; address: string | null;
+    syncStatus: string; backfillCompleted: boolean; lastSyncedAt: string | null; lastError: string | null;
+  }>({
+    queryKey: ["/api/email/status"],
+    refetchInterval: 30000,
+  });
+  const connectEmailMutation = useMutation({
+    mutationFn: () => apiRequest("/api/email/connect", "POST"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email/status"] });
+      toast({ title: "Mailbox connected", description: "Your clinic email is now syncing into the app." });
+    },
+    onError: (err: any) => toast({ title: "Couldn't connect", description: err?.message || "Please try again.", variant: "destructive" }),
+  });
+  const disconnectEmailMutation = useMutation({
+    mutationFn: () => apiRequest("/api/email/disconnect", "POST"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/email/status"] });
+      toast({ title: "Mailbox disconnected" });
+    },
+    onError: (err: any) => toast({ title: "Couldn't disconnect", description: err?.message || "Please try again.", variant: "destructive" }),
+  });
+
   // Per-scan-type prep instructions state
   const { data: scanPrepRows = [] } = useQuery<{ id: number; scanType: string; instructions: string }[]>({
     queryKey: ["/api/scan-prep-instructions"],
@@ -1024,6 +1049,67 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                   {saveSmsSettingsMutation.isPending ? "Saving…" : "Save SMS Settings"}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span>📧</span> Email Inbox
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Connect your clinic's Microsoft 365 mailbox to read and reply to email inside the app, and link conversations to patient files.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!emailStatus?.configured ? (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                  <span className="mt-0.5">⚠️</span>
+                  <span>Microsoft 365 isn't linked to this app yet. Once it's connected by your developer, you'll be able to switch on your mailbox here.</span>
+                </div>
+              ) : emailStatus?.connected ? (
+                <>
+                  <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-800">
+                    <span className="mt-0.5">✅</span>
+                    <span>
+                      Connected to <span className="font-medium">{emailStatus.address || "your mailbox"}</span>.
+                      {emailStatus.backfillCompleted
+                        ? " Your mail is up to date."
+                        : " Importing your email history now — this can take a little while."}
+                      {emailStatus.syncStatus === "error" && emailStatus.lastError && (
+                        <span className="block mt-1 text-red-700">Last sync error: {emailStatus.lastError}</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => disconnectEmailMutation.mutate()}
+                      disabled={disconnectEmailMutation.isPending}
+                      data-testid="button-disconnect-email"
+                    >
+                      {disconnectEmailMutation.isPending ? "Disconnecting…" : "Disconnect mailbox"}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm text-muted-foreground">
+                    Microsoft 365 is linked. Connect it to this clinic to start syncing email into your inbox.
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={() => connectEmailMutation.mutate()}
+                      disabled={connectEmailMutation.isPending}
+                      data-testid="button-connect-email"
+                    >
+                      {connectEmailMutation.isPending ? "Connecting…" : "Connect mailbox"}
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

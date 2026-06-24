@@ -9,6 +9,8 @@ import { setupAuth, isAuthenticated } from "./auth";
 import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor, sendPatientConsentEmail } from "./email";
 import { isSmsConfigured, sendSms, normalisePhone, getSmsFromNumber, validateTwilioSignature } from "./twilio";
 import { buildReminderBody } from "./sms-templates";
+import { mailProvider, isEmailConfigured } from "./mail";
+import { syncMailboxNow } from "./email-sync-scheduler";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1693,6 +1695,329 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("SMS status webhook error:", error);
       res.sendStatus(204);
+    }
+  });
+
+  // ── Email inbox (two-way mailbox via Microsoft 365 / provider-neutral) ──────
+  // Helper: plain text → safe minimal HTML for outbound mail bodies.
+  const textToHtml = (text: string): string => {
+    const escaped = String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return escaped.replace(/\r?\n/g, "<br>");
+  };
+
+  // Connection + sync status for the clinic's mailbox.
+  app.get("/api/email/status", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const configured = await isEmailConfigured();
+      const state = await storage.getMailboxSyncState(user.clinicId);
+      res.json({
+        configured,
+        connected: !!state?.connected && configured,
+        address: state?.connectedAddress ?? null,
+        provider: state?.provider ?? "outlook",
+        syncStatus: state?.syncStatus ?? "idle",
+        backfillCompleted: !!state?.backfillCompleted,
+        lastSyncedAt: state?.lastSyncedAt ?? null,
+        lastError: state?.lastError ?? null,
+      });
+    } catch (error: any) {
+      console.error("Email status error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load email status" });
+    }
+  });
+
+  // Connect this clinic's mailbox to the configured connector. The connector is a
+  // single mailbox for the whole deployment, so only one clinic may own it.
+  app.post("/api/email/connect", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      if (!(await isEmailConfigured())) {
+        return res.status(503).json({ error: "Email is not set up yet. Connect a Microsoft 365 mailbox first." });
+      }
+      // Enforce single-owner: refuse if another clinic already holds the mailbox.
+      const owners = await storage.getConnectedMailboxes();
+      const otherOwner = owners.find(o => o.clinicId !== user.clinicId);
+      if (otherOwner) {
+        return res.status(409).json({ error: "This mailbox is already connected to another clinic." });
+      }
+      const address = await mailProvider.getConnectedAddress();
+      const state = await storage.upsertMailboxSyncState(user.clinicId, {
+        provider: mailProvider.name,
+        connected: true,
+        connectedAddress: address,
+        lastError: null,
+      });
+      // Kick off the first sync without blocking the response.
+      syncMailboxNow(user.clinicId).catch(err => console.error("[email] initial sync error:", err));
+      res.json({ connected: true, address: state.connectedAddress });
+    } catch (error: any) {
+      console.error("Email connect error:", error);
+      res.status(500).json({ error: error?.message || "Failed to connect mailbox" });
+    }
+  });
+
+  // Disconnect the clinic's mailbox (keeps already-synced history).
+  app.post("/api/email/disconnect", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      await storage.upsertMailboxSyncState(user.clinicId, { connected: false });
+      res.json({ connected: false });
+    } catch (error: any) {
+      console.error("Email disconnect error:", error);
+      res.status(500).json({ error: error?.message || "Failed to disconnect mailbox" });
+    }
+  });
+
+  // Manually trigger a sync.
+  app.post("/api/email/sync-now", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const state = await storage.getMailboxSyncState(user.clinicId);
+      if (!state?.connected || !(await isEmailConfigured())) {
+        return res.status(503).json({ error: "Mailbox is not connected." });
+      }
+      const count = await syncMailboxNow(user.clinicId);
+      res.json({ ingested: count });
+    } catch (error: any) {
+      console.error("Email sync-now error:", error);
+      res.status(500).json({ error: error?.message || "Failed to sync mailbox" });
+    }
+  });
+
+  // List conversation threads for the clinic (most recent first).
+  app.get("/api/email/conversations", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const conversations = await storage.getEmailConversations(user.clinicId);
+      res.json(conversations);
+    } catch (error: any) {
+      console.error("Email conversations error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load conversations" });
+    }
+  });
+
+  // Full thread (messages) and mark inbound messages read.
+  app.get("/api/email/threads/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const threadId = parseInt(req.params.id);
+      if (isNaN(threadId)) return res.status(400).json({ error: "Invalid thread id" });
+      const thread = await storage.getEmailThreadById(user.clinicId, threadId);
+      if (!thread) return res.status(404).json({ error: "Thread not found" });
+      const messages = await storage.getEmailThreadMessages(user.clinicId, threadId);
+      await storage.markEmailThreadRead(user.clinicId, threadId);
+      res.json({ thread, messages });
+    } catch (error: any) {
+      console.error("Email thread error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load thread" });
+    }
+  });
+
+  // Full body for one message — fetched from the provider on demand, cached encrypted.
+  app.get("/api/email/messages/:id/body", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const messageId = parseInt(req.params.id);
+      if (isNaN(messageId)) return res.status(400).json({ error: "Invalid message id" });
+      const message = await storage.getEmailMessageById(user.clinicId, messageId);
+      if (!message) return res.status(404).json({ error: "Message not found" });
+      if (message.bodyHtml) {
+        return res.json({ html: message.bodyHtml });
+      }
+      if (!(await isEmailConfigured())) {
+        return res.json({ html: null, snippet: message.snippet ?? null });
+      }
+      const body = await mailProvider.getMessageBody(message.graphId);
+      const html = body.html || (body.text ? textToHtml(body.text) : null);
+      if (html) await storage.cacheEmailMessageBody(user.clinicId, messageId, html);
+      res.json({ html });
+    } catch (error: any) {
+      console.error("Email body error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load message body" });
+    }
+  });
+
+  // Attachment metadata for a message (fetched on demand + cached).
+  app.get("/api/email/messages/:id/attachments", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const messageId = parseInt(req.params.id);
+      if (isNaN(messageId)) return res.status(400).json({ error: "Invalid message id" });
+      const message = await storage.getEmailMessageById(user.clinicId, messageId);
+      if (!message) return res.status(404).json({ error: "Message not found" });
+      if (message.hasAttachments && (await isEmailConfigured())) {
+        const metas = await mailProvider.listAttachments(message.graphId).catch(() => []);
+        for (const a of metas) {
+          await storage.upsertEmailAttachment({
+            clinicId: user.clinicId,
+            messageId,
+            graphAttachmentId: a.providerId,
+            name: a.name ?? null,
+            contentType: a.contentType ?? null,
+            size: a.size ?? null,
+            isInline: a.isInline,
+          } as any);
+        }
+      }
+      const stored = await storage.getEmailAttachmentsByMessage(user.clinicId, messageId);
+      res.json(stored.filter(a => !a.isInline));
+    } catch (error: any) {
+      console.error("Email attachments error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load attachments" });
+    }
+  });
+
+  // Download attachment bytes — fetched on demand from the provider, never stored.
+  app.get("/api/email/attachments/:id/download", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const attId = parseInt(req.params.id);
+      if (isNaN(attId)) return res.status(400).json({ error: "Invalid attachment id" });
+      const att = await storage.getEmailAttachmentById(user.clinicId, attId);
+      if (!att) return res.status(404).json({ error: "Attachment not found" });
+      const message = await storage.getEmailMessageById(user.clinicId, att.messageId);
+      if (!message) return res.status(404).json({ error: "Message not found" });
+      if (!(await isEmailConfigured())) return res.status(503).json({ error: "Mailbox is not connected." });
+      const bytes = await mailProvider.getAttachmentBytes(message.graphId, att.graphAttachmentId);
+      if (!bytes) return res.status(404).json({ error: "Attachment unavailable" });
+      res.setHeader("Content-Type", bytes.contentType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${(bytes.name || "attachment").replace(/"/g, "")}"`);
+      res.send(bytes.buffer);
+    } catch (error: any) {
+      console.error("Email attachment download error:", error);
+      res.status(500).json({ error: error?.message || "Failed to download attachment" });
+    }
+  });
+
+  // Send a brand-new email (starts a new thread). Picked up by the next sync.
+  app.post("/api/email/send", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const state = await storage.getMailboxSyncState(user.clinicId);
+      if (!state?.connected || !(await isEmailConfigured())) {
+        return res.status(503).json({ error: "Mailbox is not connected." });
+      }
+      const { to, cc, subject, body } = req.body || {};
+      const toList = (Array.isArray(to) ? to : [to]).map((s: any) => String(s || "").trim()).filter(Boolean);
+      const ccList = (Array.isArray(cc) ? cc : cc ? [cc] : []).map((s: any) => String(s || "").trim()).filter(Boolean);
+      const text = typeof body === "string" ? body : "";
+      if (toList.length === 0) return res.status(400).json({ error: "At least one recipient is required" });
+      if (!text.trim()) return res.status(400).json({ error: "Message body is required" });
+      await mailProvider.sendNew({ to: toList, cc: ccList, subject: String(subject || "").trim(), html: textToHtml(text) });
+      // Pull the just-sent message into the inbox.
+      syncMailboxNow(user.clinicId).catch(err => console.error("[email] post-send sync error:", err));
+      res.json({ sent: true });
+    } catch (error: any) {
+      console.error("Email send error:", error);
+      res.status(502).json({ error: error?.message || "Failed to send email" });
+    }
+  });
+
+  // Reply within an existing thread.
+  app.post("/api/email/threads/:id/reply", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const threadId = parseInt(req.params.id);
+      if (isNaN(threadId)) return res.status(400).json({ error: "Invalid thread id" });
+      const state = await storage.getMailboxSyncState(user.clinicId);
+      if (!state?.connected || !(await isEmailConfigured())) {
+        return res.status(503).json({ error: "Mailbox is not connected." });
+      }
+      const thread = await storage.getEmailThreadById(user.clinicId, threadId);
+      if (!thread) return res.status(404).json({ error: "Thread not found" });
+      const text = typeof req.body?.body === "string" ? req.body.body : "";
+      if (!text.trim()) return res.status(400).json({ error: "Reply body is required" });
+      const messages = await storage.getEmailThreadMessages(user.clinicId, threadId);
+      const last = messages[messages.length - 1];
+      if (!last) return res.status(400).json({ error: "Nothing to reply to in this thread" });
+      await mailProvider.reply({ providerMessageId: last.graphId, html: textToHtml(text) });
+      syncMailboxNow(user.clinicId).catch(err => console.error("[email] post-reply sync error:", err));
+      res.json({ sent: true });
+    } catch (error: any) {
+      console.error("Email reply error:", error);
+      res.status(502).json({ error: error?.message || "Failed to send reply" });
+    }
+  });
+
+  // Manually link / unlink a thread to a patient file.
+  app.post("/api/email/threads/:id/link-patient", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const threadId = parseInt(req.params.id);
+      if (isNaN(threadId)) return res.status(400).json({ error: "Invalid thread id" });
+      const thread = await storage.getEmailThreadById(user.clinicId, threadId);
+      if (!thread) return res.status(404).json({ error: "Thread not found" });
+      const patientId = req.body?.patientId;
+      if (patientId == null) return res.status(400).json({ error: "patientId is required" });
+      const patient = await storage.getPatient(parseInt(String(patientId)));
+      if (!patient || patient.clinicId !== user.clinicId) return res.status(404).json({ error: "Patient not found" });
+      const updated = await storage.linkEmailThreadToPatient(user.clinicId, threadId, patient.id, "manual");
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Email link patient error:", error);
+      res.status(500).json({ error: error?.message || "Failed to link patient" });
+    }
+  });
+
+  app.post("/api/email/threads/:id/unlink-patient", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const threadId = parseInt(req.params.id);
+      if (isNaN(threadId)) return res.status(400).json({ error: "Invalid thread id" });
+      const thread = await storage.getEmailThreadById(user.clinicId, threadId);
+      if (!thread) return res.status(404).json({ error: "Thread not found" });
+      const updated = await storage.linkEmailThreadToPatient(user.clinicId, threadId, null, "manual");
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Email unlink patient error:", error);
+      res.status(500).json({ error: error?.message || "Failed to unlink patient" });
+    }
+  });
+
+  // Unread email count for the clinic (drives the nav badge).
+  app.get("/api/email/unread-count", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.json({ count: 0 });
+      const count = await storage.getEmailUnreadCount(user.clinicId);
+      res.json({ count });
+    } catch (error: any) {
+      console.error("Email unread-count error:", error);
+      res.json({ count: 0 });
+    }
+  });
+
+  // Email threads linked to a specific patient (for the patient file view).
+  app.get("/api/email/by-patient/:patientId", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const patientId = parseInt(req.params.patientId);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient id" });
+      const patient = await storage.getPatient(patientId);
+      if (!patient || patient.clinicId !== user.clinicId) return res.status(404).json({ error: "Patient not found" });
+      const threads = await storage.getEmailThreadsByPatient(user.clinicId, patientId);
+      res.json(threads);
+    } catch (error: any) {
+      console.error("Email by-patient error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load patient emails" });
     }
   });
 

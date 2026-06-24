@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone, MessageSquare, MessageCircle, Loader2 } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone, MessageSquare, MessageCircle, Mail, Loader2 } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,9 +26,10 @@ import HelpCentre from "./help-centre";
 import NoticeBoard from "./notice-board";
 import ClinicsAdmin from "./clinics-admin";
 import Messages from "./messages";
+import Email from "./email";
 import Chat from "./chat";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board" | "clinics" | "messages" | "chat";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board" | "clinics" | "messages" | "email" | "chat";
 
 const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; superAdminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",  icon: CalendarIcon },
@@ -37,6 +38,7 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "reporting-room", label: "Reports",   icon: FolderOpen },
   { id: "patients",       label: "Patients",  icon: UserCircle },
   { id: "messages",       label: "Messages",  icon: MessageSquare },
+  { id: "email",          label: "Email",     icon: Mail },
   { id: "chat",           label: "Team Chat", icon: MessageCircle },
   { id: "requests",       label: "Requests",  icon: ClipboardList },
   { id: "contacts",       label: "Contacts",  icon: BookUser },
@@ -64,6 +66,7 @@ const PAGE_TITLES: Record<Panel, string> = {
   "notice-board":   "Notice Board",
   "clinics":        "Clinics",
   "messages":       "Messages",
+  "email":          "Email Inbox",
   "chat":           "Team Chat",
 };
 
@@ -147,6 +150,14 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
   const smsUnreadCount = (smsConversations ?? []).reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+
+  // Email inbox unread badge — total unread emails across all conversations.
+  const { data: emailUnread } = useQuery<{ count: number }>({
+    queryKey: ["/api/email/unread-count"],
+    retry: false,
+    refetchInterval: 30000,
+  });
+  const emailUnreadCount = emailUnread?.count ?? 0;
 
   // Keep the badge live even when the chat panel isn't open.
   useChatSocket({
@@ -292,6 +303,14 @@ export default function Dashboard() {
                         {smsUnreadCount > 99 ? "99+" : smsUnreadCount}
                       </span>
                     )}
+                    {item.id === "email" && emailUnreadCount > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none"
+                        title={`${emailUnreadCount} unread email${emailUnreadCount !== 1 ? "s" : ""}`}
+                      >
+                        {emailUnreadCount > 99 ? "99+" : emailUnreadCount}
+                      </span>
+                    )}
                     {item.id === "chat" && chatUnreadCount > 0 && (
                       <span
                         className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none"
@@ -348,6 +367,8 @@ export default function Dashboard() {
         />
       ) : activePanel === "messages" ? (
         <Messages />
+      ) : activePanel === "email" ? (
+        <Email />
       ) : activePanel === "chat" ? (
         <Chat onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }} />
       ) : activePanel === "contacts" ? (

@@ -17,7 +17,7 @@ import ConsultationDialog from "@/components/consultation-dialog";
 import ReportDistributeDialog from "@/components/report-distribute-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
-import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote } from "@shared/schema";
+import type { Patient, Worksheet, Report, Appointment, DigitalWorksheet, PatientDocument, ReminderLog, ReportDistribution, PatientNote, EmailThread, EmailMessage } from "@shared/schema";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 
 // Feature flag for the new Consultation dialog. Set to true once user has signed off on testing.
@@ -271,6 +271,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [showNotesDialog, setShowNotesDialog] = useState(false);
   const [showConsultationDialog, setShowConsultationDialog] = useState(false);
+  const [showEmailsDialog, setShowEmailsDialog] = useState(false);
   const [viewMode, setViewMode] = useState<"active" | "archived">("active");
   const [sortBy, setSortBy] = useState<"name_asc" | "name_desc" | "ur_asc" | "ur_desc" | "recent" | "oldest" | "updated" | "dob_youngest" | "dob_oldest">("name_asc");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female" | "other">("all");
@@ -1903,6 +1904,10 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 <MessageSquare className="w-4 h-4 mr-1" />
                 Add Note
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowEmailsDialog(true)} data-testid="button-patient-emails">
+                <Mail className="w-4 h-4 mr-1" />
+                Emails
+              </Button>
               {/* Add Consultation — fully built, currently disabled while in testing. Flip CONSULTATIONS_ENABLED to true to enable. */}
               <Button
                 variant="outline"
@@ -2391,6 +2396,20 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   </button>
                 </div>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Email Correspondence Dialog (read-only) */}
+          <Dialog open={showEmailsDialog} onOpenChange={setShowEmailsDialog}>
+            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-blue-600" />
+                  Email Correspondence
+                  {selectedPatient && <span className="text-gray-400 font-normal text-sm">— {selectedPatient.firstName} {selectedPatient.lastName}</span>}
+                </DialogTitle>
+              </DialogHeader>
+              {selectedPatient && <PatientEmailCorrespondence patientId={selectedPatient.id} />}
             </DialogContent>
           </Dialog>
 
@@ -3548,6 +3567,104 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
             </form>
           </DialogContent>
         </Dialog>
+      </div>
+    </div>
+  );
+}
+
+function PatientEmailCorrespondence({ patientId }: { patientId: number }) {
+  const [openThreadId, setOpenThreadId] = useState<number | null>(null);
+
+  const { data: threads = [], isLoading } = useQuery<EmailThread[]>({
+    queryKey: ["/api/email/by-patient", patientId],
+  });
+
+  const { data: threadData, isLoading: messagesLoading } = useQuery<{ thread: EmailThread; messages: EmailMessage[] }>({
+    queryKey: ["/api/email/threads", openThreadId],
+    enabled: openThreadId != null,
+  });
+  const messages = threadData?.messages ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-10 text-gray-400">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading emails…
+      </div>
+    );
+  }
+
+  if (threads.length === 0) {
+    return (
+      <div className="text-center py-10 text-sm text-gray-400">
+        <Mail className="w-8 h-8 mx-auto mb-2 opacity-40" />
+        No email conversations linked to this patient yet.
+        <div className="text-xs mt-1 text-gray-300">Emails matching this patient's address link automatically, or link them from the Email inbox.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto -mx-1 px-1">
+      <div className="space-y-2">
+        {threads.map((thread) => {
+          const isOpen = openThreadId === thread.id;
+          return (
+            <div key={thread.id} className="border rounded-lg overflow-hidden dark:border-gray-700">
+              <button
+                className="w-full text-left px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-start justify-between gap-3"
+                onClick={() => setOpenThreadId(isOpen ? null : thread.id)}
+                data-testid={`button-thread-${thread.id}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-sm truncate text-gray-800 dark:text-gray-100">
+                    {thread.subject || "(no subject)"}
+                  </div>
+                  <div className="text-xs text-gray-500 truncate mt-0.5">
+                    {thread.lastFromName || thread.lastFrom || ""}
+                    {thread.lastSnippet ? ` — ${thread.lastSnippet}` : ""}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {thread.lastMessageAt && (
+                    <span className="text-[11px] text-gray-400">
+                      {new Date(thread.lastMessageAt).toLocaleDateString("en-AU")}
+                    </span>
+                  )}
+                  <span className="text-[11px] text-gray-400">{thread.messageCount} msg</span>
+                </div>
+              </button>
+              {isOpen && (
+                <div className="border-t dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 px-3 py-2 space-y-2">
+                  {messagesLoading ? (
+                    <div className="flex items-center justify-center py-4 text-gray-400 text-sm">
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading messages…
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="text-xs text-gray-400 py-2">No messages in this conversation.</div>
+                  ) : (
+                    messages.map((m) => (
+                      <div key={m.id} className="bg-white dark:bg-gray-800 border rounded-md px-3 py-2 dark:border-gray-700">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">
+                            {m.direction === "outbound" ? "You" : (m.fromName || m.fromAddress || "Unknown")}
+                          </span>
+                          {m.sentAt && (
+                            <span className="text-[11px] text-gray-400 shrink-0">
+                              {new Date(m.sentAt).toLocaleString("en-AU")}
+                            </span>
+                          )}
+                        </div>
+                        {m.snippet && (
+                          <div className="text-xs text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">{m.snippet}</div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

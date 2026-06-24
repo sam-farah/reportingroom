@@ -1099,3 +1099,109 @@ export const chatMessageReactions = pgTable("chat_message_reactions", {
 export const insertChatMessageReactionSchema = createInsertSchema(chatMessageReactions).omit({ id: true, createdAt: true });
 export type ChatMessageReaction = typeof chatMessageReactions.$inferSelect;
 export type InsertChatMessageReaction = z.infer<typeof insertChatMessageReactionSchema>;
+
+// ── Email Inbox (two-way mailbox via Microsoft Graph / provider-neutral) ──────
+// A clinic connects ONE mailbox (currently Microsoft 365 via the Replit Outlook
+// connector). The whole mailbox is mirrored as threads + message metadata; full
+// bodies and attachment bytes are NEVER persisted in bulk — they're fetched from
+// the provider on demand and only cached (encrypted) when a staff member opens a
+// message. All PII-bearing text columns are encrypted at rest in the storage layer
+// (same AES scheme as patient data). Provider-neutral so Gmail/IMAP can be added.
+
+// One row per clinic — binds the (global) mail connector to a single clinic and
+// holds the incremental-sync cursors. `connected` is the single source of truth
+// for whether this clinic's mailbox is live.
+export const mailboxSyncState = pgTable("mailbox_sync_state", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id).unique(),
+  provider: varchar("provider", { length: 20 }).notNull().default("outlook"), // outlook | gmail | imap
+  connectedAddress: varchar("connected_address", { length: 320 }), // the mailbox address (e.g. reception@clinic.com)
+  connected: boolean("connected").notNull().default(false),
+  deltaLink: text("delta_link"), // provider incremental-sync cursor (Graph @odata.deltaLink)
+  backfillCompleted: boolean("backfill_completed").notNull().default(false),
+  backfillNextLink: text("backfill_next_link"), // provider paging cursor while backfilling history
+  syncStatus: varchar("sync_status", { length: 20 }).notNull().default("idle"), // idle | syncing | error
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertMailboxSyncStateSchema = createInsertSchema(mailboxSyncState).omit({ id: true, createdAt: true, updatedAt: true });
+export type MailboxSyncState = typeof mailboxSyncState.$inferSelect;
+export type InsertMailboxSyncState = z.infer<typeof insertMailboxSyncStateSchema>;
+
+// One row per provider conversation (thread). Threads can be linked to a patient
+// file (auto by email match, or manually by staff).
+export const emailThreads = pgTable("email_threads", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  conversationId: varchar("conversation_id", { length: 512 }).notNull(), // provider thread key (Graph conversationId)
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  patientLinkSource: varchar("patient_link_source", { length: 12 }), // "auto" | "manual"
+  subject: text("subject"), // encrypted at rest
+  lastSnippet: text("last_snippet"), // preview of most recent message, encrypted at rest
+  lastFrom: varchar("last_from", { length: 320 }), // encrypted at rest
+  lastFromName: varchar("last_from_name", { length: 255 }), // encrypted at rest
+  lastDirection: varchar("last_direction", { length: 10 }), // inbound | outbound
+  lastMessageAt: timestamp("last_message_at"),
+  unreadCount: integer("unread_count").notNull().default(0),
+  messageCount: integer("message_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqConversation: unique("email_thread_conversation_unique").on(t.clinicId, t.conversationId),
+}));
+
+export const insertEmailThreadSchema = createInsertSchema(emailThreads).omit({ id: true, createdAt: true, updatedAt: true });
+export type EmailThread = typeof emailThreads.$inferSelect;
+export type InsertEmailThread = z.infer<typeof insertEmailThreadSchema>;
+
+// One row per provider message. Holds metadata + an encrypted preview; the full
+// body is cached (encrypted) lazily in `bodyHtml` only when first opened.
+export const emailMessages = pgTable("email_messages", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  threadId: integer("thread_id").notNull().references(() => emailThreads.id, { onDelete: "cascade" }),
+  graphId: varchar("graph_id", { length: 512 }).notNull(), // provider message id
+  conversationId: varchar("conversation_id", { length: 512 }).notNull(),
+  direction: varchar("direction", { length: 10 }).notNull(), // inbound | outbound
+  fromAddress: varchar("from_address", { length: 320 }), // encrypted at rest
+  fromName: varchar("from_name", { length: 255 }), // encrypted at rest
+  toRecipients: text("to_recipients"), // JSON [{name,address}], encrypted at rest
+  ccRecipients: text("cc_recipients"), // JSON [{name,address}], encrypted at rest
+  subject: text("subject"), // encrypted at rest
+  snippet: text("snippet"), // bodyPreview, encrypted at rest
+  bodyHtml: text("body_html"), // full body cached lazily, encrypted at rest (null until opened)
+  bodyCachedAt: timestamp("body_cached_at"),
+  hasAttachments: boolean("has_attachments").notNull().default(false),
+  isRead: boolean("is_read").notNull().default(false),
+  sentAt: timestamp("sent_at"),
+  receivedAt: timestamp("received_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqGraphId: unique("email_message_graph_unique").on(t.clinicId, t.graphId),
+}));
+
+export const insertEmailMessageSchema = createInsertSchema(emailMessages).omit({ id: true, createdAt: true });
+export type EmailMessage = typeof emailMessages.$inferSelect;
+export type InsertEmailMessage = z.infer<typeof insertEmailMessageSchema>;
+
+// Attachment metadata only — bytes are fetched from the provider on demand.
+export const emailAttachments = pgTable("email_attachments", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  messageId: integer("message_id").notNull().references(() => emailMessages.id, { onDelete: "cascade" }),
+  graphAttachmentId: varchar("graph_attachment_id", { length: 512 }).notNull(),
+  name: varchar("name", { length: 512 }), // encrypted at rest
+  contentType: varchar("content_type", { length: 128 }),
+  size: integer("size"),
+  isInline: boolean("is_inline").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqAttachment: unique("email_attachment_unique").on(t.messageId, t.graphAttachmentId),
+}));
+
+export const insertEmailAttachmentSchema = createInsertSchema(emailAttachments).omit({ id: true, createdAt: true });
+export type EmailAttachment = typeof emailAttachments.$inferSelect;
+export type InsertEmailAttachment = z.infer<typeof insertEmailAttachmentSchema>;

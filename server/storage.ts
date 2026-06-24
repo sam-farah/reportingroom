@@ -122,10 +122,47 @@ import {
   chatMessageMentions,
   chatMessagePatientTags,
   chatMessageReactions,
+  mailboxSyncState,
+  type MailboxSyncState,
+  type InsertMailboxSyncState,
+  emailThreads,
+  type EmailThread,
+  type InsertEmailThread,
+  emailMessages,
+  type EmailMessage,
+  type InsertEmailMessage,
+  emailAttachments,
+  type EmailAttachment,
+  type InsertEmailAttachment,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
+
+// Email message content (subject/snippet/full body) is encrypted at rest with the
+// same AES scheme as other medical data. Routing/identity fields (addresses, names)
+// stay plaintext so patient-email matching and list rendering remain simple — this
+// matches how the patients table itself stores email/phone in this codebase.
+const encEmailField = (v: string | null | undefined): string | null => {
+  if (v == null || v === "") return (v ?? null) as string | null;
+  return FieldEncryption.isEncrypted(v) ? v : MedicalDataEncryption.encryptMedicalData(v);
+};
+const decEmailField = (v: string | null | undefined): string | null => {
+  if (v == null) return null;
+  if (!FieldEncryption.isEncrypted(v)) return v;
+  try { return MedicalDataEncryption.decryptMedicalData(v); } catch { return v; }
+};
+const decryptEmailThreadRow = (t: EmailThread): EmailThread => ({
+  ...t,
+  subject: decEmailField(t.subject),
+  lastSnippet: decEmailField(t.lastSnippet),
+});
+const decryptEmailMessageRow = (m: EmailMessage): EmailMessage => ({
+  ...m,
+  subject: decEmailField(m.subject),
+  snippet: decEmailField(m.snippet),
+  bodyHtml: decEmailField(m.bodyHtml),
+});
 
 // Interface for storage operations
 export interface IStorage {
@@ -390,6 +427,28 @@ export interface IStorage {
   clearAppointmentSmsReminder(appointmentId: number): Promise<void>;
   getSmsEnabledClinics(): Promise<Clinic[]>;
   getSmsActiveClinics(): Promise<Clinic[]>;
+  // Email inbox (two-way mailbox)
+  getMailboxSyncState(clinicId: number): Promise<MailboxSyncState | undefined>;
+  getConnectedMailboxes(): Promise<MailboxSyncState[]>;
+  upsertMailboxSyncState(clinicId: number, data: Partial<InsertMailboxSyncState>): Promise<MailboxSyncState>;
+  getEmailMessageByGraphId(clinicId: number, graphId: string): Promise<EmailMessage | undefined>;
+  upsertEmailThread(clinicId: number, conversationId: string, data: Partial<InsertEmailThread>): Promise<EmailThread>;
+  getEmailThreadByConversation(clinicId: number, conversationId: string): Promise<EmailThread | undefined>;
+  getEmailThreadById(clinicId: number, threadId: number): Promise<EmailThread | undefined>;
+  upsertEmailMessage(data: InsertEmailMessage): Promise<EmailMessage>;
+  recomputeEmailThread(clinicId: number, threadId: number): Promise<void>;
+  getEmailConversations(clinicId: number): Promise<Array<EmailThread & { patientName: string | null }>>;
+  getEmailThreadMessages(clinicId: number, threadId: number): Promise<EmailMessage[]>;
+  getEmailMessageById(clinicId: number, messageId: number): Promise<EmailMessage | undefined>;
+  cacheEmailMessageBody(clinicId: number, messageId: number, bodyHtml: string): Promise<void>;
+  markEmailThreadRead(clinicId: number, threadId: number): Promise<void>;
+  linkEmailThreadToPatient(clinicId: number, threadId: number, patientId: number | null, source: "auto" | "manual"): Promise<EmailThread | undefined>;
+  upsertEmailAttachment(data: InsertEmailAttachment): Promise<EmailAttachment>;
+  getEmailAttachmentsByMessage(clinicId: number, messageId: number): Promise<EmailAttachment[]>;
+  getEmailAttachmentById(clinicId: number, attachmentId: number): Promise<EmailAttachment | undefined>;
+  getEmailUnreadCount(clinicId: number): Promise<number>;
+  getEmailThreadsByPatient(clinicId: number, patientId: number): Promise<EmailThread[]>;
+  findPatientByEmail(clinicId: number, email: string): Promise<Patient | undefined>;
   // Team Chat (staff-to-staff)
   createChatChannel(data: { clinicId: number; type: string; name?: string | null; description?: string | null; isPrivate?: boolean; createdBy: string }, memberUserIds: string[]): Promise<ChatChannel>;
   getChatChannel(id: number): Promise<ChatChannel | undefined>;
@@ -2194,6 +2253,230 @@ export class DatabaseStorage implements IStorage {
   // just clinics that have appointment reminders switched on.
   async getSmsActiveClinics(): Promise<Clinic[]> {
     return db.select().from(clinics).where(eq(clinics.isActive, true));
+  }
+
+  // ── Email inbox ─────────────────────────────────────────────────────────
+  async getMailboxSyncState(clinicId: number): Promise<MailboxSyncState | undefined> {
+    const [row] = await db.select().from(mailboxSyncState).where(eq(mailboxSyncState.clinicId, clinicId));
+    return row;
+  }
+
+  async getConnectedMailboxes(): Promise<MailboxSyncState[]> {
+    return db.select().from(mailboxSyncState).where(eq(mailboxSyncState.connected, true));
+  }
+
+  async upsertMailboxSyncState(clinicId: number, data: Partial<InsertMailboxSyncState>): Promise<MailboxSyncState> {
+    const existing = await this.getMailboxSyncState(clinicId);
+    if (existing) {
+      const [row] = await db.update(mailboxSyncState)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(mailboxSyncState.clinicId, clinicId))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(mailboxSyncState)
+      .values({ clinicId, ...data })
+      .returning();
+    return row;
+  }
+
+  async getEmailMessageByGraphId(clinicId: number, graphId: string): Promise<EmailMessage | undefined> {
+    const [row] = await db.select().from(emailMessages)
+      .where(and(eq(emailMessages.clinicId, clinicId), eq(emailMessages.graphId, graphId)));
+    return row ? decryptEmailMessageRow(row) : undefined;
+  }
+
+  async upsertEmailThread(clinicId: number, conversationId: string, data: Partial<InsertEmailThread>): Promise<EmailThread> {
+    const values: any = { clinicId, conversationId, ...data };
+    if (values.subject !== undefined) values.subject = encEmailField(values.subject);
+    if (values.lastSnippet !== undefined) values.lastSnippet = encEmailField(values.lastSnippet);
+    const setOnConflict: any = { updatedAt: new Date() };
+    if (data.subject !== undefined) setOnConflict.subject = encEmailField(data.subject as any);
+    const [row] = await db.insert(emailThreads)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [emailThreads.clinicId, emailThreads.conversationId],
+        set: setOnConflict,
+      })
+      .returning();
+    return decryptEmailThreadRow(row);
+  }
+
+  async getEmailThreadByConversation(clinicId: number, conversationId: string): Promise<EmailThread | undefined> {
+    const [row] = await db.select().from(emailThreads)
+      .where(and(eq(emailThreads.clinicId, clinicId), eq(emailThreads.conversationId, conversationId)));
+    return row ? decryptEmailThreadRow(row) : undefined;
+  }
+
+  async getEmailThreadById(clinicId: number, threadId: number): Promise<EmailThread | undefined> {
+    const [row] = await db.select().from(emailThreads)
+      .where(and(eq(emailThreads.clinicId, clinicId), eq(emailThreads.id, threadId)));
+    return row ? decryptEmailThreadRow(row) : undefined;
+  }
+
+  async upsertEmailMessage(data: InsertEmailMessage): Promise<EmailMessage> {
+    const values: any = {
+      ...data,
+      subject: encEmailField(data.subject as any),
+      snippet: encEmailField(data.snippet as any),
+      bodyHtml: encEmailField(data.bodyHtml as any),
+    };
+    const [row] = await db.insert(emailMessages)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [emailMessages.clinicId, emailMessages.graphId],
+        set: {
+          isRead: values.isRead,
+          hasAttachments: values.hasAttachments,
+          subject: values.subject,
+          snippet: values.snippet,
+        },
+      })
+      .returning();
+    return decryptEmailMessageRow(row);
+  }
+
+  // Recompute a thread's denormalised summary (last message, counts, unread) from
+  // its messages. Called after ingesting messages and after marking read.
+  async recomputeEmailThread(clinicId: number, threadId: number): Promise<void> {
+    const rows = await db.select().from(emailMessages)
+      .where(and(eq(emailMessages.clinicId, clinicId), eq(emailMessages.threadId, threadId)));
+    if (rows.length === 0) return;
+    const keyOf = (m: EmailMessage) =>
+      new Date(m.sentAt || m.receivedAt || m.createdAt || 0).getTime();
+    const sorted = [...rows].sort((a, b) => keyOf(a) - keyOf(b));
+    const last = sorted[sorted.length - 1];
+    const unreadCount = rows.filter(m => m.direction === "inbound" && !m.isRead).length;
+    await db.update(emailThreads)
+      .set({
+        subject: last.subject ?? null,
+        lastSnippet: last.snippet ?? null,
+        lastFrom: last.fromAddress ?? null,
+        lastFromName: last.fromName ?? null,
+        lastDirection: last.direction,
+        lastMessageAt: last.sentAt || last.receivedAt || last.createdAt || null,
+        messageCount: rows.length,
+        unreadCount,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(emailThreads.clinicId, clinicId), eq(emailThreads.id, threadId)));
+  }
+
+  async getEmailConversations(clinicId: number): Promise<Array<EmailThread & { patientName: string | null }>> {
+    const rows = await db.select().from(emailThreads).where(eq(emailThreads.clinicId, clinicId));
+    if (rows.length === 0) return [];
+    const patientIds = rows.map(r => r.patientId).filter((x): x is number => x != null);
+    const patientMap = new Map<number, Patient>();
+    if (patientIds.length > 0) {
+      const pts = await db.select().from(patients)
+        .where(and(eq(patients.clinicId, clinicId), inArray(patients.id, patientIds)));
+      for (const p of pts) patientMap.set(p.id, p);
+    }
+    const result = rows.map(r => {
+      const p = r.patientId != null ? patientMap.get(r.patientId) : undefined;
+      return {
+        ...decryptEmailThreadRow(r),
+        patientName: p ? `${p.firstName} ${p.lastName}`.trim() : null,
+      };
+    });
+    result.sort((a, b) => {
+      const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      return bt - at;
+    });
+    return result;
+  }
+
+  async getEmailThreadMessages(clinicId: number, threadId: number): Promise<EmailMessage[]> {
+    const rows = await db.select().from(emailMessages)
+      .where(and(eq(emailMessages.clinicId, clinicId), eq(emailMessages.threadId, threadId)));
+    const keyOf = (m: EmailMessage) =>
+      new Date(m.sentAt || m.receivedAt || m.createdAt || 0).getTime();
+    return [...rows].sort((a, b) => keyOf(a) - keyOf(b)).map(decryptEmailMessageRow);
+  }
+
+  async getEmailMessageById(clinicId: number, messageId: number): Promise<EmailMessage | undefined> {
+    const [row] = await db.select().from(emailMessages)
+      .where(and(eq(emailMessages.clinicId, clinicId), eq(emailMessages.id, messageId)));
+    return row ? decryptEmailMessageRow(row) : undefined;
+  }
+
+  async cacheEmailMessageBody(clinicId: number, messageId: number, bodyHtml: string): Promise<void> {
+    await db.update(emailMessages)
+      .set({ bodyHtml: encEmailField(bodyHtml), bodyCachedAt: new Date() })
+      .where(and(eq(emailMessages.clinicId, clinicId), eq(emailMessages.id, messageId)));
+  }
+
+  async markEmailThreadRead(clinicId: number, threadId: number): Promise<void> {
+    await db.update(emailMessages)
+      .set({ isRead: true })
+      .where(and(
+        eq(emailMessages.clinicId, clinicId),
+        eq(emailMessages.threadId, threadId),
+        eq(emailMessages.direction, "inbound"),
+        eq(emailMessages.isRead, false),
+      ));
+    await this.recomputeEmailThread(clinicId, threadId);
+  }
+
+  async linkEmailThreadToPatient(clinicId: number, threadId: number, patientId: number | null, source: "auto" | "manual"): Promise<EmailThread | undefined> {
+    const [row] = await db.update(emailThreads)
+      .set({ patientId, patientLinkSource: patientId == null ? null : source, updatedAt: new Date() })
+      .where(and(eq(emailThreads.clinicId, clinicId), eq(emailThreads.id, threadId)))
+      .returning();
+    return row ? decryptEmailThreadRow(row) : undefined;
+  }
+
+  async upsertEmailAttachment(data: InsertEmailAttachment): Promise<EmailAttachment> {
+    const [row] = await db.insert(emailAttachments)
+      .values({ ...data, name: encEmailField(data.name as any) as any })
+      .onConflictDoUpdate({
+        target: [emailAttachments.messageId, emailAttachments.graphAttachmentId],
+        set: { name: encEmailField(data.name as any) as any, size: data.size ?? null, contentType: data.contentType ?? null },
+      })
+      .returning();
+    return { ...row, name: decEmailField(row.name) };
+  }
+
+  async getEmailAttachmentsByMessage(clinicId: number, messageId: number): Promise<EmailAttachment[]> {
+    const rows = await db.select().from(emailAttachments)
+      .where(and(eq(emailAttachments.clinicId, clinicId), eq(emailAttachments.messageId, messageId)));
+    return rows.map(r => ({ ...r, name: decEmailField(r.name) }));
+  }
+
+  async getEmailAttachmentById(clinicId: number, attachmentId: number): Promise<EmailAttachment | undefined> {
+    const [row] = await db.select().from(emailAttachments)
+      .where(and(eq(emailAttachments.clinicId, clinicId), eq(emailAttachments.id, attachmentId)));
+    return row ? { ...row, name: decEmailField(row.name) } : undefined;
+  }
+
+  async getEmailUnreadCount(clinicId: number): Promise<number> {
+    const rows = await db.select({ c: emailThreads.unreadCount }).from(emailThreads)
+      .where(eq(emailThreads.clinicId, clinicId));
+    return rows.reduce((acc, r) => acc + (r.c || 0), 0);
+  }
+
+  async getEmailThreadsByPatient(clinicId: number, patientId: number): Promise<EmailThread[]> {
+    const rows = await db.select().from(emailThreads)
+      .where(and(eq(emailThreads.clinicId, clinicId), eq(emailThreads.patientId, patientId)));
+    return rows
+      .map(decryptEmailThreadRow)
+      .sort((a, b) => {
+        const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return bt - at;
+      });
+  }
+
+  // Patient emails are stored in plaintext in this codebase, so match by exact
+  // (case-insensitive) email within the clinic. Returns undefined unless there is
+  // exactly one match (ambiguous/duplicate emails are NOT auto-linked).
+  async findPatientByEmail(clinicId: number, email: string): Promise<Patient | undefined> {
+    const needle = (email || "").trim().toLowerCase();
+    if (!needle) return undefined;
+    const clinicPatients = await db.select().from(patients).where(eq(patients.clinicId, clinicId));
+    const matches = clinicPatients.filter(p => (p.email || "").trim().toLowerCase() === needle);
+    return matches.length === 1 ? matches[0] : undefined;
   }
 
   // ── Team Chat ───────────────────────────────────────────────────────────

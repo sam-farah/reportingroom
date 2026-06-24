@@ -5,6 +5,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { securityMiddleware } from "./middleware/security";
 import { MedicalDataEncryption } from "./encryption";
 import { startSmsReminderScheduler } from "./sms-scheduler";
+import { startEmailSyncScheduler } from "./email-sync-scheduler";
 
 // Prevent dropped database connections from crashing the server process.
 // Neon serverless culls idle connections, which surfaces as an unhandled
@@ -187,5 +188,6 @@ app.use((req, res, next) => {
       ? (process.env.PUBLIC_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`)
       : null;
     startSmsReminderScheduler(publicHost);
+    startEmailSyncScheduler();
   });
 })();
