@@ -178,7 +178,7 @@ export default function PatientPortalInvite() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 text-blue-800 text-sm">
-            Signing in as: <strong>{invite.invitation.email}</strong>
+            Setting up secure portal access at <strong>{invite.clinicName}</strong>.
           </div>
 
           {noPhone && (

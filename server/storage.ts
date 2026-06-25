@@ -334,6 +334,7 @@ export interface IStorage {
   getAllPatients(): Promise<Patient[]>;
   getPatient(id: number): Promise<Patient | undefined>;
   searchPatients(query: string): Promise<Patient[]>;
+  getActivePatientsByPhoneTail(tail: string): Promise<Patient[]>;
   findMatchingPatient(clinicId: number, patientName: string, dob?: string | null, phone?: string | null): Promise<Patient | undefined>;
   createPatient(patient: InsertPatientData): Promise<Patient>;
   updatePatient(id: number, patient: Partial<InsertPatientData>): Promise<Patient | undefined>;
@@ -1525,6 +1526,16 @@ export class DatabaseStorage implements IStorage {
         sql`(${patients.firstName} || ' ' || ${patients.lastName}) ILIKE ${searchTerm}`
       )
     ).orderBy(patients.lastName, patients.firstName);
+  }
+
+  // Candidate lookup for patient-portal login: active patients whose stored phone
+  // (digits only) ends with `tail` (the last 8 digits of the normalized number).
+  // Used as a cheap prefilter — the route confirms an exact normalized-phone match.
+  async getActivePatientsByPhoneTail(tail: string): Promise<Patient[]> {
+    if (!/^\d{6,}$/.test(tail)) return [];
+    return await db.select().from(patients).where(
+      sql`${patients.isActive} = true AND regexp_replace(coalesce(${patients.phone}, ''), '[^0-9]', '', 'g') LIKE ${'%' + tail}`
+    );
   }
 
   async findMatchingPatient(clinicId: number, patientName: string, dob?: string | null, phone?: string | null): Promise<Patient | undefined> {

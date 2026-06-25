@@ -7940,23 +7940,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Returning patient: enter email -> we text a code to the mobile on file.
-  // Enumeration-safe — the response is identical whether or not the email exists.
+  // Returning patient: identify by MOBILE NUMBER + DATE OF BIRTH, then we text a
+  // 6-digit code to the mobile on file. Enumeration-safe — the response is identical
+  // whether or not a matching enrolled patient exists. (Email is no longer used to
+  // sign in; it remains on the patient record only for sending portal invites.)
   app.post("/api/portal/login", async (req, res) => {
     try {
-      const email = String(req.body?.email || "").toLowerCase().trim();
-      if (!email) return res.status(400).json({ error: "Email is required" });
+      const rawPhone = String(req.body?.phone || "").trim();
+      const rawDob = String(req.body?.dob || "").trim();
 
-      // Clear any stale pending login before starting a fresh attempt — prevents a
-      // previous account's pending session from being verified using this email.
+      // Strict format validation. These checks are independent of whether an account
+      // exists, so a 400 here reveals nothing — the user already knows if their own
+      // input is malformed.
+      const phoneE164 = normalisePhone(rawPhone);
+      const phoneDigits = phoneE164 ? phoneE164.replace(/\D/g, "") : "";
+      if (!phoneE164 || phoneDigits.length < 10 || phoneDigits.length > 15) {
+        return res.status(400).json({ error: "Please enter a valid mobile number." });
+      }
+
+      // Accept D/M/YYYY or DD/MM/YYYY, then round-trip validate to reject impossible
+      // dates (e.g. 31/02/2020) and future dates.
+      const dobMatch = rawDob.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!dobMatch) {
+        return res.status(400).json({ error: "Please enter your date of birth as DD/MM/YYYY." });
+      }
+      const dd = parseInt(dobMatch[1], 10);
+      const mm = parseInt(dobMatch[2], 10);
+      const yyyy = parseInt(dobMatch[3], 10);
+      const dobDate = new Date(Date.UTC(yyyy, mm - 1, dd));
+      const dobValid =
+        dobDate.getUTCFullYear() === yyyy &&
+        dobDate.getUTCMonth() === mm - 1 &&
+        dobDate.getUTCDate() === dd &&
+        yyyy >= 1900 &&
+        dobDate.getTime() <= Date.now();
+      if (!dobValid) {
+        return res.status(400).json({ error: "Please enter a valid date of birth." });
+      }
+      const dobIso = `${String(yyyy).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+
+      // Clear any stale pending login before starting a fresh attempt.
       delete (req.session as any).pendingPortalLogin;
 
+      // Find candidate patients by the last 8 digits of the normalized number, then
+      // confirm an exact normalized-phone + exact DOB match in JS.
+      const tail = phoneDigits.slice(-8);
+      const candidates = await storage.getActivePatientsByPhoneTail(tail);
+      const matched = candidates.filter(
+        (p) => normalisePhone(p.phone) === phoneE164 && (p.dateOfBirth || "") === dobIso,
+      );
+
+      // Only patients actually enrolled in the portal can sign in. Resolve their
+      // accounts in parallel so the branches below don't differ in response timing.
+      // Defensively require the account's clinic to match the patient's, so an
+      // inconsistent row can never authenticate against the wrong clinic.
+      const resolved = await Promise.all(
+        matched.map(async (p) => {
+          const account = await storage.getPatientPortalAccountByPatientId(p.id);
+          return account && account.clinicId === p.clinicId ? account : null;
+        }),
+      );
+      const accounts = resolved.filter((a): a is NonNullable<typeof a> => !!a);
+
       let pendingAccountId: number | null = null;
-      const account = await storage.getPatientPortalAccountByEmail(email);
-      if (account) {
-        const patient = await storage.getPatient(account.patientId);
-        const phone = patient ? normalisePhone(patient.phone) : null;
-        if (patient && phone && isSmsConfigured()) {
+      // Exactly one enrolled patient → real login. Zero, or two-or-more (the same
+      // phone+DOB shared across patients/clinics) → fail closed to a decoy: we never
+      // reveal the collision and never sign the wrong person in. The clinic must
+      // resolve any duplicate, and the code screen already tells patients who don't
+      // receive a code to contact their clinic.
+      if (accounts.length === 1) {
+        const account = accounts[0];
+        const patient = matched.find((p) => p.id === account.patientId)!;
+        const phone = normalisePhone(patient.phone);
+        if (phone && isSmsConfigured()) {
           pendingAccountId = account.id;
           // Throttle: if a code was sent very recently, keep it valid instead of re-texting.
           const lastSent = account.loginCodeLastSentAt ? new Date(account.loginCodeLastSentAt).getTime() : 0;
@@ -7975,11 +8031,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Always set a pending session (a decoy when the email is unknown or has no
-      // mobile) so step two looks identical regardless of whether the email exists.
+      // Always set a pending session (a decoy when there's no unique enrolled match)
+      // so step two looks identical regardless of whether an account exists.
       (req.session as any).pendingPortalLogin = { portalAccountId: pendingAccountId, at: Date.now() };
 
-      // Always respond the same way to avoid revealing whether the email exists.
+      // Always respond the same way to avoid revealing whether an account exists.
       req.session.save(() => {
         res.json({ success: true });
       });

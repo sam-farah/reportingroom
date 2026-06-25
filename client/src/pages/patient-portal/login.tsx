@@ -12,15 +12,22 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, KeyRound, ShieldCheck, ArrowLeft } from "lucide-react";
 
-const emailSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
+const identifySchema = z.object({
+  phone: z.string().min(6, "Please enter your mobile number"),
+  dob: z.string().regex(/^\d{1,2}\/\d{1,2}\/\d{4}$/, "Enter your date of birth as DD/MM/YYYY"),
 });
-type EmailFormData = z.infer<typeof emailSchema>;
+type IdentifyFormData = z.infer<typeof identifySchema>;
 
 const codeSchema = z.object({
   code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code"),
 });
 type CodeFormData = z.infer<typeof codeSchema>;
+
+// Format free typing into DD/MM/YYYY as the user types.
+function formatDob(v: string): string {
+  const d = v.replace(/\D/g, "").slice(0, 8);
+  return [d.slice(0, 2), d.slice(2, 4), d.slice(4, 8)].filter(Boolean).join("/");
+}
 
 // apiRequest throws Error("<status>: <body>") where body is usually JSON like
 // { error: "..." }. Pull out the status and a clean message.
@@ -44,12 +51,12 @@ export default function PatientPortalLogin() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  // "email" = step 1, "code" = step 2 (SMS verification)
-  const [step, setStep] = useState<"email" | "code">("email");
+  // "identify" = step 1 (mobile + DOB), "code" = step 2 (SMS verification)
+  const [step, setStep] = useState<"identify" | "code">("identify");
 
-  const emailForm = useForm<EmailFormData>({
-    resolver: zodResolver(emailSchema),
-    defaultValues: { email: "" },
+  const identifyForm = useForm<IdentifyFormData>({
+    resolver: zodResolver(identifySchema),
+    defaultValues: { phone: "", dob: "" },
   });
 
   const codeForm = useForm<CodeFormData>({
@@ -58,13 +65,13 @@ export default function PatientPortalLogin() {
   });
 
   const requestMutation = useMutation({
-    mutationFn: async (values: EmailFormData) => {
+    mutationFn: async (values: IdentifyFormData) => {
       const res = await apiRequest("/api/portal/login", "POST", values);
       return res.json();
     },
     onSuccess: () => {
       // Enumeration-safe: the server always reports success. Move to the code
-      // step regardless — only a real account with a mobile on file will have
+      // step regardless — only a uniquely-matched, enrolled patient will have
       // actually received a text.
       setStep("code");
       codeForm.reset({ code: "" });
@@ -88,7 +95,7 @@ export default function PatientPortalLogin() {
       const { status, message } = parseError(error);
       if (status === 440) {
         toast({ title: "Session expired", description: message || "Please start again.", variant: "destructive" });
-        backToEmail();
+        backToStart();
         return;
       }
       toast({ title: "Verification failed", description: message || "Incorrect code. Please try again.", variant: "destructive" });
@@ -105,13 +112,13 @@ export default function PatientPortalLogin() {
     },
     onError: (error: Error) => {
       const { status, message } = parseError(error);
-      if (status === 440) backToEmail();
+      if (status === 440) backToStart();
       toast({ title: "Could not resend", description: message || "Please try again shortly.", variant: "destructive" });
     },
   });
 
-  const backToEmail = () => {
-    setStep("email");
+  const backToStart = () => {
+    setStep("identify");
     codeForm.reset({ code: "" });
   };
 
@@ -128,23 +135,57 @@ export default function PatientPortalLogin() {
             Patient Portal
           </CardTitle>
           <CardDescription className="text-slate-500 text-lg">
-            {step === "email"
+            {step === "identify"
               ? "Sign in to access your secure medical reports"
               : "Enter the code we texted you"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {step === "email" ? (
-            <Form {...emailForm}>
-              <form onSubmit={emailForm.handleSubmit((data) => requestMutation.mutate(data))} className="space-y-4">
+          {step === "identify" ? (
+            <Form {...identifyForm}>
+              <form onSubmit={identifyForm.handleSubmit((data) => requestMutation.mutate(data))} className="space-y-4">
                 <FormField
-                  control={emailForm.control}
-                  name="email"
+                  control={identifyForm.control}
+                  name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email Address</FormLabel>
+                      <FormLabel>Mobile number</FormLabel>
                       <FormControl>
-                        <Input type="email" {...field} className="h-11" placeholder="example@email.com" autoComplete="email" autoCapitalize="none" />
+                        <Input
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          placeholder="0412 345 678"
+                          className="h-11"
+                          {...field}
+                          data-testid="input-phone"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={identifyForm.control}
+                  name="dob"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date of birth</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="bday"
+                          placeholder="DD/MM/YYYY"
+                          maxLength={10}
+                          className="h-11"
+                          name={field.name}
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                          value={field.value}
+                          onChange={(e) => field.onChange(formatDob(e.target.value))}
+                          data-testid="input-dob"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -169,7 +210,7 @@ export default function PatientPortalLogin() {
               <div className="mb-4 flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
                 <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <span>
-                  If we have your details and a mobile number on file, we've texted you a 6-digit code. Enter it below — it expires in 5 minutes. Not receiving it? Contact your clinic.
+                  If your details match a patient with a mobile number on file, we've texted you a 6-digit code. Enter it below — it expires in 5 minutes. Not receiving it? Contact your clinic.
                 </span>
               </div>
               <Form {...codeForm}>
@@ -211,7 +252,7 @@ export default function PatientPortalLogin() {
               <div className="mt-4 flex items-center justify-between text-sm">
                 <button
                   type="button"
-                  onClick={backToEmail}
+                  onClick={backToStart}
                   className="inline-flex items-center text-slate-500 hover:text-slate-700"
                   data-testid="button-back"
                 >
