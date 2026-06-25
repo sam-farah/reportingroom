@@ -609,13 +609,23 @@ export const patientPortalAccounts = pgTable("patient_portal_accounts", {
   patientId: integer("patient_id").notNull().unique().references(() => patients.id),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id),
   email: varchar("email", { length: 255 }).notNull().unique(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  // Legacy password hash — kept nullable for old accounts; passwordless (SMS code) login no longer uses it.
+  passwordHash: varchar("password_hash", { length: 255 }),
+  // Passwordless SMS one-time-code login (mirrors staff 2FA columns on `users`).
+  loginCodeHash: varchar("login_code_hash", { length: 255 }),
+  loginCodeExpiresAt: timestamp("login_code_expires_at"),
+  loginCodeAttempts: integer("login_code_attempts").notNull().default(0),
+  loginCodeLastSentAt: timestamp("login_code_last_sent_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertPatientPortalAccountSchema = createInsertSchema(patientPortalAccounts).omit({
   id: true,
   createdAt: true,
+  loginCodeHash: true,
+  loginCodeExpiresAt: true,
+  loginCodeAttempts: true,
+  loginCodeLastSentAt: true,
 });
 
 export type PatientPortalAccount = typeof patientPortalAccounts.$inferSelect;

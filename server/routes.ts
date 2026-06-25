@@ -55,7 +55,7 @@ import { createReadStream } from "fs";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import sharp from "sharp";
-import { sendPatientPortalInvitationEmail, sendPortalPasswordResetEmail } from "./email";
+import { sendPatientPortalInvitationEmail } from "./email";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -7752,13 +7752,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Patient Portal Auth & API Routes
-  app.post("/api/patients/:id/portal-invite", isAuthenticated, async (req, res) => {
+  app.post("/api/patients/:id/portal-invite", isAuthenticated, async (req: any, res) => {
     try {
       const patientId = parseInt(req.params.id);
       if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
 
       const patient = await storage.getPatient(patientId);
       if (!patient) return res.status(404).json({ error: "Patient not found" });
+      // Multi-tenant guard: only act on patients in the caller's own clinic.
+      if (patient.clinicId !== req.user?.clinicId && !req.user?.isSuperAdmin) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
       if (!patient.email) return res.status(400).json({ error: "Patient does not have an email address" });
 
       const token = crypto.randomBytes(18).toString('hex');
@@ -7795,10 +7799,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/patients/:id/portal-status", isAuthenticated, async (req, res) => {
+  app.get("/api/patients/:id/portal-status", isAuthenticated, async (req: any, res) => {
     try {
       const patientId = parseInt(req.params.id);
       if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
+
+      const patient = await storage.getPatient(patientId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      // Multi-tenant guard: only report status for patients in the caller's own clinic.
+      if (patient.clinicId !== req.user?.clinicId && !req.user?.isSuperAdmin) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
 
       const account = await storage.getPatientPortalAccountByPatientId(patientId);
       const invitation = await storage.getPatientPortalInvitationByPatientId(patientId);
@@ -7835,141 +7846,275 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/portal/register", async (req, res) => {
+  // ── Passwordless patient-portal login (SMS one-time code) ──────────────
+  // Patients sign in with a 6-digit code texted to the mobile on file — no
+  // password. Mirrors the staff 2FA flow in server/auth.ts.
+  const PORTAL_CODE_TTL_MS = 5 * 60 * 1000;       // codes expire after 5 minutes
+  const PORTAL_MAX_ATTEMPTS = 5;                  // wrong-code ceiling per issued code
+  const PORTAL_RESEND_COOLDOWN_MS = 30 * 1000;    // min gap between code sends
+  const PENDING_PORTAL_TTL_MS = 10 * 60 * 1000;   // pending login must verify within 10 min
+
+  const maskPortalPhone = (phone: string): string =>
+    `•••• ••• ${phone.replace(/\D/g, "").slice(-3)}`;
+
+  // Fixed dummy hash so the decoy verify path spends ~the same bcrypt time as a
+  // real comparison — prevents timing-based account enumeration on /verify-code.
+  const PORTAL_DUMMY_HASH = bcrypt.hashSync("portal-decoy-placeholder", 10);
+
+  // Generate a code, store its hash on the account, and SMS it to the patient's
+  // mobile. Returns a masked phone hint. Throws "NO_PHONE" / "SMS_UNCONFIGURED".
+  const issuePortalLoginCode = async (account: any, patient: any, clinicName: string): Promise<string> => {
+    if (!isSmsConfigured()) throw new Error("SMS_UNCONFIGURED");
+    const phone = normalisePhone(patient?.phone);
+    if (!phone) throw new Error("NO_PHONE");
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+    const codeHash = await bcrypt.hash(code, 10);
+    await storage.setPatientPortalLoginCode(account.id, codeHash, new Date(Date.now() + PORTAL_CODE_TTL_MS));
+    await sendSms({
+      to: phone,
+      body: `Your ${clinicName} patient portal code is ${code}. It expires in 5 minutes. If you didn't request this, please ignore this message.`,
+    });
+    return maskPortalPhone(phone);
+  };
+
+  // Invite flow (first-time patient): create the passwordless account and text a code.
+  app.post("/api/portal/invite/request-code", async (req, res) => {
     try {
-      const { token, password } = req.body;
+      const token = String(req.body?.token || "");
+      // Drop any stale pending login from a previous attempt in this browser.
+      delete (req.session as any).pendingPortalLogin;
+
       const invitation = await storage.getPatientPortalInvitationByToken(token);
-      
       if (!invitation || !invitation.isActive || new Date(invitation.expiresAt) < new Date()) {
         return res.status(400).json({ error: "Invalid or expired invitation" });
       }
 
-      // Check if an account already exists for this patient or email
-      const existingByEmail = await storage.getPatientPortalAccountByEmail(invitation.email);
-      const existingByPatient = await storage.getPatientPortalAccountByPatientId(invitation.patientId);
-      if (existingByEmail || existingByPatient) {
-        return res.status(400).json({ error: "An account already exists for this patient. Please log in instead." });
+      const patient = await storage.getPatient(invitation.patientId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+
+      const phone = normalisePhone(patient.phone);
+      if (!phone) {
+        return res.status(400).json({ error: "No mobile number is on file for you. Please contact your clinic to add one.", code: "NO_PHONE" });
+      }
+      if (!isSmsConfigured()) {
+        return res.status(503).json({ error: "Text-message sign-in is unavailable right now. Please contact your clinic." });
       }
 
-      const passwordHash = await bcrypt.hash(password, 12);
-      const account = await storage.createPatientPortalAccount({
-        patientId: invitation.patientId,
-        clinicId: invitation.clinicId,
-        email: invitation.email,
-        passwordHash,
-      });
+      const email = invitation.email.toLowerCase().trim();
+      let account = await storage.getPatientPortalAccountByPatientId(invitation.patientId);
+      if (!account) {
+        // Guard against the invite email already belonging to a different patient.
+        const byEmail = await storage.getPatientPortalAccountByEmail(email);
+        if (byEmail && byEmail.patientId !== invitation.patientId) {
+          return res.status(400).json({ error: "This email is already linked to another patient. Please contact your clinic." });
+        }
+        account = byEmail || await storage.createPatientPortalAccount({
+          patientId: invitation.patientId,
+          clinicId: invitation.clinicId,
+          email,
+        });
+      }
 
-      await storage.acceptPatientPortalInvitation(token);
+      // NOTE: the invitation is consumed only after the patient proves possession
+      // of the code (in /verify-code), so a failed SMS never burns the invite.
+      const clinic = await storage.getClinic(invitation.clinicId);
+      let phoneHint = maskPortalPhone(phone);
+      // Respect the resend cooldown so repeated taps don't fire multiple texts;
+      // a recently-issued code stays valid.
+      const lastSent = account.loginCodeLastSentAt ? new Date(account.loginCodeLastSentAt).getTime() : 0;
+      if (Date.now() - lastSent >= PORTAL_RESEND_COOLDOWN_MS) {
+        phoneHint = await issuePortalLoginCode(account, patient, clinic?.name || "Reporting Room");
+      }
 
-      (req.session as any).portalUserId = account.id;
+      (req.session as any).pendingPortalLogin = { portalAccountId: account.id, at: Date.now(), inviteToken: token };
       req.session.save((err) => {
         if (err) {
           console.error("Session save error:", err);
           return res.status(500).json({ error: "Session error" });
         }
-        res.json({ success: true, account: { id: account.id, email: account.email } });
+        res.json({ success: true, phoneHint });
       });
     } catch (error) {
-      console.error("Portal register error:", error);
-      res.status(500).json({ error: "Registration failed. Please try again or use the login tab." });
+      console.error("Portal invite request-code error:", error);
+      res.status(500).json({ error: "Could not send your code. Please try again." });
     }
   });
 
+  // Returning patient: enter email -> we text a code to the mobile on file.
+  // Enumeration-safe — the response is identical whether or not the email exists.
   app.post("/api/portal/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const email = String(req.body?.email || "").toLowerCase().trim();
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      // Clear any stale pending login before starting a fresh attempt — prevents a
+      // previous account's pending session from being verified using this email.
+      delete (req.session as any).pendingPortalLogin;
+
+      let pendingAccountId: number | null = null;
       const account = await storage.getPatientPortalAccountByEmail(email);
-      
-      if (!account || !(await bcrypt.compare(password, account.passwordHash))) {
-        return res.status(401).json({ error: "Invalid email or password" });
+      if (account) {
+        const patient = await storage.getPatient(account.patientId);
+        const phone = patient ? normalisePhone(patient.phone) : null;
+        if (patient && phone && isSmsConfigured()) {
+          pendingAccountId = account.id;
+          // Throttle: if a code was sent very recently, keep it valid instead of re-texting.
+          const lastSent = account.loginCodeLastSentAt ? new Date(account.loginCodeLastSentAt).getTime() : 0;
+          if (Date.now() - lastSent >= PORTAL_RESEND_COOLDOWN_MS) {
+            // Fire-and-forget: the bcrypt hash + SMS round-trip run AFTER we respond
+            // so the response time can't reveal whether a real account/mobile exists.
+            void (async () => {
+              try {
+                const clinic = await storage.getClinic(account.clinicId);
+                await issuePortalLoginCode(account, patient, clinic?.name || "Reporting Room");
+              } catch (err) {
+                console.error("Portal login code send failed:", err);
+              }
+            })();
+          }
+        }
       }
 
-      (req.session as any).portalUserId = account.id;
-      req.session.save((err) => {
-        if (err) {
-          console.error("Session save error:", err);
-          return res.status(500).json({ error: "Session error" });
-        }
-        res.json({ success: true, account: { id: account.id, email: account.email } });
+      // Always set a pending session (a decoy when the email is unknown or has no
+      // mobile) so step two looks identical regardless of whether the email exists.
+      (req.session as any).pendingPortalLogin = { portalAccountId: pendingAccountId, at: Date.now() };
+
+      // Always respond the same way to avoid revealing whether the email exists.
+      req.session.save(() => {
+        res.json({ success: true });
       });
     } catch (error) {
+      console.error("Portal login error:", error);
       res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // Verify the 6-digit code and establish the portal session.
+  app.post("/api/portal/verify-code", async (req, res) => {
+    try {
+      const pending = (req.session as any).pendingPortalLogin;
+      const code = String(req.body?.code || "").trim();
+
+      if (!pending || (Date.now() - pending.at) > PENDING_PORTAL_TTL_MS) {
+        delete (req.session as any).pendingPortalLogin;
+        return res.status(440).json({ error: "Your sign-in attempt expired. Please request a new code." });
+      }
+      if (!/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "Enter the 6-digit code" });
+      }
+
+      // Identical messages for every failure mode so the two-step flow can't be
+      // used to probe whether an email/phone is on file.
+      const genericWrong = "Incorrect or expired code. Please try again.";
+      const genericLockout = "Too many incorrect attempts. Please request a new code.";
+
+      // Real account with a live code: authoritative DB-backed attempt ceiling.
+      if (pending.portalAccountId) {
+        const account = await storage.getPatientPortalAccountById(pending.portalAccountId);
+        const codeLive = !!account?.loginCodeHash && !!account?.loginCodeExpiresAt
+          && new Date(account.loginCodeExpiresAt as any).getTime() >= Date.now();
+        if (account && codeLive) {
+          // Count the attempt BEFORE comparing so parallel guesses can't beat the ceiling.
+          const attempts = await storage.incrementPatientPortalLoginAttempts(account.id);
+          if (attempts > PORTAL_MAX_ATTEMPTS) {
+            await storage.clearPatientPortalLoginCode(account.id);
+            delete (req.session as any).pendingPortalLogin;
+            return res.status(429).json({ error: genericLockout });
+          }
+
+          const valid = await bcrypt.compare(code, account.loginCodeHash as string);
+          if (!valid) {
+            return res.status(401).json({ error: genericWrong });
+          }
+
+          await storage.clearPatientPortalLoginCode(account.id);
+          // Consume the invitation (if this sign-in began from an invite) only now,
+          // once possession of the code is proven — a failed SMS never burns it.
+          if (pending.inviteToken) {
+            try { await storage.acceptPatientPortalInvitation(pending.inviteToken); }
+            catch (err) { console.error("Accept invitation on verify failed:", err); }
+          }
+          delete (req.session as any).pendingPortalLogin;
+          (req.session as any).portalUserId = account.id;
+          return req.session.save((err) => {
+            if (err) {
+              console.error("Session save error:", err);
+              return res.status(500).json({ error: "Session error" });
+            }
+            res.json({ success: true });
+          });
+        }
+        // Account missing / code expired / never issued → fall through to the decoy
+        // path so the response is indistinguishable from an unknown email.
+      }
+
+      // Decoy path (unknown email, no mobile on file, or expired/absent code):
+      // burn an equivalent bcrypt comparison so response time can't distinguish a
+      // real account from a decoy, then count attempts so the lockout also matches.
+      await bcrypt.compare(code, PORTAL_DUMMY_HASH);
+      pending.attempts = (pending.attempts || 0) + 1;
+      if (pending.attempts > PORTAL_MAX_ATTEMPTS) {
+        delete (req.session as any).pendingPortalLogin;
+        return req.session.save(() => res.status(429).json({ error: genericLockout }));
+      }
+      return req.session.save(() => res.status(401).json({ error: genericWrong }));
+    } catch (error) {
+      console.error("Portal verify-code error:", error);
+      res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
+  // Resend a fresh code (only valid mid sign-in), guarded by a 30s cooldown.
+  app.post("/api/portal/resend-code", async (req, res) => {
+    try {
+      const pending = (req.session as any).pendingPortalLogin;
+      if (!pending || (Date.now() - pending.at) > PENDING_PORTAL_TTL_MS) {
+        delete (req.session as any).pendingPortalLogin;
+        return res.status(440).json({ error: "Your sign-in attempt expired. Please start again." });
+      }
+
+      // Only a real account with a mobile + an elapsed cooldown actually re-texts;
+      // everything else silently no-ops so the response can't reveal account state.
+      if (pending.portalAccountId) {
+        const account = await storage.getPatientPortalAccountById(pending.portalAccountId);
+        if (account) {
+          const lastSent = account.loginCodeLastSentAt ? new Date(account.loginCodeLastSentAt).getTime() : 0;
+          if (Date.now() - lastSent >= PORTAL_RESEND_COOLDOWN_MS) {
+            // Fire-and-forget (see /login): keep SMS + bcrypt off the response path.
+            void (async () => {
+              try {
+                const patient = await storage.getPatient(account.patientId);
+                if (!patient) return;
+                const clinic = await storage.getClinic(account.clinicId);
+                await issuePortalLoginCode(account, patient, clinic?.name || "Reporting Room");
+              } catch (err) {
+                console.error("Portal resend code send failed:", err);
+              }
+            })();
+          }
+        }
+      }
+
+      // Refresh the pending window and reset the decoy counter so a freshly issued
+      // code has the full TTL to be verified.
+      pending.at = Date.now();
+      pending.attempts = 0;
+      req.session.save(() => {
+        res.json({ success: true });
+      });
+    } catch (error) {
+      console.error("Portal resend-code error:", error);
+      res.status(500).json({ error: "Could not resend your code" });
     }
   });
 
   app.post("/api/portal/logout", (req, res) => {
     (req.session as any).portalUserId = null;
+    delete (req.session as any).pendingPortalLogin;
     res.json({ success: true });
   });
 
-  // Forgot password — sends a reset link by email
-  app.post("/api/portal/forgot-password", async (req, res) => {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
-
-    try {
-      const account = await storage.getPatientPortalAccountByEmail(email.toLowerCase().trim());
-
-      // Always return success so we don't reveal whether the email exists
-      if (account) {
-        const patient = await storage.getPatient(account.patientId);
-        const clinic = await storage.getClinic(account.clinicId);
-        const token = crypto.randomBytes(32).toString("hex");
-        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-        await storage.createPasswordResetToken(email.toLowerCase().trim(), token, expiresAt);
-
-        await sendPortalPasswordResetEmail({
-          toEmail: email.toLowerCase().trim(),
-          token,
-          patientFirstName: patient?.firstName || "Patient",
-          clinicName: clinic?.name || "Reporting Room",
-        }).catch(err => console.error("Failed to send password reset email:", err));
-      }
-
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error("Forgot password error:", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  // Validate a reset token
-  app.get("/api/portal/reset-password/:token", async (req, res) => {
-    const { token } = req.params;
-    try {
-      const reset = await storage.getPasswordResetToken(token);
-      if (!reset) return res.status(404).json({ error: "Invalid or expired reset link" });
-      if (reset.usedAt) return res.status(410).json({ error: "This reset link has already been used" });
-      if (new Date() > reset.expiresAt) return res.status(410).json({ error: "This reset link has expired" });
-      res.json({ valid: true, email: reset.email });
-    } catch (err: any) {
-      console.error("Validate reset token error:", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  // Complete password reset
-  app.post("/api/portal/reset-password", async (req, res) => {
-    const { token, password } = req.body;
-    if (!token || !password) return res.status(400).json({ error: "Token and password are required" });
-    if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters" });
-
-    try {
-      const reset = await storage.getPasswordResetToken(token);
-      if (!reset) return res.status(404).json({ error: "Invalid or expired reset link" });
-      if (reset.usedAt) return res.status(410).json({ error: "This reset link has already been used" });
-      if (new Date() > reset.expiresAt) return res.status(410).json({ error: "This reset link has expired" });
-
-      const passwordHash = await bcrypt.hash(password, 12);
-      await storage.updatePatientPortalPassword(reset.email, passwordHash);
-      await storage.markPasswordResetTokenUsed(token);
-
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error("Reset password error:", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  // (Password reset routes removed — the patient portal is passwordless via SMS code.)
 
   app.get("/api/portal/me", async (req, res) => {
     const portalUserId = (req.session as any).portalUserId;

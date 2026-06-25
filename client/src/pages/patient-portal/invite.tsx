@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useRoute, useLocation, Link } from "wouter";
+import { useState } from "react";
+import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,20 +9,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Form, FormControl,FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, ArrowRight, CheckCircle2, Info } from "lucide-react";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Loader2, CheckCircle2, ShieldCheck, ArrowLeft, AlertTriangle } from "lucide-react";
 
-const registerSchema = z.object({
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  confirmPassword: z.string().min(8, "Password must be at least 8 characters"),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
+const codeSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code"),
 });
-
-const loginSchema = z.object({
-  password: z.string().min(1, "Password is required"),
-});
+type CodeFormData = z.infer<typeof codeSchema>;
 
 interface InviteData {
   invitation: {
@@ -35,97 +28,97 @@ interface InviteData {
   hasExistingAccount: boolean;
 }
 
+// apiRequest throws Error("<status>: <body>") where body is usually JSON like
+// { error: "...", code: "..." }. Pull out the status, optional code, message.
+function parseError(error: Error): { status: number | null; code?: string; message: string } {
+  const raw = error?.message || "";
+  const m = raw.match(/^(\d{3}):\s*([\s\S]*)$/);
+  if (!m) return { status: null, message: raw };
+  const status = parseInt(m[1], 10);
+  let code: string | undefined;
+  let message = m[2];
+  try {
+    const parsed = JSON.parse(m[2]);
+    code = parsed.code;
+    if (parsed.error) message = parsed.error;
+    else if (parsed.message) message = parsed.message;
+  } catch {
+    // body wasn't JSON — keep the raw text
+  }
+  return { status, code, message };
+}
+
 export default function PatientPortalInvite() {
   const [, params] = useRoute("/patient-portal/invite/:token");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [mode, setMode] = useState<"register" | "login">("register");
+
+  // "start" = press the button to receive a code, "code" = enter the code
+  const [step, setStep] = useState<"start" | "code">("start");
+  const [noPhone, setNoPhone] = useState(false);
 
   const { data: invite, isLoading, error } = useQuery<InviteData>({
     queryKey: ["/api/portal/invite", params?.token],
     enabled: !!params?.token,
   });
 
-  useEffect(() => {
-    if (invite?.hasExistingAccount) {
-      setMode("login");
-    }
-  }, [invite?.hasExistingAccount]);
-
-  const registerForm = useForm<z.infer<typeof registerSchema>>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: {
-      password: "",
-      confirmPassword: "",
-    },
+  const codeForm = useForm<CodeFormData>({
+    resolver: zodResolver(codeSchema),
+    defaultValues: { code: "" },
   });
 
-  const loginForm = useForm<z.infer<typeof loginSchema>>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      password: "",
-    },
-  });
-
-  const registerMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof registerSchema>) => {
-      const res = await fetch("/api/portal/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ token: params?.token, password: values.password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Registration failed");
-      return data;
+  const requestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/api/portal/invite/request-code", "POST", { token: params?.token });
+      return res.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Account created",
-        description: "Your patient portal account has been created successfully.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/portal/me"] });
-      setLocation("/patient-portal");
+      setStep("code");
+      codeForm.reset({ code: "" });
+      toast({ title: "Code sent", description: "Check your phone for a 6-digit code." });
     },
     onError: (error: Error) => {
-      if (error.message.toLowerCase().includes("already exists")) {
-        setMode("login");
-        toast({
-          title: "Account already exists",
-          description: "You already have an account. Please sign in below.",
-        });
-      } else {
-        toast({
-          title: "Registration failed",
-          description: error.message,
-          variant: "destructive",
-        });
+      const { code, message } = parseError(error);
+      if (code === "NO_PHONE" || /no mobile number/i.test(message)) {
+        setNoPhone(true);
+        return;
       }
+      toast({ title: "Could not send code", description: message || "Please try again.", variant: "destructive" });
     },
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof loginSchema>) => {
-      const res = await fetch("/api/portal/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email: invite?.invitation.email, password: values.password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Login failed");
-      return data;
+  const verifyMutation = useMutation({
+    mutationFn: async (values: CodeFormData) => {
+      const res = await apiRequest("/api/portal/verify-code", "POST", values);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/portal/me"] });
       setLocation("/patient-portal");
     },
     onError: (error: Error) => {
-      toast({
-        title: "Login failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      const { status, message } = parseError(error);
+      if (status === 440) {
+        toast({ title: "Session expired", description: message || "Please start again.", variant: "destructive" });
+        setStep("start");
+        return;
+      }
+      toast({ title: "Verification failed", description: message || "Incorrect code. Please try again.", variant: "destructive" });
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/api/portal/resend-code", "POST", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Code resent", description: "A new code is on its way." });
+    },
+    onError: (error: Error) => {
+      const { status, message } = parseError(error);
+      if (status === 440) setStep("start");
+      toast({ title: "Could not resend", description: message || "Please try again shortly.", variant: "destructive" });
     },
   });
 
@@ -180,116 +173,103 @@ export default function PatientPortalInvite() {
             Welcome{invite.patientFirstName ? `, ${invite.patientFirstName}` : ""}
           </CardTitle>
           <CardDescription className="text-slate-500 text-lg">
-            {mode === "register" ? "Set up access to your medical records" : `Sign in to ${invite.clinicName}`}
+            {step === "start" ? `Access your medical records at ${invite.clinicName}` : "Enter the code we texted you"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {invite.hasExistingAccount && mode === "login" ? (
-            <div className="p-4 bg-amber-50 rounded-lg border border-amber-200 text-amber-800 text-sm flex gap-2">
-              <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <span>You already have a portal account for <strong>{invite.invitation.email}</strong>. Please sign in with your existing password.</span>
-            </div>
-          ) : (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 text-blue-800 text-sm">
-              {mode === "register" ? "Creating account for" : "Signing in as"}: <strong>{invite.invitation.email}</strong>
+          <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 text-blue-800 text-sm">
+            Signing in as: <strong>{invite.invitation.email}</strong>
+          </div>
+
+          {noPhone && (
+            <div className="p-4 bg-red-50 rounded-lg border border-red-200 text-red-800 text-sm flex gap-2">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                We don't have a mobile number on file for you. Sign-in uses a one-time code sent by text message. Please contact your clinic to add your mobile number.
+              </span>
             </div>
           )}
 
-          {mode === "register" ? (
-            <Form {...registerForm}>
-              <form onSubmit={registerForm.handleSubmit((data) => registerMutation.mutate(data))} className="space-y-4">
-                <FormField
-                  control={registerForm.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Create Password</FormLabel>
-                      <FormControl>
-                        <Input type="password" {...field} className="h-11" placeholder="••••••••" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={registerForm.control}
-                  name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Confirm Password</FormLabel>
-                      <FormControl>
-                        <Input type="password" {...field} className="h-11" placeholder="••••••••" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button
-                  type="submit"
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold"
-                  disabled={registerMutation.isPending}
-                >
-                  {registerMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Portal Account
-                </Button>
-              </form>
-            </Form>
+          {step === "start" ? (
+            <>
+              <p className="text-sm text-slate-600">
+                We'll text a 6-digit code to the mobile number your clinic has on file to confirm it's you — no password needed.
+              </p>
+              <Button
+                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold"
+                disabled={requestMutation.isPending}
+                onClick={() => { setNoPhone(false); requestMutation.mutate(); }}
+                data-testid="button-send-code"
+              >
+                {requestMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Send me a code
+              </Button>
+            </>
           ) : (
-            <Form {...loginForm}>
-              <form onSubmit={loginForm.handleSubmit((data) => loginMutation.mutate(data))} className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-slate-700">Email</label>
-                  <Input
-                    type="email"
-                    value={invite.invitation.email}
-                    readOnly
-                    className="h-11 mt-1 bg-slate-50 text-slate-500 cursor-default select-all"
+            <>
+              <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>We've texted a 6-digit code to your mobile. Enter it below — it expires in 5 minutes.</span>
+              </div>
+              <Form {...codeForm}>
+                <form onSubmit={codeForm.handleSubmit((data) => verifyMutation.mutate(data))} className="space-y-4">
+                  <FormField
+                    control={codeForm.control}
+                    name="code"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Verification code</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            maxLength={6}
+                            placeholder="123456"
+                            className="h-11 text-center text-2xl tracking-[0.5em] font-mono"
+                            {...field}
+                            data-testid="input-code"
+                            autoFocus
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                  <p className="text-xs text-slate-400 mt-1">This is the email your clinic has on file for you.</p>
-                </div>
-                <FormField
-                  control={loginForm.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <Input type="password" {...field} className="h-11" placeholder="••••••••" autoFocus />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="flex justify-end">
-                  <Link href="/patient-portal/forgot-password">
-                    <a className="text-sm text-blue-600 hover:text-blue-700 font-medium">
-                      Forgot password?
-                    </a>
-                  </Link>
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold"
-                  disabled={loginMutation.isPending}
+                  <Button
+                    type="submit"
+                    className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-lg font-semibold"
+                    disabled={verifyMutation.isPending}
+                    data-testid="button-verify"
+                  >
+                    {verifyMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Verify &amp; Sign In
+                  </Button>
+                </form>
+              </Form>
+              <div className="flex items-center justify-between text-sm">
+                <button
+                  type="button"
+                  onClick={() => setStep("start")}
+                  className="inline-flex items-center text-slate-500 hover:text-slate-700"
+                  data-testid="button-back"
                 >
-                  {loginMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Sign In
-                </Button>
-              </form>
-            </Form>
+                  <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resendMutation.mutate()}
+                  disabled={resendMutation.isPending}
+                  className="text-blue-600 hover:text-blue-800 disabled:opacity-50 font-medium"
+                  data-testid="button-resend"
+                >
+                  {resendMutation.isPending ? "Sending..." : "Resend code"}
+                </button>
+              </div>
+            </>
           )}
         </CardContent>
-        <CardFooter className="flex flex-col space-y-2">
-          {mode === "register" ? (
-            <Button variant="link" className="text-slate-500" onClick={() => setMode("login")}>
-              Already have an account? Sign in
-            </Button>
-          ) : !invite.hasExistingAccount ? (
-            <Button variant="link" className="text-slate-500" onClick={() => setMode("register")}>
-              Back to registration
-            </Button>
-          ) : null}
-        </CardFooter>
       </Card>
     </div>
   );

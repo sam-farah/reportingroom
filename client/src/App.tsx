@@ -15,8 +15,6 @@ import OnboardingPage from "@/pages/onboarding";
 import PatientPortalInvite from "@/pages/patient-portal/invite";
 import PatientPortalLogin from "@/pages/patient-portal/login";
 import PatientPortalDashboard from "@/pages/patient-portal/dashboard";
-import ForgotPassword from "@/pages/patient-portal/forgot-password";
-import ResetPassword from "@/pages/patient-portal/reset-password";
 import PatientRegistrationPage from "@/pages/patient-registration";
 import ConsentPage from "@/pages/consent";
 import ReferralFormPage from "@/pages/referral-form";
@@ -45,8 +43,6 @@ function Router() {
       {/* Patient Portal Routes */}
       <Route path="/patient-portal/invite/:token" component={PatientPortalInvite} />
       <Route path="/patient-portal/login" component={PatientPortalLogin} />
-      <Route path="/patient-portal/forgot-password" component={ForgotPassword} />
-      <Route path="/patient-portal/reset-password/:token" component={ResetPassword} />
       <Route path="/patient-portal" component={PatientPortalDashboard} />
 
       {/* Patient Self-Registration (public) */}

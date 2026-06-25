@@ -378,6 +378,9 @@ export interface IStorage {
   createPasswordResetToken(email: string, token: string, expiresAt: Date): Promise<PatientPortalPasswordReset>;
   getPasswordResetToken(token: string): Promise<PatientPortalPasswordReset | undefined>;
   markPasswordResetTokenUsed(token: string): Promise<void>;
+  setPatientPortalLoginCode(accountId: number, codeHash: string, expiresAt: Date): Promise<void>;
+  incrementPatientPortalLoginAttempts(accountId: number): Promise<number>;
+  clearPatientPortalLoginCode(accountId: number): Promise<void>;
   getScanDurationSettings(clinicId: number): Promise<ScanDurationSetting[]>;
   upsertScanDurationSettings(clinicId: number, settings: Omit<InsertScanDurationSetting, 'clinicId'>[]): Promise<ScanDurationSetting[]>;
 
@@ -1839,6 +1842,44 @@ export class DatabaseStorage implements IStorage {
       .update(patientPortalPasswordResets)
       .set({ usedAt: new Date() })
       .where(eq(patientPortalPasswordResets.token, token));
+  }
+
+  // Store a freshly-issued passwordless login code: sets the hash + expiry,
+  // resets the attempt counter, and stamps the send time (for resend cooldown).
+  async setPatientPortalLoginCode(accountId: number, codeHash: string, expiresAt: Date): Promise<void> {
+    await db
+      .update(patientPortalAccounts)
+      .set({
+        loginCodeHash: codeHash,
+        loginCodeExpiresAt: expiresAt,
+        loginCodeAttempts: 0,
+        loginCodeLastSentAt: new Date(),
+      })
+      .where(eq(patientPortalAccounts.id, accountId));
+  }
+
+  // Atomically increment the attempt counter BEFORE comparing the code, so
+  // parallel verify requests can't slip past the attempt ceiling.
+  async incrementPatientPortalLoginAttempts(accountId: number): Promise<number> {
+    const [row] = await db
+      .update(patientPortalAccounts)
+      .set({ loginCodeAttempts: sql`${patientPortalAccounts.loginCodeAttempts} + 1` })
+      .where(eq(patientPortalAccounts.id, accountId))
+      .returning({ attempts: patientPortalAccounts.loginCodeAttempts });
+    return row?.attempts ?? 0;
+  }
+
+  // Wipe the login code once it's been used (or to invalidate it).
+  async clearPatientPortalLoginCode(accountId: number): Promise<void> {
+    await db
+      .update(patientPortalAccounts)
+      .set({
+        loginCodeHash: null,
+        loginCodeExpiresAt: null,
+        loginCodeAttempts: 0,
+        loginCodeLastSentAt: null,
+      })
+      .where(eq(patientPortalAccounts.id, accountId));
   }
 
   async getScanDurationSettings(clinicId: number): Promise<ScanDurationSetting[]> {
