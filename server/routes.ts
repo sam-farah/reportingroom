@@ -129,6 +129,51 @@ function publicBaseUrl(req: any): string {
   return req.headers.origin || `${req.protocol}://${req.headers.host}`;
 }
 
+// Validates a clinic-supplied patient-portal website URL. Returns the normalised
+// URL (trailing slash trimmed) on success, null when cleared/empty, or an error
+// string. Only absolute http(s) URLs are accepted; http is restricted to
+// localhost (dev). Credentials, javascript:/data: schemes, and over-long values
+// are rejected — the value is later echoed into emails and an iframe src.
+function validatePortalUrl(raw: unknown): { value: string | null } | { error: string } {
+  if (raw === undefined || raw === null) return { value: null };
+  if (typeof raw !== "string") return { error: "Patient portal URL must be text" };
+  const trimmed = raw.trim();
+  if (trimmed === "") return { value: null };
+  if (trimmed.length > 500) return { error: "Patient portal URL is too long (max 500 characters)" };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { error: "Enter a full website address, e.g. https://yourclinic.com/patient-portal" };
+  }
+
+  const isHttps = parsed.protocol === "https:";
+  const isLocalhostHttp =
+    parsed.protocol === "http:" && (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1");
+  if (!isHttps && !isLocalhostHttp) {
+    return { error: "Patient portal URL must start with https://" };
+  }
+  if (parsed.username || parsed.password) {
+    return { error: "Patient portal URL must not contain a username or password" };
+  }
+
+  // Normalise: drop a single trailing slash on the path (keep query/hash intact).
+  if (parsed.pathname.endsWith("/") && parsed.pathname !== "/") {
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+  }
+  let normalised = parsed.toString();
+  if (normalised.endsWith("/") && parsed.pathname === "/" && !parsed.search && !parsed.hash) {
+    normalised = normalised.slice(0, -1);
+  }
+  // Re-check length after normalisation (encoding/punycode can grow the string)
+  // so we never try to store more than the column allows.
+  if (normalised.length > 500) {
+    return { error: "Patient portal URL is too long (max 500 characters)" };
+  }
+  return { value: normalised };
+}
+
 // Builds the signed consent document (A4 JPEG via sharp/SVG) and stores it on the
 // patient's file as a "Consent Form" — shared by the kiosk and remote-device flows.
 // `consentText` MUST be the server-side clinic wording (never client-supplied).
@@ -6175,7 +6220,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Clinic not found" });
       }
 
-      res.json(clinic);
+      // appPublicBaseUrl is the canonical app origin used to build the patient-portal
+      // embed snippet shown in Clinic Settings (correct even on preview domains).
+      res.json({ ...clinic, appPublicBaseUrl: publicBaseUrl(req) });
     } catch (error) {
       console.error("Get clinic error:", error);
       res.status(500).json({ error: "Failed to fetch clinic information" });
@@ -6313,7 +6360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Unauthorized to update this clinic" });
       }
 
-      const { name, address, phone, fax, email, publicHolidayRegion, timezone } = req.body;
+      const { name, address, phone, fax, email, publicHolidayRegion, timezone, patientPortalUrl } = req.body;
       
       if (!name || !email) {
         return res.status(400).json({ error: "Clinic name and email are required" });
@@ -6321,6 +6368,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (timezone !== undefined && !isValidClinicTimeZone(timezone)) {
         return res.status(400).json({ error: "Invalid timezone" });
+      }
+
+      let portalUrlPatch: { patientPortalUrl: string | null } | {} = {};
+      if (patientPortalUrl !== undefined) {
+        const result = validatePortalUrl(patientPortalUrl);
+        if ("error" in result) {
+          return res.status(400).json({ error: result.error });
+        }
+        portalUrlPatch = { patientPortalUrl: result.value };
       }
 
       const updatedClinic = await storage.updateClinic(clinicId, {
@@ -6331,6 +6387,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email,
         ...(publicHolidayRegion !== undefined ? { publicHolidayRegion: publicHolidayRegion || null } : {}),
         ...(timezone !== undefined ? { timezone } : {}),
+        ...portalUrlPatch,
       } as any);
 
       if (!updatedClinic) {
@@ -7772,6 +7829,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clinic = patient.clinicId ? await storage.getClinic(patient.clinicId) : null;
       const clinicName = clinic?.name || "Reporting Room";
 
+      // Build the invite link. If the clinic has embedded the portal on their own
+      // website, point patients there with ?portal_invite=<token>; the embed script
+      // forwards the token into the iframe. Otherwise fall back to the standalone
+      // Reporting Room invite page.
+      const fallbackInviteUrl = `${publicBaseUrl(req)}/patient-portal/invite/${token}`;
+      let invitePortalUrl = fallbackInviteUrl;
+      if (clinic?.patientPortalUrl) {
+        // Re-validate the stored URL (defense-in-depth against a tampered DB value)
+        // before turning it into a clickable email link.
+        const validated = validatePortalUrl(clinic.patientPortalUrl);
+        if ("value" in validated && validated.value) {
+          try {
+            const u = new URL(validated.value);
+            u.searchParams.set("portal_invite", token);
+            invitePortalUrl = u.toString();
+          } catch {
+            invitePortalUrl = fallbackInviteUrl;
+          }
+        }
+      }
+
       const invitation = await storage.createPatientPortalInvitation({
         patientId,
         clinicId: patient.clinicId || 1, // Fallback to 1 if not set
@@ -7784,7 +7862,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         await sendPatientPortalInvitationEmail({
           toEmail: patient.email,
-          token,
+          portalUrl: invitePortalUrl,
           patientFirstName: patient.firstName,
           clinicName,
         });

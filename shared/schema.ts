@@ -46,6 +46,7 @@ export const clinics = pgTable("clinics", {
   phone: varchar("phone", { length: 50 }),
   fax: varchar("fax", { length: 50 }),
   website: varchar("website", { length: 255 }),
+  patientPortalUrl: varchar("patient_portal_url", { length: 500 }), // The clinic-website page where the patient portal iframe is embedded; used as the base for patient invite links
   logoUrl: varchar("logo_url", { length: 500 }),
   kioskLogoUrl: varchar("kiosk_logo_url", { length: 500 }),
   kioskWelcomeText: text("kiosk_welcome_text"),

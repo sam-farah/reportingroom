@@ -18,9 +18,15 @@ Patient-facing area for patients to view their own finalised reports + worksheet
 - **Resend refreshes `pending.at`** (and resets the decoy attempt counter) so a freshly issued code gets the full pending window; resend is also generic (no phoneHint, no cooldown 429) to stay enumeration-safe.
 - Invite flow (`/invite/request-code`) is token-gated (token is the secret), so it MAY surface NO_PHONE / SMS-unconfigured directly — that's fine because possession of the invite link implies legitimacy.
 
+## Embeddable on clinic websites + configurable invite domain
+- The portal can be **embedded on a clinic's own website** via an `<iframe>` snippet (Admin → Clinic Settings). `/patient-portal` is in `isEmbeddablePage` (`server/middleware/security.ts`) so it drops `X-Frame-Options` and uses permissive `frame-ancestors 'self' https: http:` (any site may frame it — acceptable because login needs phone+DOB+SMS, no ambient-auth action). Cross-origin session works because the session cookie is already `SameSite=None; Secure; Partitioned`. Staff pages stay `SAMEORIGIN`.
+- The embed snippet is a script-augmented iframe: default `src=/patient-portal/login`; an inline script reads `?portal_invite=TOKEN` from the **parent page** URL and repoints the iframe to `/patient-portal/invite/TOKEN`. So first-time invites work natively on the clinic site.
+- **Invite-email domain is now configurable, not hardcoded.** `clinics.patientPortalUrl` (nullable varchar 500) holds the clinic-website page hosting the iframe. `POST /api/patients/:id/portal-invite` builds the link with `new URL()` + `searchParams.set('portal_invite', token)` when set, else falls back to `${publicBaseUrl(req)}/patient-portal/invite/${token}`. Validate any portal URL with `validatePortalUrl` (https-only except http://localhost, no creds, no js:/data:, ≤500 chars incl. after normalisation) — and re-validate the stored value again before emailing (defense-in-depth). HTML-escape every value interpolated into the email.
+
 ## Known gaps (verify before relying; fix if asked)
-- **Hardcoded domain:** invite emails in `server/email.ts` hardcode `https://reportingroom.net/patient-portal/...`. These links break under a different domain / product rebrand. (Owner has flagged a possible future rebrand.) The dead `sendPortalPasswordResetEmail` (and its reset URL) still sits in `email.ts` unused after the passwordless switch.
+- The dead `sendPortalPasswordResetEmail` (and its reset URL) still sits in `email.ts` unused after the passwordless switch.
 - `portal-invite` falls back to `clinicId: patient.clinicId || 1` — a hardcoded clinic-1 fallback.
+- Long-term: `frame-ancestors` is wide-open; consider a per-clinic origin allowlist if framing abuse becomes a concern.
 
 **Why:** medical multi-tenant app where clinic isolation, brute-force resistance, and rebrand-safety are first-order concerns.
 **How to apply:** when touching the portal, reuse the `portalUserId` session (don't conflate with staff `userId`); preserve the enumeration-safe symmetry above; the staff-side invite/status routes (`POST /api/patients/:id/portal-invite`, `GET /api/patients/:id/portal-status`) are now clinic-scoped (patient.clinicId == caller's clinicId, super-admin bypass) — keep them that way; make portal email links derive from the request/deploy domain instead of a hardcoded host.

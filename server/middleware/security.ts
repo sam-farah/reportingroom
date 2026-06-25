@@ -23,7 +23,8 @@ export const securityMiddleware = {
   addSecurityHeaders: (req: Request, res: Response, next: NextFunction) => {
     // Public embeddable pages must not have frame-blocking headers
     const isEmbeddablePage = req.path.startsWith('/referral-form') ||
-      req.path.startsWith('/referrer-portal');
+      req.path.startsWith('/referrer-portal') ||
+      req.path.startsWith('/patient-portal');
 
     // HIPAA/Medical data security headers
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');

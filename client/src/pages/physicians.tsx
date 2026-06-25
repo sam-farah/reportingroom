@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle, UserMinus, UserCheck, Wifi, RefreshCw, Download, Copy, Eye, EyeOff } from "lucide-react";
+import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle, UserMinus, UserCheck, Wifi, RefreshCw, Download, Copy, Eye, EyeOff, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 
 export default function Clinic() {
@@ -95,7 +95,9 @@ export default function Clinic() {
     email: "",
     publicHolidayRegion: "",
     timezone: "Australia/Sydney",
+    patientPortalUrl: "",
   });
+  const [portalSnippetCopied, setPortalSnippetCopied] = useState(false);
 
   // Initialize clinic form when clinic data is loaded
   useEffect(() => {
@@ -108,6 +110,7 @@ export default function Clinic() {
         email: clinic.email || "",
         publicHolidayRegion: (clinic as any).publicHolidayRegion || "",
         timezone: (clinic as any).timezone || "Australia/Sydney",
+        patientPortalUrl: (clinic as any).patientPortalUrl || "",
       });
     }
   }, [clinic]);
@@ -1637,6 +1640,21 @@ export default function Clinic() {
                       onChange={(e) => setClinicForm(prev => ({ ...prev, email: e.target.value }))}
                     />
                   </div>
+
+                  <div className="md:col-span-2">
+                    <Label htmlFor="clinic-portal-url">Patient portal page URL on your website</Label>
+                    <Input
+                      id="clinic-portal-url"
+                      type="url"
+                      placeholder="https://yourclinic.com/patient-portal"
+                      value={clinicForm.patientPortalUrl}
+                      onChange={(e) => setClinicForm(prev => ({ ...prev, patientPortalUrl: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      If you embed the patient portal on your own website (see the box below), enter that page's address here.
+                      Patient invitation emails will then send patients to your website instead of reportingroom.net. Leave blank to use the default.
+                    </p>
+                  </div>
                 </div>
                 
                 <div className="flex justify-end pt-4">
@@ -1648,6 +1666,86 @@ export default function Clinic() {
                     {updateClinicMutation.isPending ? "Saving..." : "Save Clinic Information"}
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Patient Portal Embed */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ExternalLink className="w-5 h-5" />
+                  Embed the Patient Portal on Your Website
+                </CardTitle>
+                <CardDescription>
+                  Copy this code onto your own website so patients can log in to the portal without leaving your site.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(() => {
+                  const appOrigin = String((clinic as any)?.appPublicBaseUrl || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/+$/, "");
+                  const portalLoginUrl = `${appOrigin}/patient-portal/login`;
+                  const snippet = `<!-- Reporting Room Patient Portal -->
+<iframe
+  id="reporting-room-patient-portal"
+  src="${portalLoginUrl}"
+  title="Patient Portal"
+  style="width:100%;max-width:480px;height:640px;border:none;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,0.08);">
+</iframe>
+<script>
+  (function () {
+    var appOrigin = ${JSON.stringify(appOrigin)};
+    var token = new URLSearchParams(window.location.search).get("portal_invite");
+    if (token) {
+      var frame = document.getElementById("reporting-room-patient-portal");
+      if (frame) frame.src = appOrigin + "/patient-portal/invite/" + encodeURIComponent(token);
+    }
+  })();
+</script>`;
+                  return (
+                    <>
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1 block">Direct portal link</Label>
+                        <div className="flex items-center gap-2">
+                          <Input readOnly value={portalLoginUrl} className="font-mono text-xs bg-muted" />
+                          <Button size="sm" variant="outline" onClick={() => window.open(portalLoginUrl, "_blank", "noopener")}>
+                            <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1 block">Embed code</Label>
+                        <pre className="text-xs bg-gray-900 text-green-400 rounded p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">
+                          {snippet}
+                        </pre>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 w-full"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(snippet).then(() => {
+                              setPortalSnippetCopied(true);
+                              toast({ title: "Copied", description: "Embed code copied to clipboard." });
+                              setTimeout(() => setPortalSnippetCopied(false), 2000);
+                            }).catch(() => {
+                              toast({ title: "Copy failed", description: "Could not copy. Select the code manually.", variant: "destructive" });
+                            });
+                          }}
+                        >
+                          {portalSnippetCopied ? <><CheckCircle className="w-3.5 h-3.5 mr-1 text-green-600" /> Copied!</> : <><Copy className="w-3.5 h-3.5 mr-1" /> Copy Embed Code</>}
+                        </Button>
+                      </div>
+
+                      <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-900 leading-relaxed">
+                        <p className="font-medium mb-1">How it works</p>
+                        <p>
+                          Paste this code into the page on your website whose address you entered above. Patients see the portal login right on your site.
+                          When a patient clicks the link in their invitation email, the page opens with their invitation and they can set up their account — no extra steps.
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
               </CardContent>
             </Card>
 

@@ -8,6 +8,16 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 const FROM_EMAIL = "admin@nexusvascularimaging.com";
 const FROM_NAME = "Nexus Vascular Imaging";
 
+// Escape values interpolated into email HTML to prevent markup injection.
+function escapeHtml(value: string): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function sendInvitationEmail(params: {
   toEmail: string;
   invitationUrl: string;
@@ -65,11 +75,15 @@ export async function sendInvitationEmail(params: {
 
 export async function sendPatientPortalInvitationEmail(params: {
   toEmail: string;
-  token: string;
+  portalUrl: string;
   patientFirstName: string;
   clinicName: string;
 }): Promise<void> {
-  const portalUrl = `https://reportingroom.net/patient-portal/invite/${params.token}`;
+  // portalUrl is built by the caller and may be a clinic-supplied website URL,
+  // so every value interpolated into the HTML below must be escaped.
+  const portalUrl = escapeHtml(params.portalUrl);
+  const patientFirstName = escapeHtml(params.patientFirstName);
+  const clinicName = escapeHtml(params.clinicName);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1a1a2e;">
@@ -79,9 +93,9 @@ export async function sendPatientPortalInvitationEmail(params: {
       </div>
 
       <div style="background: #f0f9ff; border-radius: 8px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #0ea5e9;">
-        <h2 style="font-size: 20px; margin: 0 0 12px; color: #0c4a6e;">Hi ${params.patientFirstName},</h2>
+        <h2 style="font-size: 20px; margin: 0 0 12px; color: #0c4a6e;">Hi ${patientFirstName},</h2>
         <p style="margin: 0; color: #444; line-height: 1.6;">
-          Your medical reports from <strong>${params.clinicName}</strong> are now available to view securely online through our Patient Portal.
+          Your medical reports from <strong>${clinicName}</strong> are now available to view securely online through our Patient Portal.
         </p>
       </div>
 
@@ -97,7 +111,7 @@ export async function sendPatientPortalInvitationEmail(params: {
       </div>
 
       <p style="color: #888; font-size: 13px; text-align: center;">
-        This link expires in 7 days. If you have any questions, please contact ${params.clinicName} directly.
+        This link expires in 7 days. If you have any questions, please contact ${clinicName} directly.
       </p>
 
       <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
