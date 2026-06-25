@@ -3831,7 +3831,7 @@ function PatientSummaryPanel({ patientId }: { patientId: number | null }) {
       <div className="p-4 space-y-4 text-sm">
         {hasCritical && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-red-700 mb-1">⚠ Allergies</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-red-700 mb-1">⚠ Alerts</p>
             <p className="text-sm text-red-900 whitespace-pre-wrap">{allergies}</p>
           </div>
         )}

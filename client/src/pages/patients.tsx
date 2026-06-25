@@ -1885,7 +1885,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                     <span>DOB: {formatDob(selectedPatient.dateOfBirth)}</span>
                     {selectedPatient.phone && <span>{selectedPatient.phone}</span>}
                     {selectedPatient.allergies && (
-                      <span className="text-red-600 font-medium">Allergies: {selectedPatient.allergies}</span>
+                      <span className="text-red-600 font-medium">Alerts: {selectedPatient.allergies}</span>
                     )}
                   </div>
                 </div>
@@ -2615,7 +2615,7 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 </div>
                 <div className="p-3 space-y-3">
                   <div>
-                    <div className="text-xs text-gray-400 mb-0.5">Allergies</div>
+                    <div className="text-xs text-gray-400 mb-0.5">Alerts</div>
                     <div className={`text-sm ${selectedPatient.allergies ? "text-red-600 font-medium" : "italic text-gray-300"}`}>{selectedPatient.allergies || "—"}</div>
                   </div>
                   <div>
@@ -2867,8 +2867,8 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   <Input autoComplete="off" value={formData.referringPhysician} onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))} required />
                 </div>
                 <div className="col-span-2">
-                  <Label>Allergies</Label>
-                  <Input autoComplete="off" value={formData.allergies} onChange={(e) => setFormData(prev => ({ ...prev, allergies: e.target.value }))} placeholder="List any known allergies" />
+                  <Label>Alerts</Label>
+                  <Input autoComplete="off" value={formData.allergies} onChange={(e) => setFormData(prev => ({ ...prev, allergies: e.target.value }))} placeholder="List any important alerts" />
                 </div>
                 <div className="col-span-2">
                   <Label>Medical History</Label>
@@ -3522,13 +3522,13 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                   />
                 </div>
                 <div className="col-span-2">
-                  <Label htmlFor="allergies">Allergies</Label>
+                  <Label htmlFor="allergies">Alerts</Label>
                   <Input
                     id="allergies"
                     autoComplete="off"
                     value={formData.allergies}
                     onChange={(e) => setFormData(prev => ({ ...prev, allergies: e.target.value }))}
-                    placeholder="List any known allergies"
+                    placeholder="List any important alerts"
                   />
                 </div>
                 <div className="col-span-2">
