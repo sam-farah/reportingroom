@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { MessageSquare, Send, Plus, Search, Loader2, AlertCircle, CheckCheck, Phone, UserCircle, Clock } from "lucide-react";
-import type { SmsMessage, Patient } from "@shared/schema";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useAuth } from "@/hooks/useAuth";
+import { MessageSquare, Send, Plus, Search, Loader2, AlertCircle, CheckCheck, Phone, UserCircle, Clock, FileText, Pencil, Trash2 } from "lucide-react";
+import type { SmsMessage, Patient, SmsTemplate, Clinic } from "@shared/schema";
 
 interface Conversation {
   patientId: number | null;
@@ -54,6 +57,16 @@ export default function Messages() {
   const [patientSearch, setPatientSearch] = useState("");
   const threadEndRef = useRef<HTMLDivElement>(null);
 
+  const { user } = useAuth();
+  const isOwnerOrAdmin = user?.role === "clinic_owner" || user?.role === "admin";
+
+  // SMS templates (canned messages)
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<SmsTemplate | null>(null);
+  const [tplName, setTplName] = useState("");
+  const [tplBody, setTplBody] = useState("");
+
   const { data: smsStatus } = useQuery<{ configured: boolean; fromNumber: string | null }>({
     queryKey: ["/api/sms/status"],
   });
@@ -97,6 +110,14 @@ export default function Messages() {
     enabled: newOpen,
   });
 
+  const { data: templates = [] } = useQuery<SmsTemplate[]>({
+    queryKey: ["/api/sms-templates"],
+  });
+
+  const { data: clinic } = useQuery<Clinic>({
+    queryKey: ["/api/clinic"],
+  });
+
   const sendMutation = useMutation({
     mutationFn: async (payload: { patientId?: number | null; phone?: string; body: string }) => {
       const res = await apiRequest("/api/sms/send", "POST", payload);
@@ -120,6 +141,47 @@ export default function Messages() {
       body: draft.trim(),
     });
   };
+
+  // Insert a template into the draft, filling {patient} / {clinic} placeholders.
+  const applyTemplate = (body: string) => {
+    const firstName = (selected?.patientName || "").trim().split(/\s+/)[0] || "";
+    // Only substitute placeholders we actually have values for; leave the rest
+    // visible so staff notice and fill them in rather than sending blanks.
+    let filled = body;
+    if (firstName) filled = filled.replace(/\{patient\}/g, firstName);
+    if (clinic?.name) filled = filled.replace(/\{clinic\}/g, clinic.name);
+    setDraft(prev => (prev.trim() ? `${prev}${prev.endsWith(" ") || prev.endsWith("\n") ? "" : " "}${filled}` : filled));
+    setTemplatePickerOpen(false);
+  };
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: async (payload: { id?: number; name: string; body: string }) => {
+      const res = payload.id
+        ? await apiRequest(`/api/sms-templates/${payload.id}`, "PATCH", { name: payload.name, body: payload.body })
+        : await apiRequest("/api/sms-templates", "POST", { name: payload.name, body: payload.body });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sms-templates"] });
+      setEditingTemplate(null);
+      setTplName("");
+      setTplBody("");
+      toast({ title: "Saved", description: "Template saved." });
+    },
+    onError: (err: any) => toast({ title: "Couldn't save template", description: err?.message || "Please try again.", variant: "destructive" }),
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest(`/api/sms-templates/${id}`, "DELETE"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sms-templates"] });
+      toast({ title: "Deleted", description: "Template removed." });
+    },
+    onError: (err: any) => toast({ title: "Couldn't delete template", description: err?.message || "Please try again.", variant: "destructive" }),
+  });
+
+  const startEditTemplate = (t: SmsTemplate) => { setEditingTemplate(t); setTplName(t.name); setTplBody(t.body); };
+  const resetTemplateForm = () => { setEditingTemplate(null); setTplName(""); setTplBody(""); };
 
   const startNewConversation = (patient: Patient) => {
     setNewOpen(false);
@@ -292,6 +354,55 @@ export default function Messages() {
                   <p className="text-xs text-amber-600 mb-1.5">No phone number on file for this patient.</p>
                 )}
                 <div className="flex items-end gap-2">
+                  <Popover open={templatePickerOpen} onOpenChange={setTemplatePickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 px-3 flex-shrink-0"
+                        disabled={!smsStatus?.configured || !selected.phone}
+                        title="Insert a saved template"
+                        data-testid="button-template-picker"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" side="top" className="w-80 p-0">
+                      <div className="px-3 py-2 border-b flex items-center justify-between">
+                        <span className="text-sm font-medium">Templates</span>
+                        {isOwnerOrAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => { setTemplatePickerOpen(false); resetTemplateForm(); setManageOpen(true); }}
+                            data-testid="button-manage-templates"
+                          >
+                            Manage
+                          </Button>
+                        )}
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {templates.length === 0 ? (
+                          <div className="text-center text-sm text-gray-400 py-6 px-4">
+                            No templates yet.{isOwnerOrAdmin ? " Click Manage to create one." : ""}
+                          </div>
+                        ) : (
+                          templates.map(t => (
+                            <button
+                              key={t.id}
+                              onClick={() => applyTemplate(t.body)}
+                              className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-50"
+                              data-testid={`template-option-${t.id}`}
+                            >
+                              <div className="text-sm font-medium text-gray-900 truncate">{t.name}</div>
+                              <div className="text-xs text-gray-500 truncate">{t.body}</div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   <Textarea
                     value={draft}
                     onChange={e => setDraft(e.target.value)}
@@ -356,6 +467,65 @@ export default function Messages() {
                 </button>
               ))
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage templates dialog (owner/admin) */}
+      <Dialog open={manageOpen} onOpenChange={(o) => { setManageOpen(o); if (!o) resetTemplateForm(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>SMS Templates</DialogTitle>
+            <DialogDescription>
+              Reusable messages your team can drop into any conversation. Use {"{patient}"} and {"{clinic}"} to auto-fill the patient's first name and your clinic name.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-48 overflow-y-auto -mx-1 mb-1">
+            {templates.length === 0 ? (
+              <div className="text-center text-sm text-gray-400 py-6">No templates yet. Add one below.</div>
+            ) : (
+              templates.map(t => (
+                <div key={t.id} className="flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-gray-50">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{t.name}</div>
+                    <div className="text-xs text-gray-500 whitespace-pre-wrap break-words">{t.body}</div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEditTemplate(t)} data-testid={`button-edit-template-${t.id}`}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:text-red-700" onClick={() => deleteTemplateMutation.mutate(t.id)} disabled={deleteTemplateMutation.isPending} data-testid={`button-delete-template-${t.id}`}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="border-t pt-3 space-y-2">
+            <div className="text-sm font-medium">{editingTemplate ? "Edit template" : "New template"}</div>
+            <div>
+              <Label className="text-xs text-gray-500">Name</Label>
+              <Input value={tplName} onChange={e => setTplName(e.target.value)} placeholder="e.g. Results ready" maxLength={120} data-testid="input-template-name" />
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500">Message</Label>
+              <Textarea value={tplBody} onChange={e => setTplBody(e.target.value)} placeholder="Hi {patient}, your results are ready. Please call {clinic} to discuss." className="resize-none min-h-[80px]" data-testid="input-template-body" />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              {editingTemplate && (
+                <Button variant="outline" onClick={resetTemplateForm} data-testid="button-cancel-template">Cancel</Button>
+              )}
+              <Button
+                onClick={() => saveTemplateMutation.mutate({ id: editingTemplate?.id, name: tplName.trim(), body: tplBody.trim() })}
+                disabled={!tplName.trim() || !tplBody.trim() || saveTemplateMutation.isPending}
+                data-testid="button-save-template"
+              >
+                {saveTemplateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingTemplate ? "Save changes" : "Add template")}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

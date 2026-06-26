@@ -109,6 +109,9 @@ import {
   smsMessages,
   type SmsMessage,
   type InsertSmsMessage,
+  smsTemplates,
+  type SmsTemplate,
+  type InsertSmsTemplate,
   chatChannels,
   type ChatChannel,
   type InsertChatChannel,
@@ -443,6 +446,12 @@ export interface IStorage {
   clearAppointmentSmsReminder(appointmentId: number): Promise<void>;
   getSmsEnabledClinics(): Promise<Clinic[]>;
   getSmsActiveClinics(): Promise<Clinic[]>;
+  // SMS message templates (clinic-scoped canned texts)
+  getSmsTemplates(clinicId: number): Promise<SmsTemplate[]>;
+  getSmsTemplate(id: number): Promise<SmsTemplate | undefined>;
+  createSmsTemplate(data: InsertSmsTemplate & { clinicId: number }): Promise<SmsTemplate>;
+  updateSmsTemplate(id: number, data: Partial<InsertSmsTemplate>): Promise<SmsTemplate | undefined>;
+  deleteSmsTemplate(id: number): Promise<void>;
   // Email inbox (two-way mailbox)
   getMailboxSyncState(clinicId: number): Promise<MailboxSyncState | undefined>;
   upsertMailboxSyncState(clinicId: number, data: Partial<InsertMailboxSyncState>): Promise<MailboxSyncState>;
@@ -2322,6 +2331,35 @@ export class DatabaseStorage implements IStorage {
   // just clinics that have appointment reminders switched on.
   async getSmsActiveClinics(): Promise<Clinic[]> {
     return db.select().from(clinics).where(eq(clinics.isActive, true));
+  }
+
+  // ── SMS message templates ────────────────────────────────────────────────
+  async getSmsTemplates(clinicId: number): Promise<SmsTemplate[]> {
+    return db.select().from(smsTemplates)
+      .where(eq(smsTemplates.clinicId, clinicId))
+      .orderBy(smsTemplates.name);
+  }
+
+  async getSmsTemplate(id: number): Promise<SmsTemplate | undefined> {
+    const [row] = await db.select().from(smsTemplates).where(eq(smsTemplates.id, id));
+    return row;
+  }
+
+  async createSmsTemplate(data: InsertSmsTemplate & { clinicId: number }): Promise<SmsTemplate> {
+    const [row] = await db.insert(smsTemplates).values(data).returning();
+    return row;
+  }
+
+  async updateSmsTemplate(id: number, data: Partial<InsertSmsTemplate>): Promise<SmsTemplate | undefined> {
+    const [row] = await db.update(smsTemplates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(smsTemplates.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteSmsTemplate(id: number): Promise<void> {
+    await db.delete(smsTemplates).where(eq(smsTemplates.id, id));
   }
 
   // ── Email inbox ─────────────────────────────────────────────────────────

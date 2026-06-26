@@ -1011,6 +1011,26 @@ export const insertSmsMessageSchema = createInsertSchema(smsMessages).omit({ id:
 export type SmsMessage = typeof smsMessages.$inferSelect;
 export type InsertSmsMessage = z.infer<typeof insertSmsMessageSchema>;
 
+// SMS message templates — clinic-scoped, reusable canned texts staff can pick
+// when messaging patients. Body supports {patient} and {clinic} placeholders.
+export const smsTemplates = pgTable("sms_templates", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id),
+  name: varchar("name", { length: 120 }).notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSmsTemplateSchema = createInsertSchema(smsTemplates).omit({
+  id: true,
+  clinicId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type SmsTemplate = typeof smsTemplates.$inferSelect;
+export type InsertSmsTemplate = z.infer<typeof insertSmsTemplateSchema>;
+
 // ── Team Chat (staff-to-staff internal messaging) ─────────────────────────
 // Slack-style channels + direct messages, all clinic-scoped. Channels of
 // type "dm" are 1:1 conversations with exactly two members and no name.

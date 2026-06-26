@@ -41,6 +41,7 @@ import {
   insertPatientPortalAccountSchema,
   insertPatientPortalInvitationSchema,
   insertReportDistributionSchema,
+  insertSmsTemplateSchema,
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
 import { convertPdfToImage, convertPdfToImages, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
@@ -1636,6 +1637,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("SMS send error:", error);
       res.status(500).json({ error: error?.message || "Failed to send SMS" });
+    }
+  });
+
+  // ── SMS message templates ────────────────────────────────────────────────
+  // Reusable canned texts staff can pick when messaging patients. All clinic-scoped.
+
+  // List templates — any authenticated clinic staff (used to populate the picker).
+  app.get("/api/sms-templates", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const templates = await storage.getSmsTemplates(user.clinicId);
+      res.json(templates);
+    } catch (error: any) {
+      console.error("List SMS templates error:", error);
+      res.status(500).json({ error: error?.message || "Failed to load templates" });
+    }
+  });
+
+  // Create a template — owner/admin only.
+  app.post("/api/sms-templates", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      if (!["clinic_owner", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ error: "Only clinic owners and admins can manage templates" });
+      }
+      const data = insertSmsTemplateSchema.parse(req.body);
+      const name = data.name.trim();
+      const body = data.body.trim();
+      if (!name || !body) return res.status(400).json({ error: "Name and message are required" });
+      const created = await storage.createSmsTemplate({ name, body, clinicId: user.clinicId });
+      res.status(201).json(created);
+    } catch (error: any) {
+      if (error?.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid template", details: error.errors });
+      }
+      console.error("Create SMS template error:", error);
+      res.status(500).json({ error: error?.message || "Failed to create template" });
+    }
+  });
+
+  // Update a template — owner/admin only, clinic-scoped.
+  app.patch("/api/sms-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      if (!["clinic_owner", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ error: "Only clinic owners and admins can manage templates" });
+      }
+      const id = parseInt(req.params.id, 10);
+      if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid template id" });
+      const existing = await storage.getSmsTemplate(id);
+      if (!existing || existing.clinicId !== user.clinicId) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      const data = insertSmsTemplateSchema.partial().parse(req.body);
+      const updates: Partial<typeof data> = {};
+      if (data.name !== undefined) {
+        const name = data.name.trim();
+        if (!name) return res.status(400).json({ error: "Name is required" });
+        updates.name = name;
+      }
+      if (data.body !== undefined) {
+        const body = data.body.trim();
+        if (!body) return res.status(400).json({ error: "Message is required" });
+        updates.body = body;
+      }
+      const updated = await storage.updateSmsTemplate(id, updates);
+      res.json(updated);
+    } catch (error: any) {
+      if (error?.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid template", details: error.errors });
+      }
+      console.error("Update SMS template error:", error);
+      res.status(500).json({ error: error?.message || "Failed to update template" });
+    }
+  });
+
+  // Delete a template — owner/admin only, clinic-scoped.
+  app.delete("/api/sms-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      if (!["clinic_owner", "admin"].includes(user.role || "")) {
+        return res.status(403).json({ error: "Only clinic owners and admins can manage templates" });
+      }
+      const id = parseInt(req.params.id, 10);
+      if (Number.isNaN(id)) return res.status(400).json({ error: "Invalid template id" });
+      const existing = await storage.getSmsTemplate(id);
+      if (!existing || existing.clinicId !== user.clinicId) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      await storage.deleteSmsTemplate(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete SMS template error:", error);
+      res.status(500).json({ error: error?.message || "Failed to delete template" });
     }
   });
 
