@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/useAuth";
 import { MessageSquare, Send, Plus, Search, Loader2, AlertCircle, CheckCheck, Phone, UserCircle, Clock, FileText, Pencil, Trash2 } from "lucide-react";
-import type { SmsMessage, Patient, SmsTemplate, Clinic } from "@shared/schema";
+import type { SmsMessage, Patient, SmsTemplate, Clinic, Appointment } from "@shared/schema";
+import { resolveClinicTimeZone } from "@shared/timezones";
 
 interface Conversation {
   patientId: number | null;
@@ -118,6 +119,20 @@ export default function Messages() {
     queryKey: ["/api/clinic"],
   });
 
+  // The selected patient's appointments, used to fill {date}/{time} placeholders.
+  const { data: patientAppointments = [] } = useQuery<Appointment[]>({
+    queryKey: ["/api/patients", selected?.patientId, "appointments"],
+    enabled: !!selected?.patientId,
+  });
+
+  // Soonest non-cancelled appointment from now onwards.
+  const nextAppointment = useMemo(() => {
+    const now = Date.now();
+    return [...patientAppointments]
+      .filter(a => a.status !== "cancelled" && new Date(a.appointmentDate).getTime() >= now)
+      .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())[0] || null;
+  }, [patientAppointments]);
+
   const sendMutation = useMutation({
     mutationFn: async (payload: { patientId?: number | null; phone?: string; body: string }) => {
       const res = await apiRequest("/api/sms/send", "POST", payload);
@@ -142,7 +157,7 @@ export default function Messages() {
     });
   };
 
-  // Insert a template into the draft, filling {patient} / {clinic} placeholders.
+  // Insert a template into the draft, filling {patient}/{clinic}/{date}/{time} placeholders.
   const applyTemplate = (body: string) => {
     const firstName = (selected?.patientName || "").trim().split(/\s+/)[0] || "";
     // Only substitute placeholders we actually have values for; leave the rest
@@ -150,6 +165,18 @@ export default function Messages() {
     let filled = body;
     if (firstName) filled = filled.replace(/\{patient\}/g, firstName);
     if (clinic?.name) filled = filled.replace(/\{clinic\}/g, clinic.name);
+    if (nextAppointment) {
+      // Appointment times are stored in UTC; render in the clinic's local timezone
+      // to match the appointment reminder wording (dd-MM-yyyy and e.g. "1:00pm").
+      const tz = resolveClinicTimeZone(clinic ?? null);
+      const d = new Date(nextAppointment.appointmentDate);
+      const parts = new Intl.DateTimeFormat("en-AU", { timeZone: tz, day: "2-digit", month: "2-digit", year: "numeric" }).formatToParts(d);
+      const get = (t: string) => parts.find(p => p.type === t)?.value || "";
+      const time = new Intl.DateTimeFormat("en-AU", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true }).format(d).replace(/\s/g, "").toLowerCase();
+      filled = filled
+        .replace(/\{date\}/g, `${get("day")}-${get("month")}-${get("year")}`)
+        .replace(/\{time\}/g, time);
+    }
     setDraft(prev => (prev.trim() ? `${prev}${prev.endsWith(" ") || prev.endsWith("\n") ? "" : " "}${filled}` : filled));
     setTemplatePickerOpen(false);
   };
@@ -477,7 +504,7 @@ export default function Messages() {
           <DialogHeader>
             <DialogTitle>SMS Templates</DialogTitle>
             <DialogDescription>
-              Reusable messages your team can drop into any conversation. Use {"{patient}"} and {"{clinic}"} to auto-fill the patient's first name and your clinic name.
+              Reusable messages your team can drop into any conversation. Placeholders auto-fill on insert: {"{patient}"} (first name), {"{clinic}"} (clinic name), {"{date}"} and {"{time}"} (the patient's next appointment).
             </DialogDescription>
           </DialogHeader>
 
@@ -512,7 +539,7 @@ export default function Messages() {
             </div>
             <div>
               <Label className="text-xs text-gray-500">Message</Label>
-              <Textarea value={tplBody} onChange={e => setTplBody(e.target.value)} placeholder="Hi {patient}, your results are ready. Please call {clinic} to discuss." className="resize-none min-h-[80px]" data-testid="input-template-body" />
+              <Textarea value={tplBody} onChange={e => setTplBody(e.target.value)} placeholder="Hi {patient}, reminder of your appointment at {clinic} on {date} at {time}." className="resize-none min-h-[80px]" data-testid="input-template-body" />
             </div>
             <div className="flex justify-end gap-2 pt-1">
               {editingTemplate && (
