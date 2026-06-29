@@ -52,6 +52,9 @@ export default function Messages() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // A just-started conversation that has no messages yet won't be returned by the
+  // server, so we hold it here so it survives the periodic conversation refetch.
+  const [pendingConvo, setPendingConvo] = useState<Conversation | null>(null);
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
   const [newOpen, setNewOpen] = useState(false);
@@ -77,10 +80,18 @@ export default function Messages() {
     refetchInterval: 20000,
   });
 
-  const selected = useMemo(
-    () => conversations.find(c => (c.patientId != null ? `p:${c.patientId}` : `n:${c.phone}`) === selectedKey) || null,
-    [conversations, selectedKey],
-  );
+  const convoKey = (c: { patientId: number | null; phone: string }) =>
+    c.patientId != null ? `p:${c.patientId}` : `n:${c.phone}`;
+
+  const selected = useMemo(() => {
+    const found = conversations.find(c => convoKey(c) === selectedKey);
+    if (found) return found;
+    // Fall back to the pending (message-less) conversation so opening a brand-new
+    // chat doesn't get wiped when the conversation list refetches.
+    if (pendingConvo && convoKey(pendingConvo) === selectedKey) return pendingConvo;
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, selectedKey, pendingConvo]);
 
   const threadKey = selected
     ? (selected.patientId != null
@@ -105,6 +116,14 @@ export default function Messages() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread.length]);
+
+  // Once the real conversation shows up in the list (after the first message), drop the placeholder.
+  useEffect(() => {
+    if (pendingConvo && conversations.some(c => convoKey(c) === convoKey(pendingConvo))) {
+      setPendingConvo(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, pendingConvo]);
 
   const { data: patients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients"],
@@ -214,22 +233,29 @@ export default function Messages() {
     setNewOpen(false);
     setPatientSearch("");
     setSelectedKey(`p:${patient.id}`);
-    // If there's no existing conversation entry yet, seed a placeholder so the thread view opens.
-    if (!conversations.some(c => c.patientId === patient.id)) {
-      queryClient.setQueryData<Conversation[]>(["/api/sms/conversations"], (old = []) => [
-        {
-          patientId: patient.id,
-          phone: patient.phone || "",
-          patientName: `${patient.firstName} ${patient.lastName}`.trim(),
-          lastMessage: { id: -1, createdAt: new Date(), body: "", direction: "outbound", status: "", patientId: patient.id } as any,
-          unreadCount: 0,
-        },
-        ...old,
-      ]);
+    // If a real conversation already exists, just open it.
+    if (conversations.some(c => c.patientId === patient.id)) {
+      setPendingConvo(null);
+      return;
     }
+    // Otherwise hold a placeholder (in state, not just the cache) so the thread view
+    // stays open even after the conversation list refetches from the server.
+    const placeholder: Conversation = {
+      patientId: patient.id,
+      phone: patient.phone || "",
+      patientName: `${patient.firstName} ${patient.lastName}`.trim(),
+      lastMessage: { id: -1, createdAt: new Date(), body: "", direction: "outbound", status: "", patientId: patient.id } as any,
+      unreadCount: 0,
+    };
+    setPendingConvo(placeholder);
   };
 
-  const filteredConvos = conversations.filter(c => {
+  // Show the pending (message-less) conversation in the list too, until the real one arrives.
+  const allConvos = pendingConvo && !conversations.some(c => convoKey(c) === convoKey(pendingConvo))
+    ? [pendingConvo, ...conversations]
+    : conversations;
+
+  const filteredConvos = allConvos.filter(c => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (c.patientName || "").toLowerCase().includes(q) || (c.phone || "").includes(q);
@@ -296,7 +322,11 @@ export default function Messages() {
                 return (
                   <button
                     key={key}
-                    onClick={() => setSelectedKey(key)}
+                    onClick={() => {
+                      setSelectedKey(key);
+                      // Drop a lingering unsent placeholder when moving to a different chat.
+                      if (pendingConvo && convoKey(pendingConvo) !== key) setPendingConvo(null);
+                    }}
                     className={`w-full text-left px-3 py-3 border-b border-gray-50 transition-colors ${isActive ? "bg-blue-50" : "hover:bg-gray-50"}`}
                     data-testid={`conversation-${key}`}
                   >
