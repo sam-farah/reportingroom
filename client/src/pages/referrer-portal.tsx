@@ -137,7 +137,7 @@ export default function ReferrerPortal() {
 
   const submitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bookingSlot || !bookForm.patientName || !bookForm.scanType || !bookForm.patientEmail) return;
+    if (!bookingSlot || !bookForm.patientName || !bookForm.scanType) return;
     setBooking(true);
     try {
       const start = new Date(bookingSlot.date);
@@ -429,8 +429,8 @@ export default function ReferrerPortal() {
                 <Input required value={bookForm.patientName} onChange={(e) => setBookForm((p) => ({ ...p, patientName: e.target.value }))} className="mt-1" />
               </div>
               <div>
-                <Label className="text-sm">Patient Email * <span className="text-gray-400 font-normal">(confirmation will be sent here)</span></Label>
-                <Input required type="email" value={bookForm.patientEmail} onChange={(e) => setBookForm((p) => ({ ...p, patientEmail: e.target.value }))} className="mt-1" placeholder="patient@example.com" />
+                <Label className="text-sm">Patient Email <span className="text-gray-400 font-normal">(optional — confirmation will be sent here if provided)</span></Label>
+                <Input type="email" value={bookForm.patientEmail} onChange={(e) => setBookForm((p) => ({ ...p, patientEmail: e.target.value }))} className="mt-1" placeholder="patient@example.com" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -459,7 +459,7 @@ export default function ReferrerPortal() {
               </div>
               <div className="flex gap-2 justify-end">
                 <Button type="button" variant="outline" onClick={() => setBookingOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={booking || !bookForm.patientName || !bookForm.scanType || !bookForm.patientEmail}>
+                <Button type="submit" disabled={booking || !bookForm.patientName || !bookForm.scanType}>
                   {booking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                   Confirm Booking
                 </Button>
