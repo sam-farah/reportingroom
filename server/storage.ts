@@ -85,6 +85,9 @@ import {
   reportDistributions,
   type ReportDistribution,
   type InsertReportDistribution,
+  reportWorksheetPages,
+  type ReportWorksheetPage,
+  type InsertReportWorksheetPage,
   scanTypeContentTemplates,
   type ScanTypeContentTemplate,
   type InsertScanTypeContentTemplate,
@@ -414,6 +417,11 @@ export interface IStorage {
   getDistributionById(id: number): Promise<ReportDistribution | undefined>;
   getReportDistributionCounts(clinicId: number): Promise<Record<number, number>>;
   createReportDistribution(distribution: InsertReportDistribution): Promise<ReportDistribution>;
+
+  // Extra worksheet pages attached to a report
+  getReportWorksheetPages(reportId: number): Promise<ReportWorksheetPage[]>;
+  createReportWorksheetPage(page: InsertReportWorksheetPage): Promise<ReportWorksheetPage>;
+  deleteReportWorksheetPage(id: number, reportId: number): Promise<void>;
 
   // Scan type content templates
   getScanTypeContentTemplates(clinicId: number): Promise<ScanTypeContentTemplate[]>;
@@ -2088,6 +2096,25 @@ export class DatabaseStorage implements IStorage {
       )
       .catch(err => console.error("[auto-train] post-create hook failed:", err));
     return created;
+  }
+
+  async getReportWorksheetPages(reportId: number): Promise<ReportWorksheetPage[]> {
+    return db
+      .select()
+      .from(reportWorksheetPages)
+      .where(eq(reportWorksheetPages.reportId, reportId))
+      .orderBy(reportWorksheetPages.pageOrder, reportWorksheetPages.id);
+  }
+
+  async createReportWorksheetPage(page: InsertReportWorksheetPage): Promise<ReportWorksheetPage> {
+    const [created] = await db.insert(reportWorksheetPages).values(page).returning();
+    return created;
+  }
+
+  async deleteReportWorksheetPage(id: number, reportId: number): Promise<void> {
+    await db
+      .delete(reportWorksheetPages)
+      .where(and(eq(reportWorksheetPages.id, id), eq(reportWorksheetPages.reportId, reportId)));
   }
 
   async getScanTypeContentTemplates(clinicId: number): Promise<ScanTypeContentTemplate[]> {

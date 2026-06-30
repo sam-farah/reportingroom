@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus, AlertCircle } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
+import DrawingCanvas from "@/components/drawing-canvas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer } from "@shared/schema";
+import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage } from "@shared/schema";
 import { resolveClinicTimeZone } from "@shared/timezones";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -92,7 +93,7 @@ function findCanvasContentBottom(canvas: HTMLCanvasElement): number {
   return 0;
 }
 
-async function generateReportPdfBase64(html: string, worksheetDataUrl?: string | null): Promise<string> {
+async function generateReportPdfBase64(html: string, worksheetDataUrl?: string | null, extraWorksheetDataUrls: string[] = []): Promise<string> {
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;visibility:hidden;";
   document.body.appendChild(iframe);
@@ -145,13 +146,14 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
       yMm += pageHeightMm;
       if (yMm < totalHeightMm) pdf.addPage();
     }
-    // Append worksheet as a dedicated final page
-    if (worksheetDataUrl) {
+    // Append worksheet(s) — primary first, then any extra pages (Left/Right),
+    // each on its own A4 page with auto orientation.
+    const appendImagePage = async (dataUrl: string) => {
       const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(img);
         img.onerror = reject;
-        img.src = worksheetDataUrl;
+        img.src = dataUrl;
       });
       const scale = Math.min(A4_W_MM / wsImg.width, A4_H_MM / wsImg.height);
       const drawW = wsImg.width * scale, drawH = wsImg.height * scale;
@@ -160,7 +162,12 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
       const pageW = orientation === "landscape" ? A4_H_MM : A4_W_MM;
       const pageH = orientation === "landscape" ? A4_W_MM : A4_H_MM;
       const xOff = (pageW - drawW) / 2, yOff = (pageH - drawH) / 2;
-      pdf.addImage(worksheetDataUrl, "JPEG", xOff, yOff, drawW, drawH);
+      const fmt = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+      pdf.addImage(dataUrl, fmt, xOff, yOff, drawW, drawH);
+    };
+    if (worksheetDataUrl) await appendImagePage(worksheetDataUrl);
+    for (const extra of extraWorksheetDataUrls) {
+      if (extra) await appendImagePage(extra);
     }
     return pdf.output("datauristring").split(",")[1];
   } finally {
@@ -198,6 +205,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [distributeIncludeWorksheet, setDistributeIncludeWorksheet] = useState(true);
   const [distributeHasWorksheet, setDistributeHasWorksheet] = useState(false);
   const [distributeWorksheetDataUrl, setDistributeWorksheetDataUrl] = useState<string | null>(null);
+  const [distributeExtraWorksheetDataUrls, setDistributeExtraWorksheetDataUrls] = useState<string[]>([]);
   const [distributeCopied, setDistributeCopied] = useState(false);
   const [distributeLoading, setDistributeLoading] = useState(false);
   const [htmlBuilt, setHtmlBuilt] = useState(false);
@@ -984,6 +992,94 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     }
   };
 
+  // ── Extra worksheet pages (e.g. Left / Right) ───────────────────────────────
+  const editingReportId = editingReport?.id;
+  const isEditingFinalized = Boolean(editingReport?.isFinalized);
+  const { data: extraPages = [], isLoading: extraPagesLoading } = useQuery<ReportWorksheetPage[]>({
+    queryKey: ["/api/reports", editingReportId, "worksheet-pages"],
+    enabled: !!editingReportId,
+  });
+  const [addPageDrawOpen, setAddPageDrawOpen] = useState(false);
+  const [extraPageUploading, setExtraPageUploading] = useState(false);
+
+  const invalidateExtraPages = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/reports", editingReportId, "worksheet-pages"] });
+  };
+
+  const uploadExtraPage = async (file: File) => {
+    if (!editingReportId) return;
+    setExtraPageUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/reports/${editingReportId}/worksheet-pages/upload`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.details || data.error || "Upload failed");
+      }
+      invalidateExtraPages();
+      toast({ title: "Page added", description: "The worksheet page was attached to this report." });
+    } catch (err: any) {
+      toast({ title: "Could not add page", description: err.message || "Something went wrong.", variant: "destructive" });
+    } finally {
+      setExtraPageUploading(false);
+    }
+  };
+
+  const handleAddPageDraw = async (imageData: string, templateName: string) => {
+    if (!editingReportId) return;
+    setAddPageDrawOpen(false);
+    try {
+      const res = await fetch(`/api/reports/${editingReportId}/worksheet-pages/draw`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageData, label: templateName }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.details || data.error || "Could not save drawing");
+      }
+      invalidateExtraPages();
+      toast({ title: "Page added", description: "Your drawn worksheet page was attached to this report." });
+    } catch (err: any) {
+      toast({ title: "Could not add page", description: err.message || "Something went wrong.", variant: "destructive" });
+    }
+  };
+
+  const deleteExtraPage = async (pageId: number) => {
+    if (!editingReportId) return;
+    try {
+      const res = await fetch(`/api/reports/${editingReportId}/worksheet-pages/${pageId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.details || data.error || "Could not remove page");
+      }
+      invalidateExtraPages();
+      toast({ title: "Page removed", description: "The extra worksheet page was removed." });
+    } catch (err: any) {
+      toast({ title: "Could not remove page", description: err.message || "Something went wrong.", variant: "destructive" });
+    }
+  };
+
+  const promptExtraPageUpload = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*,.pdf";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) uploadExtraPage(file);
+    };
+    input.click();
+  };
+
   const handleExportPDF = (report: Report) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -1166,9 +1262,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     setDistributeHtmlWithWs("");
     setDistributeHtmlNoWs("");
     setDistributeWorksheetDataUrl(null);
+    setDistributeExtraWorksheetDataUrls([]);
   };
 
-  const buildDistributeHtml = async (reportArg?: Report): Promise<{ htmlNoWs: string; htmlWithWs: string; worksheetDataUrl: string | null } | undefined> => {
+  const buildDistributeHtml = async (reportArg?: Report): Promise<{ htmlNoWs: string; htmlWithWs: string; worksheetDataUrl: string | null; extraWorksheetDataUrls: string[] } | undefined> => {
     const report = reportArg ?? distributeReport;
     if (!report) return;
     const updateState = !reportArg;
@@ -1298,6 +1395,22 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     // doing so would stack a second header on top of the existing one.
     const labelledWorksheetDataUrl: string | null = worksheetDataUrl;
 
+    // Fetch any extra worksheet pages (e.g. Left / Right) attached to this report.
+    // Each becomes its own A4 page in the PDF, after the primary worksheet.
+    const extraWorksheetDataUrls: string[] = [];
+    try {
+      const pagesRes = await fetch(`/api/reports/${report.id}/worksheet-pages`, { credentials: "include" });
+      if (pagesRes.ok) {
+        const pages = await pagesRes.json();
+        for (const page of pages) {
+          const url = await toBase64(`/api/reports/${report.id}/worksheet-pages/${page.id}/image`);
+          if (url) extraWorksheetDataUrls.push(url);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load extra worksheet pages:", err);
+    }
+
     const clinicName = clinicData?.name || clinic?.clinicName || 'Medical Clinic';
     const clinicAddress = clinicData?.address || clinic?.address || '';
     const clinicPhone = clinicData?.phone || clinic?.phone || '';
@@ -1308,7 +1421,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const displayStudyType = cleanStudyType(report.studyType);
     const displayExamDate = formatDobAU(report.examDate);
 
-    const makeHtml = (wsUrl: string | null, copiesTo: string = '') => `<!DOCTYPE html>
+    const makeHtml = (wsUrl: string | null, copiesTo: string = '', extraUrls: string[] = []) => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -1397,22 +1510,35 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     </div>
     <img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" />
   </div>` : ''}
+
+  ${extraUrls.map((u) => `<div class="worksheet-page">
+    <div class="worksheet-page-header">
+      <div><span class="label">${report.patientName}</span>${report.patientUrNumber ? ` &nbsp;·&nbsp; <span class="ur">UR ${report.patientUrNumber}</span>` : ''}</div>
+      <div>
+        ${accessionId ? `<span class="label">Accession:</span> ${accessionId}` : ''}
+        ${accessionId && sonographerName ? ' &nbsp;·&nbsp; ' : ''}
+        ${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}${sonographerAms ? ` &nbsp; <span class="label">AMS</span> ${sonographerAms}` : ''}` : ''}
+      </div>
+    </div>
+    <img class="worksheet-img" src="${u}" alt="Worksheet Page" />
+  </div>`).join('')}
 </body>
 </html>`;
 
     const hasWs = !!labelledWorksheetDataUrl;
-    const htmlWithWs = makeHtml(labelledWorksheetDataUrl);
-    const htmlNoWs = makeHtml(null);
+    const htmlWithWs = makeHtml(labelledWorksheetDataUrl, '', extraWorksheetDataUrls);
+    const htmlNoWs = makeHtml(null, '', []);
     if (updateState) {
       setDistributeHasWorksheet(hasWs);
       setDistributeWorksheetDataUrl(labelledWorksheetDataUrl);
+      setDistributeExtraWorksheetDataUrls(extraWorksheetDataUrls);
       setDistributeHtmlWithWs(htmlWithWs);
       setDistributeHtmlNoWs(htmlNoWs);
       setDistributeHtml(htmlWithWs); // default: worksheet included
       setHtmlBuilt(true);
       setDistributeLoading(false);
     }
-    return { htmlNoWs, htmlWithWs, worksheetDataUrl: labelledWorksheetDataUrl };
+    return { htmlNoWs, htmlWithWs, worksheetDataUrl: labelledWorksheetDataUrl, extraWorksheetDataUrls };
   };
 
   // Direct download — bypasses the distribute dialog. Used by per-card "PDF" button.
@@ -1422,7 +1548,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     try {
       const built = await buildDistributeHtml(report);
       if (!built) throw new Error("Could not build report HTML");
-      const pdfBase64 = await generateReportPdfBase64(built.htmlNoWs, built.worksheetDataUrl);
+      const pdfBase64 = await generateReportPdfBase64(built.htmlNoWs, built.worksheetDataUrl, built.extraWorksheetDataUrls);
       const byteChars = atob(pdfBase64);
       const bytes = new Uint8Array(byteChars.length);
       for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
@@ -1465,7 +1591,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       // Generate a PDF snapshot of exactly what was transmitted
       let pdfBlob: string | null = null;
       try {
-        pdfBlob = await generateReportPdfBase64(distributeHtmlNoWs, distributeWorksheetDataUrl);
+        pdfBlob = await generateReportPdfBase64(distributeHtmlNoWs, distributeWorksheetDataUrl, distributeExtraWorksheetDataUrls);
       } catch (pdfErr) {
         console.warn("PDF generation failed for Copy HTML record:", pdfErr);
       }
@@ -1533,6 +1659,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const htmlWithWsFresh = built?.htmlWithWs ?? distributeHtmlWithWs;
       const htmlNoWsFresh = built?.htmlNoWs ?? distributeHtmlNoWs;
       const worksheetDataUrlFresh = built?.worksheetDataUrl ?? distributeWorksheetDataUrl;
+      const extraWorksheetDataUrlsFresh = built?.extraWorksheetDataUrls ?? distributeExtraWorksheetDataUrls;
       const baseHtmlForEmail = distributeIncludeWorksheet ? htmlWithWsFresh : htmlNoWsFresh;
 
       // Inject recipients into the report HTML before generating the PDF.
@@ -1550,7 +1677,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const htmlForPdf = htmlNoWsFresh.replace("<!--COPIES_TO_PLACEHOLDER-->", recipientsBlock);
       let pdfBase64: string | undefined;
       try {
-        pdfBase64 = await generateReportPdfBase64(htmlForPdf, worksheetDataUrlFresh);
+        pdfBase64 = await generateReportPdfBase64(htmlForPdf, worksheetDataUrlFresh, extraWorksheetDataUrlsFresh);
       } catch (pdfErr) {
         console.warn("Report PDF generation failed, sending without attachment:", pdfErr);
       }
@@ -1601,11 +1728,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const built = await buildDistributeHtml(distributeReport);
       const htmlNoWsFresh = built?.htmlNoWs ?? distributeHtmlNoWs;
       const worksheetDataUrlFresh = built?.worksheetDataUrl ?? distributeWorksheetDataUrl;
+      const extraWorksheetDataUrlsFresh = built?.extraWorksheetDataUrls ?? distributeExtraWorksheetDataUrls;
 
       // Build a single combined PDF: report pages first, worksheet as dedicated final page
       let pdfBase64: string | undefined;
       try {
-        pdfBase64 = await generateReportPdfBase64(htmlNoWsFresh, worksheetDataUrlFresh);
+        pdfBase64 = await generateReportPdfBase64(htmlNoWsFresh, worksheetDataUrlFresh, extraWorksheetDataUrlsFresh);
       } catch (pdfErr) {
         console.warn("PDF generation failed for fax, sending without attachment:", pdfErr);
       }
@@ -1639,7 +1767,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (!distributeReport || !distributeHtmlNoWs) return;
     setDownloadingPdf(true);
     try {
-      const pdfBase64 = await generateReportPdfBase64(distributeHtmlNoWs, distributeWorksheetDataUrl);
+      const pdfBase64 = await generateReportPdfBase64(distributeHtmlNoWs, distributeWorksheetDataUrl, distributeExtraWorksheetDataUrls);
       // Decode base64 -> Blob
       const byteChars = atob(pdfBase64);
       const bytes = new Uint8Array(byteChars.length);
@@ -2349,7 +2477,89 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   </div>
                 )}
               </div>
+
+              {/* ── Extra worksheet pages (e.g. Left / Right) ── */}
+              {(!isEditingFinalized || extraPages.length > 0) && (
+                <div className="border-t bg-gray-50 px-4 py-3 shrink-0 max-h-[40%] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-700">Additional Worksheet Pages</h4>
+                      <p className="text-xs text-gray-500">Extra pages (e.g. Left / Right) print after the main worksheet</p>
+                    </div>
+                    {!isEditingFinalized && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={promptExtraPageUpload}
+                          disabled={extraPageUploading}
+                        >
+                          {extraPageUploading ? (
+                            <div className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-1.5" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5 mr-1.5" />
+                          )}
+                          Upload Page
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setAddPageDrawOpen(true)}
+                        >
+                          <Edit3 className="w-3.5 h-3.5 mr-1.5" />
+                          Draw Page
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  {extraPagesLoading ? (
+                    <p className="text-xs text-gray-400 py-2">Loading pages…</p>
+                  ) : extraPages.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2">No additional pages yet.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-3">
+                      {extraPages.map((page, idx) => (
+                        <div key={page.id} className="relative group w-24">
+                          <div className="border border-gray-300 rounded-md overflow-hidden bg-white aspect-[3/4] flex items-center justify-center">
+                            <img
+                              src={`/api/reports/${editingReportId}/worksheet-pages/${page.id}/image`}
+                              alt={page.label || `Page ${idx + 1}`}
+                              className="max-w-full max-h-full object-contain"
+                            />
+                          </div>
+                          <p className="text-[11px] text-gray-600 mt-1 truncate text-center">
+                            {page.label || `Page ${idx + 1}`}
+                          </p>
+                          {!isEditingFinalized && (
+                            <button
+                              type="button"
+                              onClick={() => deleteExtraPage(page.id)}
+                              className="absolute -top-2 -right-2 bg-white border border-gray-300 rounded-full p-1 shadow-sm text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Remove this page"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Draw an additional worksheet page */}
+            <Dialog open={addPageDrawOpen} onOpenChange={setAddPageDrawOpen}>
+              <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Draw a Worksheet Page</DialogTitle>
+                  <DialogDescription>
+                    Pick a template, annotate it, then click Save to attach it as an additional page to this report.
+                  </DialogDescription>
+                </DialogHeader>
+                <DrawingCanvas onWorksheetCreated={handleAddPageDraw} />
+              </DialogContent>
+            </Dialog>
             
             {/* Right Panel - Report Editor */}
             <div className="w-1/2 flex flex-col bg-white">

@@ -33,6 +33,7 @@ interface BuiltReport {
   htmlNoWs: string;
   htmlWithWs: string;
   worksheetDataUrl: string | null;
+  extraWorksheetDataUrls: string[];
 }
 
 interface ReportDistributeDialogProps {
@@ -176,8 +177,8 @@ export default function ReportDistributeDialog({
     try {
       const results: BuiltReport[] = [];
       for (const report of reports) {
-        const { htmlNoWs, htmlWithWs, worksheetDataUrl } = await buildReportHtml(report, deps);
-        results.push({ report, htmlNoWs, htmlWithWs, worksheetDataUrl });
+        const { htmlNoWs, htmlWithWs, worksheetDataUrl, extraWorksheetDataUrls } = await buildReportHtml(report, deps);
+        results.push({ report, htmlNoWs, htmlWithWs, worksheetDataUrl, extraWorksheetDataUrls });
       }
       setBuilt(results);
       setHtmlBuilt(true);
@@ -235,6 +236,7 @@ export default function ReportDistributeDialog({
           results.map((b) => ({
             html: b.htmlNoWs.replace("<!--COPIES_TO_PLACEHOLDER-->", recipientsBlock),
             worksheetDataUrl: includeWorksheet ? b.worksheetDataUrl : null,
+            extraWorksheetDataUrls: includeWorksheet ? b.extraWorksheetDataUrls : [],
           })),
         );
       } catch (pdfErr) {
@@ -283,7 +285,7 @@ export default function ReportDistributeDialog({
       let pdfBase64: string;
       try {
         pdfBase64 = await generateCombinedReportPdfBase64(
-          results.map((b) => ({ html: b.htmlNoWs, worksheetDataUrl: b.worksheetDataUrl })),
+          results.map((b) => ({ html: b.htmlNoWs, worksheetDataUrl: b.worksheetDataUrl, extraWorksheetDataUrls: b.extraWorksheetDataUrls })),
         );
       } catch (pdfErr) {
         console.error("Combined PDF generation failed for fax:", pdfErr);
@@ -330,6 +332,7 @@ export default function ReportDistributeDialog({
         results.map((b) => ({
           html: b.htmlNoWs.replace("<!--COPIES_TO_PLACEHOLDER-->", ""),
           worksheetDataUrl: includeWorksheet ? b.worksheetDataUrl : null,
+          extraWorksheetDataUrls: includeWorksheet ? b.extraWorksheetDataUrls : [],
         })),
       );
       const byteChars = atob(pdfBase64);
@@ -362,7 +365,7 @@ export default function ReportDistributeDialog({
       let pdfBlob: string | null = null;
       try {
         pdfBlob = await generateCombinedReportPdfBase64(
-          results.map((b) => ({ html: b.htmlNoWs, worksheetDataUrl: includeWorksheet ? b.worksheetDataUrl : null })),
+          results.map((b) => ({ html: b.htmlNoWs, worksheetDataUrl: includeWorksheet ? b.worksheetDataUrl : null, extraWorksheetDataUrls: includeWorksheet ? b.extraWorksheetDataUrls : [] })),
         );
       } catch (pdfErr) {
         console.warn("PDF generation failed for Copy HTML record:", pdfErr);

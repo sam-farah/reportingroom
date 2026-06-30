@@ -129,10 +129,16 @@ export const worksheets = pgTable("worksheets", {
   sonographerId: integer("sonographer_id").references(() => sonographers.id),
   isArchived: boolean("is_archived").default(false),
   archivedAt: timestamp("archived_at"),
+  // Marks worksheet rows that exist only as an extra report page (PHI). These
+  // must never be served by the public /api/worksheets/:id/image route — only
+  // via the authenticated report-scoped endpoint. The marker lives on the row
+  // itself so the guard holds even if the page's join row is later orphaned.
+  isReportPage: boolean("is_report_page").default(false),
 });
 
 export const reports = pgTable("reports", {
   id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id),
   worksheetId: integer("worksheet_id").references(() => worksheets.id),
   digitalWorksheetId: integer("digital_worksheet_id").references(() => digitalWorksheets.id),
   labelledWorksheetId: integer("labelled_worksheet_id").references(() => worksheets.id),
@@ -164,6 +170,19 @@ export const reports = pgTable("reports", {
   patientId: integer("patient_id").references(() => patients.id),
   verbalConsentAt: timestamp("verbal_consent_at"), // Inherited from the appointment when verbal consent was recorded
   writtenConsentAt: timestamp("written_consent_at"), // Inherited from the appointment when written/signed consent was recorded (kiosk or remote)
+});
+
+// Extra worksheet pages attached to a single report (e.g. page 1 = Left, page 2
+// = Right). Each page is a flat image stored as a `worksheets` row so the PDF
+// builder can append every page uniformly. Created by upload or by drawing.
+export const reportWorksheetPages = pgTable("report_worksheet_pages", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => reports.id, { onDelete: "cascade" }),
+  worksheetId: integer("worksheet_id").notNull().references(() => worksheets.id),
+  pageOrder: integer("page_order").notNull().default(0),
+  label: varchar("label", { length: 60 }),
+  sourceType: varchar("source_type", { length: 20 }).notNull().default("upload"), // "upload" | "draw"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const trainingPairs = pgTable("training_pairs", {
@@ -496,6 +515,9 @@ export type Worksheet = typeof worksheets.$inferSelect;
 export type InsertWorksheet = z.infer<typeof insertWorksheetSchema>;
 export type Report = typeof reports.$inferSelect;
 export type InsertReport = z.infer<typeof insertReportSchema>;
+export const insertReportWorksheetPageSchema = createInsertSchema(reportWorksheetPages).omit({ id: true, createdAt: true });
+export type ReportWorksheetPage = typeof reportWorksheetPages.$inferSelect;
+export type InsertReportWorksheetPage = z.infer<typeof insertReportWorksheetPageSchema>;
 export type TrainingPair = typeof trainingPairs.$inferSelect;
 export type InsertTrainingPair = z.infer<typeof insertTrainingPairSchema>;
 export type ReportTemplate = typeof reportTemplates.$inferSelect;

@@ -4291,7 +4291,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Report not found" });
       }
 
+      // Capture extra worksheet pages first — deleting the report cascade-deletes
+      // their join rows, so clean up the dedicated worksheet rows + files
+      // afterwards (best-effort) to avoid leaving guarded orphans behind.
+      const extraPages = await storage.getReportWorksheetPages(reportId);
       await storage.deleteReport(reportId);
+      for (const p of extraPages) {
+        try {
+          const ws = await storage.getWorksheet(p.worksheetId);
+          await storage.deleteWorksheet(p.worksheetId);
+          if (ws?.filename) {
+            try { fs.unlinkSync(path.join(uploadDir, ws.filename)); } catch {}
+            try { await deleteFileFromDB(ws.filename); } catch {}
+          }
+        } catch {}
+      }
       res.json({ message: "Report deleted successfully" });
     } catch (error) {
       console.error("Report deletion error:", error);
@@ -5080,6 +5094,289 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── Extra worksheet pages on a report (e.g. page 1 = Left, page 2 = Right) ──
+  // Each extra page is stored as a flat image in the `worksheets` table and
+  // linked to the report via `report_worksheet_pages`, so the PDF builder can
+  // append every page uniformly after the primary worksheet.
+
+  // Serve worksheet image bytes (disk-first, DB-blob fallback). Shared by the
+  // public worksheet route and the authenticated report-scoped page route.
+  const sendWorksheetImage = async (
+    worksheet: any,
+    res: any,
+    cacheControl = "public, max-age=31536000",
+  ) => {
+    const filePath = path.join(uploadDir, worksheet.filename);
+    const ext = path.extname(worksheet.filename).toLowerCase();
+    let contentType = "application/octet-stream";
+    if (ext === ".jpg" || ext === ".jpeg") contentType = "image/jpeg";
+    else if (ext === ".png") contentType = "image/png";
+    else if (ext === ".gif") contentType = "image/gif";
+    else if (ext === ".webp") contentType = "image/webp";
+    else if (ext === ".pdf") contentType = "application/pdf";
+
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", cacheControl);
+      return res.sendFile(filePath);
+    }
+    const blob = await getFileFromDB(worksheet.filename);
+    if (!blob) {
+      return res.status(404).json({ error: "File not found" });
+    }
+    try { fs.writeFileSync(filePath, blob.data); } catch {}
+    const resolvedType = blob.mimeType ?? detectMimeType(blob.data) ?? contentType;
+    res.setHeader("Content-Type", resolvedType);
+    res.setHeader("Cache-Control", cacheControl);
+    return res.send(blob.data);
+  };
+
+  //
+  // Reports carry their own clinicId (set at creation from the creating user's
+  // clinic). We authorise every worksheet-page operation against it so a user
+  // can only touch reports in their own clinic. For legacy reports created
+  // before reports had a clinicId we fall back to the linked patient's clinic.
+  // A report with neither a clinicId nor a patient can only be a pre-existing
+  // orphaned draft (new reports always get a clinicId), so it is denied rather
+  // than left open to any authenticated user.
+  const resolveAuthorisedReport = async (
+    reportId: number,
+    userId: string,
+    res: any,
+  ): Promise<any | null> => {
+    const report = await storage.getReport(reportId);
+    if (!report) {
+      res.status(404).json({ error: "Report not found" });
+      return null;
+    }
+    const user = await storage.getUser(userId);
+    const deny = () => {
+      res.status(404).json({ error: "Report not found" });
+      return null;
+    };
+    if (!user) return deny();
+
+    if (report.clinicId != null) {
+      if (report.clinicId !== user.clinicId) return deny();
+    } else if (report.patientId) {
+      const patient = await storage.getPatient(report.patientId);
+      if (!patient || patient.clinicId !== user.clinicId) return deny();
+    } else {
+      return deny();
+    }
+    return report;
+  };
+
+  app.get("/api/reports/:id/worksheet-pages", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      const report = await resolveAuthorisedReport(id, req.session.userId!, res);
+      if (!report) return;
+      const pages = await storage.getReportWorksheetPages(id);
+      res.json(pages);
+    } catch (error) {
+      console.error("Get worksheet pages error:", error);
+      res.status(500).json({ error: "Failed to fetch worksheet pages" });
+    }
+  });
+
+  // Add extra page(s) by uploading an image or a PDF. Images create one page;
+  // PDFs are rendered to one image per page so they append cleanly.
+  app.post("/api/reports/:id/worksheet-pages/upload", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+      const report = await resolveAuthorisedReport(id, req.session.userId!, res);
+      if (!report) return;
+      if (report.isFinalized) return res.status(403).json({ error: "Report is finalized and cannot be changed" });
+
+      const isPdf = isPdfFile(req.file.originalname);
+      const mime = String(req.file.mimetype || "").toLowerCase();
+      const isAllowedImage = mime === "image/png" || mime === "image/jpeg" || mime === "image/jpg";
+      if (!isPdf && !isAllowedImage) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+        return res.status(400).json({ error: "Only PDF, PNG, or JPEG files can be added as worksheet pages" });
+      }
+
+      const existing = await storage.getReportWorksheetPages(id);
+      let nextOrder = existing.reduce((m, p) => Math.max(m, p.pageOrder + 1), 0);
+      const rawLabel = typeof req.body?.label === "string" ? req.body.label.trim() : "";
+      const label = rawLabel ? rawLabel.slice(0, 60) : null;
+      const created: any[] = [];
+
+      const makePage = async (filename: string, originalName: string) => {
+        const ws = await storage.createWorksheet({
+          filename,
+          originalName,
+          fileUrl: `/uploads/${filename}`,
+          patientName: report.patientName ?? null,
+          patientDob: report.patientDob ?? null,
+          examDate: report.examDate ?? null,
+          ocrProcessed: false,
+          isReportPage: true,
+        });
+        try {
+          const page = await storage.createReportWorksheetPage({
+            reportId: id,
+            worksheetId: ws.id,
+            pageOrder: nextOrder++,
+            label,
+            sourceType: "upload",
+          });
+          created.push(page);
+        } catch (e) {
+          // Compensate: drop the just-created worksheet so a failed link doesn't
+          // leave a dangling (guarded) orphan row behind.
+          try { await storage.deleteWorksheet(ws.id); } catch {}
+          throw e;
+        }
+      };
+
+      if (isPdf) {
+        const images = await convertPdfToImages(req.file.path, 20); // base64 PNGs, 1 per page
+        if (images.length === 0) return res.status(400).json({ error: "Could not read any pages from the PDF" });
+        for (let i = 0; i < images.length; i++) {
+          const filename = `${crypto.randomBytes(16).toString("hex")}.png`;
+          const outPath = path.join(uploadDir, filename);
+          fs.writeFileSync(outPath, Buffer.from(images[i], "base64"));
+          const displayName = `${req.file.originalname} (p${i + 1})`;
+          await saveFileToDB(filename, outPath, "image/png", displayName);
+          await makePage(filename, displayName);
+        }
+        try { fs.unlinkSync(req.file.path); } catch {}
+      } else {
+        await saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname);
+        await makePage(req.file.filename, req.file.originalname);
+      }
+
+      res.json(created);
+    } catch (error) {
+      console.error("Upload worksheet page error:", error);
+      res.status(500).json({ error: "Failed to add worksheet page" });
+    }
+  });
+
+  // Add an extra page from a drawn canvas (base64 data URL).
+  app.post("/api/reports/:id/worksheet-pages/draw", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+
+      const report = await resolveAuthorisedReport(id, req.session.userId!, res);
+      if (!report) return;
+      if (report.isFinalized) return res.status(403).json({ error: "Report is finalized and cannot be changed" });
+
+      const imageData: string = req.body?.imageData || "";
+      const match = /^data:image\/(png|jpeg|jpg);base64,(.+)$/.exec(imageData);
+      if (!match) return res.status(400).json({ error: "Invalid image data" });
+      const ext = match[1] === "png" ? "png" : "jpg";
+      const buffer = Buffer.from(match[2], "base64");
+
+      const rawLabel = typeof req.body?.label === "string" ? req.body.label.trim() : "";
+      const label = rawLabel ? rawLabel.slice(0, 60) : (typeof req.body?.templateName === "string" ? req.body.templateName.slice(0, 60) : null);
+
+      const filename = `${crypto.randomBytes(16).toString("hex")}.${ext}`;
+      const outPath = path.join(uploadDir, filename);
+      fs.writeFileSync(outPath, buffer);
+      const displayName = `${label || "Drawn page"}.${ext}`;
+      await saveFileToDB(filename, outPath, ext === "png" ? "image/png" : "image/jpeg", displayName);
+
+      const ws = await storage.createWorksheet({
+        filename,
+        originalName: displayName,
+        fileUrl: `/uploads/${filename}`,
+        patientName: report.patientName ?? null,
+        patientDob: report.patientDob ?? null,
+        examDate: report.examDate ?? null,
+        ocrProcessed: false,
+        isReportPage: true,
+      });
+      const existing = await storage.getReportWorksheetPages(id);
+      let page;
+      try {
+        page = await storage.createReportWorksheetPage({
+          reportId: id,
+          worksheetId: ws.id,
+          pageOrder: existing.reduce((m, p) => Math.max(m, p.pageOrder + 1), 0),
+          label,
+          sourceType: "draw",
+        });
+      } catch (e) {
+        // Compensate: drop the just-created worksheet on a failed link.
+        try { await storage.deleteWorksheet(ws.id); } catch {}
+        throw e;
+      }
+
+      res.json(page);
+    } catch (error) {
+      console.error("Draw worksheet page error:", error);
+      res.status(500).json({ error: "Failed to add drawn worksheet page" });
+    }
+  });
+
+  // Remove an extra page (scoped to its own report). Each extra page owns a
+  // dedicated worksheet row, so we delete that row + its file too. The worksheet
+  // is flagged isReportPage, so the public /api/worksheets/:id/image route blocks
+  // it regardless of join-row state — cleanup here is best-effort hygiene.
+  app.delete("/api/reports/:id/worksheet-pages/:pageId", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pageId = parseInt(req.params.pageId);
+      if (isNaN(id) || isNaN(pageId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const report = await resolveAuthorisedReport(id, req.session.userId!, res);
+      if (!report) return;
+      if (report.isFinalized) return res.status(403).json({ error: "Report is finalized and cannot be changed" });
+
+      const pages = await storage.getReportWorksheetPages(id);
+      const page = pages.find((p) => p.id === pageId);
+
+      // Delete the join row first (the worksheet FK has no cascade), then drop
+      // the dedicated worksheet row + file (best-effort).
+      await storage.deleteReportWorksheetPage(pageId, id);
+      if (page) {
+        const ws = await storage.getWorksheet(page.worksheetId);
+        try { await storage.deleteWorksheet(page.worksheetId); } catch {}
+        if (ws?.filename) {
+          try { fs.unlinkSync(path.join(uploadDir, ws.filename)); } catch {}
+          try { await deleteFileFromDB(ws.filename); } catch {}
+        }
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete worksheet page error:", error);
+      res.status(500).json({ error: "Failed to remove worksheet page" });
+    }
+  });
+
+  // Serve an extra page's image bytes, authorised through the owning report so
+  // these PHI-bearing pages aren't exposed via the public worksheet route.
+  app.get("/api/reports/:id/worksheet-pages/:pageId/image", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pageId = parseInt(req.params.pageId);
+      if (isNaN(id) || isNaN(pageId)) return res.status(400).json({ error: "Invalid ID" });
+
+      const report = await resolveAuthorisedReport(id, req.session.userId!, res);
+      if (!report) return;
+
+      const pages = await storage.getReportWorksheetPages(id);
+      const page = pages.find((p) => p.id === pageId);
+      if (!page) return res.status(404).json({ error: "Page not found" });
+
+      const worksheet = await storage.getWorksheet(page.worksheetId);
+      if (!worksheet) return res.status(404).json({ error: "Worksheet not found" });
+
+      return await sendWorksheetImage(worksheet, res, "private, max-age=31536000");
+    } catch (error) {
+      console.error("Serve worksheet page image error:", error);
+      res.status(500).json({ error: "Failed to serve image" });
+    }
+  });
+
   // Serve the stored transmitted PDF for a distribution record
   app.get("/api/distributions/:id/pdf", isAuthenticated, async (req, res) => {
     try {
@@ -5383,6 +5680,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         physicianId,
         sonographerId: reportSonographerId,
         logoUrl: clinic?.logoUrl || logoUrl,
+        clinicId: user?.clinicId ?? null,
         patientId: worksheet.patientId ?? null,
         patientUrNumber: linkedPatientForReport?.urNumber ?? null,
         verbalConsentAt: reportVerbalConsentAt,
@@ -6963,37 +7261,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Worksheet not found" });
       }
 
-      const filePath = path.join(uploadDir, worksheet.filename);
-
-      // Determine content type from extension (used for both paths)
-      const ext = path.extname(worksheet.filename).toLowerCase();
-      let contentType = 'application/octet-stream';
-      if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
-      else if (ext === '.png') contentType = 'image/png';
-      else if (ext === '.gif') contentType = 'image/gif';
-      else if (ext === '.webp') contentType = 'image/webp';
-      else if (ext === '.pdf') contentType = 'application/pdf';
-
-      // Fast path: file on disk
-      if (fs.existsSync(filePath)) {
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=31536000');
-        return res.sendFile(filePath);
+      // Extra report pages are stored as ordinary worksheet rows but carry PHI;
+      // they must only be served through the authenticated, report-scoped
+      // endpoint (/api/reports/:id/worksheet-pages/:pageId/image), never here.
+      // The marker lives on the worksheet row itself so this holds even if the
+      // page's join row has since been removed/orphaned.
+      if (worksheet.isReportPage) {
+        return res.status(404).json({ error: "Worksheet not found" });
       }
 
-      // Fallback: restore from database blob
-      const blob = await getFileFromDB(worksheet.filename);
-      if (!blob) {
-        return res.status(404).json({ error: "File not found" });
-      }
-
-      // Restore to disk for future requests
-      try { fs.writeFileSync(filePath, blob.data); } catch {}
-
-      const resolvedType = blob.mimeType ?? detectMimeType(blob.data) ?? contentType;
-      res.setHeader('Content-Type', resolvedType);
-      res.setHeader('Cache-Control', 'public, max-age=31536000');
-      return res.send(blob.data);
+      return await sendWorksheetImage(worksheet, res);
     } catch (error) {
       console.error("Error serving worksheet image:", error);
       res.status(500).json({ error: "Failed to serve image" });

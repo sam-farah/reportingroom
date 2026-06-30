@@ -86,6 +86,7 @@ async function addReportToPdf(
   html: string,
   worksheetDataUrl: string | null | undefined,
   isFirstOverall: boolean,
+  extraWorksheetDataUrls: string[] = [],
 ): Promise<boolean> {
   const iframe = document.createElement("iframe");
   iframe.style.cssText =
@@ -136,13 +137,14 @@ async function addReportToPdf(
       yMm += pageHeightMm;
     }
 
-    // Append worksheet as a dedicated final page for this report
-    if (worksheetDataUrl) {
+    // Append worksheet(s) — the primary worksheet first, then any extra pages
+    // (e.g. Left / Right), each on its own A4 page with auto orientation.
+    const appendImagePage = async (dataUrl: string) => {
       const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(img);
         img.onerror = reject;
-        img.src = worksheetDataUrl;
+        img.src = dataUrl;
       });
       const scale = Math.min(A4_W_MM / wsImg.width, A4_H_MM / wsImg.height);
       const drawW = wsImg.width * scale;
@@ -154,7 +156,13 @@ async function addReportToPdf(
       const pageH = orientation === "landscape" ? A4_W_MM : A4_H_MM;
       const xOff = (pageW - drawW) / 2;
       const yOff = (pageH - drawH) / 2;
-      pdf.addImage(worksheetDataUrl, "JPEG", xOff, yOff, drawW, drawH);
+      const fmt = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+      pdf.addImage(dataUrl, fmt, xOff, yOff, drawW, drawH);
+    };
+
+    if (worksheetDataUrl) await appendImagePage(worksheetDataUrl);
+    for (const extra of extraWorksheetDataUrls) {
+      if (extra) await appendImagePage(extra);
     }
     return false;
   } finally {
@@ -166,21 +174,22 @@ async function addReportToPdf(
 export async function generateReportPdfBase64(
   html: string,
   worksheetDataUrl?: string | null,
+  extraWorksheetDataUrls: string[] = [],
 ): Promise<string> {
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  await addReportToPdf(pdf, html, worksheetDataUrl ?? null, true);
+  await addReportToPdf(pdf, html, worksheetDataUrl ?? null, true, extraWorksheetDataUrls);
   return pdf.output("datauristring").split(",")[1];
 }
 
 /** Combined PDF — each report's pages (and optional worksheet) are appended in
  *  order, separated by page breaks, into a single document. */
 export async function generateCombinedReportPdfBase64(
-  items: { html: string; worksheetDataUrl?: string | null }[],
+  items: { html: string; worksheetDataUrl?: string | null; extraWorksheetDataUrls?: string[] }[],
 ): Promise<string> {
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   let first = true;
   for (const item of items) {
-    first = await addReportToPdf(pdf, item.html, item.worksheetDataUrl ?? null, first);
+    first = await addReportToPdf(pdf, item.html, item.worksheetDataUrl ?? null, first, item.extraWorksheetDataUrls ?? []);
   }
   return pdf.output("datauristring").split(",")[1];
 }
@@ -229,7 +238,7 @@ async function toBase64(url: string): Promise<string | null> {
 export async function buildReportHtml(
   report: Report,
   deps: ReportHtmlDeps,
-): Promise<{ htmlNoWs: string; htmlWithWs: string; worksheetDataUrl: string | null }> {
+): Promise<{ htmlNoWs: string; htmlWithWs: string; worksheetDataUrl: string | null; extraWorksheetDataUrls: string[] }> {
   const { physicians, sonographers, templates, clinicData, clinicLogoApiUrl } = deps;
 
   let physicianName = "";
@@ -269,6 +278,22 @@ export async function buildReportHtml(
     worksheetDataUrl = await toBase64(`/api/worksheets/${report.worksheetId}/image`);
   } else if (report.digitalWorksheetId) {
     worksheetDataUrl = await toBase64(`/api/digital-worksheets/${report.digitalWorksheetId}/image`);
+  }
+
+  // Extra worksheet pages (e.g. Left / Right) attached to this report.
+  const extraWorksheetDataUrls: string[] = [];
+  try {
+    const { resolveUrl } = await import("@/lib/api");
+    const pagesRes = await fetch(resolveUrl(`/api/reports/${report.id}/worksheet-pages`), { credentials: "include" });
+    if (pagesRes.ok) {
+      const pages: { id: number; worksheetId: number }[] = await pagesRes.json();
+      for (const p of pages) {
+        const url = await toBase64(`/api/reports/${report.id}/worksheet-pages/${p.id}/image`);
+        if (url) extraWorksheetDataUrls.push(url);
+      }
+    }
+  } catch {
+    // best-effort: extra pages simply won't appear if the fetch fails
   }
 
   const template =
@@ -340,7 +365,7 @@ export async function buildReportHtml(
   const displayStudyType = cleanStudyType(report.studyType);
   const displayExamDate = formatDobAU(report.examDate);
 
-  const makeHtml = (wsUrl: string | null) => `<!DOCTYPE html>
+  const makeHtml = (wsUrl: string | null, extraUrls: string[] = []) => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -429,10 +454,22 @@ export async function buildReportHtml(
     </div>
     <img class="worksheet-img" src="${wsUrl}" alt="Labelled Worksheet" />
   </div>` : ""}
+
+  ${extraUrls.map((u) => `<div class="worksheet-page">
+    <div class="worksheet-page-header">
+      <div><span class="label">${report.patientName}</span>${report.patientUrNumber ? ` &nbsp;·&nbsp; <span class="ur">UR ${report.patientUrNumber}</span>` : ""}</div>
+      <div>
+        ${accessionId ? `<span class="label">Accession:</span> ${accessionId}` : ""}
+        ${accessionId && sonographerName ? " &nbsp;·&nbsp; " : ""}
+        ${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}${sonographerAms ? ` &nbsp; <span class="label">AMS</span> ${sonographerAms}` : ""}` : ""}
+      </div>
+    </div>
+    <img class="worksheet-img" src="${u}" alt="Worksheet Page" />
+  </div>`).join("")}
 </body>
 </html>`;
 
-  const htmlWithWs = makeHtml(worksheetDataUrl);
-  const htmlNoWs = makeHtml(null);
-  return { htmlNoWs, htmlWithWs, worksheetDataUrl };
+  const htmlWithWs = makeHtml(worksheetDataUrl, extraWorksheetDataUrls);
+  const htmlNoWs = makeHtml(null, []);
+  return { htmlNoWs, htmlWithWs, worksheetDataUrl, extraWorksheetDataUrls };
 }
