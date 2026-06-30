@@ -10,6 +10,7 @@
 - [Worksheet labelling & merge](worksheet-labelling.md) — labelled image is a superset of the raw upload; on label, delete the raw worksheet but NEVER clear labelledWorksheetId (re-label loop); timeline filter must show primary worksheetId.
 - [Kiosk check-in privacy](kiosk-checkin-privacy.md) — public kiosk search must never list patients; return one match or ask DOB; scope to clinic-or-null; guard stale responses.
 - [Verbal consent capture](verbal-consent.md) — consent timestamp lives on the appointment; reports inherit it (like sonographer inheritance) rather than threading through the client upload flow.
+- [Report amend/update payload](report-amend-validation.md) — only send form-editable fields to /amend; echoing finalizedAt/amendedAt (ISO strings) fails z.date() and 500s, so finalized reports silently fail.
 - [Patient portal](patient-portal.md) — separate `session.portalUserId`; passwordless SMS OTP login (enumeration-safe, decoy pendings, invite consumed only on verify); staff invite/status routes clinic-scoped.
 - [Email inbox](email-inbox.md) — PER-CLINIC mailbox connection (MS/Google OAuth or IMAP/SMTP); config routes owner/admin-only; OAuth state needs single-use session nonce + callback re-auth; tokens/password encrypted; sanitize inbound HTML.
 - [Appointment/consent time rendering](appointment-time-timezone.md) — server is UTC; render ALL patient-facing date/times via resolveClinicTimeZone(clinic) (per-clinic clinics.timezone, default Sydney), never hard-coded or server-local.

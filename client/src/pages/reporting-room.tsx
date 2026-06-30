@@ -627,9 +627,25 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const handleSaveAmendment = () => {
     if (!amendingReport || !amendmentReason.trim()) return;
 
-    const { id, generatedAt, worksheetId, ...updateData } = amendingReport;
+    // Only send the fields the amendment form actually edits. The server sets the
+    // amendment/finalization metadata itself, so echoing back timestamp fields like
+    // finalizedAt/amendedAt (ISO strings from the API) fails its date validation and
+    // was blocking amendments on already-finalized reports.
+    const updateData = {
+      patientName: amendingReport.patientName,
+      patientUrNumber: (amendingReport as any).patientUrNumber ?? null,
+      patientDob: amendingReport.patientDob,
+      examDate: amendingReport.examDate,
+      studyType: amendingReport.studyType,
+      indication: amendingReport.indication,
+      findings: amendingReport.findings,
+      impression: amendingReport.impression,
+      physicianId: amendingReport.physicianId ?? null,
+      sonographerId: (amendingReport as any).sonographerId ?? null,
+      patientId: (amendingReport as any).patientId ?? null,
+    };
     amendReportMutation.mutate({
-      reportId: id,
+      reportId: amendingReport.id,
       updates: updateData,
       reason: amendmentReason.trim(),
     });
