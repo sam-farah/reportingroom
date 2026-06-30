@@ -17,7 +17,7 @@ import type {
   SendMessageInput,
 } from "./types";
 import { getValidOAuthAccessToken } from "./oauth";
-import MailComposer from "nodemailer/lib/mail-composer";
+import MailComposer from "nodemailer/lib/mail-composer/index.js";
 import type Mail from "nodemailer/lib/mailer";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";

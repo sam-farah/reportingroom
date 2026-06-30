@@ -15,7 +15,7 @@ import type {
 import nodemailer from "nodemailer";
 import { simpleParser } from "mailparser";
 import type { ParsedMail } from "mailparser";
-import MailComposer from "nodemailer/lib/mail-composer";
+import MailComposer from "nodemailer/lib/mail-composer/index.js";
 import type {
   MailContext,
   MailProvider,
