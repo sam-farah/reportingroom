@@ -42,8 +42,9 @@ import {
   insertPatientPortalInvitationSchema,
   insertReportDistributionSchema,
   insertSmsTemplateSchema,
+  CANONICAL_SCAN_TYPES,
 } from "@shared/schema";
-import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage } from "./services/openai";
+import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage, extractScanRequestFromImage } from "./services/openai";
 import { convertPdfToImage, convertPdfToImages, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
 import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
@@ -8634,6 +8635,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("create-patient from scan request error:", err);
       res.status(500).json({ error: "Failed to create patient" });
+    }
+  });
+
+  // Read a scanned referral PDF/image with AI and return prefilled scan-request
+  // fields for the user to confirm. The original file is saved to permanent
+  // storage (file_blobs) so it is kept even before a request is created; the
+  // returned `sourcePdfFilename` is then persisted onto the created request.
+  app.post("/api/scan-requests/upload", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+      const filename = req.file.filename;
+      const filePath = path.join(uploadDir, filename);
+      const originalName = req.file.originalname || filename;
+
+      // Persist the original file immediately so it survives even if the user
+      // abandons the form without creating a request.
+      await saveFileToDB(filename, filePath, req.file.mimetype, originalName);
+
+      // Rasterise the first page if it's a PDF; otherwise read the image directly.
+      let base64Image: string;
+      let imageMimeType = req.file.mimetype || "image/png";
+      if (isPdfFile(originalName) || req.file.mimetype === "application/pdf") {
+        if (!PDFTOPPM_AVAILABLE) {
+          return res.status(503).json({ error: "PDF reading is not available on this server." });
+        }
+        base64Image = await convertPdfToImage(filePath);
+        imageMimeType = "image/png";
+      } else {
+        base64Image = fs.readFileSync(filePath).toString("base64");
+      }
+
+      const canonicalScanTypes = CANONICAL_SCAN_TYPES.map((s) => s.name);
+      const extracted = await extractScanRequestFromImage(base64Image, imageMimeType, canonicalScanTypes);
+
+      // Only keep scan types that exactly match the clinic's canonical list.
+      const validScanTypes = extracted.scanTypes.filter((s) => canonicalScanTypes.includes(s));
+
+      res.json({
+        sourcePdfFilename: filename,
+        sourcePdfUrl: `/uploads/${filename}`,
+        originalName,
+        extracted: { ...extracted, scanTypes: validScanTypes },
+      });
+    } catch (err) {
+      console.error("scan-request upload/extract error:", err);
+      res.status(500).json({ error: "Failed to read the uploaded document. Please try again or enter the details manually." });
     }
   });
 

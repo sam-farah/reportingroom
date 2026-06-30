@@ -136,6 +136,99 @@ export async function extractPatientDataFromWorksheet(base64Image: string, mimeT
   }
 }
 
+export interface ScanRequestExtraction {
+  patientName: string | null;
+  patientDob: string | null;
+  patientPhone: string | null;
+  patientEmail: string | null;
+  referringDoctorName: string | null;
+  referringDoctorProviderNumber: string | null;
+  scanTypes: string[];
+  urgency: string | null;
+  clinicalIndication: string | null;
+  clinicalHistory: string | null;
+  notes: string | null;
+  confidence: number;
+}
+
+/**
+ * Read a scanned referral / scan-request document (image of a single page) and
+ * extract the structured fields needed to pre-fill a new scan request. The
+ * caller passes the list of canonical scan-type names so the model can map the
+ * referral's free-text onto the clinic's own list.
+ */
+export async function extractScanRequestFromImage(
+  base64Image: string,
+  mimeType: string = 'image/png',
+  canonicalScanTypes: string[] = [],
+): Promise<ScanRequestExtraction> {
+  try {
+    const scanTypeList = canonicalScanTypes.length
+      ? `\nMap any requested scan(s) to the CLOSEST matching name(s) from this exact list (return them verbatim, only names from this list):\n${canonicalScanTypes.map(s => `- ${s}`).join('\n')}\nIf a requested scan does not match any item in the list, omit it from scanTypes.`
+      : '';
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert medical document reader for a vascular ultrasound clinic. You are given an image of a scanned referral / scan-request form (often faxed or emailed by a referring doctor). Extract the following fields:
+- Patient full name (look for "Patient", "Name", "Pt")
+- Patient date of birth (look for "DOB", "D.O.B", "Date of Birth"). Return it EXACTLY as written (e.g. "22-7-52", "15/03/1985"). Do not reformat.
+- Patient phone number
+- Patient email
+- Referring doctor's name (look for "Dr", "Referring Doctor", "From", signature block)
+- Referring doctor's provider number (Medicare provider number)
+- Requested scan type(s)
+- Urgency — return one of: "routine", "urgent", "asap", "stat" (default "routine" if not stated)
+- Clinical indication (reason for referral / clinical question)
+- Relevant clinical history
+- Any other notes
+${scanTypeList}
+
+Return JSON exactly in this shape:
+{ "patientName": string|null, "patientDob": string|null, "patientPhone": string|null, "patientEmail": string|null, "referringDoctorName": string|null, "referringDoctorProviderNumber": string|null, "scanTypes": string[], "urgency": string|null, "clinicalIndication": string|null, "clinicalHistory": string|null, "notes": string|null, "confidence": number }
+
+Use null for any field you cannot find. confidence is your overall extraction confidence 0-1. Do not invent data that is not present in the document.`
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Extract the scan request details from this referral document:" },
+            { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Image}` } }
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1200,
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    const validUrgency = ["routine", "urgent", "asap", "stat"];
+    const urgency = typeof result.urgency === "string" && validUrgency.includes(result.urgency.toLowerCase())
+      ? result.urgency.toLowerCase()
+      : null;
+
+    return {
+      patientName: result.patientName || null,
+      patientDob: result.patientDob || null,
+      patientPhone: result.patientPhone || null,
+      patientEmail: result.patientEmail || null,
+      referringDoctorName: result.referringDoctorName || null,
+      referringDoctorProviderNumber: result.referringDoctorProviderNumber || null,
+      scanTypes: Array.isArray(result.scanTypes) ? result.scanTypes.filter((s: any) => typeof s === "string") : [],
+      urgency,
+      clinicalIndication: result.clinicalIndication || null,
+      clinicalHistory: result.clinicalHistory || null,
+      notes: result.notes || null,
+      confidence: Math.max(0, Math.min(1, result.confidence || 0)),
+    };
+  } catch (error) {
+    console.error("Scan request extraction failed:", error);
+    throw new Error("Failed to read scan request document");
+  }
+}
+
 export async function analyzeVascularDrawing(
   base64Image: string,
   templateName: string = 'Custom',

@@ -80,6 +80,7 @@ type RequestFormData = {
   notes: string;
   officeNotes: string;
   requestDate: string;
+  sourcePdfFilename: string | null;
 };
 
 const blankRequest = (): RequestFormData => ({
@@ -100,6 +101,7 @@ const blankRequest = (): RequestFormData => ({
   notes: "",
   officeNotes: "",
   requestDate: format(new Date(), "yyyy-MM-dd"),
+  sourcePdfFilename: null,
 });
 
 interface MatchAuditCandidate {
@@ -345,6 +347,10 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
   const [editingRequest, setEditingRequest] = useState<ScanRequest | null>(null);
   const [viewingRequest, setViewingRequest] = useState<ScanRequest | null>(null);
   const [requestForm, setRequestForm] = useState<RequestFormData>(blankRequest());
+
+  // PDF / scanned-referral import
+  const [isImporting, setIsImporting] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
 
   // Patient search within request form
   const [patientSearchQuery, setPatientSearchQuery] = useState("");
@@ -613,11 +619,65 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
     setRequestForm(blankRequest());
     setPatientSearchQuery("");
     setDoctorSearchQuery("");
+    setImportNotice(null);
     setIsRequestOpen(true);
+  };
+
+  // Upload a scanned referral PDF/image, read it with AI, then open the request
+  // form prefilled with the extracted details for the user to confirm.
+  const handleImportPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/scan-requests/upload", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        let msg = "Could not read the document.";
+        try { msg = (await res.json()).error || msg; } catch {}
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      const x = data.extracted || {};
+
+      setEditingRequest(null);
+      setPatientSearchQuery("");
+      setDoctorSearchQuery("");
+      setRequestForm({
+        ...blankRequest(),
+        patientName: x.patientName ? capitalizeWords(x.patientName) : "",
+        patientDob: x.patientDob || "",
+        patientPhone: x.patientPhone || "",
+        patientEmail: x.patientEmail || "",
+        referringDoctorName: x.referringDoctorName ? capitalizeWords(x.referringDoctorName) : "",
+        referringDoctorProviderNumber: x.referringDoctorProviderNumber || "",
+        scanTypes: Array.isArray(x.scanTypes) ? x.scanTypes : [],
+        urgency: x.urgency || "routine",
+        clinicalIndication: x.clinicalIndication || "",
+        clinicalHistory: x.clinicalHistory || "",
+        notes: x.notes || "",
+        sourcePdfFilename: data.sourcePdfFilename || null,
+      });
+      setImportNotice("We read this from the uploaded document — please check every field before saving. The original file is attached to this request.");
+      setIsRequestOpen(true);
+      toast({ title: "Document read", description: "Review the details we found, then save the request." });
+    } catch (err: any) {
+      toast({ title: "Couldn't read document", description: err?.message || "Please try again or enter the details manually.", variant: "destructive" });
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const openEditRequest = (r: ScanRequest) => {
     setEditingRequest(r);
+    setImportNotice(null);
     setRequestForm({
       patientId: r.patientId ?? null,
       referringDoctorId: r.referringDoctorId ?? null,
@@ -636,6 +696,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
       notes: r.notes ?? "",
       officeNotes: (r as any).officeNotes ?? "",
       requestDate: r.requestDate,
+      sourcePdfFilename: (r as any).sourcePdfFilename ?? null,
     });
     setIsRequestOpen(true);
   };
@@ -997,6 +1058,26 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                 ))}
               </SelectContent>
             </Select>
+            <input
+              id="scan-request-pdf-input"
+              type="file"
+              accept="application/pdf,image/*"
+              className="hidden"
+              onChange={handleImportPdf}
+              data-testid="input-upload-scan-request"
+            />
+            <Button
+              variant="outline"
+              disabled={isImporting}
+              onClick={() => document.getElementById("scan-request-pdf-input")?.click()}
+              data-testid="button-upload-scan-request"
+            >
+              {isImporting ? (
+                <><Clock className="w-4 h-4 mr-2 animate-spin" /> Reading…</>
+              ) : (
+                <><Mailbox className="w-4 h-4 mr-2" /> Upload PDF</>
+              )}
+            </Button>
             <Button onClick={openNewRequest}>
               <Plus className="w-4 h-4 mr-2" /> New Request
             </Button>
@@ -1178,6 +1259,23 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
             <DialogTitle>{editingRequest ? "Edit Scan Request" : "New Scan Request"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmitRequest} className="space-y-6">
+            {importNotice && (
+              <div className="flex items-start gap-2 p-3 bg-violet-50 border border-violet-200 rounded-lg text-sm text-violet-800">
+                <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0 text-violet-600" />
+                <span>{importNotice}</span>
+              </div>
+            )}
+            {requestForm.sourcePdfFilename && (
+              <a
+                href={`/uploads/${requestForm.sourcePdfFilename}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                data-testid="link-source-pdf"
+              >
+                <FileText className="w-4 h-4" /> View original uploaded document
+              </a>
+            )}
             {/* Patient details */}
             <div>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><User className="w-4 h-4" /> Patient Details</h3>
