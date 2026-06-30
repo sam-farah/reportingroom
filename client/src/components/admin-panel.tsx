@@ -3374,6 +3374,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "30 June 2026",
+    tag: "New",
+    title: "Saved text message templates",
+    detail:
+      "You can now save the messages you send most often and reuse them in a couple of taps. In the Messages area, click the template button above the reply box to pick a saved message — it drops straight into your draft, ready to send or tweak.\n\nTemplates can include placeholders that fill in automatically: {patient} for the patient's name, {clinic} for your clinic name, and {date} / {time} for the appointment. Clinic owners and admins can add, edit, and remove templates (look for \"Manage\" in the template menu); everyone on the team can use them. Templates are private to your clinic.",
+  },
+  {
     date: "20 June 2026",
     tag: "New",
     title: "Two-step sign-in by text message",
