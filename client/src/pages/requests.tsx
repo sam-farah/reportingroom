@@ -926,7 +926,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
       <div class="section-body">
         <div class="field-row"><span class="field-label">Name:</span><span class="field-value"><strong>${r.patientName}</strong></span></div>
         ${r.patientUrNumber ? `<div class="field-row"><span class="field-label">UR Number:</span><span class="field-value"><strong style="color:#1d4ed8;font-family:monospace">${r.patientUrNumber}</strong></span></div>` : ''}
-        ${r.patientDob ? `<div class="field-row"><span class="field-label">Date of Birth:</span><span class="field-value">${r.patientDob}</span></div>` : ''}
+        ${r.patientDob ? `<div class="field-row"><span class="field-label">Date of Birth:</span><span class="field-value">${fmtDate(r.patientDob)}</span></div>` : ''}
         ${r.patientPhone ? `<div class="field-row"><span class="field-label">Phone:</span><span class="field-value">${r.patientPhone}</span></div>` : ''}
         ${r.patientEmail ? `<div class="field-row"><span class="field-label">Email:</span><span class="field-value">${r.patientEmail}</span></div>` : ''}
       </div>

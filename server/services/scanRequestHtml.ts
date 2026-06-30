@@ -31,6 +31,18 @@ function urgencyNote(urgency: string): string {
   }
 }
 
+function formatDateAU(d: string | null | undefined): string {
+  if (!d) return "";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
+  const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const dmy = d.match(/^(\d{2})-(\d{2})-(\d{4})/);
+  if (dmy) return `${dmy[1]}/${dmy[2]}/${dmy[3]}`;
+  const slash = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) return `${slash[1].padStart(2, "0")}/${slash[2].padStart(2, "0")}/${slash[3]}`;
+  return d;
+}
+
 function esc(value: string | null | undefined): string {
   if (!value) return "";
   return String(value)
@@ -137,7 +149,7 @@ export function buildScanRequestHtml(r: ScanRequest, clinic: Clinic | null): str
       <div class="section-body">
         <div class="field-row"><span class="field-label">Name:</span><span class="field-value"><strong>${esc(r.patientName)}</strong></span></div>
         ${r.patientUrNumber ? `<div class="field-row"><span class="field-label">UR Number:</span><span class="field-value"><strong style="color:#1d4ed8;font-family:monospace">${esc(r.patientUrNumber)}</strong></span></div>` : ""}
-        ${r.patientDob ? `<div class="field-row"><span class="field-label">Date of Birth:</span><span class="field-value">${esc(r.patientDob)}</span></div>` : ""}
+        ${r.patientDob ? `<div class="field-row"><span class="field-label">Date of Birth:</span><span class="field-value">${esc(formatDateAU(r.patientDob))}</span></div>` : ""}
         ${r.patientPhone ? `<div class="field-row"><span class="field-label">Phone:</span><span class="field-value">${esc(r.patientPhone)}</span></div>` : ""}
         ${r.patientEmail ? `<div class="field-row"><span class="field-label">Email:</span><span class="field-value">${esc(r.patientEmail)}</span></div>` : ""}
       </div>
