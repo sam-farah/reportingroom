@@ -14,7 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal, ShieldCheck, MessageSquare } from "lucide-react";
 import jsPDF from "jspdf";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, addYears, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
@@ -3321,65 +3321,71 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                               More
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuContent align="end" className="w-60">
+                            {/* ── Email ── */}
+                            <DropdownMenuLabel className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Email</DropdownMenuLabel>
                             <DropdownMenuItem
                               disabled={!viewingAppointment.patientEmail || sendReminderMutation.isPending}
-                              title={!viewingAppointment.patientEmail ? "No email address on file for this patient" : "Send appointment reminder email"}
+                              title={!viewingAppointment.patientEmail ? "No email address on file" : "Send appointment reminder email"}
                               onSelect={(e) => { e.preventDefault(); sendReminderMutation.mutate(viewingAppointment.id); }}
                               className="text-emerald-700 focus:text-emerald-700"
                               data-testid="menu-send-reminder"
                             >
                               <Mail className="w-4 h-4 mr-2" />
-                              {sendReminderMutation.isPending ? "Sending…" : "Send Reminder"}
+                              {sendReminderMutation.isPending ? "Sending…" : "Email Reminder"}
                             </DropdownMenuItem>
-                            {smsConfigured && (
-                              <DropdownMenuItem
-                                disabled={!viewingAppointment.patientPhone || sendSmsReminderMutation.isPending}
-                                title={!viewingAppointment.patientPhone ? "No phone number on file for this patient" : "Text the patient an appointment reminder"}
-                                onSelect={(e) => { e.preventDefault(); sendSmsReminderMutation.mutate(viewingAppointment.id); }}
-                                className="text-sky-700 focus:text-sky-700"
-                                data-testid="menu-send-sms-reminder"
-                              >
-                                <MessageSquare className="w-4 h-4 mr-2" />
-                                {sendSmsReminderMutation.isPending ? "Sending…" : "Send SMS Reminder"}
-                              </DropdownMenuItem>
-                            )}
-                            {smsConfigured && viewingAppointment.patientId && (
-                              <DropdownMenuItem
-                                disabled={!viewingAppointment.patientPhone || sendSmsRegistrationMutation.isPending}
-                                title={!viewingAppointment.patientPhone ? "No phone number on file for this patient" : "Text the patient a registration form link"}
-                                onSelect={(e) => { e.preventDefault(); if (viewingAppointment.patientId) sendSmsRegistrationMutation.mutate(viewingAppointment.patientId); }}
-                                className="text-sky-700 focus:text-sky-700"
-                                data-testid="menu-send-sms-registration"
-                              >
-                                <MessageSquare className="w-4 h-4 mr-2" />
-                                {sendSmsRegistrationMutation.isPending ? "Sending…" : "Send Registration SMS"}
-                              </DropdownMenuItem>
-                            )}
-                            {smsConfigured && viewingAppointment.patientId && (
-                              <DropdownMenuItem
-                                disabled={!viewingAppointment.patientPhone || sendConsentMutation.isPending}
-                                title={!viewingAppointment.patientPhone ? "No phone number on file for this patient" : "Text the patient a link to sign consent for today's study"}
-                                onSelect={(e) => { e.preventDefault(); sendConsentMutation.mutate({ id: viewingAppointment.id, channel: "sms" }); }}
-                                className="text-emerald-700 focus:text-emerald-700"
-                                data-testid="menu-send-consent-sms"
-                              >
-                                <ShieldCheck className="w-4 h-4 mr-2" />
-                                {sendConsentMutation.isPending ? "Sending…" : "Send consent for today's study"}
-                              </DropdownMenuItem>
-                            )}
                             {viewingAppointment.patientId && (
                               <DropdownMenuItem
                                 disabled={!viewingAppointment.patientEmail || sendConsentMutation.isPending}
-                                title={!viewingAppointment.patientEmail ? "No email address on file for this patient" : "Email the patient a link to sign consent for today's study"}
+                                title={!viewingAppointment.patientEmail ? "No email address on file" : "Email the patient a consent form link"}
                                 onSelect={(e) => { e.preventDefault(); sendConsentMutation.mutate({ id: viewingAppointment.id, channel: "email" }); }}
                                 className="text-emerald-700 focus:text-emerald-700"
                                 data-testid="menu-send-consent-email"
                               >
                                 <Mail className="w-4 h-4 mr-2" />
-                                {sendConsentMutation.isPending ? "Sending…" : "Email consent for today's study"}
+                                {sendConsentMutation.isPending ? "Sending…" : "Email Consent Form"}
                               </DropdownMenuItem>
                             )}
+                            {/* ── Text Message ── */}
+                            {smsConfigured && (<>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Text Message</DropdownMenuLabel>
+                              <DropdownMenuItem
+                                disabled={!viewingAppointment.patientPhone || sendSmsReminderMutation.isPending}
+                                title={!viewingAppointment.patientPhone ? "No phone number on file" : "Text the patient an appointment reminder"}
+                                onSelect={(e) => { e.preventDefault(); sendSmsReminderMutation.mutate(viewingAppointment.id); }}
+                                className="text-sky-700 focus:text-sky-700"
+                                data-testid="menu-send-sms-reminder"
+                              >
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                {sendSmsReminderMutation.isPending ? "Sending…" : "Text Reminder"}
+                              </DropdownMenuItem>
+                              {viewingAppointment.patientId && (
+                                <DropdownMenuItem
+                                  disabled={!viewingAppointment.patientPhone || sendSmsRegistrationMutation.isPending}
+                                  title={!viewingAppointment.patientPhone ? "No phone number on file" : "Text the patient a registration form link"}
+                                  onSelect={(e) => { e.preventDefault(); if (viewingAppointment.patientId) sendSmsRegistrationMutation.mutate(viewingAppointment.patientId); }}
+                                  className="text-sky-700 focus:text-sky-700"
+                                  data-testid="menu-send-sms-registration"
+                                >
+                                  <MessageSquare className="w-4 h-4 mr-2" />
+                                  {sendSmsRegistrationMutation.isPending ? "Sending…" : "Text Registration Link"}
+                                </DropdownMenuItem>
+                              )}
+                              {viewingAppointment.patientId && (
+                                <DropdownMenuItem
+                                  disabled={!viewingAppointment.patientPhone || sendConsentMutation.isPending}
+                                  title={!viewingAppointment.patientPhone ? "No phone number on file" : "Text the patient a consent form link"}
+                                  onSelect={(e) => { e.preventDefault(); sendConsentMutation.mutate({ id: viewingAppointment.id, channel: "sms" }); }}
+                                  className="text-sky-700 focus:text-sky-700"
+                                  data-testid="menu-send-consent-sms"
+                                >
+                                  <MessageSquare className="w-4 h-4 mr-2" />
+                                  {sendConsentMutation.isPending ? "Sending…" : "Text Consent Form"}
+                                </DropdownMenuItem>
+                              )}
+                            </>)}
+                            <DropdownMenuSeparator />
                             {(() => {
                               const aptDate = new Date(viewingAppointment.appointmentDate);
                               const today = new Date();
