@@ -125,6 +125,11 @@ export default function Messages() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations, pendingConvo]);
 
+  // Restore the saved draft when switching conversations.
+  useEffect(() => {
+    setDraft(selectedKey ? (localStorage.getItem(`sms_draft_${selectedKey}`) ?? "") : "");
+  }, [selectedKey]);
+
   const { data: patients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients"],
     enabled: newOpen,
@@ -158,6 +163,7 @@ export default function Messages() {
       return res.json();
     },
     onSuccess: () => {
+      if (selectedKey) localStorage.removeItem(`sms_draft_${selectedKey}`);
       setDraft("");
       queryClient.invalidateQueries({ queryKey: ["/api/sms/conversations"] });
       if (threadKey) queryClient.invalidateQueries({ queryKey: threadKey });
@@ -462,7 +468,10 @@ export default function Messages() {
                   </Popover>
                   <Textarea
                     value={draft}
-                    onChange={e => setDraft(e.target.value)}
+                    onChange={e => {
+                      setDraft(e.target.value);
+                      if (selectedKey) localStorage.setItem(`sms_draft_${selectedKey}`, e.target.value);
+                    }}
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                     placeholder={smsStatus?.configured ? "Type a message…" : "SMS not set up yet"}
                     disabled={!smsStatus?.configured || !selected.phone}
