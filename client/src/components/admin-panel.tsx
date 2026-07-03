@@ -19,6 +19,7 @@ import ClinicPage from "@/pages/physicians";
 import type { TrainingPair, Physician, ReportTemplate, Clinic, ScanTypeContentTemplate, WorksheetTemplate, BugReport } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import ScanDurationsTab from "./scan-durations-tab";
+import MbsReferenceTab from "./mbs-reference-tab";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemplates?: () => void }) {
@@ -760,6 +761,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
         <TabsList className="flex flex-col w-52 flex-shrink-0 h-auto bg-muted rounded-xl p-2 gap-0.5" style={{ height: 'auto' }}>
           <TabsTrigger value="clinic-settings" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏥 Clinic Settings</TabsTrigger>
           <TabsTrigger value="scan-durations" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">⏱️ Scan Durations</TabsTrigger>
+          <TabsTrigger value="mbs-billing" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🧾 MBS Billing</TabsTrigger>
           <TabsTrigger value="monitoring" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📊 System Monitoring</TabsTrigger>
           <TabsTrigger value="wait-analytics" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">⏳ Wait Analytics</TabsTrigger>
           <TabsTrigger value="clinics" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏢 Clinic Analytics</TabsTrigger>
@@ -1229,6 +1231,10 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
 
         <TabsContent value="scan-durations">
           <ScanDurationsTab />
+        </TabsContent>
+
+        <TabsContent value="mbs-billing">
+          <MbsReferenceTab />
         </TabsContent>
 
         <TabsContent value="monitoring" className="space-y-6">

@@ -21,6 +21,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, e
 import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent, ReminderLog, CalendarTask } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
+import MbsBillingSummary, { MbsItemBadges } from "@/components/mbs-billing-summary";
 
 async function fetchAsDataUrl(url: string): Promise<string | null> {
   try {
@@ -3563,6 +3564,22 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                     </Button>
                   ) : null;
                 })()}
+
+                {/* Suggested MBS billing for this appointment's scan types */}
+                {viewingAppointment.scanType && (
+                  <MbsBillingSummary
+                    scanTypes={viewingAppointment.scanType.split(", ")}
+                    otherSameDayAppointmentCount={
+                      appointments.filter(a =>
+                        a.id !== viewingAppointment.id &&
+                        a.status !== "cancelled" &&
+                        a.patientId && viewingAppointment.patientId &&
+                        a.patientId === viewingAppointment.patientId &&
+                        isSameDay(new Date(a.appointmentDate), new Date(viewingAppointment.appointmentDate))
+                      ).length
+                    }
+                  />
+                )}
 
                 {/* Mark as Invoiced toggle — quick invoice status, below Open Patient File */}
                 {viewingAppointment.status !== "cancelled" && (

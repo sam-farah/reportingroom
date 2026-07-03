@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { CheckCircle, AlertCircle, Loader2, User, Stethoscope, FileText, Phone } from "lucide-react";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
+import { MbsItemBadges } from "@/components/mbs-billing-summary";
 
 type ClinicInfo = { name: string; logoUrl: string | null; phone: string | null; address: string | null };
 
@@ -324,6 +325,7 @@ export default function ReferralFormPage() {
                           onCheckedChange={() => toggleScanType(st.name)}
                         />
                         <span className="text-sm">{st.name}</span>
+                        <MbsItemBadges scanType={st.name} />
                       </label>
                       {checked && st.hasLaterality && (
                         <div className="ml-6 mt-1.5 flex flex-wrap items-center gap-1.5">

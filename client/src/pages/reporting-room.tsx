@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage } from "@shared/schema";
+import { MbsItemBadges } from "@/components/mbs-billing-summary";
 import { resolveClinicTimeZone } from "@shared/timezones";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -2010,8 +2011,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   <Calendar className="w-4 h-4 mr-2" />
                   {formatDobAU(report.examDate)}
                 </div>
-                <div className="text-sm font-medium text-gray-800">
-                  {report.studyType}
+                <div className="text-sm font-medium text-gray-800 flex flex-wrap items-center gap-1">
+                  <span>{report.studyType}</span>
+                  <MbsItemBadges scanType={report.studyType} />
                 </div>
                 <div className="text-xs text-gray-500">
                   Generated: {format(new Date(report.generatedAt), 'dd/MM/yyyy')}
