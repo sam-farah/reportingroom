@@ -43,6 +43,8 @@ import {
   insertReportDistributionSchema,
   insertSmsTemplateSchema,
   CANONICAL_SCAN_TYPES,
+  type Appointment,
+  type InsertAssessmentOfBenefitForm,
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage, extractScanRequestFromImage } from "./services/openai";
 import { convertPdfToImage, convertPdfToImages, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
@@ -356,6 +358,208 @@ async function generateConsentDocument(opts: {
     originalName: `consent-${patientName.replace(/\s+/g, "-")}-${isoDate}.jpg`,
     notes: null,
   } as any);
+
+  return { fileUrl: `/uploads/${newFilename}`, filename: newFilename };
+}
+
+// Builds the signed Assessment of Benefit document (A4 JPEG) from a snapshotted
+// AoB form record. Layout/wording here is a first-pass placeholder — it will be
+// revised to match the clinic's actual Medicare form once supplied. The data
+// captured on the form record (patient/Medicare/referrer/provider/items) is
+// independent of this layout and won't need to change when the layout does.
+async function generateAssessmentOfBenefitDocument(opts: {
+  aobForm: any;
+  clinic: any;
+  signatureDataUrl: string;
+}): Promise<{ fileUrl: string; filename: string }> {
+  const { aobForm, clinic, signatureDataUrl } = opts;
+
+  const DPI = 200;
+  const A4_W = Math.round((210 / 25.4) * DPI);
+  const A4_H = Math.round((297 / 25.4) * DPI);
+  const HEADER_H = Math.round(A4_H * 0.1);
+  const PAD = Math.round(A4_W * 0.04);
+  const PRIMARY = "#0066cc";
+
+  let logoBuf: Buffer | null = null;
+  let logoDims = { w: 0, h: 0 };
+  const logoUrl = clinic?.kioskLogoUrl || clinic?.logoUrl;
+  if (logoUrl) {
+    const fname = logoUrl.replace(/^\/uploads\//, "");
+    try {
+      const blob = await getFileFromDB(fname);
+      if (blob) {
+        const meta = await sharp(blob.data).metadata();
+        const maxH = HEADER_H - PAD;
+        const maxW = Math.round(A4_W * 0.18);
+        const scale = Math.min(maxW / (meta.width || 1), maxH / (meta.height || 1), 1);
+        logoDims = { w: Math.round((meta.width || 0) * scale), h: Math.round((meta.height || 0) * scale) };
+        logoBuf = await sharp(blob.data).resize(logoDims.w, logoDims.h).png().toBuffer();
+      }
+    } catch { /* logo optional */ }
+  }
+
+  const CLINIC_TZ = resolveClinicTimeZone(clinic);
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("en-AU", { timeZone: CLINIC_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-AU", { timeZone: CLINIC_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+  const escape = (s: any) =>
+    String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const fontSize = Math.round(A4_W * 0.014);
+  const smallFont = Math.round(A4_W * 0.012);
+  const titleSize = Math.round(A4_W * 0.024);
+  const lineH = Math.round(fontSize * 1.6);
+
+  const infoLines = [
+    `Patient: ${escape(aobForm.patientName)}`,
+    aobForm.medicareNumber ? `Medicare No: ${escape(aobForm.medicareNumber)}${aobForm.medicareIrn ? " IRN " + escape(aobForm.medicareIrn) : ""}` : null,
+    aobForm.referringDoctorName ? `Referring Doctor: ${escape(aobForm.referringDoctorName)}${aobForm.referringDoctorProviderNumber ? " (Provider No: " + escape(aobForm.referringDoctorProviderNumber) + ")" : ""}` : null,
+    aobForm.physicianName ? `Reporting Physician: ${escape(aobForm.physicianName)}${aobForm.physicianProviderNumber ? " (Provider No: " + escape(aobForm.physicianProviderNumber) + ")" : ""}` : null,
+    `Date of Service: ${todayStr}`,
+  ].filter(Boolean) as string[];
+
+  const bodyTop = HEADER_H + Math.round(A4_W * 0.05);
+  let y = bodyTop + titleSize;
+  const titleSvg = `<text x="${PAD}" y="${y}" font-family="Arial, sans-serif" font-size="${titleSize}" font-weight="bold" fill="#111111">Assessment of Patient's Benefit</text>`;
+  y += Math.round(A4_W * 0.03);
+
+  const infoSvg = infoLines.map((l) => {
+    y += lineH;
+    return `<text x="${PAD}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#222222">${l}</text>`;
+  }).join("");
+
+  y += Math.round(A4_W * 0.025);
+  const tableTop = y;
+  const colItemX = PAD;
+  const colDescX = PAD + Math.round(A4_W * 0.1);
+  const colFeeX = A4_W - PAD - Math.round(A4_W * 0.12);
+  const headerRowSvg = `<text x="${colItemX}" y="${tableTop}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">Item</text>
+    <text x="${colDescX}" y="${tableTop}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">Description</text>
+    <text x="${colFeeX}" y="${tableTop}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">Fee</text>
+    <line x1="${PAD}" y1="${tableTop + Math.round(fontSize * 0.4)}" x2="${A4_W - PAD}" y2="${tableTop + Math.round(fontSize * 0.4)}" stroke="#333333" stroke-width="1.5"/>`;
+  y = tableTop + Math.round(lineH * 0.6);
+
+  const items: { item: string; description: string; feeCents: number }[] = Array.isArray(aobForm.items) ? aobForm.items : [];
+  const itemRowsSvg = items.map((it) => {
+    y += lineH;
+    return `<text x="${colItemX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#222222">${escape(it.item)}</text>
+      <text x="${colDescX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#222222">${escape(it.description)}</text>
+      <text x="${colFeeX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#222222">$${(it.feeCents / 100).toFixed(2)}</text>`;
+  }).join("");
+
+  y += Math.round(lineH * 0.4);
+  const totalLineY = y + Math.round(fontSize * 0.4);
+  const totalSvg = `<line x1="${colFeeX - Math.round(A4_W * 0.02)}" y1="${totalLineY}" x2="${A4_W - PAD}" y2="${totalLineY}" stroke="#333333" stroke-width="1"/>
+    <text x="${colDescX}" y="${totalLineY + lineH}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">Total</text>
+    <text x="${colFeeX}" y="${totalLineY + lineH}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">$${(aobForm.totalValueCents / 100).toFixed(2)}</text>`;
+  y = totalLineY + lineH;
+
+  const declTop = y + Math.round(A4_W * 0.05);
+  const declText = "I acknowledge that the Medicare benefit(s) assessed above relate to the service(s) provided to me on the date of service shown, and I consent to this assessment being recorded on my file.";
+  const charPx = smallFont * 0.55;
+  const maxCharsPerLine = Math.floor((A4_W - PAD * 2) / charPx);
+  const wrapText = (text: string): string[] => {
+    const out: string[] = [];
+    const words = text.split(/\s+/);
+    let line = "";
+    for (const w of words) {
+      const candidate = line ? `${line} ${w}` : w;
+      if (candidate.length > maxCharsPerLine) {
+        if (line) out.push(line);
+        line = w;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) out.push(line);
+    return out;
+  };
+  const declLines = wrapText(declText);
+  const declLineH = Math.round(smallFont * 1.5);
+  const declSvg = declLines.map((l, i) =>
+    `<text x="${PAD}" y="${declTop + i * declLineH}" font-family="Arial, sans-serif" font-size="${smallFont}" fill="#444444">${escape(l)}</text>`,
+  ).join("");
+  const declEndY = declTop + declLines.length * declLineH;
+
+  const sigBoxY = Math.min(declEndY + Math.round(A4_W * 0.05), A4_H - Math.round(A4_W * 0.16));
+  const sigBoxH = Math.round(A4_W * 0.1);
+  const sigLabelY = sigBoxY - Math.round(A4_W * 0.012);
+
+  const lineThk = Math.max(2, Math.round(A4_W * 0.003));
+  const headerLines = [
+    clinic?.name ? `${clinic.name}` : null,
+    `Document: Assessment of Benefit`,
+    `Date: ${todayStr} ${timeStr}`,
+  ].filter(Boolean) as string[];
+  const textStartX = PAD + (logoBuf ? logoDims.w + Math.round(A4_W * 0.015) : 0);
+  const headerLineH = Math.round(A4_W * 0.016);
+  const headerFontSize = Math.round(A4_W * 0.0135);
+  const headerTextY = Math.round((HEADER_H - headerLines.length * headerLineH) / 2 + headerFontSize);
+  const headerLinesSvg = headerLines.map((l, i) =>
+    `<text x="${textStartX}" y="${headerTextY + i * headerLineH}" font-family="Arial, sans-serif" font-size="${headerFontSize}" fill="#333333">${escape(l)}</text>`,
+  ).join("");
+
+  const svg = `<svg width="${A4_W}" height="${A4_H}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${A4_W}" height="${A4_H}" fill="#ffffff"/>
+    ${headerLinesSvg}
+    <line x1="0" y1="${HEADER_H - Math.floor(lineThk / 2)}" x2="${A4_W}" y2="${HEADER_H - Math.floor(lineThk / 2)}" stroke="${PRIMARY}" stroke-width="${lineThk}"/>
+    ${titleSvg}
+    ${infoSvg}
+    ${headerRowSvg}
+    ${itemRowsSvg}
+    ${totalSvg}
+    ${declSvg}
+    <text x="${PAD}" y="${sigLabelY}" font-family="Arial, sans-serif" font-size="${smallFont}" fill="#555555">Patient signature:</text>
+    <line x1="${PAD}" y1="${sigBoxY + sigBoxH}" x2="${PAD + Math.round(A4_W * 0.5)}" y2="${sigBoxY + sigBoxH}" stroke="#333333" stroke-width="2"/>
+    <text x="${PAD + Math.round(A4_W * 0.55)}" y="${sigBoxY + sigBoxH - 6}" font-family="Arial, sans-serif" font-size="${smallFont}" fill="#555555">Date: ${todayStr} ${timeStr}</text>
+  </svg>`;
+
+  const sigB64 = signatureDataUrl.split(",")[1];
+  const sigBuffer = Buffer.from(sigB64, "base64");
+  const sigMeta = await sharp(sigBuffer).metadata();
+  const sigMaxW = Math.round(A4_W * 0.5);
+  const sigMaxH = sigBoxH - 4;
+  const sigScale = Math.min(sigMaxW / (sigMeta.width || 1), sigMaxH / (sigMeta.height || 1), 1);
+  const sigW = Math.round((sigMeta.width || 0) * sigScale);
+  const sigH = Math.round((sigMeta.height || 0) * sigScale);
+  const sigResized = await sharp(sigBuffer)
+    .resize(sigW, sigH, { fit: "inside" })
+    .flatten({ background: "#ffffff" })
+    .png()
+    .toBuffer();
+
+  const composites: sharp.OverlayOptions[] = [];
+  if (logoBuf) {
+    composites.push({ input: logoBuf, left: PAD, top: Math.round((HEADER_H - logoDims.h) / 2) });
+  }
+  composites.push({ input: sigResized, left: PAD, top: sigBoxY + (sigBoxH - sigH) });
+
+  const finalImg = await sharp(Buffer.from(svg))
+    .composite(composites)
+    .jpeg({ quality: 92 })
+    .toBuffer();
+
+  const newFilename = crypto.randomBytes(16).toString("hex");
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  const outPath = path.join(uploadsDir, newFilename);
+  fs.writeFileSync(outPath, finalImg);
+  saveFileToDB(newFilename, outPath, "image/jpeg", `assessment-of-benefit-${aobForm.id}.jpg`).catch(console.error);
+
+  if (aobForm.patientId) {
+    const isoDate = now.toLocaleDateString("en-CA", { timeZone: CLINIC_TZ });
+    await storage.createPatientDocument({
+      patientId: aobForm.patientId,
+      title: "Assessment of Benefit",
+      documentDate: isoDate,
+      fileUrl: `/uploads/${newFilename}`,
+      filename: newFilename,
+      originalName: `assessment-of-benefit-${String(aobForm.patientName || "patient").replace(/\s+/g, "-")}-${isoDate}.jpg`,
+      notes: null,
+    } as any);
+  }
 
   return { fileUrl: `/uploads/${newFilename}`, filename: newFilename };
 }
@@ -4388,6 +4592,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+
+      // Assessment of Benefit confirmation is required to complete a study —
+      // the sonographer (or whoever finishes the report) must confirm the
+      // Medicare items billed for this visit before the study can be marked
+      // complete. The patient signature itself can happen later/elsewhere.
+      const items = Array.isArray(req.body?.items) ? req.body.items : [];
+      if (items.length === 0) {
+        return res.status(400).json({ error: "At least one confirmed billing item is required to complete the study" });
+      }
+      const totalValueCents = items.reduce((sum: number, it: any) => sum + (Number(it.feeCents) || 0), 0);
+
       const user = await storage.getUser(req.session.userId!);
       const completedBy = user
         ? ([user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || String(req.session.userId!))
@@ -4398,8 +4613,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Auto-complete the matching appointment on the calendar (if one exists).
       // We match by patientId + same calendar day as the report's exam date.
       // We deliberately do NOT touch appointments that are already completed,
-      // cancelled, or no-show.
+      // cancelled, or no-show. The matched appointment (if any) also supplies
+      // the referring doctor snapshot for the Assessment of Benefit form.
       let appointmentCompleted: { id: number } | null = null;
+      let matchedAppointment: Appointment | undefined;
       try {
         if (report.patientId && report.examDate) {
           const examDate = new Date(report.examDate);
@@ -4428,6 +4645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (candidate) {
               await storage.updateAppointment(candidate.id, { status: "completed" });
               appointmentCompleted = { id: candidate.id };
+              matchedAppointment = candidate;
             }
           }
         }
@@ -4435,10 +4653,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("Sono-complete: failed to auto-complete matching appointment", apptErr);
       }
 
-      res.json({ ...report, appointmentCompleted });
+      // Snapshot the data needed for the Assessment of Benefit form. Snapshotting
+      // (rather than joining live at sign time) means the form stays accurate
+      // even if the patient/physician/referrer records change later.
+      let aobForm = null;
+      try {
+        const patient = report.patientId ? await storage.getPatient(report.patientId) : undefined;
+        const physician = report.physicianId ? await storage.getPhysician(report.physicianId) : undefined;
+        const clinicId = user?.clinicId ?? report.clinicId ?? null;
+        aobForm = await storage.createAssessmentOfBenefitForm({
+          clinicId: clinicId ?? undefined,
+          appointmentId: matchedAppointment?.id,
+          reportId: report.id,
+          patientId: report.patientId ?? undefined,
+          status: "pending_signature",
+          items: items.map((it: any) => ({
+            item: String(it.item ?? ""),
+            description: String(it.description ?? ""),
+            feeCents: Number(it.feeCents) || 0,
+          })),
+          totalValueCents,
+          patientName: patient ? `${patient.firstName} ${patient.lastName}`.trim() : report.patientName,
+          medicareNumber: patient?.medicareNumber ?? undefined,
+          medicareIrn: patient?.medicareIrn ?? undefined,
+          referringDoctorName: matchedAppointment?.referringDoctorName ?? undefined,
+          referringDoctorProviderNumber: matchedAppointment?.referringDoctorProviderNumber ?? undefined,
+          physicianName: physician?.name,
+          physicianProviderNumber: (physician as any)?.providerNumber ?? undefined,
+          confirmedByName: completedBy,
+        } as InsertAssessmentOfBenefitForm);
+      } catch (aobErr) {
+        console.error("Sono-complete: failed to create Assessment of Benefit form", aobErr);
+        return res.status(500).json({ error: "Failed to record Assessment of Benefit confirmation" });
+      }
+
+      res.json({ ...report, appointmentCompleted, assessmentOfBenefitForm: aobForm });
     } catch (error) {
       console.error("Error marking sonographer complete:", error);
       res.status(500).json({ error: "Failed to update report" });
+    }
+  });
+
+  // Assessment of Benefit forms for an appointment (the patient-signature step,
+  // decoupled from sonographer completion — surfaced on the appointment screen).
+  app.get("/api/appointments/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid appointment ID" });
+      const appointment = await storage.getAppointment(id);
+      if (!appointment || (appointment.clinicId != null && user?.clinicId != null && appointment.clinicId !== user.clinicId)) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+      const forms = await storage.getAssessmentOfBenefitFormsByAppointmentId(id);
+      res.json(forms);
+    } catch (error) {
+      console.error("Error fetching Assessment of Benefit forms:", error);
+      res.status(500).json({ error: "Failed to fetch Assessment of Benefit forms" });
+    }
+  });
+
+  // Patient signs the Assessment of Benefit form — generates the signed
+  // document and marks the form as signed. Can happen well after the study,
+  // typically by admin staff from the appointment screen.
+  app.post("/api/assessment-of-benefit/:id/sign", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid form ID" });
+
+      const aobForm = await storage.getAssessmentOfBenefitForm(id);
+      if (!aobForm || (aobForm.clinicId != null && aobForm.clinicId !== user.clinicId)) {
+        return res.status(404).json({ error: "Assessment of Benefit form not found" });
+      }
+      if (aobForm.status === "signed") {
+        return res.status(400).json({ error: "This form has already been signed" });
+      }
+
+      const { signatureDataUrl } = req.body || {};
+      if (!signatureDataUrl || typeof signatureDataUrl !== "string" || !signatureDataUrl.startsWith("data:image/")) {
+        return res.status(400).json({ error: "A valid signature is required" });
+      }
+
+      const clinic = await storage.getClinic(user.clinicId);
+      const signedByName = user
+        ? ([user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || String(req.session.userId!))
+        : String(req.session.userId!);
+
+      const { fileUrl } = await generateAssessmentOfBenefitDocument({ aobForm, clinic, signatureDataUrl });
+      const updated = await storage.signAssessmentOfBenefitForm(id, signedByName, fileUrl);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error signing Assessment of Benefit form:", error);
+      res.status(500).json({ error: "Failed to sign Assessment of Benefit form" });
     }
   });
 

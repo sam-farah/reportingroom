@@ -112,6 +112,7 @@ export const physicians = pgTable("physicians", {
   title: text("title").notNull(),
   specialty: text("specialty").notNull(),
   signatureUrl: text("signature_url"),
+  providerNumber: varchar("provider_number", { length: 50 }),
   isActive: boolean("is_active").notNull().default(true),
 });
 
@@ -588,6 +589,7 @@ export const appointments = pgTable("appointments", {
   referringDoctorName: varchar("referring_doctor_name", { length: 255 }),
   referringDoctorEmail: varchar("referring_doctor_email", { length: 255 }),
   referringDoctorFax: varchar("referring_doctor_fax", { length: 50 }),
+  referringDoctorProviderNumber: varchar("referring_doctor_provider_number", { length: 50 }),
   copyToName: varchar("copy_to_name", { length: 255 }),
   copyToEmail: varchar("copy_to_email", { length: 255 }),
   copyToFax: varchar("copy_to_fax", { length: 50 }),
@@ -604,6 +606,43 @@ export const insertAppointmentSchema = createInsertSchema(appointments).omit({
 
 export type Appointment = typeof appointments.$inferSelect;
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+
+// Assessment of Benefit forms — the Medicare claim confirmation + patient
+// signature captured at (or shortly after) the end of a study. A pending
+// row is created when the sonographer confirms billed items on report
+// completion; it's signed later, potentially by a different staff member,
+// from the appointment screen.
+export const assessmentOfBenefitForms = pgTable("assessment_of_benefit_forms", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id),
+  appointmentId: integer("appointment_id").references(() => appointments.id),
+  reportId: integer("report_id").references(() => reports.id),
+  patientId: integer("patient_id").references(() => patients.id),
+  status: varchar("status", { length: 20 }).notNull().default("pending_signature"), // 'pending_signature' | 'signed'
+  items: jsonb("items").$type<{ item: string; description: string; feeCents: number }[]>().notNull().default([]),
+  totalValueCents: integer("total_value_cents").notNull().default(0),
+  patientName: varchar("patient_name", { length: 255 }),
+  medicareNumber: varchar("medicare_number", { length: 15 }),
+  medicareIrn: varchar("medicare_irn", { length: 2 }),
+  referringDoctorName: varchar("referring_doctor_name", { length: 255 }),
+  referringDoctorProviderNumber: varchar("referring_doctor_provider_number", { length: 50 }),
+  physicianName: varchar("physician_name", { length: 255 }),
+  physicianProviderNumber: varchar("physician_provider_number", { length: 50 }),
+  confirmedByName: varchar("confirmed_by_name", { length: 255 }),
+  confirmedAt: timestamp("confirmed_at").defaultNow(),
+  signedAt: timestamp("signed_at"),
+  signedByName: varchar("signed_by_name", { length: 255 }),
+  documentUrl: text("document_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAssessmentOfBenefitFormSchema = createInsertSchema(assessmentOfBenefitForms).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type AssessmentOfBenefitForm = typeof assessmentOfBenefitForms.$inferSelect;
+export type InsertAssessmentOfBenefitForm = z.infer<typeof insertAssessmentOfBenefitFormSchema>;
 
 // Patient Portal Invitations
 export const patientPortalInvitations = pgTable("patient_portal_invitations", {

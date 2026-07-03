@@ -19,6 +19,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage } from "@shared/schema";
 import { MbsItemBadges } from "@/components/mbs-billing-summary";
+import { calculateVisitBilling, formatCents } from "@shared/mbs";
 import { resolveClinicTimeZone } from "@shared/timezones";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -180,6 +181,12 @@ interface EditableReport extends Report {
   templateId?: number;
 }
 
+interface AobLineItem {
+  item: string;
+  description: string;
+  feeCents: number;
+}
+
 export default function ReportingRoom({ initialOpenReportId, onReportOpened, onStartAnotherScan, onOpenPatient }: { initialOpenReportId?: number | null; onReportOpened?: () => void; onStartAnotherScan?: (params: { patientId: number | null; patientName: string; examDate: string }) => void; onOpenPatient?: (patientId: number) => void } = {}) {
   const { toast } = useToast();
   const [editingReport, setEditingReport] = useState<EditableReport | null>(null);
@@ -194,6 +201,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [currentPage, setCurrentPage] = useState(1);
   const [isAmendDialogOpen, setIsAmendDialogOpen] = useState(false);
   const [amendingReport, setAmendingReport] = useState<EditableReport | null>(null);
+  const [aobConfirmReport, setAobConfirmReport] = useState<Report | null>(null);
+  const [aobItems, setAobItems] = useState<AobLineItem[]>([]);
   const [amendmentReason, setAmendmentReason] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
@@ -496,14 +505,14 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   });
 
   const sonographerCompleteMutation = useMutation({
-    mutationFn: async (reportId: number) => {
-      const response = await apiRequest(`/api/reports/${reportId}/sonographer-complete`, "POST");
+    mutationFn: async ({ reportId, items }: { reportId: number; items: AobLineItem[] }) => {
+      const response = await apiRequest(`/api/reports/${reportId}/sonographer-complete`, "POST", { items });
       return await response.json();
     },
     onSuccess: (updated: Report & { appointmentCompleted?: { id: number } | null }) => {
       const appointmentMessage = updated.appointmentCompleted
-        ? "Report marked complete and the matching appointment was set to Completed."
-        : "Report marked as complete by sonographer.";
+        ? "Report marked complete and the matching appointment was set to Completed. The patient's Assessment of Benefits form is ready to be signed from the appointment screen."
+        : "Report marked as complete by sonographer. The patient's Assessment of Benefits form is ready to be signed.";
       toast({ title: "Sonographer Complete", description: appointmentMessage });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       // Refresh calendar/home so the appointment status reflects immediately.
@@ -511,11 +520,24 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       }
       if (editingReport && editingReport.id === updated.id) setEditingReport(updated as any);
+      setAobConfirmReport(null);
+      setAobItems([]);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Could not mark as complete.", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Could not mark as complete.", variant: "destructive" });
     },
   });
+
+  // Opens the Assessment of Benefits confirmation dialog, prefilled with the
+  // suggested MBS items for this report's scan type(s). Confirming here is
+  // required to complete the study — the patient's signature is decoupled
+  // and can happen later from the appointment screen.
+  const openAobConfirm = (report: Report) => {
+    const scanTypes = report.studyType.split(",").map(s => s.trim()).filter(Boolean);
+    const result = calculateVisitBilling(scanTypes);
+    setAobItems(result.lines.map(l => ({ item: l.item, description: l.description, feeCents: l.allocatedFeeCents })));
+    setAobConfirmReport(report);
+  };
 
   const archiveReportMutation = useMutation({
     mutationFn: async (reportId: number) => {
@@ -2100,7 +2122,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       variant="outline"
                       size="sm"
                       className="flex-1 text-teal-600 border-teal-200 hover:bg-teal-50 text-xs"
-                      onClick={() => sonographerCompleteMutation.mutate(report.id)}
+                      onClick={() => openAobConfirm(report)}
                       disabled={sonographerCompleteMutation.isPending}
                     >
                       <ClipboardCheck className="w-3 h-3 mr-1" />
@@ -2861,7 +2883,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       variant="outline"
                       size="sm"
                       className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
-                      onClick={() => sonographerCompleteMutation.mutate(editingReport.id)}
+                      onClick={() => openAobConfirm(editingReport)}
                       disabled={sonographerCompleteMutation.isPending}
                     >
                       <ClipboardCheck className="w-4 h-4 mr-2" />
@@ -3295,7 +3317,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       variant="outline"
                       size="sm"
                       className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
-                      onClick={() => sonographerCompleteMutation.mutate(editingReport.id)}
+                      onClick={() => openAobConfirm(editingReport)}
                       disabled={sonographerCompleteMutation.isPending}
                     >
                       <ClipboardCheck className="w-4 h-4 mr-2" />
@@ -3952,6 +3974,97 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
             {/* ── Right: Condensed Patient File ── */}
             <PatientSummaryPanel patientId={distributeReport?.patientId ?? null} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assessment of Benefits confirmation — required before a study can be
+          marked sonographer-complete. The patient signature itself happens
+          later, from the appointment screen. */}
+      <Dialog open={!!aobConfirmReport} onOpenChange={(open) => { if (!open) { setAobConfirmReport(null); setAobItems([]); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirm Assessment of Benefits</DialogTitle>
+            <DialogDescription>
+              Confirm the Medicare items billed for this visit before completing the study. The patient's signature is captured separately, later, from the appointment screen.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {aobItems.length === 0 && (
+              <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
+                No item numbers could be suggested for this study type. Add at least one item manually to continue.
+              </p>
+            )}
+            {aobItems.map((line, i) => (
+              <div key={i} className="flex items-start gap-2 border rounded-md p-2">
+                <div className="w-24 flex-shrink-0">
+                  <Label className="text-xs text-gray-500">Item</Label>
+                  <Input
+                    value={line.item}
+                    onChange={(e) => setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: e.target.value } : l))}
+                    className="h-8 text-sm font-mono"
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label className="text-xs text-gray-500">Description</Label>
+                  <Input
+                    value={line.description}
+                    onChange={(e) => setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, description: e.target.value } : l))}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="w-28 flex-shrink-0">
+                  <Label className="text-xs text-gray-500">Fee ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={(line.feeCents / 100).toFixed(2)}
+                    onChange={(e) => {
+                      const dollars = parseFloat(e.target.value);
+                      setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, feeCents: isNaN(dollars) ? 0 : Math.round(dollars * 100) } : l));
+                    }}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-5 text-gray-400 hover:text-red-600"
+                  onClick={() => setAobItems(prev => prev.filter((_, idx) => idx !== i))}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAobItems(prev => [...prev, { item: "", description: "", feeCents: 0 }])}
+            >
+              <Plus className="w-3 h-3 mr-1" /> Add item
+            </Button>
+            <div className="flex items-center justify-between border-t pt-2 text-sm font-medium">
+              <span>Total value</span>
+              <span>{formatCents(aobItems.reduce((sum, l) => sum + (l.feeCents || 0), 0))}</span>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              Suggested items only — confirm clinically correct before continuing. This is not a submitted claim.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { setAobConfirmReport(null); setAobItems([]); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => aobConfirmReport && sonographerCompleteMutation.mutate({
+                reportId: aobConfirmReport.id,
+                items: aobItems.filter(l => l.item.trim() || l.description.trim()),
+              })}
+              disabled={sonographerCompleteMutation.isPending || aobItems.filter(l => l.item.trim() || l.description.trim()).length === 0}
+              className="bg-teal-600 hover:bg-teal-700 text-white"
+            >
+              {sonographerCompleteMutation.isPending ? "Confirming..." : "Confirm & Complete Study"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

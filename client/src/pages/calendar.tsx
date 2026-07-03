@@ -18,10 +18,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { capitalizeWords } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, addDays, addMonths, subMonths, addWeeks, subWeeks, addYears, isSameMonth, isSameDay, isSameWeek, parseISO, getHours, getMinutes, subDays } from "date-fns";
-import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent, ReminderLog, CalendarTask } from "@shared/schema";
+import type { Appointment, Physician, Sonographer, Patient, ScanDurationSetting, CalendarEvent, ReminderLog, CalendarTask, AssessmentOfBenefitForm } from "@shared/schema";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import MbsBillingSummary, { MbsItemBadges } from "@/components/mbs-billing-summary";
+import { formatCents } from "@shared/mbs";
 
 async function fetchAsDataUrl(url: string): Promise<string | null> {
   try {
@@ -624,6 +625,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const [isBookingDialogOpen, setIsBookingDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
+  const [aobSignForm, setAobSignForm] = useState<AssessmentOfBenefitForm | null>(null);
+  const [aobSignatureEmpty, setAobSignatureEmpty] = useState(true);
+  const aobSigCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const aobSigDrawing = useRef(false);
+  const aobSigLastPt = useRef<{ x: number; y: number } | null>(null);
   const [certificateDialog, setCertificateDialog] = useState<{
     appointment: Appointment;
     blob: Blob;
@@ -676,6 +682,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     referringDoctorName: "",
     referringDoctorEmail: "",
     referringDoctorFax: "",
+    referringDoctorProviderNumber: "",
     copyToName: "",
     copyToEmail: "",
     copyToFax: "",
@@ -1013,6 +1020,64 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     enabled: !!viewingAppointment?.id,
   });
 
+  const { data: aobForms = [] } = useQuery<AssessmentOfBenefitForm[]>({
+    queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"],
+    enabled: !!viewingAppointment?.id,
+  });
+  const latestAobForm = aobForms.length > 0 ? aobForms[aobForms.length - 1] : null;
+
+  const signAobMutation = useMutation({
+    mutationFn: async ({ id, signatureDataUrl }: { id: number; signatureDataUrl: string }) =>
+      apptFetch(`/api/assessment-of-benefit/${id}/sign`, "POST", { signatureDataUrl }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"] });
+      toast({ title: "Signed", description: "Assessment of Benefits form signed." });
+      setAobSignForm(null);
+      setAobSignatureEmpty(true);
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to sign form", variant: "destructive" });
+    },
+  });
+
+  const getAobSigCtx = () => aobSigCanvasRef.current?.getContext("2d") || null;
+  const aobSigPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const c = aobSigCanvasRef.current!;
+    const r = c.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) / r.width) * c.width, y: ((e.clientY - r.top) / r.height) * c.height };
+  };
+  const aobSigStart = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    aobSigDrawing.current = true;
+    aobSigLastPt.current = aobSigPos(e);
+  };
+  const aobSigMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!aobSigDrawing.current) return;
+    const ctx = getAobSigCtx();
+    if (!ctx || !aobSigLastPt.current) return;
+    const p = aobSigPos(e);
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(aobSigLastPt.current.x, aobSigLastPt.current.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    aobSigLastPt.current = p;
+    if (aobSignatureEmpty) setAobSignatureEmpty(false);
+  };
+  const aobSigEnd = () => { aobSigDrawing.current = false; aobSigLastPt.current = null; };
+  const aobSigClear = () => {
+    const c = aobSigCanvasRef.current;
+    const ctx = getAobSigCtx();
+    if (c && ctx) {
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    setAobSignatureEmpty(true);
+  };
+
   const sendReminderMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest(`/api/appointments/${id}/send-reminder`, "POST");
@@ -1173,6 +1238,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       referringDoctorName: "",
       referringDoctorEmail: "",
       referringDoctorFax: "",
+      referringDoctorProviderNumber: "",
       copyToName: "",
       copyToEmail: "",
       copyToFax: "",
@@ -1402,6 +1468,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       referringDoctorName: (appointment as any).referringDoctorName || "",
       referringDoctorEmail: (appointment as any).referringDoctorEmail || "",
       referringDoctorFax: (appointment as any).referringDoctorFax || "",
+      referringDoctorProviderNumber: (appointment as any).referringDoctorProviderNumber || "",
       copyToName: (appointment as any).copyToName || "",
       copyToEmail: (appointment as any).copyToEmail || "",
       copyToFax: (appointment as any).copyToFax || "",
@@ -1504,6 +1571,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       referringDoctorName: formData.referringDoctorName || null,
       referringDoctorEmail: formData.referringDoctorEmail || null,
       referringDoctorFax: formData.referringDoctorFax || null,
+      referringDoctorProviderNumber: formData.referringDoctorProviderNumber || null,
       copyToName: copyToList[0]?.name || null,
       copyToEmail: copyToList[0]?.email || null,
       copyToFax: copyToList[0]?.fax || null,
@@ -2820,6 +2888,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                           referringDoctorName: doc.name || "",
                           referringDoctorEmail: doc.email || "",
                           referringDoctorFax: doc.fax || "",
+                          referringDoctorProviderNumber: doc.providerNumber || "",
                         }));
                       }
                     }}>
@@ -2835,7 +2904,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                       </SelectContent>
                     </Select>
                   )}
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-500">Name</Label>
                       <Input placeholder="Dr. Smith" value={formData.referringDoctorName} onChange={(e) => setFormData(prev => ({ ...prev, referringDoctorName: e.target.value }))} className="text-sm h-8" />
@@ -2847,6 +2916,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-500">Fax</Label>
                       <Input placeholder="03XXXXXXXX" value={formData.referringDoctorFax} onChange={(e) => setFormData(prev => ({ ...prev, referringDoctorFax: e.target.value }))} className="text-sm h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Provider No.</Label>
+                      <Input placeholder="123456AB" value={formData.referringDoctorProviderNumber} onChange={(e) => setFormData(prev => ({ ...prev, referringDoctorProviderNumber: e.target.value }))} className="text-sm h-8" />
                     </div>
                   </div>
                 </div>
@@ -3581,6 +3654,38 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   />
                 )}
 
+                {/* Assessment of Benefits — patient signature, decoupled from sonographer completion */}
+                {latestAobForm && (
+                  <div className="border rounded-md p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <ShieldCheck className="w-4 h-4 text-teal-600" />
+                      Assessment of Benefits
+                    </div>
+                    {latestAobForm.status === "signed" ? (
+                      <p className="text-sm text-emerald-700 flex items-center gap-1">
+                        <CheckCircle className="w-4 h-4" />
+                        Signed by {latestAobForm.signedByName || "patient"}
+                        {latestAobForm.signedAt && ` on ${format(new Date(latestAobForm.signedAt), "d MMM yyyy 'at' h:mm a")}`}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-xs text-gray-500">
+                          Total value: {formatCents(latestAobForm.totalValueCents)} — awaiting patient signature.
+                        </p>
+                        <Button
+                          variant="outline"
+                          className="w-full gap-2 text-teal-700 border-teal-300 hover:bg-teal-50"
+                          onClick={() => { setAobSignForm(latestAobForm); setAobSignatureEmpty(true); }}
+                          data-testid="button-complete-aob"
+                        >
+                          <PenLine className="w-4 h-4" />
+                          Complete Assessment of Benefits form
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {/* Mark as Invoiced toggle — quick invoice status, below Open Patient File */}
                 {viewingAppointment.status !== "cancelled" && (
                   <Button
@@ -3612,6 +3717,89 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   </Button>
                 )}
                 </>)}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Assessment of Benefits — patient signature */}
+        <Dialog open={!!aobSignForm} onOpenChange={(open) => { if (!open) { setAobSignForm(null); setAobSignatureEmpty(true); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-teal-600" />
+                Assessment of Benefits — Patient Signature
+              </DialogTitle>
+            </DialogHeader>
+            {aobSignForm && (
+              <div className="space-y-4">
+                <div className="border rounded-md p-3 text-sm space-y-1 bg-gray-50">
+                  {aobSignForm.patientName && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Patient</span>
+                      <span className="font-medium">{aobSignForm.patientName}</span>
+                    </div>
+                  )}
+                  <div className="space-y-1 pt-1">
+                    {aobSignForm.items.map((line, i) => (
+                      <div key={i} className="flex justify-between text-gray-700">
+                        <span>{line.item} — {line.description}</span>
+                        <span>{formatCents(line.feeCents)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between font-semibold border-t pt-1 mt-1">
+                    <span>Total value</span>
+                    <span>{formatCents(aobSignForm.totalValueCents)}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  By signing below, the patient confirms and assigns the Medicare benefit for the items listed above. This is not a submitted Medicare claim.
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Patient signature</Label>
+                    <Button variant="outline" size="sm" onClick={aobSigClear} data-testid="button-clear-aob-signature">
+                      Clear
+                    </Button>
+                  </div>
+                  <canvas
+                    ref={(el) => {
+                      aobSigCanvasRef.current = el;
+                      if (el && !el.dataset.init) {
+                        el.width = 900;
+                        el.height = 220;
+                        const ctx = el.getContext("2d");
+                        if (ctx) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, el.width, el.height); }
+                        el.dataset.init = "1";
+                      }
+                    }}
+                    onPointerDown={aobSigStart}
+                    onPointerMove={aobSigMove}
+                    onPointerUp={aobSigEnd}
+                    onPointerLeave={aobSigEnd}
+                    className="w-full h-40 border-2 border-dashed border-gray-300 rounded-lg bg-white touch-none cursor-crosshair"
+                    data-testid="canvas-aob-signature"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => { setAobSignForm(null); setAobSignatureEmpty(true); }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    className="bg-teal-600 hover:bg-teal-700 text-white"
+                    disabled={aobSignatureEmpty || signAobMutation.isPending}
+                    onClick={() => {
+                      const dataUrl = aobSigCanvasRef.current?.toDataURL("image/png");
+                      if (dataUrl && aobSignForm) {
+                        signAobMutation.mutate({ id: aobSignForm.id, signatureDataUrl: dataUrl });
+                      }
+                    }}
+                    data-testid="button-submit-aob-signature"
+                  >
+                    {signAobMutation.isPending ? "Signing…" : "Sign & Complete"}
+                  </Button>
+                </div>
               </div>
             )}
           </DialogContent>

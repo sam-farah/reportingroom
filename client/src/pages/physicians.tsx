@@ -46,7 +46,7 @@ export default function Clinic() {
   
   const resetAddDialog = () => {
     setIsAddDialogOpen(false);
-    setNewPhysician({ name: "", title: "", specialty: "" });
+    setNewPhysician({ name: "", title: "", specialty: "", providerNumber: "" });
     setSignatureFile(null);
     setSignatureMode("upload");
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -57,6 +57,7 @@ export default function Clinic() {
     name: "",
     title: "",
     specialty: "",
+    providerNumber: "",
   });
   const [signatureMode, setSignatureMode] = useState<"upload" | "draw">("upload");
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
@@ -952,6 +953,15 @@ export default function Clinic() {
                     placeholder="Radiology, Cardiology, etc."
                     value={newPhysician.specialty || ""}
                     onChange={(e) => setNewPhysician(prev => ({...prev, specialty: e.target.value}))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="providerNumber">Medicare Provider Number</Label>
+                  <Input
+                    id="providerNumber"
+                    placeholder="123456AB"
+                    value={newPhysician.providerNumber || ""}
+                    onChange={(e) => setNewPhysician(prev => ({...prev, providerNumber: e.target.value}))}
                   />
                 </div>
                 
@@ -1972,6 +1982,17 @@ export default function Clinic() {
                     )}
                   />
                 </div>
+                <div>
+                  <Label htmlFor="edit-providerNumber">Medicare Provider Number</Label>
+                  <Input
+                    id="edit-providerNumber"
+                    placeholder="123456AB"
+                    value={(editingPhysician as any).providerNumber || ""}
+                    onChange={(e) => setEditingPhysician(prev => 
+                      prev ? {...prev, providerNumber: e.target.value} as any : null
+                    )}
+                  />
+                </div>
                 
                 {/* Signature Section for Edit */}
                 <div className="space-y-3">
@@ -2146,6 +2167,17 @@ export default function Clinic() {
                     value={editingPhysician.specialty || ""}
                     onChange={(e) => setEditingPhysician(prev => 
                       prev ? {...prev, specialty: e.target.value} : null
+                    )}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-providerNumber-2">Medicare Provider Number</Label>
+                  <Input
+                    id="edit-providerNumber-2"
+                    placeholder="123456AB"
+                    value={(editingPhysician as any).providerNumber || ""}
+                    onChange={(e) => setEditingPhysician(prev => 
+                      prev ? {...prev, providerNumber: e.target.value} as any : null
                     )}
                   />
                 </div>

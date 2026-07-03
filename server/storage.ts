@@ -143,6 +143,9 @@ import {
   emailAttachments,
   type EmailAttachment,
   type InsertEmailAttachment,
+  assessmentOfBenefitForms,
+  type AssessmentOfBenefitForm,
+  type InsertAssessmentOfBenefitForm,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
@@ -362,6 +365,13 @@ export interface IStorage {
   getPatientDocuments(patientId: number): Promise<PatientDocument[]>;
   createPatientDocument(document: InsertPatientDocument): Promise<PatientDocument>;
   deletePatientDocument(id: number): Promise<void>;
+
+  // Assessment of Benefit forms (Medicare claim confirmation + patient signature)
+  createAssessmentOfBenefitForm(form: InsertAssessmentOfBenefitForm): Promise<AssessmentOfBenefitForm>;
+  getAssessmentOfBenefitForm(id: number): Promise<AssessmentOfBenefitForm | undefined>;
+  getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined>;
+  getAssessmentOfBenefitFormsByAppointmentId(appointmentId: number): Promise<AssessmentOfBenefitForm[]>;
+  signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string): Promise<AssessmentOfBenefitForm | undefined>;
   getPatientNotes(patientId: number): Promise<PatientNote[]>;
   createPatientNote(note: InsertPatientNote): Promise<PatientNote>;
 
@@ -1734,6 +1744,43 @@ export class DatabaseStorage implements IStorage {
 
   async deletePatientDocument(id: number): Promise<void> {
     await db.delete(patientDocuments).where(eq(patientDocuments.id, id));
+  }
+
+  async createAssessmentOfBenefitForm(form: InsertAssessmentOfBenefitForm): Promise<AssessmentOfBenefitForm> {
+    const [created] = await db.insert(assessmentOfBenefitForms).values(form as any).returning();
+    return created;
+  }
+
+  async getAssessmentOfBenefitForm(id: number): Promise<AssessmentOfBenefitForm | undefined> {
+    const [row] = await db.select().from(assessmentOfBenefitForms).where(eq(assessmentOfBenefitForms.id, id));
+    return row;
+  }
+
+  async getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined> {
+    const [row] = await db
+      .select()
+      .from(assessmentOfBenefitForms)
+      .where(eq(assessmentOfBenefitForms.reportId, reportId))
+      .orderBy(desc(assessmentOfBenefitForms.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async getAssessmentOfBenefitFormsByAppointmentId(appointmentId: number): Promise<AssessmentOfBenefitForm[]> {
+    return await db
+      .select()
+      .from(assessmentOfBenefitForms)
+      .where(eq(assessmentOfBenefitForms.appointmentId, appointmentId))
+      .orderBy(desc(assessmentOfBenefitForms.createdAt));
+  }
+
+  async signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string): Promise<AssessmentOfBenefitForm | undefined> {
+    const [row] = await db
+      .update(assessmentOfBenefitForms)
+      .set({ status: "signed", signedAt: new Date(), signedByName, documentUrl })
+      .where(eq(assessmentOfBenefitForms.id, id))
+      .returning();
+    return row;
   }
 
   async getPatientNotes(patientId: number): Promise<PatientNote[]> {
