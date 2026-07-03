@@ -12,15 +12,11 @@ import { buildReminderBody } from "./sms-templates";
 import {
   resolveClinicMailProvider,
   isEmailConfigured,
-  isOAuthServerConfigured,
-  signState,
-  verifyState,
-  buildAuthUrl,
-  exchangeCode,
-  fetchOAuthIdentity,
-  type OAuthProviderKey,
+  isOutlookConnectorAuthorized,
+  getMailboxOwnerClinicId,
+  createOutlookProvider,
+  OUTLOOK_PROVIDER_KEY,
 } from "./mail";
-import { testImapSmtpConnection } from "./mail/imap";
 import { syncMailboxNow } from "./email-sync-scheduler";
 import sanitizeHtml from "sanitize-html";
 import multer from "multer";
@@ -1905,13 +1901,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const connection = await storage.getMailboxConnection(user.clinicId);
       const state = await storage.getMailboxSyncState(user.clinicId);
       const connected = !!connection && connection.status === "connected";
+      // Someone else's clinic may already hold the single workspace mailbox —
+      // surface that so the UI can explain why "Connect" isn't available here.
+      const ownerClinicId = connected ? user.clinicId : await getMailboxOwnerClinicId();
       res.json({
-        // Which connection methods this deployment can offer (server creds present).
-        availableMethods: {
-          microsoft_oauth: isOAuthServerConfigured("microsoft_oauth"),
-          google_oauth: isOAuthServerConfigured("google_oauth"),
-          imap_smtp: true,
-        },
+        connectorAuthorized: await isOutlookConnectorAuthorized(),
+        ownedByAnotherClinic: !connected && ownerClinicId !== null && ownerClinicId !== user.clinicId,
         connected,
         provider: connection?.provider ?? null,
         address: connection?.connectedAddress ?? null,
@@ -1928,152 +1923,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Build the OAuth redirect URI for THIS deployment from the incoming request, so
-  // it matches whatever public URL the clinic uses (must be registered in our
-  // Azure/Google app).
-  const buildOAuthRedirectUri = (req: any, provider: string): string => {
-    const proto = ((req.headers["x-forwarded-proto"] as string) || req.protocol || "https")
-      .split(",")[0]
-      .trim();
-    const host = (req.headers["x-forwarded-host"] as string) || req.get("host");
-    return `${proto}://${host}/api/email/oauth/${provider}/callback`;
-  };
-
-  // Connect this clinic via generic IMAP/SMTP. Credentials are TESTED before saving
-  // so a bad host/password fails fast instead of silently never syncing.
-  app.post("/api/email/connect/imap", isAuthenticated, async (req, res) => {
+  // Bind the single workspace Outlook mailbox (connected once at the platform level)
+  // to the caller's clinic. Refuses if another clinic already owns it.
+  app.post("/api/email/connect", isAuthenticated, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
       if (!["clinic_owner", "admin"].includes(user.role || "")) {
         return res.status(403).json({ error: "Only an owner or admin can change the clinic mailbox." });
       }
-      const b = req.body || {};
-      const imapHost = String(b.imapHost || "").trim();
-      const smtpHost = String(b.smtpHost || "").trim();
-      const username = String(b.username || "").trim();
-      const password = String(b.password || "");
-      const imapPort = Number(b.imapPort);
-      const smtpPort = Number(b.smtpPort);
-      if (!imapHost || !smtpHost || !username || !password) {
-        return res.status(400).json({ error: "IMAP host, SMTP host, username and password are all required." });
+      if (!(await isOutlookConnectorAuthorized())) {
+        return res.status(503).json({
+          error: "The Microsoft 365 mailbox has not been connected on this platform yet. Ask your Replit workspace admin to connect the Outlook integration first.",
+        });
       }
-      if (!Number.isFinite(imapPort) || !Number.isFinite(smtpPort)) {
-        return res.status(400).json({ error: "IMAP and SMTP ports must be numbers." });
+      const ownerClinicId = await getMailboxOwnerClinicId();
+      if (ownerClinicId !== null && ownerClinicId !== user.clinicId) {
+        return res.status(409).json({ error: "The workspace mailbox is already connected to a different clinic." });
       }
-      const imapSecure = b.imapSecure !== false;
-      const smtpSecure = b.smtpSecure !== false;
-      const test = await testImapSmtpConnection({
-        imapHost, imapPort, imapSecure, smtpHost, smtpPort, smtpSecure, username, password,
-      });
-      if (!test.ok) {
-        return res.status(400).json({ error: test.error || "Could not connect with those settings." });
-      }
-      const connectedAddress = String(b.connectedAddress || username).trim();
+      const provider = createOutlookProvider(null);
+      const address = await provider.getConnectedAddress();
       await storage.upsertMailboxConnection(user.clinicId, {
-        provider: "imap_smtp",
+        provider: OUTLOOK_PROVIDER_KEY,
         status: "connected",
-        connectedAddress,
-        displayName: connectedAddress,
-        imapHost, imapPort, imapSecure,
-        smtpHost, smtpPort, smtpSecure,
-        username, password,
-        // Clear any OAuth fields left from a previous provider.
-        refreshToken: null, accessToken: null, accessTokenExpiresAt: null, scope: null, providerAccountId: null,
+        connectedAddress: address,
+        displayName: address,
         lastError: null,
       });
       await storage.resetMailboxSyncState(user.clinicId);
       syncMailboxNow(user.clinicId).catch(err => console.error("[email] initial sync error:", err));
-      res.json({ connected: true, address: connectedAddress });
+      res.json({ connected: true, address });
     } catch (error: any) {
-      console.error("Email IMAP connect error:", error);
+      console.error("Email connect error:", error);
       res.status(500).json({ error: error?.message || "Failed to connect mailbox" });
-    }
-  });
-
-  // Begin an OAuth connect (Microsoft 365 or Google). Redirects the browser to the
-  // provider with a signed, expiring state that binds this clinic + user.
-  app.get("/api/email/oauth/:provider/start", isAuthenticated, async (req, res) => {
-    try {
-      const provider = req.params.provider as OAuthProviderKey;
-      if (provider !== "microsoft_oauth" && provider !== "google_oauth") {
-        return res.status(400).send("Unknown sign-in method");
-      }
-      const user = await storage.getUser(req.session.userId!);
-      if (!user?.clinicId) return res.status(400).send("No clinic");
-      if (!["clinic_owner", "admin"].includes(user.role || "")) {
-        return res.status(403).send("Only an owner or admin can change the clinic mailbox.");
-      }
-      if (!isOAuthServerConfigured(provider)) {
-        return res.status(503).send("This sign-in method is not available on this server.");
-      }
-      const redirectUri = buildOAuthRedirectUri(req, provider);
-      // Bind this connect attempt to the session: the nonce must come back on the
-      // callback and is consumed once, defeating state replay.
-      const nonce = crypto.randomBytes(12).toString("hex");
-      req.session.pendingOAuthNonce = nonce;
-      const state = signState({ provider, clinicId: user.clinicId, userId: user.id, nonce });
-      res.redirect(buildAuthUrl(provider, { redirectUri, state }));
-    } catch (error: any) {
-      console.error("Email OAuth start error:", error);
-      res.status(500).send("Could not start sign-in.");
-    }
-  });
-
-  // OAuth callback — exchanges the code, discovers the address, saves the per-clinic
-  // connection, then bounces back to the app.
-  app.get("/api/email/oauth/:provider/callback", async (req, res) => {
-    const provider = req.params.provider as OAuthProviderKey;
-    const fail = (reason: string) =>
-      res.redirect(`/?email=error&reason=${encodeURIComponent(String(reason).slice(0, 120))}`);
-    try {
-      if (provider !== "microsoft_oauth" && provider !== "google_oauth") return fail("unknown_provider");
-      const q = req.query as any;
-      if (q.error) return fail(String(q.error_description || q.error));
-      const parsed = verifyState(typeof q.state === "string" ? q.state : null);
-      if (!parsed || parsed.provider !== provider) return fail("invalid_state");
-      // Defense in depth: the signed state must belong to the current session user.
-      if (!req.session?.userId || req.session.userId !== parsed.userId) return fail("session_mismatch");
-      // Single-use nonce: must match the one issued at /start, then consume it so a
-      // captured callback URL cannot be replayed.
-      if (!req.session.pendingOAuthNonce || req.session.pendingOAuthNonce !== parsed.nonce) {
-        return fail("invalid_state");
-      }
-      delete req.session.pendingOAuthNonce;
-      // Re-load the user NOW and confirm they still own/administer the signed clinic —
-      // role or clinic membership may have changed between /start and callback.
-      const currentUser = await storage.getUser(req.session.userId);
-      if (
-        !currentUser?.clinicId ||
-        currentUser.clinicId !== parsed.clinicId ||
-        !["clinic_owner", "admin"].includes(currentUser.role || "")
-      ) {
-        return fail("not_authorized");
-      }
-      if (!q.code) return fail("no_code");
-      const redirectUri = buildOAuthRedirectUri(req, provider);
-      const tokens = await exchangeCode(provider, { code: String(q.code), redirectUri });
-      const identity = await fetchOAuthIdentity(provider, tokens.accessToken);
-      await storage.upsertMailboxConnection(parsed.clinicId, {
-        provider,
-        status: "connected",
-        connectedAddress: identity.address,
-        displayName: identity.displayName,
-        providerAccountId: identity.accountId,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken ?? null,
-        accessTokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
-        scope: tokens.scope ?? null,
-        // Clear any IMAP fields left from a previous provider.
-        imapHost: null, imapPort: null, smtpHost: null, smtpPort: null, username: null, password: null,
-        lastError: null,
-      });
-      await storage.resetMailboxSyncState(parsed.clinicId);
-      syncMailboxNow(parsed.clinicId).catch(err => console.error("[email] initial sync error:", err));
-      res.redirect(`/?email=connected`);
-    } catch (error: any) {
-      console.error("Email OAuth callback error:", error);
-      fail(error?.message || "connect_failed");
     }
   });
 
@@ -2223,6 +2105,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Email attachment download error:", error);
       res.status(500).json({ error: error?.message || "Failed to download attachment" });
+    }
+  });
+
+  // Save one email attachment into the linked patient's document file. Requires the
+  // thread to already be linked to a patient — we never guess which patient here.
+  app.post("/api/email/attachments/:id/save-to-patient", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const attId = parseInt(req.params.id);
+      if (isNaN(attId)) return res.status(400).json({ error: "Invalid attachment id" });
+
+      const att = await storage.getEmailAttachmentById(user.clinicId, attId);
+      if (!att) return res.status(404).json({ error: "Attachment not found" });
+      if (att.savedDocumentId) {
+        return res.status(409).json({ error: "This attachment has already been saved to the patient file.", documentId: att.savedDocumentId });
+      }
+      const message = await storage.getEmailMessageById(user.clinicId, att.messageId);
+      if (!message) return res.status(404).json({ error: "Message not found" });
+      const thread = await storage.getEmailThreadById(user.clinicId, message.threadId);
+      if (!thread) return res.status(404).json({ error: "Thread not found" });
+      if (!thread.patientId) {
+        return res.status(400).json({ error: "Link this conversation to a patient before saving attachments to their file." });
+      }
+
+      const provider = await resolveClinicMailProvider(user.clinicId);
+      if (!provider) return res.status(503).json({ error: "Mailbox is not connected." });
+      const bytes = await provider.getAttachmentBytes(message.graphId, att.graphAttachmentId);
+      if (!bytes) return res.status(404).json({ error: "Attachment unavailable" });
+
+      const safeExt = (bytes.name || "").includes(".") ? bytes.name.split(".").pop()!.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) : "";
+      const storedFilename = `email-att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${safeExt ? "." + safeExt : ""}`;
+      const uploadsDir = path.join(process.cwd(), "uploads");
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      const outPath = path.join(uploadsDir, storedFilename);
+      fs.writeFileSync(outPath, bytes.buffer);
+      saveFileToDB(storedFilename, outPath, bytes.contentType || "application/octet-stream", bytes.name || "attachment").catch(console.error);
+
+      const clinic = await storage.getClinic(user.clinicId).catch(() => null);
+      const documentDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: resolveClinicTimeZone(clinic),
+        year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date());
+
+      const document = await storage.createPatientDocument({
+        patientId: thread.patientId,
+        title: bytes.name || "Email attachment",
+        filename: storedFilename,
+        originalName: bytes.name || "attachment",
+        fileUrl: `/uploads/${storedFilename}`,
+        documentDate,
+      });
+
+      await storage.markEmailAttachmentSaved(user.clinicId, attId, document.id);
+      res.json({ success: true, documentId: document.id });
+    } catch (error: any) {
+      console.error("Save email attachment to patient error:", error);
+      res.status(500).json({ error: error?.message || "Failed to save attachment to patient file" });
     }
   });
 

@@ -480,6 +480,9 @@ export interface IStorage {
   upsertMailboxConnection(clinicId: number, data: Partial<InsertMailboxConnection>): Promise<MailboxConnection>;
   deleteMailboxConnection(clinicId: number): Promise<void>;
   listConnectedMailboxConnections(): Promise<MailboxConnection[]>;
+  // The workspace has at most one mailbox connection app-wide; this finds it
+  // regardless of which clinic owns it (used to refuse a second clinic claiming it).
+  getAnyMailboxConnection(): Promise<MailboxConnection | undefined>;
   getEmailMessageByGraphId(clinicId: number, graphId: string): Promise<EmailMessage | undefined>;
   upsertEmailThread(clinicId: number, conversationId: string, data: Partial<InsertEmailThread>): Promise<EmailThread>;
   getEmailThreadByConversation(clinicId: number, conversationId: string): Promise<EmailThread | undefined>;
@@ -495,6 +498,7 @@ export interface IStorage {
   upsertEmailAttachment(data: InsertEmailAttachment): Promise<EmailAttachment>;
   getEmailAttachmentsByMessage(clinicId: number, messageId: number): Promise<EmailAttachment[]>;
   getEmailAttachmentById(clinicId: number, attachmentId: number): Promise<EmailAttachment | undefined>;
+  markEmailAttachmentSaved(clinicId: number, attachmentId: number, documentId: number): Promise<EmailAttachment | undefined>;
   getEmailUnreadCount(clinicId: number): Promise<number>;
   getEmailThreadsByPatient(clinicId: number, patientId: number): Promise<EmailThread[]>;
   findPatientByEmail(clinicId: number, email: string): Promise<Patient | undefined>;
@@ -2525,6 +2529,11 @@ export class DatabaseStorage implements IStorage {
     return rows.map(decryptMailboxConnectionRow);
   }
 
+  async getAnyMailboxConnection(): Promise<MailboxConnection | undefined> {
+    const [row] = await db.select().from(mailboxConnections).limit(1);
+    return row ? decryptMailboxConnectionRow(row) : undefined;
+  }
+
   async getEmailMessageByGraphId(clinicId: number, graphId: string): Promise<EmailMessage | undefined> {
     const [row] = await db.select().from(emailMessages)
       .where(and(eq(emailMessages.clinicId, clinicId), eq(emailMessages.graphId, graphId)));
@@ -2695,6 +2704,14 @@ export class DatabaseStorage implements IStorage {
   async getEmailAttachmentById(clinicId: number, attachmentId: number): Promise<EmailAttachment | undefined> {
     const [row] = await db.select().from(emailAttachments)
       .where(and(eq(emailAttachments.clinicId, clinicId), eq(emailAttachments.id, attachmentId)));
+    return row ? { ...row, name: decEmailField(row.name) } : undefined;
+  }
+
+  async markEmailAttachmentSaved(clinicId: number, attachmentId: number, documentId: number): Promise<EmailAttachment | undefined> {
+    const [row] = await db.update(emailAttachments)
+      .set({ savedDocumentId: documentId })
+      .where(and(eq(emailAttachments.clinicId, clinicId), eq(emailAttachments.id, attachmentId)))
+      .returning();
     return row ? { ...row, name: decEmailField(row.name) } : undefined;
   }
 

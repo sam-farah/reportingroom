@@ -1,10 +1,12 @@
-// Microsoft 365 mailbox adapter (Microsoft Graph) implementing the provider-neutral
-// MailProvider contract, bound to ONE clinic's connection. The OAuth access token is
-// this clinic's own token (refreshed transparently via oauth.getValidOAuthAccessToken)
-// — NOT a shared connector token. Talks to Graph over plain fetch, no SDK.
+// Microsoft 365 mailbox adapter (Microsoft Graph) backed by Replit's managed Outlook
+// connector — ONE workspace-level mailbox, not a per-clinic OAuth grant. There are no
+// credentials stored in our own database for this provider: every call fetches a
+// fresh access token from the connector (never cached here — the connector handles
+// its own refresh/expiry). The mailbox is bound to a single clinic at the app layer
+// (see resolveClinicMailProvider in ./index.ts); this file only knows how to talk to
+// Graph, it has no concept of "which clinic".
 
 import type {
-  MailContext,
   MailProvider,
   NormalizedAttachmentBytes,
   NormalizedAttachmentMeta,
@@ -15,9 +17,9 @@ import type {
   ReplyInput,
   SendMessageInput,
 } from "./types";
-import { getValidOAuthAccessToken } from "./oauth";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
+const CONNECTOR_NAME = "outlook";
 
 const BACKFILL_TOP = 50;
 const SINCE_TOP = 50;
@@ -25,6 +27,47 @@ const SINCE_MAX_PAGES = 10;
 
 const MESSAGE_SELECT =
   "id,conversationId,subject,bodyPreview,from,toRecipients,ccRecipients,hasAttachments,isRead,sentDateTime,receivedDateTime";
+
+// Fetches a fresh access token from the Replit connector on every call. Never
+// cache this across requests — the connector's own token may be refreshed or
+// revoked between calls, and this is cheap (in-process HTTP to Replit's
+// connector proxy, not to Microsoft).
+async function getOutlookAccessToken(): Promise<string> {
+  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+  const xReplitToken = process.env.REPL_IDENTITY
+    ? "repl " + process.env.REPL_IDENTITY
+    : process.env.WEB_REPL_RENEWAL
+      ? "depl " + process.env.WEB_REPL_RENEWAL
+      : null;
+  if (!hostname || !xReplitToken) {
+    throw new Error("Outlook connector is not available in this environment.");
+  }
+  const res = await fetch(
+    `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=${CONNECTOR_NAME}`,
+    { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } },
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to reach Outlook connector (${res.status})`);
+  }
+  const data: any = await res.json().catch(() => null);
+  const item = data?.items?.[0];
+  const accessToken =
+    item?.settings?.access_token || item?.settings?.oauth?.credentials?.access_token;
+  if (!item || !accessToken) {
+    throw new Error("Outlook mailbox is not connected.");
+  }
+  return accessToken;
+}
+
+/** True when the connector currently has a valid, authorized Outlook connection. Never throws. */
+export async function isOutlookConnectorAuthorized(): Promise<boolean> {
+  try {
+    await getOutlookAccessToken();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function toRecipient(r: any): NormalizedRecipient | null {
   const address = r?.emailAddress?.address;
@@ -63,49 +106,47 @@ function normalizeMessage(raw: any, mailboxAddress: string | null): NormalizedMe
   };
 }
 
-export function createMicrosoftProvider(ctx: MailContext): MailProvider {
-  const mailboxAddress = ctx.connection.connectedAddress;
-
-  async function graphFetch(pathOrUrl: string, init?: RequestInit): Promise<any> {
-    const token = await getValidOAuthAccessToken(ctx);
-    const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${GRAPH}${pathOrUrl}`;
-    const res = await fetch(url, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        ...(init?.body ? { "Content-Type": "application/json" } : {}),
-        ...(init?.headers || {}),
-      },
-    });
-    if (!res.ok) {
-      let detail = "";
-      try {
-        const body: any = await res.json();
-        detail = body?.error?.message || JSON.stringify(body);
-      } catch {
-        detail = await res.text().catch(() => "");
-      }
-      throw new Error(`Graph ${init?.method || "GET"} ${res.status}: ${detail}`.slice(0, 500));
+async function graphFetch(pathOrUrl: string, init?: RequestInit): Promise<any> {
+  const token = await getOutlookAccessToken();
+  const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${GRAPH}${pathOrUrl}`;
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body: any = await res.json();
+      detail = body?.error?.message || JSON.stringify(body);
+    } catch {
+      detail = await res.text().catch(() => "");
     }
-    if (res.status === 204) return null;
-    return res.json();
+    throw new Error(`Graph ${init?.method || "GET"} ${res.status}: ${detail}`.slice(0, 500));
   }
+  if (res.status === 204) return null;
+  return res.json();
+}
 
+/**
+ * Build the mailbox provider. `cachedAddress` is the last-known mailbox address
+ * (from mailbox_connections.connectedAddress) used only for inbound/outbound
+ * direction detection and as a fast path for getConnectedAddress — never for auth.
+ */
+export function createOutlookProvider(cachedAddress: string | null): MailProvider {
   return {
-    name: "microsoft_oauth",
+    name: "outlook_connector",
 
     async isConfigured(): Promise<boolean> {
-      try {
-        await getValidOAuthAccessToken(ctx);
-        return true;
-      } catch {
-        return false;
-      }
+      return isOutlookConnectorAuthorized();
     },
 
     async getConnectedAddress(): Promise<string | null> {
-      if (mailboxAddress) return mailboxAddress;
+      if (cachedAddress) return cachedAddress;
       try {
         const me = await graphFetch("/me?$select=mail,userPrincipalName");
         return me?.mail || me?.userPrincipalName || null;
@@ -115,7 +156,7 @@ export function createMicrosoftProvider(ctx: MailContext): MailProvider {
     },
 
     async backfillPage({ cursor, windowStart }): Promise<NormalizedMessagePage> {
-      const mailbox = mailboxAddress || (await this.getConnectedAddress());
+      const mailbox = cachedAddress || (await this.getConnectedAddress());
       let url: string;
       if (cursor) {
         url = cursor;
@@ -131,7 +172,7 @@ export function createMicrosoftProvider(ctx: MailContext): MailProvider {
     },
 
     async fetchSince(since: Date): Promise<NormalizedMessage[]> {
-      const mailbox = mailboxAddress || (await this.getConnectedAddress());
+      const mailbox = cachedAddress || (await this.getConnectedAddress());
       const filter = encodeURIComponent(`receivedDateTime ge ${since.toISOString()}`);
       let url: string | null =
         `/me/messages?$select=${MESSAGE_SELECT}` +
@@ -185,7 +226,7 @@ export function createMicrosoftProvider(ctx: MailContext): MailProvider {
       if (typeof data?.contentBytes === "string") {
         return { name, contentType, buffer: Buffer.from(data.contentBytes, "base64") };
       }
-      const token = await getValidOAuthAccessToken(ctx).catch(() => null);
+      const token = await getOutlookAccessToken().catch(() => null);
       if (!token) return null;
       const res = await fetch(
         `${GRAPH}/me/messages/${encodeURIComponent(providerMessageId)}/attachments/${encodeURIComponent(attachmentId)}/$value`,

@@ -66,7 +66,9 @@ function formatBytes(n: number | null | undefined): string {
 }
 
 // One message in a thread — collapsible, fetches its full body + attachments on expand.
-function MessageCard({ message, defaultOpen }: { message: EmailMessage; defaultOpen: boolean }) {
+function MessageCard({ message, defaultOpen, canSaveToPatient }: { message: EmailMessage; defaultOpen: boolean; canSaveToPatient: boolean }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(defaultOpen);
   const outbound = message.direction === "outbound";
   const to = parseRecipients(message.toRecipients);
@@ -80,6 +82,16 @@ function MessageCard({ message, defaultOpen }: { message: EmailMessage; defaultO
   const { data: attachments = [] } = useQuery<EmailAttachment[]>({
     queryKey: ["/api/email/messages", message.id, "attachments"],
     enabled: open && message.hasAttachments,
+  });
+
+  const saveToPatientMutation = useMutation({
+    mutationFn: async (attachmentId: number) =>
+      (await apiRequest(`/api/email/attachments/${attachmentId}/save-to-patient`, "POST")).json(),
+    onSuccess: () => {
+      toast({ title: "Saved to patient file" });
+      queryClient.invalidateQueries({ queryKey: ["/api/email/messages", message.id, "attachments"] });
+    },
+    onError: (err: any) => toast({ title: "Couldn't save attachment", description: err?.message || "Please try again.", variant: "destructive" }),
   });
 
   return (
@@ -126,18 +138,41 @@ function MessageCard({ message, defaultOpen }: { message: EmailMessage; defaultO
           {attachments.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {attachments.map(a => (
-                <a
+                <div
                   key={a.id}
-                  href={`/api/email/attachments/${a.id}/download`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-100"
-                  data-testid={`attachment-${a.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 pl-2.5 pr-1.5 py-1.5 text-xs text-gray-700"
                 >
-                  <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="truncate max-w-[180px]">{a.name || "attachment"}</span>
-                  {a.size ? <span className="text-gray-400">{formatBytes(a.size)}</span> : null}
-                </a>
+                  <a
+                    href={`/api/email/attachments/${a.id}/download`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 hover:underline"
+                    data-testid={`attachment-${a.id}`}
+                  >
+                    <Paperclip className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="truncate max-w-[180px]">{a.name || "attachment"}</span>
+                    {a.size ? <span className="text-gray-400">{formatBytes(a.size)}</span> : null}
+                  </a>
+                  {canSaveToPatient && (
+                    a.savedDocumentId ? (
+                      <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-5 gap-1 text-green-700 border-green-200 bg-green-50">
+                        <CheckCircle2 className="w-3 h-3" />Saved
+                      </Badge>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-[10px] text-blue-600 hover:text-blue-700"
+                        onClick={() => saveToPatientMutation.mutate(a.id)}
+                        disabled={saveToPatientMutation.isPending}
+                        data-testid={`button-save-attachment-${a.id}`}
+                      >
+                        {saveToPatientMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save to patient file"}
+                      </Button>
+                    )
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -304,9 +339,8 @@ export default function Email() {
           <Mail className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <h3 className="text-lg font-semibold text-gray-900 mb-1">No mailbox connected yet</h3>
           <p className="text-sm text-gray-500 max-w-md mx-auto mb-4">
-            Connect your clinic's mailbox in <span className="font-medium">Admin → Clinic Settings → Email Inbox</span> to
-            read and reply to your whole mailbox here, and link conversations to patient files. You can use Microsoft 365,
-            Google, or any IMAP/SMTP provider.
+            Connect the practice's Microsoft 365 mailbox in <span className="font-medium">Admin → Clinic Settings → Email Inbox</span> to
+            read and reply to your whole mailbox here, and link conversations to patient files.
           </p>
           {status?.connectionError && (
             <div className="inline-flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 text-left">
@@ -449,7 +483,7 @@ export default function Email() {
                   <div className="text-center text-sm text-gray-400 py-10">No messages in this thread.</div>
                 ) : (
                   messages.map((m, i) => (
-                    <MessageCard key={m.id} message={m} defaultOpen={i === messages.length - 1} />
+                    <MessageCard key={m.id} message={m} defaultOpen={i === messages.length - 1} canSaveToPatient={!!selected.patientId} />
                   ))
                 )}
                 <div ref={threadEndRef} />

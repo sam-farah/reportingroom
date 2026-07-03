@@ -1,20 +1,14 @@
 ---
-name: Email inbox (per-clinic, multi-provider)
-description: Architectural constraints & invariants for the in-app two-way clinic email inbox
+name: Email inbox (single workspace mailbox via Replit Outlook connector)
+description: Architectural constraints & invariants for the in-app two-way email inbox
 ---
 
-- The mailbox connection is PER-CLINIC, not a single global mailbox. Each clinic self-configures its own connection (`mailbox_connections`, unique per clinicId) and picks ONE of three methods: Microsoft OAuth (our own Azure app), Google OAuth (our own Google app), or generic IMAP/SMTP. `mailbox_sync_state` holds sync cursors only — it is NOT the connection source of truth.
-  **Why:** the earlier design was a single deployment-wide Replit Outlook connector owned by one clinic; that does not work for a multi-tenant app where every clinic needs its own mailbox.
-  **How to apply:** resolve providers per clinic via `resolveClinicMailProvider(clinicId)` / `isEmailConfigured(clinicId)`; the scheduler iterates `listConnectedMailboxConnections()`. There is no global `mailProvider` singleton and no `connectMailboxAtomic`.
+- The mailbox is a SINGLE workspace-level connection (Replit's managed Outlook connector, Microsoft Graph), bound to exactly ONE clinic at the app layer — not per-clinic OAuth/IMAP. `mailbox_connections` still has a clinicId column but only one row is ever "connected" at a time; `getMailboxOwnerClinicId()` finds who owns it so a second clinic can't claim it.
+  **Why:** an earlier per-clinic multi-provider (Microsoft/Google OAuth + IMAP/SMTP) design was rejected in code review as unnecessary complexity for a workspace that only needs one shared mailbox; Replit's managed connector removes all custom OAuth/token-storage surface.
+  **How to apply:** resolve the provider via `resolveClinicMailProvider(clinicId)` — returns a provider only if that clinic currently owns the binding, else null. No credentials are stored in our DB; `server/mail/outlook.ts` fetches a fresh access token from the connector on every call (never cached).
 
-- Mailbox CONFIG routes (connect/imap, oauth start, oauth callback, disconnect) are owner/admin-only — guard with `["clinic_owner","admin"].includes(role)`, not just `isAuthenticated`. Read/sync routes (status, conversations, sync-now) are any authenticated clinic member.
-  **Why:** these routes change the clinic-wide mailbox; any staff member could otherwise hijack or disconnect it (broken access control).
-
-- OAuth state is HMAC-signed + expiring AND single-use: `/start` stores a nonce in `req.session.pendingOAuthNonce`, the callback must match it then `delete`s it. The callback also re-loads the user and re-verifies they still own/administer the signed `clinicId` (role/membership can change between start and callback). Signed state alone is not enough — it is replayable without the session nonce.
-
-- OAuth provider tokens (`refreshToken`/`accessToken`) and the IMAP/SMTP `password` are encrypted at rest in `upsertMailboxConnection` (same AES scheme as patient PII), decrypted only on read. Never log them.
-
-- IMAP/SMTP connect must run a save-time connection test (`testImapSmtpConnection`) before persisting, so a bad host/password fails fast instead of silently never syncing.
+- Mailbox CONFIG routes (`/api/email/connect`, `/disconnect`) are owner/admin-only — guard with `["clinic_owner","admin"].includes(role)`, not just `isAuthenticated`. Connect also refuses if another clinic already owns the binding or the connector itself isn't authorized yet. Read/sync routes (status, threads, sync-now) are any authenticated clinic member.
+  **Why:** these routes rebind a shared, workspace-wide resource; any staff member could otherwise hijack or disconnect it (broken access control).
 
 - Manual unlink of a thread from a patient must PERSIST `patientLinkSource="manual"` (not null). The sync auto-linker only links threads whose source `!== "manual"`; clearing it would let the next sync silently re-link.
   **Why:** staff intent to detach a conversation must survive future syncs.
@@ -23,4 +17,6 @@ description: Architectural constraints & invariants for the in-app two-way clini
 
 - Encryption: only subject/snippet/lastSnippet/bodyHtml (+ attachment name) are encrypted at rest; addresses/names are plaintext (same scheme as patient PII). Schema comments overstate which fields are encrypted — trust the storage layer, not the comments.
 
-- Provider-neutral by design (`server/mail/*`): keep Graph/Gmail/IMAP specifics inside each adapter so routes/storage stay provider-agnostic. `emailMessages.graphId` stores the provider's message id for ALL providers (not just Graph). Adding another provider = a new adapter + an oauth.ts config entry, no route/storage churn.
+- Saving an email attachment into a patient's document file requires the thread to already be linked to a patient (never guess/auto-link at save time) and is idempotent per attachment via `emailAttachments.savedDocumentId` — check it before re-fetching bytes from Graph, and set it via a dedicated storage method after `createPatientDocument` succeeds.
+
+- Provider adapter lives in `server/mail/outlook.ts` behind the `MailProvider` interface in `server/mail/types.ts`; routes/storage stay provider-agnostic (`emailMessages.graphId` naming is a holdover, not a hard Graph-only assumption). If another provider is ever added, it needs a new adapter, not route/storage churn — but as of this design there is intentionally only one mailbox for the whole workspace, not one per provider per clinic.

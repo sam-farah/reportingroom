@@ -1299,6 +1299,9 @@ export const emailAttachments = pgTable("email_attachments", {
   contentType: varchar("content_type", { length: 128 }),
   size: integer("size"),
   isInline: boolean("is_inline").notNull().default(false),
+  // Set once this attachment has been saved into a patient's document file, so the
+  // UI can show "Saved" instead of "Save to patient file" and avoid duplicate saves.
+  savedDocumentId: integer("saved_document_id").references(() => patientDocuments.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => ({
   uniqAttachment: unique("email_attachment_unique").on(t.messageId, t.graphAttachmentId),
@@ -1308,27 +1311,33 @@ export const insertEmailAttachmentSchema = createInsertSchema(emailAttachments).
 export type EmailAttachment = typeof emailAttachments.$inferSelect;
 export type InsertEmailAttachment = z.infer<typeof insertEmailAttachmentSchema>;
 
-// Per-clinic mailbox connection. Each clinic owns ONE connection and picks how it
-// connects: Microsoft 365 OAuth (our Azure app), Google OAuth (our Google app), or
-// generic IMAP/SMTP. This is the source of truth for "is this clinic connected and
-// how". All secrets (OAuth refresh/access tokens, IMAP/SMTP password) are AES-encrypted
-// at rest in the storage layer (same scheme as patient PII) and never logged. The
-// mailbox address/displayName are plaintext. Cursors/backfill state stay in
-// mailbox_sync_state (one row per clinic), keyed by the same clinicId.
+// Mailbox connection. The workspace has ONE mailbox — Microsoft 365 via the Replit
+// Outlook connector (managed OAuth, no per-clinic credentials to store) — bound to
+// exactly one clinic app-wide (enforced in application code, not a DB constraint).
+// This row is that binding + a plaintext cache of the connected address/displayName
+// for fast UI reads; the actual OAuth tokens live in the Replit connector, never here.
+// Cursors/backfill state stay in mailbox_sync_state, keyed by the bound clinicId.
+//
+// LEGACY: `refreshToken`/`accessToken`/`accessTokenExpiresAt`/`scope`/`providerAccountId`
+// and the `imap*`/`smtp*`/`username`/`password` columns are from a prior per-clinic
+// Microsoft/Google OAuth + IMAP/SMTP design (provider values `microsoft_oauth` |
+// `google_oauth` | `imap_smtp`). They're kept nullable for backward compatibility but
+// are never written to by current code — the only provider value written now is
+// `outlook_connector`.
 export const mailboxConnections = pgTable("mailbox_connections", {
   id: serial("id").primaryKey(),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id).unique(),
-  provider: varchar("provider", { length: 20 }).notNull(), // microsoft_oauth | google_oauth | imap_smtp
+  provider: varchar("provider", { length: 20 }).notNull(), // outlook_connector (current) — see LEGACY note above
   status: varchar("status", { length: 20 }).notNull().default("connected"), // connected | error
   connectedAddress: varchar("connected_address", { length: 320 }), // plaintext mailbox address
   displayName: varchar("display_name", { length: 255 }), // plaintext account display name
-  // OAuth (microsoft_oauth | google_oauth) — encrypted at rest
+  // LEGACY OAuth (microsoft_oauth | google_oauth) — encrypted at rest, unused by outlook_connector
   refreshToken: text("refresh_token"), // encrypted at rest
   accessToken: text("access_token"), // encrypted at rest, cached until accessTokenExpiresAt
   accessTokenExpiresAt: timestamp("access_token_expires_at"),
   scope: text("scope"),
   providerAccountId: varchar("provider_account_id", { length: 255 }),
-  // IMAP/SMTP (imap_smtp)
+  // LEGACY IMAP/SMTP (imap_smtp) — unused by outlook_connector
   imapHost: varchar("imap_host", { length: 255 }),
   imapPort: integer("imap_port"),
   imapSecure: boolean("imap_secure").notNull().default(true),

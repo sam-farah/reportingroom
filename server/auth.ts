@@ -69,7 +69,6 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     pending2fa?: { userId: string; at: number };
-    pendingOAuthNonce?: string;
   }
 }
 
