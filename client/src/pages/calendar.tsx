@@ -3662,11 +3662,41 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                       Assessment of Benefits
                     </div>
                     {latestAobForm.status === "signed" ? (
-                      <p className="text-sm text-emerald-700 flex items-center gap-1">
-                        <CheckCircle className="w-4 h-4" />
-                        Signed by {latestAobForm.signedByName || "patient"}
-                        {latestAobForm.signedAt && ` on ${format(new Date(latestAobForm.signedAt), "d MMM yyyy 'at' h:mm a")}`}
-                      </p>
+                      <>
+                        <p className="text-sm text-emerald-700 flex items-center gap-1">
+                          <CheckCircle className="w-4 h-4" />
+                          Signed by {latestAobForm.signedByName || "patient"}
+                          {latestAobForm.signedAt && ` on ${format(new Date(latestAobForm.signedAt), "d MMM yyyy 'at' h:mm a")}`}
+                        </p>
+                        <div className="flex gap-2">
+                          {(latestAobForm as any).documentUrl && (
+                            <a
+                              href={(latestAobForm as any).documentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1"
+                            >
+                              <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs">
+                                <FileText className="w-3.5 h-3.5" />
+                                Clinic copy
+                              </Button>
+                            </a>
+                          )}
+                          {(latestAobForm as any).patientDocumentUrl && (
+                            <a
+                              href={(latestAobForm as any).patientDocumentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1"
+                            >
+                              <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs">
+                                <FileText className="w-3.5 h-3.5" />
+                                Patient copy
+                              </Button>
+                            </a>
+                          )}
+                        </div>
+                      </>
                     ) : (
                       <>
                         <p className="text-xs text-gray-500">

@@ -371,7 +371,7 @@ export interface IStorage {
   getAssessmentOfBenefitForm(id: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormsByAppointmentId(appointmentId: number): Promise<AssessmentOfBenefitForm[]>;
-  signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string): Promise<AssessmentOfBenefitForm | undefined>;
+  signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined>;
   getPatientNotes(patientId: number): Promise<PatientNote[]>;
   createPatientNote(note: InsertPatientNote): Promise<PatientNote>;
 
@@ -418,6 +418,7 @@ export interface IStorage {
   // Scan request operations
   getScanRequests(clinicId: number): Promise<ScanRequest[]>;
   getScanRequest(id: number): Promise<ScanRequest | undefined>;
+  getScanRequestByAppointmentId(appointmentId: number): Promise<ScanRequest | undefined>;
   createScanRequest(request: InsertScanRequest): Promise<ScanRequest>;
   updateScanRequest(id: number, request: Partial<InsertScanRequest>): Promise<ScanRequest | undefined>;
   deleteScanRequest(id: number): Promise<void>;
@@ -1774,10 +1775,16 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(assessmentOfBenefitForms.createdAt));
   }
 
-  async signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string): Promise<AssessmentOfBenefitForm | undefined> {
+  async signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined> {
     const [row] = await db
       .update(assessmentOfBenefitForms)
-      .set({ status: "signed", signedAt: new Date(), signedByName, documentUrl })
+      .set({
+        status: "signed",
+        signedAt: new Date(),
+        signedByName,
+        documentUrl,
+        ...(patientDocumentUrl !== undefined ? { patientDocumentUrl } : {}),
+      })
       .where(eq(assessmentOfBenefitForms.id, id))
       .returning();
     return row;
@@ -2090,6 +2097,16 @@ export class DatabaseStorage implements IStorage {
   // Scan request operations
   async getScanRequests(clinicId: number): Promise<ScanRequest[]> {
     return db.select().from(scanRequests).where(eq(scanRequests.clinicId, clinicId)).orderBy(desc(scanRequests.createdAt));
+  }
+
+  async getScanRequestByAppointmentId(appointmentId: number): Promise<ScanRequest | undefined> {
+    const [request] = await db
+      .select()
+      .from(scanRequests)
+      .where(eq(scanRequests.scheduledAppointmentId, appointmentId))
+      .orderBy(desc(scanRequests.createdAt))
+      .limit(1);
+    return request;
   }
 
   async getScanRequest(id: number): Promise<ScanRequest | undefined> {

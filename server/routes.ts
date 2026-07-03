@@ -362,23 +362,28 @@ async function generateConsentDocument(opts: {
   return { fileUrl: `/uploads/${newFilename}`, filename: newFilename };
 }
 
-// Builds the signed Assessment of Benefit document (A4 JPEG) from a snapshotted
-// AoB form record. Layout/wording here is a first-pass placeholder — it will be
-// revised to match the clinic's actual Medicare form once supplied. The data
-// captured on the form record (patient/Medicare/referrer/provider/items) is
-// independent of this layout and won't need to change when the layout does.
+// Generates the two paper copies of the Medicare Assessment of Benefit
+// (Practitioner copy for the clinic's own file, Patient copy for the
+// patient to keep) matching the field groups and labels of the real
+// Medicare Bulk Bill Webclaim assessment form. This is not a pixel replica
+// of the government form — it's laid out in the app's own document style —
+// but it uses the same field labels/order and only the data the app
+// actually has on file. Fields the app doesn't track (equipment number,
+// SCP) are omitted; a few fields that are always true for this practice's
+// workflow (outpatient referral, post-assignment, patient as assignor) are
+// filled with a fixed value rather than left blank.
 async function generateAssessmentOfBenefitDocument(opts: {
   aobForm: any;
   clinic: any;
   signatureDataUrl: string;
-}): Promise<{ fileUrl: string; filename: string }> {
+}): Promise<{ fileUrl: string; filename: string; patientFileUrl: string; patientFilename: string }> {
   const { aobForm, clinic, signatureDataUrl } = opts;
 
   const DPI = 200;
   const A4_W = Math.round((210 / 25.4) * DPI);
   const A4_H = Math.round((297 / 25.4) * DPI);
-  const HEADER_H = Math.round(A4_H * 0.1);
-  const PAD = Math.round(A4_W * 0.04);
+  const HEADER_H = Math.round(A4_H * 0.075);
+  const PAD = Math.round(A4_W * 0.045);
   const PRIMARY = "#0066cc";
 
   let logoBuf: Buffer | null = null;
@@ -390,7 +395,7 @@ async function generateAssessmentOfBenefitDocument(opts: {
       const blob = await getFileFromDB(fname);
       if (blob) {
         const meta = await sharp(blob.data).metadata();
-        const maxH = HEADER_H - PAD;
+        const maxH = HEADER_H - Math.round(A4_W * 0.02);
         const maxW = Math.round(A4_W * 0.18);
         const scale = Math.min(maxW / (meta.width || 1), maxH / (meta.height || 1), 1);
         logoDims = { w: Math.round((meta.width || 0) * scale), h: Math.round((meta.height || 0) * scale) };
@@ -403,61 +408,20 @@ async function generateAssessmentOfBenefitDocument(opts: {
   const now = new Date();
   const todayStr = now.toLocaleDateString("en-AU", { timeZone: CLINIC_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
   const timeStr = now.toLocaleTimeString("en-AU", { timeZone: CLINIC_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const dateOfServiceStr = aobForm.confirmedAt
+    ? new Date(aobForm.confirmedAt).toLocaleDateString("en-AU", { timeZone: CLINIC_TZ, day: "2-digit", month: "2-digit", year: "numeric" })
+    : todayStr;
 
   const escape = (s: any) =>
     String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  const fontSize = Math.round(A4_W * 0.014);
-  const smallFont = Math.round(A4_W * 0.012);
-  const titleSize = Math.round(A4_W * 0.024);
-  const lineH = Math.round(fontSize * 1.6);
-
-  const infoLines = [
-    `Patient: ${escape(aobForm.patientName)}`,
-    aobForm.medicareNumber ? `Medicare No: ${escape(aobForm.medicareNumber)}${aobForm.medicareIrn ? " IRN " + escape(aobForm.medicareIrn) : ""}` : null,
-    aobForm.referringDoctorName ? `Referring Doctor: ${escape(aobForm.referringDoctorName)}${aobForm.referringDoctorProviderNumber ? " (Provider No: " + escape(aobForm.referringDoctorProviderNumber) + ")" : ""}` : null,
-    aobForm.physicianName ? `Reporting Physician: ${escape(aobForm.physicianName)}${aobForm.physicianProviderNumber ? " (Provider No: " + escape(aobForm.physicianProviderNumber) + ")" : ""}` : null,
-    `Date of Service: ${todayStr}`,
-  ].filter(Boolean) as string[];
-
-  const bodyTop = HEADER_H + Math.round(A4_W * 0.05);
-  let y = bodyTop + titleSize;
-  const titleSvg = `<text x="${PAD}" y="${y}" font-family="Arial, sans-serif" font-size="${titleSize}" font-weight="bold" fill="#111111">Assessment of Patient's Benefit</text>`;
-  y += Math.round(A4_W * 0.03);
-
-  const infoSvg = infoLines.map((l) => {
-    y += lineH;
-    return `<text x="${PAD}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#222222">${l}</text>`;
-  }).join("");
-
-  y += Math.round(A4_W * 0.025);
-  const tableTop = y;
-  const colItemX = PAD;
-  const colDescX = PAD + Math.round(A4_W * 0.1);
-  const colFeeX = A4_W - PAD - Math.round(A4_W * 0.12);
-  const headerRowSvg = `<text x="${colItemX}" y="${tableTop}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">Item</text>
-    <text x="${colDescX}" y="${tableTop}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">Description</text>
-    <text x="${colFeeX}" y="${tableTop}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">Fee</text>
-    <line x1="${PAD}" y1="${tableTop + Math.round(fontSize * 0.4)}" x2="${A4_W - PAD}" y2="${tableTop + Math.round(fontSize * 0.4)}" stroke="#333333" stroke-width="1.5"/>`;
-  y = tableTop + Math.round(lineH * 0.6);
-
+  const fontSize = Math.round(A4_W * 0.0135);
+  const smallFont = Math.round(A4_W * 0.0115);
+  const titleSize = Math.round(A4_W * 0.021);
+  const sectionSize = Math.round(A4_W * 0.0145);
+  const lineH = Math.round(fontSize * 1.55);
   const items: { item: string; description: string; feeCents: number }[] = Array.isArray(aobForm.items) ? aobForm.items : [];
-  const itemRowsSvg = items.map((it) => {
-    y += lineH;
-    return `<text x="${colItemX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#222222">${escape(it.item)}</text>
-      <text x="${colDescX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#222222">${escape(it.description)}</text>
-      <text x="${colFeeX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#222222">$${(it.feeCents / 100).toFixed(2)}</text>`;
-  }).join("");
 
-  y += Math.round(lineH * 0.4);
-  const totalLineY = y + Math.round(fontSize * 0.4);
-  const totalSvg = `<line x1="${colFeeX - Math.round(A4_W * 0.02)}" y1="${totalLineY}" x2="${A4_W - PAD}" y2="${totalLineY}" stroke="#333333" stroke-width="1"/>
-    <text x="${colDescX}" y="${totalLineY + lineH}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">Total</text>
-    <text x="${colFeeX}" y="${totalLineY + lineH}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold" fill="#111111">$${(aobForm.totalValueCents / 100).toFixed(2)}</text>`;
-  y = totalLineY + lineH;
-
-  const declTop = y + Math.round(A4_W * 0.05);
-  const declText = "I acknowledge that the Medicare benefit(s) assessed above relate to the service(s) provided to me on the date of service shown, and I consent to this assessment being recorded on my file.";
   const charPx = smallFont * 0.55;
   const maxCharsPerLine = Math.floor((A4_W - PAD * 2) / charPx);
   const wrapText = (text: string): string[] => {
@@ -476,46 +440,9 @@ async function generateAssessmentOfBenefitDocument(opts: {
     if (line) out.push(line);
     return out;
   };
-  const declLines = wrapText(declText);
-  const declLineH = Math.round(smallFont * 1.5);
-  const declSvg = declLines.map((l, i) =>
-    `<text x="${PAD}" y="${declTop + i * declLineH}" font-family="Arial, sans-serif" font-size="${smallFont}" fill="#444444">${escape(l)}</text>`,
-  ).join("");
-  const declEndY = declTop + declLines.length * declLineH;
 
-  const sigBoxY = Math.min(declEndY + Math.round(A4_W * 0.05), A4_H - Math.round(A4_W * 0.16));
-  const sigBoxH = Math.round(A4_W * 0.1);
-  const sigLabelY = sigBoxY - Math.round(A4_W * 0.012);
-
-  const lineThk = Math.max(2, Math.round(A4_W * 0.003));
-  const headerLines = [
-    clinic?.name ? `${clinic.name}` : null,
-    `Document: Assessment of Benefit`,
-    `Date: ${todayStr} ${timeStr}`,
-  ].filter(Boolean) as string[];
-  const textStartX = PAD + (logoBuf ? logoDims.w + Math.round(A4_W * 0.015) : 0);
-  const headerLineH = Math.round(A4_W * 0.016);
-  const headerFontSize = Math.round(A4_W * 0.0135);
-  const headerTextY = Math.round((HEADER_H - headerLines.length * headerLineH) / 2 + headerFontSize);
-  const headerLinesSvg = headerLines.map((l, i) =>
-    `<text x="${textStartX}" y="${headerTextY + i * headerLineH}" font-family="Arial, sans-serif" font-size="${headerFontSize}" fill="#333333">${escape(l)}</text>`,
-  ).join("");
-
-  const svg = `<svg width="${A4_W}" height="${A4_H}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="${A4_W}" height="${A4_H}" fill="#ffffff"/>
-    ${headerLinesSvg}
-    <line x1="0" y1="${HEADER_H - Math.floor(lineThk / 2)}" x2="${A4_W}" y2="${HEADER_H - Math.floor(lineThk / 2)}" stroke="${PRIMARY}" stroke-width="${lineThk}"/>
-    ${titleSvg}
-    ${infoSvg}
-    ${headerRowSvg}
-    ${itemRowsSvg}
-    ${totalSvg}
-    ${declSvg}
-    <text x="${PAD}" y="${sigLabelY}" font-family="Arial, sans-serif" font-size="${smallFont}" fill="#555555">Patient signature:</text>
-    <line x1="${PAD}" y1="${sigBoxY + sigBoxH}" x2="${PAD + Math.round(A4_W * 0.5)}" y2="${sigBoxY + sigBoxH}" stroke="#333333" stroke-width="2"/>
-    <text x="${PAD + Math.round(A4_W * 0.55)}" y="${sigBoxY + sigBoxH - 6}" font-family="Arial, sans-serif" font-size="${smallFont}" fill="#555555">Date: ${todayStr} ${timeStr}</text>
-  </svg>`;
-
+  // Signature is shared between both copies — decode/resize it once.
+  const sigBoxH = Math.round(A4_W * 0.08);
   const sigB64 = signatureDataUrl.split(",")[1];
   const sigBuffer = Buffer.from(sigB64, "base64");
   const sigMeta = await sharp(sigBuffer).metadata();
@@ -530,38 +457,169 @@ async function generateAssessmentOfBenefitDocument(opts: {
     .png()
     .toBuffer();
 
-  const composites: sharp.OverlayOptions[] = [];
-  if (logoBuf) {
-    composites.push({ input: logoBuf, left: PAD, top: Math.round((HEADER_H - logoDims.h) / 2) });
-  }
-  composites.push({ input: sigResized, left: PAD, top: sigBoxY + (sigBoxH - sigH) });
+  // Renders one copy (Practitioner or Patient) of the form. Both copies use
+  // identical field content and layout math — only the corner label and the
+  // patient-facing footer note differ — so the vertical positions line up
+  // the same way for the signature/logo composite in both renders.
+  const renderCopy = async (copyLabel: string, includeFooterNote: boolean): Promise<Buffer> => {
+    const parts: string[] = [];
+    let y = HEADER_H + titleSize + Math.round(A4_W * 0.02);
 
-  const finalImg = await sharp(Buffer.from(svg))
-    .composite(composites)
-    .jpeg({ quality: 92 })
-    .toBuffer();
+    const textEl = (x: number, text: string, opts: { bold?: boolean; size?: number; color?: string; anchor?: "start" | "end" } = {}) =>
+      `<text x="${x}" y="${y}" text-anchor="${opts.anchor ?? "start"}" font-family="Arial, sans-serif" font-size="${opts.size ?? fontSize}" ${opts.bold ? 'font-weight="bold"' : ""} fill="${opts.color ?? "#222222"}">${escape(text)}</text>`;
+    const line = (text: string, opts?: { bold?: boolean; size?: number; color?: string }) => {
+      parts.push(textEl(PAD, text, opts));
+      y += lineH;
+    };
+    const sectionHeader = (title: string) => {
+      y += Math.round(A4_W * 0.018);
+      parts.push(`<line x1="${PAD}" y1="${y - Math.round(fontSize * 0.9)}" x2="${A4_W - PAD}" y2="${y - Math.round(fontSize * 0.9)}" stroke="#dddddd" stroke-width="1"/>`);
+      line(title, { bold: true, size: sectionSize, color: PRIMARY });
+    };
 
-  const newFilename = crypto.randomBytes(16).toString("hex");
+    // Title row + copy label
+    parts.push(`<text x="${PAD}" y="${y}" font-family="Arial, sans-serif" font-size="${titleSize}" font-weight="bold" fill="#111111">Assessment of Benefit</text>`);
+    parts.push(textEl(A4_W - PAD, copyLabel.toUpperCase(), { bold: true, size: sectionSize, color: "#555555", anchor: "end" }));
+    y += Math.round(fontSize * 1.1);
+    line("For use with Medicare Bulk Bill Webclaim", { size: smallFont, color: "#666666" });
+
+    sectionHeader("Patient Details");
+    line(`Full name: ${aobForm.patientName || "—"}`);
+    line(`Date of birth: ${aobForm.patientDateOfBirth || "—"}`);
+    line(`Medicare card number: ${aobForm.medicareNumber || "—"}${aobForm.medicareIrn ? "   IRN: " + aobForm.medicareIrn : ""}`);
+
+    sectionHeader("Referral Details");
+    line(`Referring / requesting practitioner: ${aobForm.referringDoctorName || "—"}${aobForm.referringDoctorProviderNumber ? "  (Provider No: " + aobForm.referringDoctorProviderNumber + ")" : ""}`);
+    if (aobForm.referringDoctorAddress) line(`Address: ${aobForm.referringDoctorAddress}`);
+    line(`Referral or request date: ${aobForm.referralDate || "Not recorded"}`);
+    line(`In-hospital referral: No`);
+    if (clinic?.locationSpecificPracticeNumber) line(`Location Specific Practice Number: ${clinic.locationSpecificPracticeNumber}`);
+    line(`Number of patients attended: 1`);
+
+    sectionHeader("Practitioner Who Rendered the Service");
+    line(`${aobForm.referringDoctorName || "—"}${aobForm.referringDoctorProviderNumber ? "  (Provider No: " + aobForm.referringDoctorProviderNumber + ")" : ""}`);
+
+    sectionHeader("Services");
+    const colDateX = PAD;
+    const colDescX = PAD + Math.round(A4_W * 0.13);
+    const colItemX = A4_W - PAD - Math.round(A4_W * 0.27);
+    const colBenX = A4_W - PAD - Math.round(A4_W * 0.12);
+    parts.push(textEl(colDateX, "Date", { bold: true }));
+    parts.push(textEl(colDescX, "Description", { bold: true }));
+    parts.push(textEl(colItemX, "Item No.", { bold: true }));
+    parts.push(textEl(colBenX, "Benefit", { bold: true }));
+    y += Math.round(fontSize * 0.35);
+    parts.push(`<line x1="${PAD}" y1="${y}" x2="${A4_W - PAD}" y2="${y}" stroke="#333333" stroke-width="1.2"/>`);
+    y += Math.round(lineH * 0.75);
+    for (const it of items) {
+      parts.push(textEl(colDateX, dateOfServiceStr));
+      parts.push(textEl(colDescX, it.description));
+      parts.push(textEl(colItemX, it.item));
+      parts.push(textEl(colBenX, "Assigned"));
+      y += lineH;
+    }
+    parts.push(`<line x1="${colItemX - Math.round(A4_W * 0.01)}" y1="${y - Math.round(fontSize * 0.35)}" x2="${A4_W - PAD}" y2="${y - Math.round(fontSize * 0.35)}" stroke="#333333" stroke-width="1"/>`);
+    parts.push(textEl(colItemX, "Total", { bold: true }));
+    parts.push(textEl(colBenX, `$${(aobForm.totalValueCents / 100).toFixed(2)}`, { bold: true }));
+    y += lineH;
+
+    sectionHeader("Assignment of Benefit");
+    line("Is the assignor the patient?  Yes          Agreement Type: Post-assignment");
+    y += Math.round(A4_W * 0.008);
+    const declText = "I assign my right to benefits to the practitioner who has rendered the service(s), or in the case of requested pathology, the approved pathology practitioner who will render the requested pathology service(s).";
+    const declLineH = Math.round(smallFont * 1.5);
+    for (const l of wrapText(declText)) {
+      parts.push(textEl(PAD, l, { size: smallFont, color: "#444444" }));
+      y += declLineH;
+    }
+
+    y += Math.round(A4_W * 0.04);
+    const sigBoxY = y;
+    parts.push(textEl(PAD, "Assignor's signature:", { size: smallFont, color: "#555555" }));
+    parts.push(`<line x1="${PAD}" y1="${sigBoxY + sigBoxH}" x2="${PAD + Math.round(A4_W * 0.5)}" y2="${sigBoxY + sigBoxH}" stroke="#333333" stroke-width="2"/>`);
+    y = sigBoxY + sigBoxH;
+    parts.push(textEl(PAD + Math.round(A4_W * 0.55), "Date (DD MM YYYY):", { size: smallFont, color: "#555555" }));
+    parts.push(textEl(PAD + Math.round(A4_W * 0.78), `${todayStr}`, { size: smallFont, color: "#555555" }));
+
+    let footerSvg = "";
+    if (includeFooterNote) {
+      const footerY = A4_H - Math.round(A4_W * 0.05);
+      footerSvg = `<text x="${PAD}" y="${footerY}" font-family="Arial, sans-serif" font-size="${smallFont}" fill="#777777">This is your copy of the Assessment of Benefit — please keep it for your records.</text>`;
+    }
+
+    const lineThk = Math.max(2, Math.round(A4_W * 0.003));
+    const headerLines = [
+      clinic?.name ? `${clinic.name}` : null,
+      `Date generated: ${todayStr} ${timeStr}`,
+    ].filter(Boolean) as string[];
+    const textStartX = PAD + (logoBuf ? logoDims.w + Math.round(A4_W * 0.015) : 0);
+    const headerLineH = Math.round(A4_W * 0.016);
+    const headerFontSize = Math.round(A4_W * 0.0125);
+    const headerTextY = Math.round((HEADER_H - headerLines.length * headerLineH) / 2 + headerFontSize);
+    const headerLinesSvg = headerLines.map((l, i) =>
+      `<text x="${textStartX}" y="${headerTextY + i * headerLineH}" font-family="Arial, sans-serif" font-size="${headerFontSize}" fill="#333333">${escape(l)}</text>`,
+    ).join("");
+
+    const svg = `<svg width="${A4_W}" height="${A4_H}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${A4_W}" height="${A4_H}" fill="#ffffff"/>
+      ${headerLinesSvg}
+      <line x1="0" y1="${HEADER_H - Math.floor(lineThk / 2)}" x2="${A4_W}" y2="${HEADER_H - Math.floor(lineThk / 2)}" stroke="${PRIMARY}" stroke-width="${lineThk}"/>
+      ${parts.join("\n")}
+      ${footerSvg}
+    </svg>`;
+
+    const composites: sharp.OverlayOptions[] = [];
+    if (logoBuf) {
+      composites.push({ input: logoBuf, left: PAD, top: Math.round((HEADER_H - logoDims.h) / 2) });
+    }
+    composites.push({ input: sigResized, left: PAD, top: sigBoxY + (sigBoxH - sigH) });
+
+    return sharp(Buffer.from(svg)).composite(composites).jpeg({ quality: 92 }).toBuffer();
+  };
+
+  const practitionerImg = await renderCopy("Practitioner copy", false);
+  const patientImg = await renderCopy("Patient copy", true);
+
   const uploadsDir = path.join(process.cwd(), "uploads");
   fs.mkdirSync(uploadsDir, { recursive: true });
-  const outPath = path.join(uploadsDir, newFilename);
-  fs.writeFileSync(outPath, finalImg);
-  saveFileToDB(newFilename, outPath, "image/jpeg", `assessment-of-benefit-${aobForm.id}.jpg`).catch(console.error);
+
+  const practitionerFilename = crypto.randomBytes(16).toString("hex");
+  fs.writeFileSync(path.join(uploadsDir, practitionerFilename), practitionerImg);
+  saveFileToDB(practitionerFilename, path.join(uploadsDir, practitionerFilename), "image/jpeg", `assessment-of-benefit-practitioner-${aobForm.id}.jpg`).catch(console.error);
+
+  const patientFilename = crypto.randomBytes(16).toString("hex");
+  fs.writeFileSync(path.join(uploadsDir, patientFilename), patientImg);
+  saveFileToDB(patientFilename, path.join(uploadsDir, patientFilename), "image/jpeg", `assessment-of-benefit-patient-${aobForm.id}.jpg`).catch(console.error);
 
   if (aobForm.patientId) {
     const isoDate = now.toLocaleDateString("en-CA", { timeZone: CLINIC_TZ });
+    const namePart = String(aobForm.patientName || "patient").replace(/\s+/g, "-");
     await storage.createPatientDocument({
       patientId: aobForm.patientId,
-      title: "Assessment of Benefit",
+      title: "Assessment of Benefit (Clinic Copy)",
       documentDate: isoDate,
-      fileUrl: `/uploads/${newFilename}`,
-      filename: newFilename,
-      originalName: `assessment-of-benefit-${String(aobForm.patientName || "patient").replace(/\s+/g, "-")}-${isoDate}.jpg`,
+      fileUrl: `/uploads/${practitionerFilename}`,
+      filename: practitionerFilename,
+      originalName: `assessment-of-benefit-clinic-${namePart}-${isoDate}.jpg`,
+      notes: null,
+    } as any);
+    await storage.createPatientDocument({
+      patientId: aobForm.patientId,
+      title: "Assessment of Benefit (Patient Copy)",
+      documentDate: isoDate,
+      fileUrl: `/uploads/${patientFilename}`,
+      filename: patientFilename,
+      originalName: `assessment-of-benefit-patient-${namePart}-${isoDate}.jpg`,
       notes: null,
     } as any);
   }
 
-  return { fileUrl: `/uploads/${newFilename}`, filename: newFilename };
+  return {
+    fileUrl: `/uploads/${practitionerFilename}`,
+    filename: practitionerFilename,
+    patientFileUrl: `/uploads/${patientFilename}`,
+    patientFilename,
+  };
 }
 
 // Once-per-day consent rule: a patient should only be asked/recorded for consent
@@ -4661,6 +4719,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const patient = report.patientId ? await storage.getPatient(report.patientId) : undefined;
         const physician = report.physicianId ? await storage.getPhysician(report.physicianId) : undefined;
         const clinicId = user?.clinicId ?? report.clinicId ?? null;
+
+        // The referring doctor's details for the Assessment of Benefit form are
+        // sourced from the originating scan request (if this appointment came
+        // from one) rather than the appointment's own referring-doctor fields,
+        // since the request carries the authoritative referral record — and, if
+        // it's linked to a saved Referring Doctor, their practice address too.
+        let referringDoctorName: string | undefined = matchedAppointment?.referringDoctorName ?? undefined;
+        let referringDoctorProviderNumber: string | undefined = matchedAppointment?.referringDoctorProviderNumber ?? undefined;
+        let referringDoctorAddress: string | undefined;
+        let referralDate: string | undefined;
+        try {
+          const scanRequest = matchedAppointment ? await storage.getScanRequestByAppointmentId(matchedAppointment.id) : undefined;
+          if (scanRequest) {
+            referringDoctorName = scanRequest.referringDoctorName ?? referringDoctorName;
+            referringDoctorProviderNumber = scanRequest.referringDoctorProviderNumber ?? referringDoctorProviderNumber;
+            referralDate = scanRequest.requestDate ?? undefined;
+            if (scanRequest.referringDoctorId) {
+              const savedDoctor = await storage.getReferringDoctor(scanRequest.referringDoctorId);
+              if (savedDoctor) {
+                referringDoctorAddress = savedDoctor.address ?? undefined;
+                referringDoctorProviderNumber = savedDoctor.providerNumber ?? referringDoctorProviderNumber;
+              }
+            }
+          }
+        } catch (scanReqErr) {
+          console.warn("Sono-complete: failed to look up scan request for referring doctor details", scanReqErr);
+        }
+
         aobForm = await storage.createAssessmentOfBenefitForm({
           clinicId: clinicId ?? undefined,
           appointmentId: matchedAppointment?.id,
@@ -4674,10 +4760,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })),
           totalValueCents,
           patientName: patient ? `${patient.firstName} ${patient.lastName}`.trim() : report.patientName,
+          patientDateOfBirth: patient?.dateOfBirth ?? undefined,
           medicareNumber: patient?.medicareNumber ?? undefined,
           medicareIrn: patient?.medicareIrn ?? undefined,
-          referringDoctorName: matchedAppointment?.referringDoctorName ?? undefined,
-          referringDoctorProviderNumber: matchedAppointment?.referringDoctorProviderNumber ?? undefined,
+          referringDoctorName,
+          referringDoctorProviderNumber,
+          referringDoctorAddress,
+          referralDate,
           physicianName: physician?.name,
           physicianProviderNumber: (physician as any)?.providerNumber ?? undefined,
           confirmedByName: completedBy,
@@ -4741,8 +4830,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? ([user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || String(req.session.userId!))
         : String(req.session.userId!);
 
-      const { fileUrl } = await generateAssessmentOfBenefitDocument({ aobForm, clinic, signatureDataUrl });
-      const updated = await storage.signAssessmentOfBenefitForm(id, signedByName, fileUrl);
+      const { fileUrl, patientFileUrl } = await generateAssessmentOfBenefitDocument({ aobForm, clinic, signatureDataUrl });
+      const updated = await storage.signAssessmentOfBenefitForm(id, signedByName, fileUrl, patientFileUrl);
       res.json(updated);
     } catch (error) {
       console.error("Error signing Assessment of Benefit form:", error);
@@ -7066,7 +7155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Unauthorized to update this clinic" });
       }
 
-      const { name, address, phone, fax, email, publicHolidayRegion, timezone, patientPortalUrl } = req.body;
+      const { name, address, phone, fax, email, publicHolidayRegion, timezone, patientPortalUrl, locationSpecificPracticeNumber } = req.body;
       
       if (!name || !email) {
         return res.status(400).json({ error: "Clinic name and email are required" });
@@ -7093,6 +7182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email,
         ...(publicHolidayRegion !== undefined ? { publicHolidayRegion: publicHolidayRegion || null } : {}),
         ...(timezone !== undefined ? { timezone } : {}),
+        ...(locationSpecificPracticeNumber !== undefined ? { locationSpecificPracticeNumber: locationSpecificPracticeNumber || null } : {}),
         ...portalUrlPatch,
       } as any);
 

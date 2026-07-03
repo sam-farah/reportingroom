@@ -25,3 +25,4 @@
 - [Appointment clinic scoping & kiosk registered-state](appointment-clinic-scoping.md) — set appointment clinicId from session (never client); null clinic_id breaks kiosk consent/registration; "registered" = ANY completed token, not just latest.
 - [User field encryption](user-field-encryption.md) — users table isn't auto-encrypted like reports; to encrypt a user column you must hand-encrypt every write + add decryptFields to getUser/getUserByEmail; never feed encryptFields output to Drizzle.
 - [Capacitor iPad shell & CORS](capacitor-ipad-cors.md) — CORS allowlist must include localhost + *.replit.dev patterns or Replit's own dev origin gets blocked; resolveUrl() in api.ts is the single URL-resolution hook.
+- [Assessment of Benefit (AoB) document](assessment-of-benefit-form.md) — referring-doctor data comes from the scan request not the appointment; "rendering practitioner" intentionally reuses the referrer; two copies generated per signature.

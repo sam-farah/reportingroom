@@ -64,6 +64,7 @@ export const clinics = pgTable("clinics", {
   dicomApiKey: varchar("dicom_api_key", { length: 100 }), // API key for DICOM Modality Worklist bridge
   publicHolidayRegion: varchar("public_holiday_region", { length: 20 }), // e.g. "AU-VIC", "AU-NSW", "AU", "NZ", "US", "GB", "CA" — used to fetch & display public holidays on the calendar
   timezone: varchar("timezone", { length: 64 }).notNull().default('Australia/Sydney'), // IANA timezone for rendering all patient-facing dates/times (appointments, reminders, consent, certificates)
+  locationSpecificPracticeNumber: varchar("location_specific_practice_number", { length: 50 }), // Medicare Location Specific Practice Number (LSPN) for this clinic site, shown on the Assessment of Benefit form
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -622,10 +623,13 @@ export const assessmentOfBenefitForms = pgTable("assessment_of_benefit_forms", {
   items: jsonb("items").$type<{ item: string; description: string; feeCents: number }[]>().notNull().default([]),
   totalValueCents: integer("total_value_cents").notNull().default(0),
   patientName: varchar("patient_name", { length: 255 }),
+  patientDateOfBirth: varchar("patient_date_of_birth", { length: 20 }),
   medicareNumber: varchar("medicare_number", { length: 15 }),
   medicareIrn: varchar("medicare_irn", { length: 2 }),
   referringDoctorName: varchar("referring_doctor_name", { length: 255 }),
   referringDoctorProviderNumber: varchar("referring_doctor_provider_number", { length: 50 }),
+  referringDoctorAddress: text("referring_doctor_address"),
+  referralDate: varchar("referral_date", { length: 20 }),
   physicianName: varchar("physician_name", { length: 255 }),
   physicianProviderNumber: varchar("physician_provider_number", { length: 50 }),
   confirmedByName: varchar("confirmed_by_name", { length: 255 }),
@@ -633,6 +637,7 @@ export const assessmentOfBenefitForms = pgTable("assessment_of_benefit_forms", {
   signedAt: timestamp("signed_at"),
   signedByName: varchar("signed_by_name", { length: 255 }),
   documentUrl: text("document_url"),
+  patientDocumentUrl: text("patient_document_url"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

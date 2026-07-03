@@ -97,6 +97,7 @@ export default function Clinic() {
     publicHolidayRegion: "",
     timezone: "Australia/Sydney",
     patientPortalUrl: "",
+    locationSpecificPracticeNumber: "",
   });
   const [portalSnippetCopied, setPortalSnippetCopied] = useState(false);
 
@@ -112,6 +113,7 @@ export default function Clinic() {
         publicHolidayRegion: (clinic as any).publicHolidayRegion || "",
         timezone: (clinic as any).timezone || "Australia/Sydney",
         patientPortalUrl: (clinic as any).patientPortalUrl || "",
+        locationSpecificPracticeNumber: (clinic as any).locationSpecificPracticeNumber || "",
       });
     }
   }, [clinic]);
@@ -1649,6 +1651,19 @@ export default function Clinic() {
                       value={clinicForm.email}
                       onChange={(e) => setClinicForm(prev => ({ ...prev, email: e.target.value }))}
                     />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="clinic-lspn">Location Specific Practice Number (LSPN)</Label>
+                    <Input
+                      id="clinic-lspn"
+                      placeholder="e.g. 123456AB"
+                      value={(clinicForm as any).locationSpecificPracticeNumber || ""}
+                      onChange={(e) => setClinicForm(prev => ({ ...prev, locationSpecificPracticeNumber: e.target.value } as any))}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Shown on Assessment of Benefit forms if your practice has one. Leave blank if not applicable.
+                    </p>
                   </div>
 
                   <div className="md:col-span-2">
