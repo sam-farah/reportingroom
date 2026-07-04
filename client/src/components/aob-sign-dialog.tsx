@@ -76,16 +76,16 @@ export function AobSignDialog({ form, onOpenChange, onSigned }: AobSignDialogPro
 
   return (
     <Dialog open={!!form} onOpenChange={(open) => { if (!open) { onOpenChange(false); setSignatureEmpty(true); } }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-teal-600" />
+      <DialogContent className="max-w-none w-screen h-dvh rounded-none sm:rounded-none p-0 gap-0 flex flex-col">
+        <DialogHeader className="px-6 py-4 border-b shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <ShieldCheck className="w-6 h-6 text-teal-600" />
             Assessment of Benefits — Patient Signature
           </DialogTitle>
         </DialogHeader>
         {form && (
-          <div className="space-y-4">
-            <div className="border rounded-md p-3 text-sm space-y-1 bg-gray-50">
+          <div className="flex-1 min-h-0 flex flex-col gap-4 px-6 py-4">
+            <div className="border rounded-md p-3 text-sm space-y-1 bg-gray-50 shrink-0">
               {form.patientName && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">Patient</span>
@@ -105,40 +105,39 @@ export function AobSignDialog({ form, onOpenChange, onSigned }: AobSignDialogPro
                 <span>{formatCents(form.totalValueCents)}</span>
               </div>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-sm text-gray-500 shrink-0">
               By signing below, the patient confirms and assigns the Medicare benefit for the items listed above. This is not a submitted Medicare claim.
             </p>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Patient signature</Label>
-                <Button variant="outline" size="sm" onClick={clear} data-testid="button-clear-aob-signature">
-                  Clear
-                </Button>
-              </div>
-              <canvas
-                ref={(el) => {
-                  canvasRef.current = el;
-                  if (el && !el.dataset.init) {
-                    el.width = 900;
-                    el.height = 220;
-                    const ctx = el.getContext("2d");
-                    if (ctx) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, el.width, el.height); }
-                    el.dataset.init = "1";
-                  }
-                }}
-                onPointerDown={start}
-                onPointerMove={move}
-                onPointerUp={end}
-                onPointerLeave={end}
-                className="w-full h-40 border-2 border-dashed border-gray-300 rounded-lg bg-white touch-none cursor-crosshair"
-                data-testid="canvas-aob-signature"
-              />
+            <div className="flex items-center justify-between shrink-0">
+              <Label className="text-base">Patient signature</Label>
+              <Button variant="outline" size="sm" onClick={clear} data-testid="button-clear-aob-signature">
+                Clear
+              </Button>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { onOpenChange(false); setSignatureEmpty(true); }}>
+            <canvas
+              ref={(el) => {
+                canvasRef.current = el;
+                if (el && !el.dataset.init) {
+                  el.width = 1400;
+                  el.height = 600;
+                  const ctx = el.getContext("2d");
+                  if (ctx) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, el.width, el.height); }
+                  el.dataset.init = "1";
+                }
+              }}
+              onPointerDown={start}
+              onPointerMove={move}
+              onPointerUp={end}
+              onPointerLeave={end}
+              className="flex-1 min-h-0 w-full border-2 border-dashed border-gray-300 rounded-lg bg-white touch-none cursor-crosshair"
+              data-testid="canvas-aob-signature"
+            />
+            <div className="flex justify-end gap-2 shrink-0">
+              <Button variant="outline" size="lg" onClick={() => { onOpenChange(false); setSignatureEmpty(true); }}>
                 Cancel
               </Button>
               <Button
+                size="lg"
                 className="bg-teal-600 hover:bg-teal-700 text-white"
                 disabled={signatureEmpty || signMutation.isPending}
                 onClick={() => {

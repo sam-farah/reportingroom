@@ -3628,9 +3628,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   />
                 )}
 
-                {/* Assessment of Benefits — patient signature, decoupled from
-                    sonographer completion. Always available so staff can generate
-                    (or regenerate, to fix a mistake) a form on demand from here. */}
+                {/* Assessment of Benefits — patient signature captured here, on the
+                    calendar. Item numbers come from the sonographer's workflow but can
+                    be edited here if required; the signature is captured full-screen
+                    (hiding the calendar) so patients can sign on the iPad. */}
                 {viewingAppointment.status !== "cancelled" && (
                   <div className="border rounded-md p-3 space-y-2">
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
@@ -3707,7 +3708,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                       data-testid="button-generate-aob"
                     >
                       <FilePlus className="w-4 h-4" />
-                      {latestAobForm ? "Generate a new form" : "Generate Assessment of Benefits form"}
+                      {!latestAobForm
+                        ? "Generate Assessment of Benefits form"
+                        : latestAobForm.status === "pending_signature"
+                          ? "Edit item numbers"
+                          : "Generate a new form"}
                     </Button>
                   </div>
                 )}
@@ -3760,10 +3765,17 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
           open={aobCreateOpen}
           onOpenChange={setAobCreateOpen}
           scanTypes={viewingAppointment?.scanType ? viewingAppointment.scanType.split(", ") : []}
-          title="Generate Assessment of Benefits"
-          description="Confirm the Medicare items for this visit, then capture the patient's signature. Suggested items only — check they are clinically correct. This is not a submitted claim."
-          submitLabel="Create & sign"
-          submittingLabel="Creating…"
+          initialItems={latestAobForm ? latestAobForm.items : undefined}
+          title={latestAobForm?.status === "pending_signature" ? "Edit item numbers" : "Generate Assessment of Benefits"}
+          description={
+            latestAobForm?.status === "pending_signature"
+              ? "These item numbers came from the sonographer's workflow. Edit them here if required, then capture the patient's signature. This is not a submitted claim."
+              : latestAobForm
+                ? "Start a new Assessment of Benefits form. The previous form's item numbers are carried over — edit them if required, then capture the patient's signature. This is not a submitted claim."
+                : "Confirm the Medicare items for this visit, then capture the patient's signature. Suggested items only — check they are clinically correct. This is not a submitted claim."
+          }
+          submitLabel={latestAobForm?.status === "pending_signature" ? "Save & sign" : "Create & sign"}
+          submittingLabel={latestAobForm?.status === "pending_signature" ? "Saving…" : "Creating…"}
           isPending={createAobMutation.isPending}
           onSubmit={(items) => viewingAppointment && createAobMutation.mutate({ appointmentId: viewingAppointment.id, items })}
         />

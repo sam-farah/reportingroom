@@ -37,6 +37,11 @@ interface AobItemsDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Scan type strings used to prefill the suggested items when the dialog opens. */
   scanTypes: string[];
+  /**
+   * When provided, prefill from these existing items (e.g. the sonographer's
+   * already-confirmed items) instead of recalculating from scanTypes.
+   */
+  initialItems?: AobLineItem[];
   title?: string;
   description?: string;
   submitLabel?: string;
@@ -56,6 +61,7 @@ export function AobItemsDialog({
   open,
   onOpenChange,
   scanTypes,
+  initialItems,
   title = "Confirm Assessment of Benefits",
   description = "Confirm the Medicare items billed for this visit. Suggested items only — check they are clinically correct before continuing. This is not a submitted claim.",
   submitLabel = "Confirm",
@@ -76,19 +82,30 @@ export function AobItemsDialog({
     [],
   );
 
-  // Prefill from the scan type(s) each time the dialog opens.
+  // Prefill each time the dialog opens: prefer explicit initial items (e.g. the
+  // sonographer's already-confirmed items) and otherwise fall back to the
+  // suggested items calculated from the scan type(s).
   useEffect(() => {
     if (!open) return;
-    const clean = scanTypes.map((s) => s.trim()).filter(Boolean);
-    const result = calculateVisitBilling(clean);
-    const lines = result.lines.map((l) => ({
-      item: l.item,
-      description: l.description,
-      feeCents: l.allocatedFeeCents,
-    }));
+    let lines: AobLineItem[];
+    if (initialItems && initialItems.length > 0) {
+      lines = initialItems.map((l) => ({
+        item: l.item,
+        description: l.description,
+        feeCents: l.feeCents,
+      }));
+    } else {
+      const clean = scanTypes.map((s) => s.trim()).filter(Boolean);
+      const result = calculateVisitBilling(clean);
+      lines = result.lines.map((l) => ({
+        item: l.item,
+        description: l.description,
+        feeCents: l.allocatedFeeCents,
+      }));
+    }
     setItems(lines);
-    // Suggested items always come from the same MBS reference data, but fall
-    // back to manual-entry mode defensively if one somehow isn't in the list.
+    // Items normally come from the same MBS reference data, but fall back to
+    // manual-entry mode defensively if one somehow isn't in the list.
     setManualEntry(lines.map((l) => !MBS_ITEMS[l.item]));
     setPickerIndex(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

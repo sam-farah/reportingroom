@@ -18,11 +18,9 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
-import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage, AssessmentOfBenefitForm } from "@shared/schema";
+import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage } from "@shared/schema";
 import { MbsItemBadges } from "@/components/mbs-billing-summary";
-import { AobSignDialog } from "@/components/aob-sign-dialog";
 import { AobItemsDialog } from "@/components/aob-items-dialog";
-import { formatCents } from "@shared/mbs";
 import { resolveClinicTimeZone } from "@shared/timezones";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -205,7 +203,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [isAmendDialogOpen, setIsAmendDialogOpen] = useState(false);
   const [amendingReport, setAmendingReport] = useState<EditableReport | null>(null);
   const [aobConfirmReport, setAobConfirmReport] = useState<Report | null>(null);
-  const [aobSignForm, setAobSignForm] = useState<AssessmentOfBenefitForm | null>(null);
   const [amendmentReason, setAmendmentReason] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
@@ -514,13 +511,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     },
     onSuccess: (updated: Report & { appointmentCompleted?: { id: number } | null }) => {
       const appointmentMessage = updated.appointmentCompleted
-        ? "Report marked complete and the matching appointment was set to Completed. The patient's Assessment of Benefits form is ready to be signed from the appointment screen."
-        : "Report marked as complete by sonographer. The patient's Assessment of Benefits form is ready to be signed.";
+        ? "Report marked complete and the matching appointment was set to Completed. The patient's Assessment of Benefits form can be signed from the appointment screen."
+        : "Report marked as complete by sonographer. The patient's Assessment of Benefits form can be signed from the appointment screen.";
       toast({ title: "Sonographer Complete", description: appointmentMessage });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
-      // Surface the "Complete Assessment of Benefits form" button on the card.
-      queryClient.invalidateQueries({ queryKey: ["/api/assessment-of-benefit/pending"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/reports", updated.id, "assessment-of-benefit"] });
       // Refresh calendar/home so the appointment status reflects immediately.
       if (updated.appointmentCompleted) {
         queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
@@ -532,32 +526,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       toast({ title: "Error", description: error.message || "Could not mark as complete.", variant: "destructive" });
     },
   });
-
-  // Fallback lookup for the patient-signature step. The primary surface is the
-  // Calendar (matched via same-day appointment), but that match can fail
-  // (report has no linked patient, or no same-day appointment existed yet at
-  // sono-complete time) which would otherwise leave the form permanently
-  // unreachable. Every AoB form always has a reportId, so this is a safe
-  // fallback shown directly on the report itself.
-  const { data: reportAobForm } = useQuery<AssessmentOfBenefitForm | null>({
-    queryKey: ["/api/reports", editingReport?.id, "assessment-of-benefit"],
-    enabled: !!editingReport?.id && (editingReport as any)?.isSonographerComplete,
-  });
-
-  // All AoB forms still awaiting a patient signature for this clinic, so the
-  // "Complete Assessment of Benefits form" button can appear directly on the
-  // report cards in the list (studies are often marked complete from the card,
-  // never opening the editor where the other sign button lives).
-  const { data: pendingAobForms } = useQuery<AssessmentOfBenefitForm[]>({
-    queryKey: ["/api/assessment-of-benefit/pending"],
-  });
-  const pendingAobByReportId = useMemo(() => {
-    const map = new Map<number, AssessmentOfBenefitForm>();
-    for (const f of pendingAobForms ?? []) {
-      if (f.reportId != null && !map.has(f.reportId)) map.set(f.reportId, f);
-    }
-    return map;
-  }, [pendingAobForms]);
 
   // Opens the Assessment of Benefits confirmation dialog. Item prefill and
   // editing now live in the shared AobItemsDialog; confirming here is required
@@ -2185,17 +2153,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     </Button>
                   )}
                 </div>
-                {(report as any).isSonographerComplete && pendingAobByReportId.has(report.id) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 text-xs"
-                    onClick={() => setAobSignForm(pendingAobByReportId.get(report.id)!)}
-                  >
-                    <ClipboardCheck className="w-3 h-3 mr-1" />
-                    Complete Assessment of Benefits form
-                  </Button>
-                )}
                 <div className="flex space-x-2">
                   {report.isFinalized ? (
                     <div className="flex items-center justify-center w-full py-2 px-3 text-xs text-green-600 bg-green-50 border border-green-200 rounded">
@@ -2930,24 +2887,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   )}
                 </div>
 
-                {/* Assessment of Benefits — patient signature (fallback surface; primary is the appointment screen) */}
-                {(editingReport as any).isSonographerComplete && reportAobForm && reportAobForm.status === "pending_signature" && (
-                  <div className="border-t pt-4">
-                    <p className="text-xs text-gray-500 mb-2">
-                      Total value: {formatCents(reportAobForm.totalValueCents)} — awaiting patient signature.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
-                      onClick={() => setAobSignForm(reportAobForm)}
-                      data-testid="button-complete-aob-fullscreen"
-                    >
-                      <ClipboardCheck className="w-4 h-4 mr-2" />
-                      Complete Assessment of Benefits form
-                    </Button>
-                  </div>
-                )}
 
                 {/* Finalization */}
                 <div className="border-t pt-4 space-y-4">
@@ -3383,24 +3322,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   )}
                 </div>
 
-                {/* Assessment of Benefits — patient signature (fallback surface; primary is the appointment screen) */}
-                {(editingReport as any).isSonographerComplete && reportAobForm && reportAobForm.status === "pending_signature" && (
-                  <div className="border-t pt-4">
-                    <p className="text-xs text-gray-500 mb-2">
-                      Total value: {formatCents(reportAobForm.totalValueCents)} — awaiting patient signature.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
-                      onClick={() => setAobSignForm(reportAobForm)}
-                      data-testid="button-complete-aob"
-                    >
-                      <ClipboardCheck className="w-4 h-4 mr-2" />
-                      Complete Assessment of Benefits form
-                    </Button>
-                  </div>
-                )}
 
                 {/* Finalization */}
                 <div className="border-t pt-4 space-y-4">
@@ -4069,18 +3990,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         onSubmit={(items) => aobConfirmReport && sonographerCompleteMutation.mutate({ reportId: aobConfirmReport.id, items })}
       />
 
-      {/* Assessment of Benefits — patient signature */}
-      <AobSignDialog
-        form={aobSignForm}
-        onOpenChange={(open) => { if (!open) setAobSignForm(null); }}
-        onSigned={() => {
-          queryClient.invalidateQueries({ queryKey: ["/api/reports", editingReport?.id, "assessment-of-benefit"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/assessment-of-benefit/pending"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
-          toast({ title: "Signed", description: "Assessment of Benefits form signed." });
-          setAobSignForm(null);
-        }}
-      />
 
       {/* Unsaved changes confirmation */}
       <AlertDialog open={isCloseConfirmOpen} onOpenChange={setIsCloseConfirmOpen}>
