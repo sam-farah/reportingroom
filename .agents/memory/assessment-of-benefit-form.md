@@ -25,3 +25,7 @@ description: Non-obvious data-sourcing and content decisions for the Medicare As
 - The AoB form's `appointmentId` link is opportunistic (best-effort same-day patientId match at sono-complete time) and can end up null — no same-day booking existed yet, or the report has no linked patient at all. Any UI that surfaces the pending-signature step must not rely on `appointmentId` alone as the sole lookup path, or forms that fail to link become permanently unreachable.
   **Why:** found in production — real pending_signature rows existed with `appointment_id` null and no way to reach them, since the calendar only queried by appointment.
   **How to apply:** `reportId` is always set on every AoB form, so it's the reliable fallback key — surface/query by report wherever the appointment link might be missing.
+
+- Sonographers routinely mark a study "Sono Complete" straight from the report CARD in the Reporting Room list, never opening the report editor. So any per-report follow-up action (like the AoB "Complete Assessment of Benefits form" sign button) that lives ONLY inside the editor will be effectively invisible — it must also appear on the card.
+  **Why:** found in production — user completed studies from the card and reported the sign button "not showing"; it existed, but only in the editor they never opened.
+  **How to apply:** the card list has no per-report AoB data by default; fetch pending forms once via `GET /api/assessment-of-benefit/pending` (clinic-scoped) and build a `Map<reportId, form>` to gate the card button, rather than an N-per-card query.

@@ -371,6 +371,7 @@ export interface IStorage {
   getAssessmentOfBenefitForm(id: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormsByAppointmentId(appointmentId: number): Promise<AssessmentOfBenefitForm[]>;
+  getPendingAssessmentOfBenefitFormsByClinic(clinicId: number): Promise<AssessmentOfBenefitForm[]>;
   signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined>;
   getPatientNotes(patientId: number): Promise<PatientNote[]>;
   createPatientNote(note: InsertPatientNote): Promise<PatientNote>;
@@ -1776,6 +1777,19 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(assessmentOfBenefitForms)
       .where(eq(assessmentOfBenefitForms.appointmentId, appointmentId))
+      .orderBy(desc(assessmentOfBenefitForms.createdAt));
+  }
+
+  async getPendingAssessmentOfBenefitFormsByClinic(clinicId: number): Promise<AssessmentOfBenefitForm[]> {
+    return await db
+      .select()
+      .from(assessmentOfBenefitForms)
+      .where(
+        and(
+          eq(assessmentOfBenefitForms.clinicId, clinicId),
+          eq(assessmentOfBenefitForms.status, "pending_signature"),
+        ),
+      )
       .orderBy(desc(assessmentOfBenefitForms.createdAt));
   }
 

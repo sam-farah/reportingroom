@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ShieldCheck } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { formatCents } from "@shared/mbs";
 import type { AssessmentOfBenefitForm } from "@shared/schema";
 
@@ -15,7 +16,7 @@ interface AobSignDialogProps {
 }
 
 export function AobSignDialog({ form, onOpenChange, onSigned }: AobSignDialogProps) {
-  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [signatureEmpty, setSignatureEmpty] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawing = useRef(false);
@@ -67,6 +68,9 @@ export function AobSignDialog({ form, onOpenChange, onSigned }: AobSignDialogPro
     onSuccess: (updated: AssessmentOfBenefitForm) => {
       onSigned(updated);
       setSignatureEmpty(true);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error?.message || "Failed to sign form", variant: "destructive" });
     },
   });
 

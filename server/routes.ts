@@ -4488,6 +4488,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // All Assessment of Benefit forms still awaiting a patient signature for the
+  // caller's clinic. Used by Reporting Room to show a "Complete Assessment of
+  // Benefits form" button directly on completed report cards, so the signature
+  // step is reachable even when the form never got linked to an appointment.
+  app.get("/api/assessment-of-benefit/pending", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.json([]);
+      const forms = await storage.getPendingAssessmentOfBenefitFormsByClinic(user.clinicId);
+      res.json(forms);
+    } catch (error) {
+      console.error("Error fetching pending Assessment of Benefit forms:", error);
+      res.status(500).json({ error: "Failed to fetch pending Assessment of Benefit forms" });
+    }
+  });
+
   // Assessment of Benefit forms for an appointment (the patient-signature step,
   // decoupled from sonographer completion — surfaced on the appointment screen).
   app.get("/api/appointments/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {

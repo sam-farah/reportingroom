@@ -522,6 +522,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         : "Report marked as complete by sonographer. The patient's Assessment of Benefits form is ready to be signed.";
       toast({ title: "Sonographer Complete", description: appointmentMessage });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      // Surface the "Complete Assessment of Benefits form" button on the card.
+      queryClient.invalidateQueries({ queryKey: ["/api/assessment-of-benefit/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports", updated.id, "assessment-of-benefit"] });
       // Refresh calendar/home so the appointment status reflects immediately.
       if (updated.appointmentCompleted) {
         queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
@@ -547,6 +550,21 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     queryKey: ["/api/reports", editingReport?.id, "assessment-of-benefit"],
     enabled: !!editingReport?.id && (editingReport as any)?.isSonographerComplete,
   });
+
+  // All AoB forms still awaiting a patient signature for this clinic, so the
+  // "Complete Assessment of Benefits form" button can appear directly on the
+  // report cards in the list (studies are often marked complete from the card,
+  // never opening the editor where the other sign button lives).
+  const { data: pendingAobForms } = useQuery<AssessmentOfBenefitForm[]>({
+    queryKey: ["/api/assessment-of-benefit/pending"],
+  });
+  const pendingAobByReportId = useMemo(() => {
+    const map = new Map<number, AssessmentOfBenefitForm>();
+    for (const f of pendingAobForms ?? []) {
+      if (f.reportId != null && !map.has(f.reportId)) map.set(f.reportId, f);
+    }
+    return map;
+  }, [pendingAobForms]);
 
   // Sorted once — the reference list rarely changes and is small (~15 items).
   const mbsItemOptions = useMemo(
@@ -2188,6 +2206,17 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     </Button>
                   )}
                 </div>
+                {(report as any).isSonographerComplete && pendingAobByReportId.has(report.id) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 text-xs"
+                    onClick={() => setAobSignForm(pendingAobByReportId.get(report.id)!)}
+                  >
+                    <ClipboardCheck className="w-3 h-3 mr-1" />
+                    Complete Assessment of Benefits form
+                  </Button>
+                )}
                 <div className="flex space-x-2">
                   {report.isFinalized ? (
                     <div className="flex items-center justify-center w-full py-2 px-3 text-xs text-green-600 bg-green-50 border border-green-200 rounded">
@@ -4223,6 +4252,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         onOpenChange={(open) => { if (!open) setAobSignForm(null); }}
         onSigned={() => {
           queryClient.invalidateQueries({ queryKey: ["/api/reports", editingReport?.id, "assessment-of-benefit"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/assessment-of-benefit/pending"] });
           queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
           toast({ title: "Signed", description: "Assessment of Benefits form signed." });
           setAobSignForm(null);
