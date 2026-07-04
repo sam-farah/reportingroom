@@ -21,3 +21,7 @@ description: Non-obvious data-sourcing and content decisions for the Medicare As
 - Location Specific Practice Number (LSPN) is an optional per-clinic setting (Admin → Clinic Settings), shown only if set.
 
 - Any text-wrapping helper used for fixed-height form fields (e.g. service descriptions) must indicate truncation whenever it drops trailing words, even if the last kept line still has spare character width — checking "does the last line's own length exceed the limit" is not sufficient, since a line can be short while a later word still got cut. On a billing/medical form, a silently dropped word (e.g. "bilateral") is a real data-loss risk, not just a cosmetic issue.
+
+- The AoB form's `appointmentId` link is opportunistic (best-effort same-day patientId match at sono-complete time) and can end up null — no same-day booking existed yet, or the report has no linked patient at all. Any UI that surfaces the pending-signature step must not rely on `appointmentId` alone as the sole lookup path, or forms that fail to link become permanently unreachable.
+  **Why:** found in production — real pending_signature rows existed with `appointment_id` null and no way to reach them, since the calendar only queried by appointment.
+  **How to apply:** `reportId` is always set on every AoB form, so it's the reliable fallback key — surface/query by report wherever the appointment link might be missing.

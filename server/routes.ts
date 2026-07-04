@@ -4464,6 +4464,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Assessment of Benefit form for a report — a fallback surface for the
+  // patient-signature step alongside the appointment screen. Some reports
+  // never get auto-matched to an appointment (no same-day booking existed
+  // yet, or the report has no linked patient at all), which would otherwise
+  // leave the form permanently unreachable since the appointment dialog only
+  // shows forms linked to that specific appointment. The report itself
+  // always has the form's reportId, so it's a safe, unambiguous fallback.
+  app.get("/api/reports/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      const report = await storage.getReport(id);
+      if (!report || (report.clinicId != null && user?.clinicId != null && report.clinicId !== user.clinicId)) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+      const form = await storage.getAssessmentOfBenefitFormByReportId(id);
+      res.json(form ?? null);
+    } catch (error) {
+      console.error("Error fetching Assessment of Benefit form for report:", error);
+      res.status(500).json({ error: "Failed to fetch Assessment of Benefit form" });
+    }
+  });
+
   // Assessment of Benefit forms for an appointment (the patient-signature step,
   // decoupled from sonographer completion — surfaced on the appointment screen).
   app.get("/api/appointments/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {
