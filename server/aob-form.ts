@@ -82,12 +82,21 @@ const F = {
   numPatients: { x: 720, y: 780, fontSize: 16 },
   assignorYes: { x: 250, y: 955, size: 18 },
   agreementPostAssignment: { x: 492, y: 866, size: 18 },
+  // The services table has 12 physical rows (~62px pitch). The two template
+  // scans have slightly different vertical layouts, so each copy needs its own
+  // set of row CENTRES (pixel-calibrated against the real digit boxes). The
+  // text baseline is drawn `baselineOffset` px below the row centre so a single
+  // line sits vertically centred inside its box.
   servicesTable: {
-    rowYs: [255, 375, 495, 615, 735, 855, 975],
+    rowCentersByCopy: {
+      practitioner: [280, 342, 404, 466, 528, 590, 652, 714, 776, 838, 900, 962],
+      patient: [253, 315, 378, 440, 503, 565, 627, 689, 752, 814, 877, 942],
+    } as Record<"practitioner" | "patient", number[]>,
+    baselineOffset: 4,
     descX: 815,
     descMaxCharsPerLine: 20,
     descMaxLines: 2,
-    descLineH: 20,
+    descLineH: 18,
     itemX: 1015,
     benefitX: 1430,
     fontSize: 16,
@@ -151,7 +160,7 @@ export async function generateAssessmentOfBenefitDocument(opts: {
 
   const signedDateStr = now.toLocaleDateString("en-AU", { timeZone: CLINIC_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
 
-  const buildOverlaySvg = (width: number, height: number): string => {
+  const buildOverlaySvg = (width: number, height: number, copy: "practitioner" | "patient"): string => {
     const parts: string[] = [];
 
     const spacedText = (
@@ -191,9 +200,10 @@ export async function generateAssessmentOfBenefitDocument(opts: {
     parts.push(xMark(F.assignorYes.x, F.assignorYes.y, F.assignorYes.size));
     parts.push(xMark(F.agreementPostAssignment.x, F.agreementPostAssignment.y, F.agreementPostAssignment.size));
 
-    const { rowYs, descX, descMaxCharsPerLine, descMaxLines, descLineH, itemX, benefitX, fontSize } = F.servicesTable;
-    items.slice(0, rowYs.length).forEach((it, i) => {
-      const y = rowYs[i];
+    const { rowCentersByCopy, baselineOffset, descX, descMaxCharsPerLine, descMaxLines, descLineH, itemX, benefitX, fontSize } = F.servicesTable;
+    const rowCenters = rowCentersByCopy[copy];
+    items.slice(0, rowCenters.length).forEach((it, i) => {
+      const y = rowCenters[i] + baselineOffset;
       const descLines = wrapToLines(it.description || "", descMaxCharsPerLine, descMaxLines);
       descLines.forEach((line, li) => {
         parts.push(`<text x="${descX}" y="${y + li * descLineH}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#1a1a6e">${escapeXml(line)}</text>`);
@@ -212,9 +222,9 @@ export async function generateAssessmentOfBenefitDocument(opts: {
     return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${parts.join("\n")}</svg>`;
   };
 
-  const renderCopy = async (templatePath: string): Promise<Buffer> => {
+  const renderCopy = async (templatePath: string, copy: "practitioner" | "patient"): Promise<Buffer> => {
     const { buffer, width, height } = await loadTemplate(templatePath);
-    const overlaySvg = buildOverlaySvg(width, height);
+    const overlaySvg = buildOverlaySvg(width, height, copy);
     const sigTop = F.signature.lineBottomY - sigH;
     return sharp(buffer)
       .composite([
@@ -225,8 +235,8 @@ export async function generateAssessmentOfBenefitDocument(opts: {
       .toBuffer();
   };
 
-  const practitionerImg = await renderCopy(PRACTITIONER_TEMPLATE);
-  const patientImg = await renderCopy(PATIENT_TEMPLATE);
+  const practitionerImg = await renderCopy(PRACTITIONER_TEMPLATE, "practitioner");
+  const patientImg = await renderCopy(PATIENT_TEMPLATE, "patient");
 
   const uploadsDir = path.join(process.cwd(), "uploads");
   fs.mkdirSync(uploadsDir, { recursive: true });
