@@ -73,12 +73,18 @@ function wrapToLines(text: string, maxCharsPerLine: number, maxLines: number): s
 const F = {
   fullName: { x: 228, y: 130, fontSize: 18 },
   dob: { x: 260, y: 245, fontSize: 15 },
-  medicareText: { x: 232, y: 312, fontSize: 16, letterSpacing: "3" },
-  referralDateText: { x: 460, y: 355, fontSize: 14, letterSpacing: "5" },
-  inHospitalNo: { x: 545, y: 390, size: 20 },
-  providerNumberText: { x: 360, y: 455, fontSize: 14, letterSpacing: "4" },
+  // Boxed digit fields — one glyph is centred inside each printed box (rather
+  // than a single string with letter-spacing, which drifts out of the boxes).
+  // The X geometry (first-box centre + pitch) is shared by both copies; only
+  // the Y baseline differs, because the two template photos have slightly
+  // different vertical layouts (same reason the services table needs per-copy
+  // row centres).
+  medicareBoxes: { startX: 283, pitch: 53, fontSize: 15, y: { practitioner: 284, patient: 276 } },
+  referralDateBoxes: { startX: 473, pitch: 57, fontSize: 14, y: { practitioner: 352, patient: 331 } },
+  inHospitalNo: { x: 545, size: 20, y: { practitioner: 393, patient: 361 } },
+  providerBoxes: { startX: 405, pitch: 51, fontSize: 14, y: { practitioner: 480, patient: 463 } },
   doctorAddress: { x: 70, y: 562, lineH: 22, fontSize: 15, maxChars: 44, maxLines: 3 },
-  lspnText: { x: 307, y: 662, fontSize: 15, letterSpacing: "3" },
+  lspnBoxes: { startX: 281, pitch: 53, fontSize: 15, y: { practitioner: 662, patient: 647 } },
   numPatients: { x: 720, y: 780, fontSize: 16 },
   assignorYes: { x: 250, y: 955, size: 18 },
   agreementPostAssignment: { x: 492, y: 866, size: 18 },
@@ -118,11 +124,16 @@ async function loadTemplate(templatePath: string): Promise<{ buffer: Buffer; wid
   return { buffer, width: REF_WIDTH, height: targetHeight };
 }
 
-export async function generateAssessmentOfBenefitDocument(opts: {
+export interface AobRenderOpts {
   aobForm: any;
   clinic: any;
   signatureDataUrl: string;
-}): Promise<{ fileUrl: string; filename: string; patientFileUrl: string; patientFilename: string }> {
+}
+
+// Renders a single copy ("practitioner" | "patient") of the Assessment of
+// Benefit form to a JPEG buffer, with no persistence side effects. Exported so
+// calibration/preview scripts can render without writing to disk or the DB.
+export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | "patient"): Promise<Buffer> {
   const { aobForm, clinic, signatureDataUrl } = opts;
 
   const CLINIC_TZ = resolveClinicTimeZone(clinic);
@@ -131,8 +142,20 @@ export async function generateAssessmentOfBenefitDocument(opts: {
   const dobDisplay = aobForm.patientDateOfBirth || "";
   const medicareDigits = digitsAndLetters(aobForm.medicareNumber) + digitsAndLetters(aobForm.medicareIrn);
   const referralDateDigits = (() => {
-    const raw = String(aobForm.referralDate || "").replace(/[^0-9]/g, "");
-    if (raw.length === 8) return raw.slice(0, 4) + raw.slice(6, 8); // DDMMYYYY -> DDMMYY
+    const s = String(aobForm.referralDate || "");
+    // The app stores referral/request dates as ISO (yyyy-MM-dd, from a native
+    // <input type="date">), so parse that first and reorder to DD MM YY for the
+    // form's six boxes. Without this, "2026-07-04" was read as DDMMYYYY and
+    // printed as 20/26/04 — a wrong date on a government billing document.
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return iso[3] + iso[2] + iso[1].slice(2); // yyyy-MM-dd -> DDMMYY
+    const raw = s.replace(/[^0-9]/g, "");
+    if (raw.length === 8) {
+      const lead = parseInt(raw.slice(0, 4), 10);
+      // Disambiguate a bare 8-digit value: a plausible leading year => YYYYMMDD.
+      if (lead >= 1900 && lead <= 2100) return raw.slice(6, 8) + raw.slice(4, 6) + raw.slice(2, 4); // YYYYMMDD -> DDMMYY
+      return raw.slice(0, 4) + raw.slice(6, 8); // DDMMYYYY -> DDMMYY
+    }
     return raw.slice(0, 6);
   })();
   const providerNumber = digitsAndLetters(aobForm.referringDoctorProviderNumber);
@@ -160,26 +183,35 @@ export async function generateAssessmentOfBenefitDocument(opts: {
 
   const signedDateStr = now.toLocaleDateString("en-AU", { timeZone: CLINIC_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
 
-  const buildOverlaySvg = (width: number, height: number, copy: "practitioner" | "patient"): string => {
+  const buildOverlaySvg = (width: number, height: number): string => {
     const parts: string[] = [];
 
-    const spacedText = (
-      f: { x: number; y: number; fontSize: number; letterSpacing: string },
+    // Renders a boxed digit string: one glyph centred inside each printed box.
+    // `startX` is the centre of the first box, `pitch` the box-to-box spacing,
+    // and the baseline `y` is chosen per copy.
+    const boxedText = (
+      f: { startX: number; pitch: number; fontSize: number; y: Record<"practitioner" | "patient", number> },
       value: string,
     ) =>
-      `<text x="${f.x}" y="${f.y}" font-family="Arial, sans-serif" font-size="${f.fontSize}" letter-spacing="${f.letterSpacing}" fill="#1a1a6e">${escapeXml(value)}</text>`;
+      String(value ?? "")
+        .split("")
+        .map(
+          (ch, i) =>
+            `<text x="${f.startX + i * f.pitch}" y="${f.y[copy]}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${f.fontSize}" fill="#1a1a6e">${escapeXml(ch)}</text>`,
+        )
+        .join("");
 
     parts.push(`<text x="${F.fullName.x}" y="${F.fullName.y}" font-family="Arial, sans-serif" font-size="${F.fullName.fontSize}" fill="#1a1a6e">${escapeXml(aobForm.patientName)}</text>`);
     parts.push(`<text x="${F.dob.x}" y="${F.dob.y}" font-family="Arial, sans-serif" font-size="${F.dob.fontSize}" fill="#1a1a6e">${escapeXml(dobDisplay)}</text>`);
-    parts.push(spacedText(F.medicareText, medicareDigits));
+    parts.push(boxedText(F.medicareBoxes, medicareDigits));
 
     if (referralDateDigits) {
-      parts.push(spacedText(F.referralDateText, referralDateDigits));
+      parts.push(boxedText(F.referralDateBoxes, referralDateDigits));
     }
-    parts.push(xMark(F.inHospitalNo.x, F.inHospitalNo.y, F.inHospitalNo.size));
+    parts.push(xMark(F.inHospitalNo.x, F.inHospitalNo.y[copy], F.inHospitalNo.size));
 
     if (providerNumber) {
-      parts.push(spacedText(F.providerNumberText, providerNumber));
+      parts.push(boxedText(F.providerBoxes, providerNumber));
     }
 
     const addressLines = wrapToLines(
@@ -192,7 +224,7 @@ export async function generateAssessmentOfBenefitDocument(opts: {
     });
 
     if (lspn) {
-      parts.push(spacedText(F.lspnText, lspn));
+      parts.push(boxedText(F.lspnBoxes, lspn));
     }
 
     parts.push(`<text x="${F.numPatients.x}" y="${F.numPatients.y}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.numPatients.fontSize}" fill="#1a1a6e">1</text>`);
@@ -222,21 +254,28 @@ export async function generateAssessmentOfBenefitDocument(opts: {
     return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${parts.join("\n")}</svg>`;
   };
 
-  const renderCopy = async (templatePath: string, copy: "practitioner" | "patient"): Promise<Buffer> => {
-    const { buffer, width, height } = await loadTemplate(templatePath);
-    const overlaySvg = buildOverlaySvg(width, height, copy);
-    const sigTop = F.signature.lineBottomY - sigH;
-    return sharp(buffer)
-      .composite([
-        { input: Buffer.from(overlaySvg), top: 0, left: 0 },
-        { input: sigResized, top: sigTop, left: F.signature.x },
-      ])
-      .jpeg({ quality: 92 })
-      .toBuffer();
-  };
+  const templatePath = copy === "practitioner" ? PRACTITIONER_TEMPLATE : PATIENT_TEMPLATE;
+  const { buffer, width, height } = await loadTemplate(templatePath);
+  const overlaySvg = buildOverlaySvg(width, height);
+  const sigTop = F.signature.lineBottomY - sigH;
+  return sharp(buffer)
+    .composite([
+      { input: Buffer.from(overlaySvg), top: 0, left: 0 },
+      { input: sigResized, top: sigTop, left: F.signature.x },
+    ])
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
 
-  const practitionerImg = await renderCopy(PRACTITIONER_TEMPLATE, "practitioner");
-  const patientImg = await renderCopy(PATIENT_TEMPLATE, "patient");
+export async function generateAssessmentOfBenefitDocument(
+  opts: AobRenderOpts,
+): Promise<{ fileUrl: string; filename: string; patientFileUrl: string; patientFilename: string }> {
+  const { aobForm, clinic } = opts;
+  const CLINIC_TZ = resolveClinicTimeZone(clinic);
+  const now = new Date();
+
+  const practitionerImg = await renderAobCopy(opts, "practitioner");
+  const patientImg = await renderAobCopy(opts, "patient");
 
   const uploadsDir = path.join(process.cwd(), "uploads");
   fs.mkdirSync(uploadsDir, { recursive: true });
