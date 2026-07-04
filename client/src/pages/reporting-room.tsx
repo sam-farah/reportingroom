@@ -528,6 +528,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       setAobConfirmReport(null);
       setAobItems([]);
       setAobManualEntry([]);
+      setAobItemPickerOpenIndex(null);
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Could not mark as complete.", variant: "destructive" });
@@ -3997,7 +3998,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       {/* Assessment of Benefits confirmation — required before a study can be
           marked sonographer-complete. The patient signature itself happens
           later, from the appointment screen. */}
-      <Dialog open={!!aobConfirmReport} onOpenChange={(open) => { if (!open) { setAobConfirmReport(null); setAobItems([]); setAobManualEntry([]); } }}>
+      <Dialog open={!!aobConfirmReport} onOpenChange={(open) => { if (!open) { setAobConfirmReport(null); setAobItems([]); setAobManualEntry([]); setAobItemPickerOpenIndex(null); } }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Confirm Assessment of Benefits</DialogTitle>
@@ -4121,6 +4122,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   onClick={() => {
                     setAobItems(prev => prev.filter((_, idx) => idx !== i));
                     setAobManualEntry(prev => prev.filter((_, idx) => idx !== i));
+                    setAobItemPickerOpenIndex(null);
                   }}
                 >
                   <X className="w-4 h-4" />
@@ -4146,7 +4148,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
             </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => { setAobConfirmReport(null); setAobItems([]); setAobManualEntry([]); }}>
+            <Button variant="outline" onClick={() => { setAobConfirmReport(null); setAobItems([]); setAobManualEntry([]); setAobItemPickerOpenIndex(null); }}>
               Cancel
             </Button>
             <Button
