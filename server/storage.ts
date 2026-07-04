@@ -372,7 +372,17 @@ export interface IStorage {
   getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormsByAppointmentId(appointmentId: number): Promise<AssessmentOfBenefitForm[]>;
   getPendingAssessmentOfBenefitFormsByClinic(clinicId: number): Promise<AssessmentOfBenefitForm[]>;
-  signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined>;
+  claimAssessmentOfBenefitFormForSigning(id: number, updates: {
+    signedByName: string;
+    patientId?: number;
+    appointmentId?: number;
+    patientName?: string;
+    patientDateOfBirth?: string;
+    medicareNumber?: string;
+    medicareIrn?: string;
+  }): Promise<AssessmentOfBenefitForm | undefined>;
+  finalizeAssessmentOfBenefitFormDocuments(id: number, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined>;
+  rollbackAssessmentOfBenefitFormSigning(id: number): Promise<void>;
   getPatientNotes(patientId: number): Promise<PatientNote[]>;
   createPatientNote(note: InsertPatientNote): Promise<PatientNote>;
 
@@ -972,7 +982,10 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(reports.id, id))
       .returning();
-    return report;
+    // Decrypt for return — callers snapshot patient fields (e.g. the Assessment
+    // of Benefit form), so returning the raw encrypted row would leak ciphertext
+    // into those snapshots and onto generated documents.
+    return report ? FieldEncryption.decryptFields(report) as Report : undefined;
   }
 
   async archiveReport(id: number): Promise<Report | undefined> {
@@ -1793,19 +1806,66 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(assessmentOfBenefitForms.createdAt));
   }
 
-  async signAssessmentOfBenefitForm(id: number, signedByName: string, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined> {
+  // Atomically claim a pending form for signing. The conditional WHERE
+  // (status = pending_signature) is the concurrency guard: only the first
+  // request wins, so documents are never generated/filed twice. Returns
+  // undefined if the form was already signed (or gone), which the route maps
+  // to a 409. The reconciliation fields (patientId/appointmentId/patient
+  // snapshot) heal forms that were created before their report was linked to a
+  // patient.
+  async claimAssessmentOfBenefitFormForSigning(id: number, updates: {
+    signedByName: string;
+    patientId?: number;
+    appointmentId?: number;
+    patientName?: string;
+    patientDateOfBirth?: string;
+    medicareNumber?: string;
+    medicareIrn?: string;
+  }): Promise<AssessmentOfBenefitForm | undefined> {
     const [row] = await db
       .update(assessmentOfBenefitForms)
       .set({
         status: "signed",
         signedAt: new Date(),
-        signedByName,
+        signedByName: updates.signedByName,
+        ...(updates.patientId != null ? { patientId: updates.patientId } : {}),
+        ...(updates.appointmentId != null ? { appointmentId: updates.appointmentId } : {}),
+        ...(updates.patientName ? { patientName: updates.patientName } : {}),
+        ...(updates.patientDateOfBirth ? { patientDateOfBirth: updates.patientDateOfBirth } : {}),
+        ...(updates.medicareNumber ? { medicareNumber: updates.medicareNumber } : {}),
+        ...(updates.medicareIrn ? { medicareIrn: updates.medicareIrn } : {}),
+      })
+      .where(and(
+        eq(assessmentOfBenefitForms.id, id),
+        eq(assessmentOfBenefitForms.status, "pending_signature"),
+      ))
+      .returning();
+    return row;
+  }
+
+  async finalizeAssessmentOfBenefitFormDocuments(id: number, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined> {
+    const [row] = await db
+      .update(assessmentOfBenefitForms)
+      .set({
         documentUrl,
         ...(patientDocumentUrl !== undefined ? { patientDocumentUrl } : {}),
       })
       .where(eq(assessmentOfBenefitForms.id, id))
       .returning();
     return row;
+  }
+
+  // Revert a claim if document generation failed, so the form can be re-signed
+  // rather than being stuck "signed" with no documents. Only reverts while the
+  // documents are still missing, to never clobber a successful signing.
+  async rollbackAssessmentOfBenefitFormSigning(id: number): Promise<void> {
+    await db
+      .update(assessmentOfBenefitForms)
+      .set({ status: "pending_signature", signedAt: null, signedByName: null })
+      .where(and(
+        eq(assessmentOfBenefitForms.id, id),
+        isNull(assessmentOfBenefitForms.documentUrl),
+      ));
   }
 
   async getPatientNotes(patientId: number): Promise<PatientNote[]> {

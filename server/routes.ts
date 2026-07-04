@@ -4551,9 +4551,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? ([user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || String(req.session.userId!))
         : String(req.session.userId!);
 
-      const { fileUrl, patientFileUrl } = await generateAssessmentOfBenefitDocument({ aobForm, clinic, signatureDataUrl });
-      const updated = await storage.signAssessmentOfBenefitForm(id, signedByName, fileUrl, patientFileUrl);
-      res.json(updated);
+      // Reconcile linkage from the report. AoB forms are created at "Sono
+      // Complete", but the report is often linked to its patient (and thus its
+      // appointment) only afterwards — leaving the form with a null patientId
+      // and appointmentId. Without a patientId the signed documents can't be
+      // filed to the patient's file, and without an appointmentId the calendar
+      // can't surface the form. Signing is the natural healing point: by now the
+      // report is almost always linked, so re-derive everything from it.
+      let resolvedPatientId: number | null = aobForm.patientId ?? null;
+      let resolvedAppointmentId: number | null = aobForm.appointmentId ?? null;
+      const snapshot: {
+        patientName?: string;
+        patientDateOfBirth?: string;
+        medicareNumber?: string;
+        medicareIrn?: string;
+      } = {};
+
+      const report = aobForm.reportId ? await storage.getReport(aobForm.reportId) : undefined;
+      if (report) {
+        if (resolvedPatientId == null && report.patientId != null) {
+          resolvedPatientId = report.patientId;
+        }
+        // Refresh the patient snapshot from the live (decrypted) patient record
+        // so the generated Medicare document shows the correct name/details even
+        // if the form was snapshotted before the patient link existed.
+        if (resolvedPatientId != null) {
+          const patient = await storage.getPatient(resolvedPatientId);
+          if (patient) {
+            const fullName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
+            if (fullName) snapshot.patientName = fullName;
+            if (patient.dateOfBirth) snapshot.patientDateOfBirth = patient.dateOfBirth;
+            if (patient.medicareNumber) snapshot.medicareNumber = patient.medicareNumber;
+            if ((patient as any).medicareIrn) snapshot.medicareIrn = (patient as any).medicareIrn;
+          }
+        }
+        // Link (and complete) the same-day appointment if it wasn't matched at
+        // completion time. Mirrors the sono-complete matching logic: same
+        // calendar day as the exam, earliest still-open booking.
+        if (resolvedAppointmentId == null && resolvedPatientId != null && report.examDate) {
+          try {
+            const examDate = new Date(report.examDate);
+            if (!isNaN(examDate.getTime())) {
+              const dayStart = new Date(examDate); dayStart.setHours(0, 0, 0, 0);
+              const dayEnd = new Date(examDate); dayEnd.setHours(23, 59, 59, 999);
+              const patientAppts = await storage.getPatientAppointments(resolvedPatientId);
+              const candidate = patientAppts
+                .filter((a) => {
+                  const ad = new Date(a.appointmentDate);
+                  return ad >= dayStart && ad <= dayEnd &&
+                    a.status !== "completed" && a.status !== "cancelled" && a.status !== "no_show";
+                })
+                .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())[0];
+              if (candidate) {
+                await storage.updateAppointment(candidate.id, { status: "completed" });
+                resolvedAppointmentId = candidate.id;
+              }
+            }
+          } catch (apptErr) {
+            console.warn("AoB sign: failed to link/complete matching appointment", apptErr);
+          }
+        }
+      }
+
+      // Atomically claim the form (pending_signature -> signed). This is the
+      // concurrency guard: only the winning request generates and files the
+      // documents; a losing/duplicate request gets a 409.
+      const claimed = await storage.claimAssessmentOfBenefitFormForSigning(id, {
+        signedByName,
+        patientId: resolvedPatientId ?? undefined,
+        appointmentId: resolvedAppointmentId ?? undefined,
+        ...snapshot,
+      });
+      if (!claimed) {
+        return res.status(409).json({ error: "This form has already been signed" });
+      }
+
+      try {
+        const { fileUrl, patientFileUrl } = await generateAssessmentOfBenefitDocument({ aobForm: claimed, clinic, signatureDataUrl });
+        const updated = await storage.finalizeAssessmentOfBenefitFormDocuments(id, fileUrl, patientFileUrl);
+        res.json(updated);
+      } catch (genErr) {
+        // Generation failed after claiming — revert so it can be re-signed
+        // instead of being stuck "signed" with no documents.
+        await storage.rollbackAssessmentOfBenefitFormSigning(id).catch(() => {});
+        throw genErr;
+      }
     } catch (error) {
       console.error("Error signing Assessment of Benefit form:", error);
       res.status(500).json({ error: "Failed to sign Assessment of Benefit form" });
