@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus, AlertCircle } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus, AlertCircle, ChevronsUpDown } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import DrawingCanvas from "@/components/drawing-canvas";
@@ -12,11 +12,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { cn } from "@/lib/utils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage } from "@shared/schema";
 import { MbsItemBadges } from "@/components/mbs-billing-summary";
 import { calculateVisitBilling, formatCents, MBS_ITEMS } from "@shared/mbs";
@@ -204,6 +207,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [aobConfirmReport, setAobConfirmReport] = useState<Report | null>(null);
   const [aobItems, setAobItems] = useState<AobLineItem[]>([]);
   const [aobManualEntry, setAobManualEntry] = useState<boolean[]>([]);
+  const [aobItemPickerOpenIndex, setAobItemPickerOpenIndex] = useState<number | null>(null);
   const [amendmentReason, setAmendmentReason] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
@@ -4009,7 +4013,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
             )}
             {aobItems.map((line, i) => (
               <div key={i} className="flex items-start gap-2 border rounded-md p-2">
-                <div className="w-40 flex-shrink-0">
+                <div className="w-48 flex-shrink-0">
                   <Label className="text-xs text-gray-500">Item</Label>
                   {aobManualEntry[i] ? (
                     <div className="flex items-center gap-1">
@@ -4031,33 +4035,62 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       </Button>
                     </div>
                   ) : (
-                    <Select
-                      value={line.item || undefined}
-                      onValueChange={(val) => {
-                        if (val === "__manual__") {
-                          setAobManualEntry(prev => prev.map((m, idx) => idx === i ? true : m));
-                          setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: "" } : l));
-                          return;
-                        }
-                        const info = MBS_ITEMS[val];
-                        setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: val, description: info.description, feeCents: info.scheduleFeeCents } : l));
-                      }}
+                    <Popover
+                      open={aobItemPickerOpenIndex === i}
+                      onOpenChange={(open) => setAobItemPickerOpenIndex(open ? i : null)}
                     >
-                      <SelectTrigger className="h-8 text-sm font-mono">
-                        <SelectValue placeholder="Select item" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {mbsItemOptions.map(([num, info]) => (
-                          <SelectItem key={num} value={num} className="text-sm">
-                            <span className="font-mono">{num}</span>
-                            <span className="text-gray-500"> — {formatCents(info.scheduleFeeCents)}{!info.verified ? " (unverified)" : ""}</span>
-                          </SelectItem>
-                        ))}
-                        <SelectItem value="__manual__" className="text-sm text-gray-500">
-                          Other / manual entry…
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={aobItemPickerOpenIndex === i}
+                          className="h-8 w-full justify-between px-2 text-sm font-mono font-normal"
+                        >
+                          <span className="truncate">{line.item || "Select item"}</span>
+                          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-96 p-0" align="start">
+                        <Command filter={(value, search) => value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0}>
+                          <CommandInput placeholder="Search item number or description..." className="text-sm" />
+                          <CommandList>
+                            <CommandEmpty>No matching item.</CommandEmpty>
+                            <CommandGroup>
+                              {mbsItemOptions.map(([num, info]) => (
+                                <CommandItem
+                                  key={num}
+                                  value={`${num} ${info.description}`}
+                                  onSelect={() => {
+                                    setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: num, description: info.description, feeCents: info.scheduleFeeCents } : l));
+                                    setAobItemPickerOpenIndex(null);
+                                  }}
+                                  className="items-start gap-2"
+                                >
+                                  <Check className={cn("mt-0.5 h-4 w-4 shrink-0", line.item === num ? "opacity-100" : "opacity-0")} />
+                                  <div className="flex flex-col">
+                                    <span className="font-mono text-sm">
+                                      {num} — {formatCents(info.scheduleFeeCents)}{!info.verified ? " (unverified)" : ""}
+                                    </span>
+                                    <span className="text-xs text-gray-500">{info.description}</span>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                              <CommandItem
+                                value="other manual entry not listed"
+                                onSelect={() => {
+                                  setAobManualEntry(prev => prev.map((m, idx) => idx === i ? true : m));
+                                  setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: "" } : l));
+                                  setAobItemPickerOpenIndex(null);
+                                }}
+                              >
+                                <span className="text-gray-500">Other / manual entry…</span>
+                              </CommandItem>
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   )}
                 </div>
                 <div className="flex-1">
