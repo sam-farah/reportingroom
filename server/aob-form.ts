@@ -71,21 +71,21 @@ function wrapToLines(text: string, maxCharsPerLine: number, maxLines: number): s
 // Equipment Number and SCP are intentionally left blank — the app doesn't
 // track them, same as the prior custom-built document.
 const F = {
-  fullName: { x: 228, y: 130, fontSize: 18 },
-  dob: { x: 260, y: 245, fontSize: 15 },
+  fullName: { x: 228, y: 130, fontSize: 24 },
+  dob: { x: 260, y: 245, fontSize: 20 },
   // Boxed digit fields — one glyph is centred inside each printed box (rather
   // than a single string with letter-spacing, which drifts out of the boxes).
   // The X geometry (first-box centre + pitch) is shared by both copies; only
   // the Y baseline differs, because the two template photos have slightly
   // different vertical layouts (same reason the services table needs per-copy
   // row centres).
-  medicareBoxes: { startX: 283, pitch: 53, fontSize: 15, y: { practitioner: 284, patient: 276 } },
-  referralDateBoxes: { startX: 473, pitch: 57, fontSize: 14, y: { practitioner: 352, patient: 331 } },
+  medicareBoxes: { startX: 283, pitch: 53, fontSize: 21, y: { practitioner: 286, patient: 278 } },
+  referralDateBoxes: { startX: 473, pitch: 57, fontSize: 20, y: { practitioner: 354, patient: 333 } },
   inHospitalNo: { x: 545, size: 20, y: { practitioner: 393, patient: 361 } },
-  providerBoxes: { startX: 405, pitch: 51, fontSize: 14, y: { practitioner: 480, patient: 463 } },
-  doctorAddress: { x: 70, y: 562, lineH: 22, fontSize: 15, maxChars: 44, maxLines: 3 },
-  lspnBoxes: { startX: 281, pitch: 53, fontSize: 15, y: { practitioner: 662, patient: 647 } },
-  numPatients: { x: 720, y: 780, fontSize: 16 },
+  providerBoxes: { startX: 405, pitch: 51, fontSize: 20, y: { practitioner: 482, patient: 465 } },
+  doctorAddress: { x: 70, y: 562, lineH: 24, fontSize: 19, maxChars: 40, maxLines: 3 },
+  lspnBoxes: { startX: 281, pitch: 53, fontSize: 21, y: { practitioner: 664, patient: 649 } },
+  numPatients: { x: 720, y: 782, fontSize: 21 },
   assignorYes: { x: 250, y: 955, size: 18 },
   agreementPostAssignment: { x: 492, y: 866, size: 18 },
   // The services table has 12 physical rows (~62px pitch). The two template
@@ -98,18 +98,18 @@ const F = {
       practitioner: [280, 342, 404, 466, 528, 590, 652, 714, 776, 838, 900, 962],
       patient: [253, 315, 378, 440, 503, 565, 627, 689, 752, 814, 877, 942],
     } as Record<"practitioner" | "patient", number[]>,
-    baselineOffset: 4,
+    baselineOffset: 5,
     descX: 815,
-    descMaxCharsPerLine: 20,
+    descMaxCharsPerLine: 17,
     descMaxLines: 2,
-    descLineH: 18,
+    descLineH: 21,
     itemX: 1015,
     benefitX: 1430,
-    fontSize: 16,
+    fontSize: 20,
   },
-  renderingPractitioner: { x: 805, y: 1075, lineH: 22, fontSize: 16, maxChars: 55, maxLines: 2 },
+  renderingPractitioner: { x: 805, y: 1075, lineH: 24, fontSize: 20, maxChars: 48, maxLines: 2 },
   signature: { x: 75, maxW: 300, maxH: 85, lineBottomY: 1122 },
-  signDate: { x: 598, y: 1093, fontSize: 12 },
+  signDate: { x: 598, y: 1093, fontSize: 16 },
 };
 
 async function loadTemplate(templatePath: string): Promise<{ buffer: Buffer; width: number; height: number }> {
