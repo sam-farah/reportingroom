@@ -4090,6 +4090,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     <Popover
                       open={aobItemPickerOpenIndex === i}
                       onOpenChange={(open) => setAobItemPickerOpenIndex(open ? i : null)}
+                      modal
                     >
                       <PopoverTrigger asChild>
                         <Button
