@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus, AlertCircle } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
@@ -19,7 +19,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage } from "@shared/schema";
 import { MbsItemBadges } from "@/components/mbs-billing-summary";
-import { calculateVisitBilling, formatCents } from "@shared/mbs";
+import { calculateVisitBilling, formatCents, MBS_ITEMS } from "@shared/mbs";
 import { resolveClinicTimeZone } from "@shared/timezones";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -203,6 +203,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [amendingReport, setAmendingReport] = useState<EditableReport | null>(null);
   const [aobConfirmReport, setAobConfirmReport] = useState<Report | null>(null);
   const [aobItems, setAobItems] = useState<AobLineItem[]>([]);
+  const [aobManualEntry, setAobManualEntry] = useState<boolean[]>([]);
   const [amendmentReason, setAmendmentReason] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
@@ -522,11 +523,18 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       if (editingReport && editingReport.id === updated.id) setEditingReport(updated as any);
       setAobConfirmReport(null);
       setAobItems([]);
+      setAobManualEntry([]);
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Could not mark as complete.", variant: "destructive" });
     },
   });
+
+  // Sorted once — the reference list rarely changes and is small (~15 items).
+  const mbsItemOptions = useMemo(
+    () => Object.entries(MBS_ITEMS).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })),
+    []
+  );
 
   // Opens the Assessment of Benefits confirmation dialog, prefilled with the
   // suggested MBS items for this report's scan type(s). Confirming here is
@@ -535,7 +543,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const openAobConfirm = (report: Report) => {
     const scanTypes = report.studyType.split(",").map(s => s.trim()).filter(Boolean);
     const result = calculateVisitBilling(scanTypes);
-    setAobItems(result.lines.map(l => ({ item: l.item, description: l.description, feeCents: l.allocatedFeeCents })));
+    const lines = result.lines.map(l => ({ item: l.item, description: l.description, feeCents: l.allocatedFeeCents }));
+    setAobItems(lines);
+    // Suggested items always come from the same MBS reference data, but fall
+    // back to manual-entry mode defensively if one somehow isn't in the list.
+    setAobManualEntry(lines.map(l => !MBS_ITEMS[l.item]));
     setAobConfirmReport(report);
   };
 
@@ -3981,8 +3993,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       {/* Assessment of Benefits confirmation — required before a study can be
           marked sonographer-complete. The patient signature itself happens
           later, from the appointment screen. */}
-      <Dialog open={!!aobConfirmReport} onOpenChange={(open) => { if (!open) { setAobConfirmReport(null); setAobItems([]); } }}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={!!aobConfirmReport} onOpenChange={(open) => { if (!open) { setAobConfirmReport(null); setAobItems([]); setAobManualEntry([]); } }}>
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Confirm Assessment of Benefits</DialogTitle>
             <DialogDescription>
@@ -3997,13 +4009,56 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
             )}
             {aobItems.map((line, i) => (
               <div key={i} className="flex items-start gap-2 border rounded-md p-2">
-                <div className="w-24 flex-shrink-0">
+                <div className="w-40 flex-shrink-0">
                   <Label className="text-xs text-gray-500">Item</Label>
-                  <Input
-                    value={line.item}
-                    onChange={(e) => setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: e.target.value } : l))}
-                    className="h-8 text-sm font-mono"
-                  />
+                  {aobManualEntry[i] ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        value={line.item}
+                        onChange={(e) => setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: e.target.value } : l))}
+                        placeholder="Item #"
+                        className="h-8 text-sm font-mono"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-1.5 text-xs text-gray-400 hover:text-gray-700 flex-shrink-0"
+                        title="Choose from list instead"
+                        onClick={() => setAobManualEntry(prev => prev.map((m, idx) => idx === i ? false : m))}
+                      >
+                        List
+                      </Button>
+                    </div>
+                  ) : (
+                    <Select
+                      value={line.item || undefined}
+                      onValueChange={(val) => {
+                        if (val === "__manual__") {
+                          setAobManualEntry(prev => prev.map((m, idx) => idx === i ? true : m));
+                          setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: "" } : l));
+                          return;
+                        }
+                        const info = MBS_ITEMS[val];
+                        setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: val, description: info.description, feeCents: info.scheduleFeeCents } : l));
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-sm font-mono">
+                        <SelectValue placeholder="Select item" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mbsItemOptions.map(([num, info]) => (
+                          <SelectItem key={num} value={num} className="text-sm">
+                            <span className="font-mono">{num}</span>
+                            <span className="text-gray-500"> — {formatCents(info.scheduleFeeCents)}{!info.verified ? " (unverified)" : ""}</span>
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__manual__" className="text-sm text-gray-500">
+                          Other / manual entry…
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="flex-1">
                   <Label className="text-xs text-gray-500">Description</Label>
@@ -4030,7 +4085,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   variant="ghost"
                   size="sm"
                   className="mt-5 text-gray-400 hover:text-red-600"
-                  onClick={() => setAobItems(prev => prev.filter((_, idx) => idx !== i))}
+                  onClick={() => {
+                    setAobItems(prev => prev.filter((_, idx) => idx !== i));
+                    setAobManualEntry(prev => prev.filter((_, idx) => idx !== i));
+                  }}
                 >
                   <X className="w-4 h-4" />
                 </Button>
@@ -4039,7 +4097,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setAobItems(prev => [...prev, { item: "", description: "", feeCents: 0 }])}
+              onClick={() => {
+                setAobItems(prev => [...prev, { item: "", description: "", feeCents: 0 }]);
+                setAobManualEntry(prev => [...prev, false]);
+              }}
             >
               <Plus className="w-3 h-3 mr-1" /> Add item
             </Button>
@@ -4052,7 +4113,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
             </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => { setAobConfirmReport(null); setAobItems([]); }}>
+            <Button variant="outline" onClick={() => { setAobConfirmReport(null); setAobItems([]); setAobManualEntry([]); }}>
               Cancel
             </Button>
             <Button
