@@ -81,6 +81,12 @@ const F = {
   // row centres).
   medicareBoxes: { startX: 283, pitch: 53, fontSize: 21, y: { practitioner: 286, patient: 278 } },
   referralDateBoxes: { startX: 473, pitch: 57, fontSize: 20, y: { practitioner: 354, patient: 333 } },
+  // "Date of service, imaging procedure or first specimen collection" — top-right
+  // of the form near "Patient ref number". Six boxes in DD/MM/YY groups; the box
+  // pitch is NOT uniform (the last pair is squeezed narrower against the table's
+  // right divider on the real template), so this uses explicit per-box X centres
+  // rather than a single startX+pitch like the other boxed fields.
+  dateOfServiceBoxes: { xPositions: [1440, 1493, 1546, 1599, 1646, 1678], fontSize: 20, y: { practitioner: 187, patient: 155 } },
   inHospitalNo: { x: 545, size: 20, y: { practitioner: 393, patient: 361 } },
   providerBoxes: { startX: 405, pitch: 51, fontSize: 20, y: { practitioner: 482, patient: 465 } },
   doctorAddress: { x: 70, y: 562, lineH: 24, fontSize: 19, maxChars: 40, maxLines: 3 },
@@ -152,23 +158,25 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
 
   const dobDisplay = aobForm.patientDateOfBirth || "";
   const medicareDigits = digitsAndLetters(aobForm.medicareNumber) + digitsAndLetters(aobForm.medicareIrn);
-  const referralDateDigits = (() => {
-    const s = String(aobForm.referralDate || "");
-    // The app stores referral/request dates as ISO (yyyy-MM-dd, from a native
-    // <input type="date">), so parse that first and reorder to DD MM YY for the
-    // form's six boxes. Without this, "2026-07-04" was read as DDMMYYYY and
-    // printed as 20/26/04 — a wrong date on a government billing document.
+  // The app stores dates as ISO (yyyy-MM-dd, from a native <input type="date">)
+  // or occasionally a bare 8-digit string, so parse first and reorder to DD MM YY
+  // for the form's six boxes. Without this, "2026-07-04" was read as DDMMYYYY and
+  // printed as 20/26/04 — a wrong date on a government billing document.
+  const toDdMmYyDigits = (raw: unknown): string => {
+    const s = String(raw ?? "");
     const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (iso) return iso[3] + iso[2] + iso[1].slice(2); // yyyy-MM-dd -> DDMMYY
-    const raw = s.replace(/[^0-9]/g, "");
-    if (raw.length === 8) {
-      const lead = parseInt(raw.slice(0, 4), 10);
+    const digitsOnly = s.replace(/[^0-9]/g, "");
+    if (digitsOnly.length === 8) {
+      const lead = parseInt(digitsOnly.slice(0, 4), 10);
       // Disambiguate a bare 8-digit value: a plausible leading year => YYYYMMDD.
-      if (lead >= 1900 && lead <= 2100) return raw.slice(6, 8) + raw.slice(4, 6) + raw.slice(2, 4); // YYYYMMDD -> DDMMYY
-      return raw.slice(0, 4) + raw.slice(6, 8); // DDMMYYYY -> DDMMYY
+      if (lead >= 1900 && lead <= 2100) return digitsOnly.slice(6, 8) + digitsOnly.slice(4, 6) + digitsOnly.slice(2, 4); // YYYYMMDD -> DDMMYY
+      return digitsOnly.slice(0, 4) + digitsOnly.slice(6, 8); // DDMMYYYY -> DDMMYY
     }
-    return raw.slice(0, 6);
-  })();
+    return digitsOnly.slice(0, 6);
+  };
+  const referralDateDigits = toDdMmYyDigits(aobForm.referralDate);
+  const dateOfServiceDigits = toDdMmYyDigits(aobForm.dateOfService);
   const providerNumber = digitsAndLetters(aobForm.referringDoctorProviderNumber);
   const lspn = digitsAndLetters(clinic?.locationSpecificPracticeNumber);
 
@@ -212,12 +220,31 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
         )
         .join("");
 
+    // Same as boxedText, but for fields whose boxes are NOT evenly spaced
+    // (e.g. the date-of-service field, whose last box pair is squeezed
+    // narrower against the table's right divider on the real template).
+    const boxedTextAtPositions = (
+      f: { xPositions: number[]; fontSize: number; y: Record<"practitioner" | "patient", number> },
+      value: string,
+    ) =>
+      String(value ?? "")
+        .split("")
+        .slice(0, f.xPositions.length)
+        .map(
+          (ch, i) =>
+            `<text x="${f.xPositions[i]}" y="${f.y[copy]}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${f.fontSize}" fill="#1a1a6e">${escapeXml(ch)}</text>`,
+        )
+        .join("");
+
     parts.push(`<text x="${F.fullName.x}" y="${F.fullName.y}" font-family="Arial, sans-serif" font-size="${F.fullName.fontSize}" fill="#1a1a6e">${escapeXml(aobForm.patientName)}</text>`);
     parts.push(`<text x="${F.dob.x}" y="${F.dob.y}" font-family="Arial, sans-serif" font-size="${F.dob.fontSize}" fill="#1a1a6e">${escapeXml(dobDisplay)}</text>`);
     parts.push(boxedText(F.medicareBoxes, medicareDigits));
 
     if (referralDateDigits) {
       parts.push(boxedText(F.referralDateBoxes, referralDateDigits));
+    }
+    if (dateOfServiceDigits) {
+      parts.push(boxedTextAtPositions(F.dateOfServiceBoxes, dateOfServiceDigits));
     }
     parts.push(xMark(F.inHospitalNo.x, F.inHospitalNo.y[copy], F.inHospitalNo.size));
 

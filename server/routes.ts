@@ -4448,6 +4448,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           referringDoctorProviderNumber,
           referringDoctorAddress,
           referralDate,
+          dateOfService: matchedAppointment?.appointmentDate
+            ? new Date(matchedAppointment.appointmentDate).toISOString().slice(0, 10)
+            : undefined,
           physicianName: physician?.name,
           physicianProviderNumber: (physician as any)?.providerNumber ?? undefined,
           confirmedByName: completedBy,
@@ -4601,6 +4604,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           referringDoctorProviderNumber,
           referringDoctorAddress,
           referralDate,
+          dateOfService: appointment.appointmentDate
+            ? new Date(appointment.appointmentDate).toISOString().slice(0, 10)
+            : undefined,
           physicianName: physician?.name,
           physicianProviderNumber: (physician as any)?.providerNumber ?? undefined,
           confirmedByName,

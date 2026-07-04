@@ -630,6 +630,7 @@ export const assessmentOfBenefitForms = pgTable("assessment_of_benefit_forms", {
   referringDoctorProviderNumber: varchar("referring_doctor_provider_number", { length: 50 }),
   referringDoctorAddress: text("referring_doctor_address"),
   referralDate: varchar("referral_date", { length: 20 }),
+  dateOfService: varchar("date_of_service", { length: 20 }),
   physicianName: varchar("physician_name", { length: 255 }),
   physicianProviderNumber: varchar("physician_provider_number", { length: 50 }),
   confirmedByName: varchar("confirmed_by_name", { length: 255 }),
