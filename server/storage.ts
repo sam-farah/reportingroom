@@ -148,7 +148,7 @@ import {
   type InsertAssessmentOfBenefitForm,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
+import { eq, ne, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
 import { FieldEncryption, MedicalDataEncryption } from "./encryption";
 
 // Email message content (subject/snippet/full body) is encrypted at rest with the
@@ -372,6 +372,7 @@ export interface IStorage {
   getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormsByAppointmentId(appointmentId: number): Promise<AssessmentOfBenefitForm[]>;
   getPendingAssessmentOfBenefitFormsByClinic(clinicId: number): Promise<AssessmentOfBenefitForm[]>;
+  deleteSupersededPendingAobForms(appointmentId: number, clinicId: number, exceptId: number): Promise<number>;
   claimAssessmentOfBenefitFormForSigning(id: number, updates: {
     signedByName: string;
     patientId?: number;
@@ -1804,6 +1805,25 @@ export class DatabaseStorage implements IStorage {
         ),
       )
       .orderBy(desc(assessmentOfBenefitForms.createdAt));
+  }
+
+  // When a form is regenerated on demand for an appointment (e.g. to fix a
+  // mistake), the earlier unsigned form(s) for that same appointment must not
+  // remain independently signable — otherwise two signed documents could be
+  // filed for one visit. Signed forms are never touched.
+  async deleteSupersededPendingAobForms(appointmentId: number, clinicId: number, exceptId: number): Promise<number> {
+    const deleted = await db
+      .delete(assessmentOfBenefitForms)
+      .where(
+        and(
+          eq(assessmentOfBenefitForms.appointmentId, appointmentId),
+          eq(assessmentOfBenefitForms.clinicId, clinicId),
+          eq(assessmentOfBenefitForms.status, "pending_signature"),
+          ne(assessmentOfBenefitForms.id, exceptId),
+        ),
+      )
+      .returning({ id: assessmentOfBenefitForms.id });
+    return deleted.length;
   }
 
   // Atomically claim a pending form for signing. The conditional WHERE

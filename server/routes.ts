@@ -4523,6 +4523,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate an Assessment of Benefit form directly from an appointment, on
+  // demand. Normally the form is created automatically at "Sono Complete", but
+  // staff also need to be able to create one at any time from the appointment
+  // screen — e.g. a study was never marked complete, or a mistake was made and a
+  // fresh form needs to be generated manually. This creates a new
+  // pending_signature form snapshotting the appointment's patient, the referring
+  // doctor (from the linked scan request), and the confirmed Medicare items; the
+  // patient signature is captured separately via the existing sign route.
+  app.post("/api/appointments/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid appointment ID" });
+
+      const appointment = await storage.getAppointment(id);
+      if (!appointment || (appointment.clinicId != null && appointment.clinicId !== user.clinicId)) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
+
+      const { items } = req.body || {};
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "At least one Medicare item is required" });
+      }
+      const normalizedItems = items.map((it: any) => ({
+        item: String(it.item ?? ""),
+        description: String(it.description ?? ""),
+        feeCents: Number(it.feeCents) || 0,
+      }));
+      const totalValueCents = normalizedItems.reduce((sum, it) => sum + it.feeCents, 0);
+
+      const confirmedByName =
+        [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || String(req.session.userId!);
+
+      try {
+        const patient = appointment.patientId ? await storage.getPatient(appointment.patientId) : undefined;
+        const physician = appointment.physicianId ? await storage.getPhysician(appointment.physicianId) : undefined;
+
+        // Referring-doctor details come from the linked scan request (the
+        // authoritative referral record), falling back to the appointment's own
+        // referring-doctor fields — mirrors the sono-complete snapshot logic.
+        let referringDoctorName: string | undefined = appointment.referringDoctorName ?? undefined;
+        let referringDoctorProviderNumber: string | undefined = appointment.referringDoctorProviderNumber ?? undefined;
+        let referringDoctorAddress: string | undefined;
+        let referralDate: string | undefined;
+        try {
+          const scanRequest = await storage.getScanRequestByAppointmentId(appointment.id);
+          if (scanRequest) {
+            referringDoctorName = scanRequest.referringDoctorName ?? referringDoctorName;
+            referringDoctorProviderNumber = scanRequest.referringDoctorProviderNumber ?? referringDoctorProviderNumber;
+            referralDate = scanRequest.requestDate ?? undefined;
+            if (scanRequest.referringDoctorId) {
+              const savedDoctor = await storage.getReferringDoctor(scanRequest.referringDoctorId);
+              if (savedDoctor) {
+                referringDoctorAddress = savedDoctor.address ?? undefined;
+                referringDoctorProviderNumber = savedDoctor.providerNumber ?? referringDoctorProviderNumber;
+              }
+            }
+          }
+        } catch (scanReqErr) {
+          console.warn("Appointment AoB: failed to look up scan request for referring doctor details", scanReqErr);
+        }
+
+        const aobForm = await storage.createAssessmentOfBenefitForm({
+          clinicId: user.clinicId,
+          appointmentId: appointment.id,
+          patientId: appointment.patientId ?? undefined,
+          status: "pending_signature",
+          items: normalizedItems,
+          totalValueCents,
+          patientName: patient ? `${patient.firstName} ${patient.lastName}`.trim() : appointment.patientName,
+          patientDateOfBirth: patient?.dateOfBirth ?? undefined,
+          medicareNumber: patient?.medicareNumber ?? undefined,
+          medicareIrn: (patient as any)?.medicareIrn ?? undefined,
+          referringDoctorName,
+          referringDoctorProviderNumber,
+          referringDoctorAddress,
+          referralDate,
+          physicianName: physician?.name,
+          physicianProviderNumber: (physician as any)?.providerNumber ?? undefined,
+          confirmedByName,
+        } as InsertAssessmentOfBenefitForm);
+        // Regenerating supersedes any earlier unsigned form for this appointment,
+        // so a mistaken form can no longer be signed separately (which would file
+        // two Medicare documents for the same visit). Signed forms are untouched.
+        try {
+          await storage.deleteSupersededPendingAobForms(appointment.id, user.clinicId, aobForm.id);
+        } catch (supersedeErr) {
+          console.warn("Appointment AoB: failed to supersede prior pending forms", supersedeErr);
+        }
+        res.json(aobForm);
+      } catch (aobErr) {
+        console.error("Appointment AoB: failed to create Assessment of Benefit form", aobErr);
+        return res.status(500).json({ error: "Failed to create Assessment of Benefit form" });
+      }
+    } catch (error) {
+      console.error("Error creating Assessment of Benefit form from appointment:", error);
+      res.status(500).json({ error: "Failed to create Assessment of Benefit form" });
+    }
+  });
+
   // Patient signs the Assessment of Benefit form — generates the signed
   // document and marks the form as signed. Can happen well after the study,
   // typically by admin staff from the appointment screen.

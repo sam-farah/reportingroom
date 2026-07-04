@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus, AlertCircle, ChevronsUpDown } from "lucide-react";
+import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus, AlertCircle } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
 import DrawingCanvas from "@/components/drawing-canvas";
@@ -12,8 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -23,7 +21,8 @@ import { cn } from "@/lib/utils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage, AssessmentOfBenefitForm } from "@shared/schema";
 import { MbsItemBadges } from "@/components/mbs-billing-summary";
 import { AobSignDialog } from "@/components/aob-sign-dialog";
-import { calculateVisitBilling, formatCents, MBS_ITEMS } from "@shared/mbs";
+import { AobItemsDialog } from "@/components/aob-items-dialog";
+import { formatCents } from "@shared/mbs";
 import { resolveClinicTimeZone } from "@shared/timezones";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -206,9 +205,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [isAmendDialogOpen, setIsAmendDialogOpen] = useState(false);
   const [amendingReport, setAmendingReport] = useState<EditableReport | null>(null);
   const [aobConfirmReport, setAobConfirmReport] = useState<Report | null>(null);
-  const [aobItems, setAobItems] = useState<AobLineItem[]>([]);
-  const [aobManualEntry, setAobManualEntry] = useState<boolean[]>([]);
-  const [aobItemPickerOpenIndex, setAobItemPickerOpenIndex] = useState<number | null>(null);
   const [aobSignForm, setAobSignForm] = useState<AssessmentOfBenefitForm | null>(null);
   const [amendmentReason, setAmendmentReason] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -531,9 +527,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       }
       if (editingReport && editingReport.id === updated.id) setEditingReport(updated as any);
       setAobConfirmReport(null);
-      setAobItems([]);
-      setAobManualEntry([]);
-      setAobItemPickerOpenIndex(null);
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Could not mark as complete.", variant: "destructive" });
@@ -566,24 +559,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     return map;
   }, [pendingAobForms]);
 
-  // Sorted once — the reference list rarely changes and is small (~15 items).
-  const mbsItemOptions = useMemo(
-    () => Object.entries(MBS_ITEMS).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })),
-    []
-  );
-
-  // Opens the Assessment of Benefits confirmation dialog, prefilled with the
-  // suggested MBS items for this report's scan type(s). Confirming here is
-  // required to complete the study — the patient's signature is decoupled
-  // and can happen later from the appointment screen.
+  // Opens the Assessment of Benefits confirmation dialog. Item prefill and
+  // editing now live in the shared AobItemsDialog; confirming here is required
+  // to complete the study (the patient signature is captured later).
   const openAobConfirm = (report: Report) => {
-    const scanTypes = report.studyType.split(",").map(s => s.trim()).filter(Boolean);
-    const result = calculateVisitBilling(scanTypes);
-    const lines = result.lines.map(l => ({ item: l.item, description: l.description, feeCents: l.allocatedFeeCents }));
-    setAobItems(lines);
-    // Suggested items always come from the same MBS reference data, but fall
-    // back to manual-entry mode defensively if one somehow isn't in the list.
-    setAobManualEntry(lines.map(l => !MBS_ITEMS[l.item]));
     setAobConfirmReport(report);
   };
 
@@ -4078,173 +4057,17 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       {/* Assessment of Benefits confirmation — required before a study can be
           marked sonographer-complete. The patient signature itself happens
           later, from the appointment screen. */}
-      <Dialog open={!!aobConfirmReport} onOpenChange={(open) => { if (!open) { setAobConfirmReport(null); setAobItems([]); setAobManualEntry([]); setAobItemPickerOpenIndex(null); } }}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Confirm Assessment of Benefits</DialogTitle>
-            <DialogDescription>
-              Confirm the Medicare items billed for this visit before completing the study. The patient's signature is captured separately, later, from the appointment screen.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {aobItems.length === 0 && (
-              <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
-                No item numbers could be suggested for this study type. Add at least one item manually to continue.
-              </p>
-            )}
-            {aobItems.map((line, i) => (
-              <div key={i} className="flex items-start gap-2 border rounded-md p-2">
-                <div className="w-48 flex-shrink-0">
-                  <Label className="text-xs text-gray-500">Item</Label>
-                  {aobManualEntry[i] ? (
-                    <div className="flex items-center gap-1">
-                      <Input
-                        value={line.item}
-                        onChange={(e) => setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: e.target.value } : l))}
-                        placeholder="Item #"
-                        className="h-8 text-sm font-mono"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-1.5 text-xs text-gray-400 hover:text-gray-700 flex-shrink-0"
-                        title="Choose from list instead"
-                        onClick={() => setAobManualEntry(prev => prev.map((m, idx) => idx === i ? false : m))}
-                      >
-                        List
-                      </Button>
-                    </div>
-                  ) : (
-                    <Popover
-                      open={aobItemPickerOpenIndex === i}
-                      onOpenChange={(open) => setAobItemPickerOpenIndex(open ? i : null)}
-                      modal
-                    >
-                      <PopoverTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={aobItemPickerOpenIndex === i}
-                          className="h-8 w-full justify-between px-2 text-sm font-mono font-normal"
-                        >
-                          <span className="truncate">{line.item || "Select item"}</span>
-                          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-96 p-0" align="start">
-                        <Command filter={(value, search) => value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0}>
-                          <CommandInput placeholder="Search item number or description..." className="text-sm" />
-                          <CommandList>
-                            <CommandEmpty>No matching item.</CommandEmpty>
-                            <CommandGroup>
-                              {mbsItemOptions.map(([num, info]) => (
-                                <CommandItem
-                                  key={num}
-                                  value={`${num} ${info.description}`}
-                                  onSelect={() => {
-                                    setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: num, description: info.description, feeCents: info.scheduleFeeCents } : l));
-                                    setAobItemPickerOpenIndex(null);
-                                  }}
-                                  className="items-start gap-2"
-                                >
-                                  <Check className={cn("mt-0.5 h-4 w-4 shrink-0", line.item === num ? "opacity-100" : "opacity-0")} />
-                                  <div className="flex flex-col">
-                                    <span className="font-mono text-sm">
-                                      {num} — {formatCents(info.scheduleFeeCents)}{!info.verified ? " (unverified)" : ""}
-                                    </span>
-                                    <span className="text-xs text-gray-500">{info.description}</span>
-                                  </div>
-                                </CommandItem>
-                              ))}
-                              <CommandItem
-                                value="other manual entry not listed"
-                                onSelect={() => {
-                                  setAobManualEntry(prev => prev.map((m, idx) => idx === i ? true : m));
-                                  setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, item: "" } : l));
-                                  setAobItemPickerOpenIndex(null);
-                                }}
-                              >
-                                <span className="text-gray-500">Other / manual entry…</span>
-                              </CommandItem>
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <Label className="text-xs text-gray-500">Description</Label>
-                  <Input
-                    value={line.description}
-                    onChange={(e) => setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, description: e.target.value } : l))}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="w-28 flex-shrink-0">
-                  <Label className="text-xs text-gray-500">Fee ($)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={(line.feeCents / 100).toFixed(2)}
-                    onChange={(e) => {
-                      const dollars = parseFloat(e.target.value);
-                      setAobItems(prev => prev.map((l, idx) => idx === i ? { ...l, feeCents: isNaN(dollars) ? 0 : Math.round(dollars * 100) } : l));
-                    }}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-5 text-gray-400 hover:text-red-600"
-                  onClick={() => {
-                    setAobItems(prev => prev.filter((_, idx) => idx !== i));
-                    setAobManualEntry(prev => prev.filter((_, idx) => idx !== i));
-                    setAobItemPickerOpenIndex(null);
-                  }}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setAobItems(prev => [...prev, { item: "", description: "", feeCents: 0 }]);
-                setAobManualEntry(prev => [...prev, false]);
-              }}
-            >
-              <Plus className="w-3 h-3 mr-1" /> Add item
-            </Button>
-            <div className="flex items-center justify-between border-t pt-2 text-sm font-medium">
-              <span>Total value</span>
-              <span>{formatCents(aobItems.reduce((sum, l) => sum + (l.feeCents || 0), 0))}</span>
-            </div>
-            <p className="text-[11px] text-gray-400">
-              Suggested items only — confirm clinically correct before continuing. This is not a submitted claim.
-            </p>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => { setAobConfirmReport(null); setAobItems([]); setAobManualEntry([]); setAobItemPickerOpenIndex(null); }}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => aobConfirmReport && sonographerCompleteMutation.mutate({
-                reportId: aobConfirmReport.id,
-                items: aobItems.filter(l => l.item.trim() || l.description.trim()),
-              })}
-              disabled={sonographerCompleteMutation.isPending || aobItems.filter(l => l.item.trim() || l.description.trim()).length === 0}
-              className="bg-teal-600 hover:bg-teal-700 text-white"
-            >
-              {sonographerCompleteMutation.isPending ? "Confirming..." : "Confirm & Complete Study"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AobItemsDialog
+        open={!!aobConfirmReport}
+        onOpenChange={(open) => { if (!open) setAobConfirmReport(null); }}
+        scanTypes={aobConfirmReport ? aobConfirmReport.studyType.split(",") : []}
+        title="Confirm Assessment of Benefits"
+        description="Confirm the Medicare items billed for this visit before completing the study. The patient's signature is captured separately, later, from the appointment screen."
+        submitLabel="Confirm & Complete Study"
+        submittingLabel="Confirming..."
+        isPending={sonographerCompleteMutation.isPending}
+        onSubmit={(items) => aobConfirmReport && sonographerCompleteMutation.mutate({ reportId: aobConfirmReport.id, items })}
+      />
 
       {/* Assessment of Benefits — patient signature */}
       <AobSignDialog

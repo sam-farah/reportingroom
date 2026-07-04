@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal, ShieldCheck, MessageSquare } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal, ShieldCheck, MessageSquare, FilePlus } from "lucide-react";
 import jsPDF from "jspdf";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -23,6 +23,7 @@ import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import MbsBillingSummary, { MbsItemBadges } from "@/components/mbs-billing-summary";
 import { AobSignDialog } from "@/components/aob-sign-dialog";
+import { AobItemsDialog, type AobLineItem } from "@/components/aob-items-dialog";
 import { formatCents } from "@shared/mbs";
 
 async function fetchAsDataUrl(url: string): Promise<string | null> {
@@ -627,6 +628,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
   const [aobSignForm, setAobSignForm] = useState<AssessmentOfBenefitForm | null>(null);
+  const [aobCreateOpen, setAobCreateOpen] = useState(false);
   const [certificateDialog, setCertificateDialog] = useState<{
     appointment: Appointment;
     blob: Blob;
@@ -1021,13 +1023,34 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"],
     enabled: !!viewingAppointment?.id,
   });
-  const latestAobForm = aobForms.length > 0 ? aobForms[aobForms.length - 1] : null;
+  // Forms are returned newest-first; act on the newest, since staff can generate
+  // a fresh form on demand (e.g. to correct a mistake) which supersedes older ones.
+  const latestAobForm = aobForms.length > 0 ? aobForms[0] : null;
 
   const handleAobSigned = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/assessment-of-benefit/pending"] });
     toast({ title: "Signed", description: "Assessment of Benefits form signed." });
     setAobSignForm(null);
   };
+
+  const createAobMutation = useMutation({
+    mutationFn: async ({ appointmentId, items }: { appointmentId: number; items: AobLineItem[] }) => {
+      const res = await apiRequest(`/api/appointments/${appointmentId}/assessment-of-benefit`, "POST", { items });
+      return await res.json();
+    },
+    onSuccess: (form: AssessmentOfBenefitForm) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/assessment-of-benefit/pending"] });
+      setAobCreateOpen(false);
+      // Flow straight into capturing the patient's signature.
+      setAobSignForm(form);
+      toast({ title: "Form created", description: "Assessment of Benefits form ready for signature." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Could not create the form.", variant: "destructive" });
+    },
+  });
 
   const sendReminderMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -3605,14 +3628,16 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   />
                 )}
 
-                {/* Assessment of Benefits — patient signature, decoupled from sonographer completion */}
-                {latestAobForm && (
+                {/* Assessment of Benefits — patient signature, decoupled from
+                    sonographer completion. Always available so staff can generate
+                    (or regenerate, to fix a mistake) a form on demand from here. */}
+                {viewingAppointment.status !== "cancelled" && (
                   <div className="border rounded-md p-3 space-y-2">
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                       <ShieldCheck className="w-4 h-4 text-teal-600" />
                       Assessment of Benefits
                     </div>
-                    {latestAobForm.status === "signed" ? (
+                    {latestAobForm?.status === "signed" && (
                       <>
                         <p className="text-sm text-emerald-700 flex items-center gap-1">
                           <CheckCircle className="w-4 h-4" />
@@ -3648,7 +3673,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                           )}
                         </div>
                       </>
-                    ) : (
+                    )}
+                    {latestAobForm?.status === "pending_signature" && (
                       <>
                         <p className="text-xs text-gray-500">
                           Total value: {formatCents(latestAobForm.totalValueCents)} — awaiting patient signature.
@@ -3664,6 +3690,25 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                         </Button>
                       </>
                     )}
+                    {!latestAobForm && (
+                      <p className="text-xs text-gray-500">
+                        No form yet — generate one to capture the patient's signature.
+                      </p>
+                    )}
+                    <Button
+                      variant={latestAobForm ? "ghost" : "outline"}
+                      size={latestAobForm ? "sm" : "default"}
+                      className={
+                        latestAobForm
+                          ? "w-full gap-2 text-gray-500 hover:text-teal-700"
+                          : "w-full gap-2 text-teal-700 border-teal-300 hover:bg-teal-50"
+                      }
+                      onClick={() => setAobCreateOpen(true)}
+                      data-testid="button-generate-aob"
+                    >
+                      <FilePlus className="w-4 h-4" />
+                      {latestAobForm ? "Generate a new form" : "Generate Assessment of Benefits form"}
+                    </Button>
                   </div>
                 )}
 
@@ -3708,6 +3753,19 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
           form={aobSignForm}
           onOpenChange={(open) => { if (!open) setAobSignForm(null); }}
           onSigned={handleAobSigned}
+        />
+
+        {/* Assessment of Benefits — generate / regenerate a form on demand */}
+        <AobItemsDialog
+          open={aobCreateOpen}
+          onOpenChange={setAobCreateOpen}
+          scanTypes={viewingAppointment?.scanType ? viewingAppointment.scanType.split(", ") : []}
+          title="Generate Assessment of Benefits"
+          description="Confirm the Medicare items for this visit, then capture the patient's signature. Suggested items only — check they are clinically correct. This is not a submitted claim."
+          submitLabel="Create & sign"
+          submittingLabel="Creating…"
+          isPending={createAobMutation.isPending}
+          onSubmit={(items) => viewingAppointment && createAobMutation.mutate({ appointmentId: viewingAppointment.id, items })}
         />
 
         {/* Attendance Certificate — Download or Email */}
