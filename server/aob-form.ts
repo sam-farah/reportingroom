@@ -104,8 +104,19 @@ const F = {
     descMaxLines: 2,
     descLineH: 21,
     itemX: 1015,
-    benefitX: 1430,
     fontSize: 20,
+    // "Benefit assigned" is itself a boxed field on the real form: 3 boxes for
+    // dollars, a printed decimal dot between box 3 and box 4, then 2 boxes for
+    // cents — 5 boxes total (measured directly from the template pixels, not
+    // eyeballed). No "$" or "." should be drawn; the template already prints
+    // the dot. The two copies are different photos with slightly different
+    // pitch, so X is per-copy like the other boxed fields.
+    benefitBoxes: {
+      startX: { practitioner: 1433, patient: 1439 },
+      pitch: { practitioner: 53, patient: 55 },
+      dollarBoxes: 3,
+      centsBoxes: 2,
+    },
   },
   renderingPractitioner: { x: 805, y: 1075, lineH: 24, fontSize: 20, maxChars: 48, maxLines: 2 },
   signature: { x: 75, maxW: 300, maxH: 85, lineBottomY: 1122 },
@@ -232,8 +243,38 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
     parts.push(xMark(F.assignorYes.x, F.assignorYes.y, F.assignorYes.size));
     parts.push(xMark(F.agreementPostAssignment.x, F.agreementPostAssignment.y, F.agreementPostAssignment.size));
 
-    const { rowCentersByCopy, baselineOffset, descX, descMaxCharsPerLine, descMaxLines, descLineH, itemX, benefitX, fontSize } = F.servicesTable;
+    const { rowCentersByCopy, baselineOffset, descX, descMaxCharsPerLine, descMaxLines, descLineH, itemX, fontSize, benefitBoxes } = F.servicesTable;
     const rowCenters = rowCentersByCopy[copy];
+    const benefitStartX = benefitBoxes.startX[copy];
+    const benefitPitch = benefitBoxes.pitch[copy];
+
+    // "Benefit assigned" is itself a boxed field on the real form (see F.servicesTable.benefitBoxes):
+    // dollarBoxes boxes for dollars, a printed decimal dot, then centsBoxes boxes for cents. We only
+    // draw the digits — never a "$" or "." — the template already prints the dot.
+    const renderBenefitBoxes = (feeCents: number, y: number) => {
+      const safeCents = Math.max(0, Math.round(feeCents));
+      const dollars = Math.floor(safeCents / 100);
+      const cents = String(safeCents % 100).padStart(benefitBoxes.centsBoxes, "0");
+      // Fee exceeds the printed boxes (e.g. >$999) — extremely unlikely for a single MBS
+      // item, but rather than silently truncate digits we let it overflow to the left of
+      // box 1 so nothing is lost, at the cost of drifting outside the box.
+      const dollarsStr = String(dollars).padStart(benefitBoxes.dollarBoxes, " ");
+      const dollarOffset = dollarsStr.length - benefitBoxes.dollarBoxes;
+      dollarsStr.split("").forEach((ch, i) => {
+        if (ch === " ") return;
+        const boxIndex = i - dollarOffset;
+        parts.push(
+          `<text x="${benefitStartX + boxIndex * benefitPitch}" y="${y}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#1a1a6e">${ch}</text>`,
+        );
+      });
+      cents.split("").forEach((ch, i) => {
+        const boxIndex = benefitBoxes.dollarBoxes + i;
+        parts.push(
+          `<text x="${benefitStartX + boxIndex * benefitPitch}" y="${y}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#1a1a6e">${escapeXml(ch)}</text>`,
+        );
+      });
+    };
+
     items.slice(0, rowCenters.length).forEach((it, i) => {
       const y = rowCenters[i] + baselineOffset;
       const descLines = wrapToLines(it.description || "", descMaxCharsPerLine, descMaxLines);
@@ -241,7 +282,7 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
         parts.push(`<text x="${descX}" y="${y + li * descLineH}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#1a1a6e">${escapeXml(line)}</text>`);
       });
       parts.push(`<text x="${itemX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#1a1a6e">${escapeXml(it.item)}</text>`);
-      parts.push(`<text x="${benefitX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#1a1a6e">$${(it.feeCents / 100).toFixed(2)}</text>`);
+      renderBenefitBoxes(it.feeCents, y);
     });
 
     const rpLines = wrapToLines(renderingPractitionerText, F.renderingPractitioner.maxChars, F.renderingPractitioner.maxLines);
