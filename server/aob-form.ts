@@ -100,6 +100,12 @@ const F = {
   // row centres).
   medicareBoxes: { startX: 283, pitch: 53, fontSize: 25, y: { practitioner: 280, patient: 241 } },
   referralDateBoxes: { startX: 473, pitch: 57, fontSize: 20, y: { practitioner: 354, patient: 333 } },
+  // "Period of referral in months (MM)" — two small boxes to the left of the
+  // referral/request date, on the same printed row. Fixed compliance default:
+  // this app doesn't track a per-referral validity period, and clinic
+  // instruction is to always print "12" (12 months) here rather than leave it
+  // blank. Calibrated from a hand-marked user screenshot of the patient copy.
+  referralPeriodBoxes: { startX: 247, pitch: 48, fontSize: 20, y: { practitioner: 343, patient: 322 } },
   // "Date of service, imaging procedure or first specimen collection" — top-right
   // of the form near "Patient ref number". Six boxes in DD/MM/YY groups; the box
   // pitch is NOT perfectly uniform (there's a larger gap where the printed slash
@@ -333,6 +339,8 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
     if (referralDateDigits) {
       parts.push(boxedText(F.referralDateBoxes, referralDateDigits));
     }
+    // "Period of referral in months" — fixed compliance default of 12 months.
+    parts.push(boxedText(F.referralPeriodBoxes, "12"));
     if (dateOfServiceDigits) {
       parts.push(boxedTextAtPositions(F.dateOfServiceBoxes, dateOfServiceDigits));
     }
