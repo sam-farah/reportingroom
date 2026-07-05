@@ -3293,7 +3293,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                 )}
 
                 {/* Normal appointment detail view */}
-                {!showBeginStudy && !showVerbalConsent && (<>
+                {!showBeginStudy && !showVerbalConsent && !showIdCheck && !showReportingDoctor && (<>
                 {(() => {
                   const linkedPatient = viewingAppointment.patientId
                     ? allCalendarPatients.find(pt => pt.id === viewingAppointment.patientId)
