@@ -643,6 +643,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const [showVerbalConsent, setShowVerbalConsent] = useState(false);
   const [showReportingDoctor, setShowReportingDoctor] = useState(false);
   const [reportingDoctorId, setReportingDoctorId] = useState("");
+  const [reportingDoctorNextAction, setReportingDoctorNextAction] = useState<"beginStudy" | "inProgress">("beginStudy");
   const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [desktopDatePickerOpen, setDesktopDatePickerOpen] = useState(false);
@@ -2979,7 +2980,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
           </DialogContent>
         </Dialog>
 
-        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); setShowIdCheck(false); setShowVerbalConsent(false); setShowReportingDoctor(false); setReportingDoctorId(""); } }}>
+        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); setShowIdCheck(false); setShowVerbalConsent(false); setShowReportingDoctor(false); setReportingDoctorId(""); setReportingDoctorNextAction("beginStudy"); } }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
@@ -3111,6 +3112,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                               setShowBeginStudy(true);
                             } else {
                               setReportingDoctorId("");
+                              setReportingDoctorNextAction("beginStudy");
                               setShowReportingDoctor(true);
                             }
                           } else {
@@ -3157,6 +3159,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                                 setShowBeginStudy(true);
                               } else {
                                 setReportingDoctorId("");
+                                setReportingDoctorNextAction("beginStudy");
                                 setShowReportingDoctor(true);
                               }
                             },
@@ -3200,7 +3203,21 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                             onSuccess: () => {
                               toast({ title: "Reporting doctor set", description: "This doctor will be used for the report and Medicare form." });
                               setShowReportingDoctor(false);
-                              setShowBeginStudy(true);
+                              if (reportingDoctorNextAction === "inProgress") {
+                                updateMutation.mutate(
+                                  { id: viewingAppointment.id, data: { status: "in_progress" } },
+                                  {
+                                    onSuccess: () => {
+                                      toast({ title: "Scan marked as in progress", description: "Complete the report from any device when ready." });
+                                    },
+                                  }
+                                );
+                                setViewingAppointment(null);
+                                setShowBeginStudy(false);
+                                setShowIdCheck(false);
+                              } else {
+                                setShowBeginStudy(true);
+                              }
                             },
                           }
                         );
@@ -3268,6 +3285,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                     <button
                       className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors text-left group"
                       onClick={() => {
+                        if (!viewingAppointment.physicianId) {
+                          setReportingDoctorId("");
+                          setReportingDoctorNextAction("inProgress");
+                          setShowBeginStudy(false);
+                          setShowIdCheck(false);
+                          setShowReportingDoctor(true);
+                          return;
+                        }
                         updateMutation.mutate(
                           { id: viewingAppointment.id, data: { status: "in_progress" } },
                           {
