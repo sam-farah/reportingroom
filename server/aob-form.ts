@@ -249,7 +249,14 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
   const providerNumber = digitsAndLetters(aobForm.referringDoctorProviderNumber);
   const lspn = digitsAndLetters(clinic?.locationSpecificPracticeNumber);
 
-  const items: { item: string; description: string; feeCents: number }[] = Array.isArray(aobForm.items) ? aobForm.items : [];
+  // Medicare requires the services table to list items in descending order of
+  // benefit assigned (highest benefit first) — this is also the order the
+  // "highest fee = 100%, second-highest = 60%, rest = 50%" Multiple Services
+  // Rule is applied in, so the form should visibly match that same ordering
+  // rather than whatever order the items happened to be entered/edited in.
+  const items: { item: string; description: string; feeCents: number }[] = (
+    Array.isArray(aobForm.items) ? [...aobForm.items] : []
+  ).sort((a, b) => (b.feeCents || 0) - (a.feeCents || 0));
 
   const renderingPractitionerText = [
     aobForm.referringDoctorName || "",
@@ -323,9 +330,14 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
     parts.push(xMark(F.inHospitalNo.x, F.inHospitalNo.y[copy], F.inHospitalNo.size));
     parts.push(xMark(F.expiryDateChecked.x, F.expiryDateChecked.y[copy], F.expiryDateChecked.size));
 
-    if (medicareDigits) {
+    // "Patient ref number" is the Medicare card's Individual Reference Number
+    // (IRN) — the single digit printed next to the patient's name on the card
+    // identifying them within their family group — NOT the 10-digit Medicare
+    // card number itself (that already has its own boxed field above).
+    const patientRefNumber = digitsAndLetters(aobForm.medicareIrn);
+    if (patientRefNumber) {
       parts.push(
-        `<text x="${F.patientRefNumber.x}" y="${F.patientRefNumber.y[copy]}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.patientRefNumber.fontSize}" fill="#1a1a6e">${escapeXml(medicareDigits)}</text>`,
+        `<text x="${F.patientRefNumber.x}" y="${F.patientRefNumber.y[copy]}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.patientRefNumber.fontSize}" fill="#1a1a6e">${escapeXml(patientRefNumber)}</text>`,
       );
     }
 
