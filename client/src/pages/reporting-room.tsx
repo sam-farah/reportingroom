@@ -2898,25 +2898,14 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
 
                 {/* Finalization */}
-                <div className="border-t pt-4 space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="fullscreen-finalizeReport"
-                      checked={Boolean(editingReport.isFinalized)}
-                      onCheckedChange={(checked) => updateEditingReport('isFinalized', Boolean(checked))}
-                    />
-                    <Label htmlFor="fullscreen-finalizeReport" className="text-sm">
-                      Finalize this report (will add electronic signature timestamp)
-                    </Label>
-                  </div>
-                  
-                  {editingReport.isFinalized && (
+                {editingReport.isFinalized && (
+                  <div className="border-t pt-4">
                     <div className="text-green-600 text-sm flex items-center">
                       <CheckCircle className="w-4 h-4 mr-2" />
-                      This report will be electronically signed upon saving
+                      This report has been electronically signed
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 </fieldset>
 
