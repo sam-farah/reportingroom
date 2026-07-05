@@ -2466,10 +2466,14 @@ interface LoginAuditRow {
   userRole: string | null;
 }
 
+const LOGIN_AUDIT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+
 function LoginAuditTab() {
   const [eventFilter, setEventFilter] = useState<string>("all");
   const [userFilter, setUserFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(25);
 
   const { data: rows = [], isLoading, refetch, isFetching } = useQuery<LoginAuditRow[]>({
     queryKey: ["/api/audit/logins"],
@@ -2490,6 +2494,15 @@ function LoginAuditTab() {
     }
     return true;
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [eventFilter, userFilter, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const paginated = filtered.slice(pageStart, pageStart + pageSize);
 
   const successes = filtered.filter(r => r.eventType === "login_success").length;
   const failures = filtered.filter(r => r.eventType === "login_failed").length;
@@ -2616,33 +2629,76 @@ function LoginAuditTab() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-8 text-gray-500">No login events match your filters yet.</div>
           ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-medium text-gray-700">When</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-700">User</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-700">Event</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-700">IP</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-700">Detail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(r => (
-                    <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50" data-testid={`row-login-audit-${r.id}`}>
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatWhen(r.createdAt)}</td>
-                      <td className="px-3 py-2">
-                        <div className="font-medium text-gray-900">{displayName(r)}</div>
-                        {r.userEmail && r.userFirstName && <div className="text-xs text-gray-500">{r.userEmail}</div>}
-                      </td>
-                      <td className="px-3 py-2">{eventBadge(r.eventType)}</td>
-                      <td className="px-3 py-2 text-gray-600 font-mono text-xs">{r.ipAddress ?? "—"}</td>
-                      <td className="px-3 py-2 text-gray-600 text-xs">{friendlyReason(r.failureReason)}</td>
+            <>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-gray-700">When</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-700">User</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-700">Event</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-700">IP</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-700">Detail</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {paginated.map(r => (
+                      <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50" data-testid={`row-login-audit-${r.id}`}>
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatWhen(r.createdAt)}</td>
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-gray-900">{displayName(r)}</div>
+                          {r.userEmail && r.userFirstName && <div className="text-xs text-gray-500">{r.userEmail}</div>}
+                        </td>
+                        <td className="px-3 py-2">{eventBadge(r.eventType)}</td>
+                        <td className="px-3 py-2 text-gray-600 font-mono text-xs">{r.ipAddress ?? "—"}</td>
+                        <td className="px-3 py-2 text-gray-600 text-xs">{friendlyReason(r.failureReason)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-3">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <span>
+                    Showing {filtered.length === 0 ? 0 : pageStart + 1}–{Math.min(pageStart + pageSize, filtered.length)} of {filtered.length}
+                  </span>
+                  <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                    <SelectTrigger className="w-[110px] h-8" data-testid="select-login-audit-page-size">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOGIN_AUDIT_PAGE_SIZE_OPTIONS.map(size => (
+                        <SelectItem key={size} value={String(size)}>{size} / page</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    data-testid="button-login-audit-prev-page"
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-gray-600 whitespace-nowrap">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    data-testid="button-login-audit-next-page"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
