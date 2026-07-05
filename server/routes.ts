@@ -5951,18 +5951,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create report in storage — inherit patientId and UR number from the worksheet if already linked
       const linkedPatientForReport = worksheet.patientId ? await storage.getPatient(worksheet.patientId) : null;
-      // Inherit sonographer: prefer the worksheet's sonographer, else fall back
-      // to the patient's most recent appointment sonographer.
+
+      // When a scan is uploaded directly (e.g. via the nav bar Upload button,
+      // not from a calendar "Begin Study"), the worksheet often only carries
+      // a patientId with no appointment context. Prefer an appointment
+      // scheduled on the same day as the exam/upload — that's the encounter
+      // the sonographer is actually completing — before falling back to the
+      // patient's most recent appointment overall (which could be from a
+      // past or future, unrelated visit).
+      let sameDayAppointments: any[] = [];
+      if (worksheet.patientId) {
+        try {
+          const apts = (await storage.getPatientAppointments(worksheet.patientId)) || [];
+          const examDateStr = worksheet.examDate || new Date().toISOString().split('T')[0];
+          const examDate = new Date(examDateStr);
+          if (!isNaN(examDate.getTime())) {
+            const dayStart = new Date(examDate);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(examDate);
+            dayEnd.setHours(23, 59, 59, 999);
+            sameDayAppointments = apts.filter((a: any) => {
+              const ad = new Date(a.appointmentDate);
+              return ad >= dayStart && ad <= dayEnd;
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to look up same-day appointments for report:', e);
+        }
+      }
+
+      // Inherit sonographer: prefer the worksheet's sonographer, else the
+      // same-day appointment's sonographer, else the patient's most recent
+      // appointment sonographer.
       let reportSonographerId: number | null = (worksheet as any).sonographerId ?? null;
       if (!reportSonographerId && worksheet.patientId) {
         try {
-          const apts = await storage.getPatientAppointments(worksheet.patientId);
-          const withSono = (apts || [])
-            .filter((a: any) => a.sonographerId)
-            .sort((a: any, b: any) =>
-              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
-            );
-          if (withSono.length > 0) reportSonographerId = withSono[0].sonographerId;
+          const sameDaySono = sameDayAppointments.filter((a: any) => a.sonographerId);
+          if (sameDaySono.length > 0) {
+            reportSonographerId = sameDaySono[0].sonographerId;
+          } else {
+            const apts = await storage.getPatientAppointments(worksheet.patientId);
+            const withSono = (apts || [])
+              .filter((a: any) => a.sonographerId)
+              .sort((a: any, b: any) =>
+                new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+              );
+            if (withSono.length > 0) reportSonographerId = withSono[0].sonographerId;
+          }
         } catch (e) {
           console.warn('Failed to inherit sonographer for report:', e);
         }
@@ -5971,17 +6006,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Inherit reporting physician: sonographers now choose the reporting
       // doctor early — right after verbal consent, on the appointment —
       // rather than at report-generation time, so by now it should already
-      // be on the patient's appointment. Manual selection (if the client
-      // still passed one, e.g. no matching appointment existed) always wins.
+      // be on the patient's appointment. Prefer the same-day encounter over
+      // the patient's most recent appointment overall. Manual selection (if
+      // the client still passed one, e.g. no matching appointment existed)
+      // always wins.
       if (!physicianId && worksheet.patientId) {
         try {
-          const apts = await storage.getPatientAppointments(worksheet.patientId);
-          const withPhysician = (apts || [])
-            .filter((a: any) => a.physicianId)
-            .sort((a: any, b: any) =>
-              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
-            );
-          if (withPhysician.length > 0) physicianId = withPhysician[0].physicianId;
+          const sameDayPhysician = sameDayAppointments.filter((a: any) => a.physicianId);
+          if (sameDayPhysician.length > 0) {
+            physicianId = sameDayPhysician[0].physicianId;
+          } else {
+            const apts = await storage.getPatientAppointments(worksheet.patientId);
+            const withPhysician = (apts || [])
+              .filter((a: any) => a.physicianId)
+              .sort((a: any, b: any) =>
+                new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+              );
+            if (withPhysician.length > 0) physicianId = withPhysician[0].physicianId;
+          }
         } catch (e) {
           console.warn('Failed to inherit physician for report:', e);
         }
@@ -5991,35 +6033,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Physician ID is required" });
       }
 
-      // Inherit verbal consent timestamp from the patient's most recent
-      // appointment where verbal consent was recorded by the sonographer.
+      // Inherit verbal consent timestamp: prefer the same-day encounter,
+      // else the patient's most recent appointment where verbal consent was
+      // recorded by the sonographer.
       let reportVerbalConsentAt: Date | null = null;
       if (worksheet.patientId) {
         try {
-          const apts = await storage.getPatientAppointments(worksheet.patientId);
-          const withConsent = (apts || [])
-            .filter((a: any) => a.verbalConsentAt)
-            .sort((a: any, b: any) =>
-              new Date(b.verbalConsentAt).getTime() - new Date(a.verbalConsentAt).getTime()
-            );
-          if (withConsent.length > 0) reportVerbalConsentAt = withConsent[0].verbalConsentAt;
+          const sameDayConsent = sameDayAppointments.filter((a: any) => a.verbalConsentAt);
+          if (sameDayConsent.length > 0) {
+            reportVerbalConsentAt = sameDayConsent
+              .sort((a: any, b: any) => new Date(b.verbalConsentAt).getTime() - new Date(a.verbalConsentAt).getTime())[0]
+              .verbalConsentAt;
+          } else {
+            const apts = await storage.getPatientAppointments(worksheet.patientId);
+            const withConsent = (apts || [])
+              .filter((a: any) => a.verbalConsentAt)
+              .sort((a: any, b: any) =>
+                new Date(b.verbalConsentAt).getTime() - new Date(a.verbalConsentAt).getTime()
+              );
+            if (withConsent.length > 0) reportVerbalConsentAt = withConsent[0].verbalConsentAt;
+          }
         } catch (e) {
           console.warn('Failed to inherit verbal consent for report:', e);
         }
       }
 
-      // Inherit written (signed) consent timestamp from the patient's most recent
-      // appointment where the consent form was signed (kiosk or remote device).
+      // Inherit written (signed) consent timestamp: prefer the same-day
+      // encounter, else the patient's most recent appointment where the
+      // consent form was signed (kiosk or remote device).
       let reportWrittenConsentAt: Date | null = null;
       if (worksheet.patientId) {
         try {
-          const apts = await storage.getPatientAppointments(worksheet.patientId);
-          const withConsent = (apts || [])
-            .filter((a: any) => a.writtenConsentAt)
-            .sort((a: any, b: any) =>
-              new Date(b.writtenConsentAt).getTime() - new Date(a.writtenConsentAt).getTime()
-            );
-          if (withConsent.length > 0) reportWrittenConsentAt = withConsent[0].writtenConsentAt;
+          const sameDayWritten = sameDayAppointments.filter((a: any) => a.writtenConsentAt);
+          if (sameDayWritten.length > 0) {
+            reportWrittenConsentAt = sameDayWritten
+              .sort((a: any, b: any) => new Date(b.writtenConsentAt).getTime() - new Date(a.writtenConsentAt).getTime())[0]
+              .writtenConsentAt;
+          } else {
+            const apts = await storage.getPatientAppointments(worksheet.patientId);
+            const withConsent = (apts || [])
+              .filter((a: any) => a.writtenConsentAt)
+              .sort((a: any, b: any) =>
+                new Date(b.writtenConsentAt).getTime() - new Date(a.writtenConsentAt).getTime()
+              );
+            if (withConsent.length > 0) reportWrittenConsentAt = withConsent[0].writtenConsentAt;
+          }
         } catch (e) {
           console.warn('Failed to inherit written consent for report:', e);
         }
@@ -7532,53 +7590,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const draftLinkedPatient = worksheet.patientId ? await storage.getPatient(worksheet.patientId) : null;
 
+      // Prefer an appointment scheduled on the same day as the exam — the
+      // encounter the sonographer is actually completing — before falling
+      // back to the patient's most recent appointment overall.
+      let draftSameDayAppointments: any[] = [];
+      if (worksheet.patientId) {
+        try {
+          const apts = (await storage.getPatientAppointments(worksheet.patientId)) || [];
+          const examDateStr = worksheet.examDate || new Date().toISOString().split('T')[0];
+          const examDate = new Date(examDateStr);
+          if (!isNaN(examDate.getTime())) {
+            const dayStart = new Date(examDate);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(examDate);
+            dayEnd.setHours(23, 59, 59, 999);
+            draftSameDayAppointments = apts.filter((a: any) => {
+              const ad = new Date(a.appointmentDate);
+              return ad >= dayStart && ad <= dayEnd;
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to look up same-day appointments for draft report:', e);
+        }
+      }
+
       // Inherit reporting physician: sonographers now choose the reporting
       // doctor early — right after verbal consent, on the appointment —
       // rather than at report-editing time.
       let draftPhysicianId: number | null = null;
       if (worksheet.patientId) {
         try {
-          const apts = await storage.getPatientAppointments(worksheet.patientId);
-          const withPhysician = (apts || [])
-            .filter((a: any) => a.physicianId)
-            .sort((a: any, b: any) =>
-              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
-            );
-          if (withPhysician.length > 0) draftPhysicianId = withPhysician[0].physicianId;
+          const sameDayPhysician = draftSameDayAppointments.filter((a: any) => a.physicianId);
+          if (sameDayPhysician.length > 0) {
+            draftPhysicianId = sameDayPhysician[0].physicianId;
+          } else {
+            const apts = await storage.getPatientAppointments(worksheet.patientId);
+            const withPhysician = (apts || [])
+              .filter((a: any) => a.physicianId)
+              .sort((a: any, b: any) =>
+                new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+              );
+            if (withPhysician.length > 0) draftPhysicianId = withPhysician[0].physicianId;
+          }
         } catch (e) {
           console.warn('Failed to inherit physician for draft report:', e);
         }
       }
 
-      // Inherit verbal consent timestamp from the patient's most recent
-      // appointment where verbal consent was recorded by the sonographer.
+      // Inherit verbal consent timestamp: prefer the same-day encounter,
+      // else the patient's most recent appointment where verbal consent was
+      // recorded by the sonographer.
       let draftVerbalConsentAt: Date | null = null;
       if (worksheet.patientId) {
         try {
-          const apts = await storage.getPatientAppointments(worksheet.patientId);
-          const withConsent = (apts || [])
-            .filter((a: any) => a.verbalConsentAt)
-            .sort((a: any, b: any) =>
-              new Date(b.verbalConsentAt).getTime() - new Date(a.verbalConsentAt).getTime()
-            );
-          if (withConsent.length > 0) draftVerbalConsentAt = withConsent[0].verbalConsentAt;
+          const sameDayConsent = draftSameDayAppointments.filter((a: any) => a.verbalConsentAt);
+          if (sameDayConsent.length > 0) {
+            draftVerbalConsentAt = sameDayConsent
+              .sort((a: any, b: any) => new Date(b.verbalConsentAt).getTime() - new Date(a.verbalConsentAt).getTime())[0]
+              .verbalConsentAt;
+          } else {
+            const apts = await storage.getPatientAppointments(worksheet.patientId);
+            const withConsent = (apts || [])
+              .filter((a: any) => a.verbalConsentAt)
+              .sort((a: any, b: any) =>
+                new Date(b.verbalConsentAt).getTime() - new Date(a.verbalConsentAt).getTime()
+              );
+            if (withConsent.length > 0) draftVerbalConsentAt = withConsent[0].verbalConsentAt;
+          }
         } catch (e) {
           console.warn('Failed to inherit verbal consent for draft report:', e);
         }
       }
 
-      // Inherit written (signed) consent timestamp from the patient's most recent
-      // appointment where the consent form was signed (kiosk or remote device).
+      // Inherit written (signed) consent timestamp: prefer the same-day
+      // encounter, else the patient's most recent appointment where the
+      // consent form was signed (kiosk or remote device).
       let draftWrittenConsentAt: Date | null = null;
       if (worksheet.patientId) {
         try {
-          const apts = await storage.getPatientAppointments(worksheet.patientId);
-          const withConsent = (apts || [])
-            .filter((a: any) => a.writtenConsentAt)
-            .sort((a: any, b: any) =>
-              new Date(b.writtenConsentAt).getTime() - new Date(a.writtenConsentAt).getTime()
-            );
-          if (withConsent.length > 0) draftWrittenConsentAt = withConsent[0].writtenConsentAt;
+          const sameDayWritten = draftSameDayAppointments.filter((a: any) => a.writtenConsentAt);
+          if (sameDayWritten.length > 0) {
+            draftWrittenConsentAt = sameDayWritten
+              .sort((a: any, b: any) => new Date(b.writtenConsentAt).getTime() - new Date(a.writtenConsentAt).getTime())[0]
+              .writtenConsentAt;
+          } else {
+            const apts = await storage.getPatientAppointments(worksheet.patientId);
+            const withConsent = (apts || [])
+              .filter((a: any) => a.writtenConsentAt)
+              .sort((a: any, b: any) =>
+                new Date(b.writtenConsentAt).getTime() - new Date(a.writtenConsentAt).getTime()
+              );
+            if (withConsent.length > 0) draftWrittenConsentAt = withConsent[0].writtenConsentAt;
+          }
         } catch (e) {
           console.warn('Failed to inherit written consent for draft report:', e);
         }
