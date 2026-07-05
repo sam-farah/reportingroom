@@ -2349,6 +2349,26 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                   </div>
                 </div>
 
+                <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-start gap-2">
+                    <FolderOpen className="w-4 h-4 text-zinc-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-semibold text-sm">Archive this request?</h4>
+                      <p className="text-xs text-gray-500 mt-0.5">It's already marked as scheduled — you can archive it now to keep the list tidy, or leave it as is.</p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-shrink-0"
+                    disabled={setRequestStatus.isPending}
+                    onClick={() => setRequestStatus.mutate({ id: viewingRequest.id, status: "archived" })}
+                    data-testid="button-archive-after-schedule"
+                  >
+                    {setRequestStatus.isPending ? "Archiving…" : "Archive request"}
+                  </Button>
+                </div>
+
                 <div className="flex justify-end pt-3 border-t">
                   <Button
                     onClick={() => {
