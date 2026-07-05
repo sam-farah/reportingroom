@@ -19,7 +19,7 @@ import {
   ClipboardList, Clock, CheckCircle, XCircle, AlertCircle, FileText,
   MapPin, Hash, Building2, ChevronRight, X, Printer, Globe, CalendarPlus,
   FolderOpen, CheckCheck, Send, Mailbox, ShieldCheck, ArrowUpDown, CalendarDays,
-  UserCheck, Users, Link2, UserPlus, UserCog
+  UserCheck, Users, Link2, UserPlus, UserCog, MessageSquare
 } from "lucide-react";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import type { ScanRequest, ReferringDoctor, Patient, Clinic, Physician, Sonographer, Appointment, ScanDurationSetting } from "@shared/schema";
@@ -370,11 +370,15 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
   const [viewingStep, setViewingStep] = useState<"details" | "schedule" | "scheduled">("details");
   const [editableEmail, setEditableEmail] = useState<string>("");
   const [savingEmail, setSavingEmail] = useState(false);
-  const [lastScheduledAppt, setLastScheduledAppt] = useState<{ id: number; patientEmail: string | null; patientId: number | null } | null>(null);
+  const [lastScheduledAppt, setLastScheduledAppt] = useState<{ id: number; patientEmail: string | null; patientPhone: string | null; patientId: number | null } | null>(null);
   const [reminderSent, setReminderSent] = useState(false);
   const [registrationSent, setRegistrationSent] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [sendingRegistration, setSendingRegistration] = useState(false);
+  const [smsReminderSent, setSmsReminderSent] = useState(false);
+  const [smsRegistrationSent, setSmsRegistrationSent] = useState(false);
+  const [sendingSmsReminder, setSendingSmsReminder] = useState(false);
+  const [sendingSmsRegistration, setSendingSmsRegistration] = useState(false);
   const [hoverMin, setHoverMin] = useState<number | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     appointmentDate: format(new Date(), "yyyy-MM-dd"),
@@ -413,6 +417,11 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
   const { data: clinic } = useQuery<Clinic>({
     queryKey: ["/api/clinic"],
   });
+
+  const { data: smsStatus } = useQuery<{ configured: boolean; fromNumber: string | null }>({
+    queryKey: ["/api/sms/status"],
+  });
+  const smsConfigured = !!smsStatus?.configured;
 
   const { data: requests = [], isLoading: reqLoading } = useQuery<ScanRequest[]>({
     queryKey: ["/api/scan-requests"],
@@ -582,10 +591,13 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
       setLastScheduledAppt({
         id: appt.id,
         patientEmail: appt.patientEmail ?? vars.request.patientEmail ?? null,
+        patientPhone: appt.patientPhone ?? vars.request.patientPhone ?? null,
         patientId: appt.patientId ?? vars.request.patientId ?? null,
       });
       setReminderSent(false);
       setRegistrationSent(false);
+      setSmsReminderSent(false);
+      setSmsRegistrationSent(false);
       setViewingStep("scheduled");
       toast({ title: "Appointment scheduled", description: "The request has been marked as scheduled." });
     },
@@ -1483,7 +1495,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
       </Dialog>
 
       {/* ── REQUEST VIEW DIALOG ── */}
-      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); setShowPatientPicker(false); setSavePatientSearch(""); setLastScheduledAppt(null); setReminderSent(false); setRegistrationSent(false); setEditableEmail(""); } }}>
+      <Dialog open={!!viewingRequest} onOpenChange={v => { if (!v) { setViewingRequest(null); setViewingStep("details"); setShowPatientPicker(false); setSavePatientSearch(""); setLastScheduledAppt(null); setReminderSent(false); setRegistrationSent(false); setSmsReminderSent(false); setSmsRegistrationSent(false); setEditableEmail(""); } }}>
         <DialogContent className={`${viewingStep === "schedule" ? "max-w-[1400px] w-[95vw]" : viewingStep === "scheduled" ? "max-w-2xl" : "max-w-5xl w-[95vw]"} max-h-[92vh] overflow-y-auto transition-all`}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -2076,6 +2088,32 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
               : null;
             const email = lastScheduledAppt.patientEmail || viewingRequest.patientEmail || "";
             const hasEmail = !!email && email.includes("@");
+            const phone = lastScheduledAppt.patientPhone || viewingRequest.patientPhone || "";
+            const hasPhone = !!phone && smsConfigured;
+            const ensurePatientId = async (): Promise<number> => {
+              let patientId = lastScheduledAppt.patientId;
+              if (!patientId) {
+                const nameParts = (viewingRequest.patientName || "").trim().split(/\s+/);
+                const firstName = nameParts[0] || viewingRequest.patientName || "Patient";
+                const lastName = nameParts.slice(1).join(" ") || "—";
+                const created = await (await apiRequest(`/api/patients`, "POST", {
+                  firstName, lastName,
+                  dateOfBirth: viewingRequest.patientDob || null,
+                  phone: viewingRequest.patientPhone || null,
+                  email: email,
+                  urNumber: viewingRequest.patientUrNumber || null,
+                })).json();
+                patientId = created?.id;
+                if (patientId) {
+                  await apiRequest(`/api/scan-requests/${viewingRequest.id}`, "PUT", { patientId });
+                  await apiRequest(`/api/appointments/${lastScheduledAppt.id}`, "PUT", { patientId, force: true });
+                  setLastScheduledAppt({ ...lastScheduledAppt, patientId });
+                  queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
+                }
+              }
+              if (!patientId) throw new Error("Could not create patient record");
+              return patientId;
+            };
             return (
               <div className="space-y-4">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
@@ -2161,13 +2199,18 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                     </div>
                   )}
 
-                  {hasEmail && (
-                    <p className="text-xs text-gray-500">Sending to <strong className="text-gray-700">{email}</strong></p>
+                  {(hasEmail || hasPhone) && (
+                    <p className="text-xs text-gray-500">
+                      Sending to{" "}
+                      {hasEmail && <strong className="text-gray-700">{email}</strong>}
+                      {hasEmail && hasPhone && <> · </>}
+                      {hasPhone && <strong className="text-gray-700">{phone}</strong>}
+                    </p>
                   )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Reminder */}
-                    <div className={`border rounded-lg p-4 ${reminderSent ? "bg-green-50 border-green-200" : "bg-white"}`}>
+                    <div className={`border rounded-lg p-4 space-y-2 ${(reminderSent || smsReminderSent) ? "bg-green-50 border-green-200" : "bg-white"}`}>
                       <div className="flex items-start gap-2 mb-2">
                         <Mail className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
@@ -2198,12 +2241,44 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                         }}
                         data-testid="button-send-appt-reminder"
                       >
-                        {reminderSent ? "✓ Reminder sent" : sendingReminder ? "Sending…" : "Send reminder"}
+                        <Mail className="w-3.5 h-3.5 mr-1.5" />
+                        {reminderSent ? "✓ Reminder sent" : sendingReminder ? "Sending…" : "Email reminder"}
                       </Button>
+                      {smsConfigured && (
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          variant={smsReminderSent ? "outline" : "outline"}
+                          disabled={!hasPhone || sendingSmsReminder || smsReminderSent}
+                          title={!hasPhone ? "No phone number on file" : undefined}
+                          onClick={async () => {
+                            setSendingSmsReminder(true);
+                            try {
+                              const res = await fetch(`/api/appointments/${lastScheduledAppt.id}/send-sms-reminder`, { method: "POST", credentials: "include" });
+                              if (!res.ok) {
+                                const txt = await res.text();
+                                throw new Error(txt || `Failed (${res.status})`);
+                              }
+                              setSmsReminderSent(true);
+                              toast({ title: "Text reminder sent", description: `Sent to ${phone}` });
+                            } catch (err: any) {
+                              toast({ title: "Failed to send text reminder", description: err?.message || "Try again", variant: "destructive" });
+                            } finally {
+                              setSendingSmsReminder(false);
+                            }
+                          }}
+                          data-testid="button-send-appt-sms-reminder"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-sky-700" />
+                          <span className="text-sky-700">
+                            {smsReminderSent ? "✓ Text sent" : sendingSmsReminder ? "Sending…" : "Text reminder"}
+                          </span>
+                        </Button>
+                      )}
                     </div>
 
                     {/* Registration link */}
-                    <div className={`border rounded-lg p-4 ${registrationSent ? "bg-green-50 border-green-200" : "bg-white"}`}>
+                    <div className={`border rounded-lg p-4 space-y-2 ${(registrationSent || smsRegistrationSent) ? "bg-green-50 border-green-200" : "bg-white"}`}>
                       <div className="flex items-start gap-2 mb-2">
                         <Mail className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
@@ -2219,28 +2294,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                         onClick={async () => {
                           setSendingRegistration(true);
                           try {
-                            // Ensure a patient record exists so registration data has somewhere to land
-                            let patientId = lastScheduledAppt.patientId;
-                            if (!patientId) {
-                              const nameParts = (viewingRequest.patientName || "").trim().split(/\s+/);
-                              const firstName = nameParts[0] || viewingRequest.patientName || "Patient";
-                              const lastName = nameParts.slice(1).join(" ") || "—";
-                              const created = await (await apiRequest(`/api/patients`, "POST", {
-                                firstName, lastName,
-                                dateOfBirth: viewingRequest.patientDob || null,
-                                phone: viewingRequest.patientPhone || null,
-                                email: email,
-                                urNumber: viewingRequest.patientUrNumber || null,
-                              })).json();
-                              patientId = created?.id;
-                              if (patientId) {
-                                await apiRequest(`/api/scan-requests/${viewingRequest.id}`, "PUT", { patientId });
-                                await apiRequest(`/api/appointments/${lastScheduledAppt.id}`, "PUT", { patientId, force: true });
-                                setLastScheduledAppt({ ...lastScheduledAppt, patientId });
-                                queryClient.invalidateQueries({ queryKey: ["/api/patients"] });
-                              }
-                            }
-                            if (!patientId) throw new Error("Could not create patient record");
+                            const patientId = await ensurePatientId();
                             const res = await fetch(`/api/patients/${patientId}/send-registration`, { method: "POST", credentials: "include" });
                             if (!res.ok) {
                               const txt = await res.text();
@@ -2256,8 +2310,41 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                         }}
                         data-testid="button-send-registration-link"
                       >
-                        {registrationSent ? "✓ Registration sent" : sendingRegistration ? "Sending…" : "Send registration link"}
+                        <Mail className="w-3.5 h-3.5 mr-1.5" />
+                        {registrationSent ? "✓ Registration sent" : sendingRegistration ? "Sending…" : "Email registration link"}
                       </Button>
+                      {smsConfigured && (
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          variant="outline"
+                          disabled={!hasPhone || sendingSmsRegistration || smsRegistrationSent}
+                          title={!hasPhone ? "No phone number on file" : undefined}
+                          onClick={async () => {
+                            setSendingSmsRegistration(true);
+                            try {
+                              const patientId = await ensurePatientId();
+                              const res = await fetch(`/api/patients/${patientId}/send-sms-registration`, { method: "POST", credentials: "include" });
+                              if (!res.ok) {
+                                const txt = await res.text();
+                                throw new Error(txt || `Failed (${res.status})`);
+                              }
+                              setSmsRegistrationSent(true);
+                              toast({ title: "Text registration link sent", description: `Sent to ${phone}` });
+                            } catch (err: any) {
+                              toast({ title: "Failed to send text registration link", description: err?.message || "Try again", variant: "destructive" });
+                            } finally {
+                              setSendingSmsRegistration(false);
+                            }
+                          }}
+                          data-testid="button-send-sms-registration-link"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 mr-1.5 text-sky-700" />
+                          <span className="text-sky-700">
+                            {smsRegistrationSent ? "✓ Text sent" : sendingSmsRegistration ? "Sending…" : "Text registration link"}
+                          </span>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2270,6 +2357,8 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                       setLastScheduledAppt(null);
                       setReminderSent(false);
                       setRegistrationSent(false);
+                      setSmsReminderSent(false);
+                      setSmsRegistrationSent(false);
                       setEditableEmail("");
                     }}
                     data-testid="button-done-scheduled"
