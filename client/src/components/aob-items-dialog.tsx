@@ -47,6 +47,14 @@ interface AobItemsDialogProps {
   submitLabel?: string;
   submittingLabel?: string;
   isPending?: boolean;
+  /**
+   * Best-known referring doctor name for this visit, shown as a confirmation
+   * line so staff can catch a missing/wrong referrer before signing — the
+   * name is actually re-resolved server-side (from the linked scan request,
+   * falling back to the appointment) when the form is generated, so this is
+   * a preview, not the source of truth.
+   */
+  referringDoctorName?: string | null;
   onSubmit: (items: AobLineItem[]) => void;
 }
 
@@ -67,6 +75,7 @@ export function AobItemsDialog({
   submitLabel = "Confirm",
   submittingLabel = "Saving…",
   isPending = false,
+  referringDoctorName,
   onSubmit,
 }: AobItemsDialogProps) {
   const [items, setItems] = useState<AobLineItem[]>([]);
@@ -122,6 +131,17 @@ export function AobItemsDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          {referringDoctorName ? (
+            <p className="text-xs text-slate-500">
+              Referring doctor: <span className="font-medium text-slate-700">{referringDoctorName}</span>
+            </p>
+          ) : (
+            <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
+              No referring doctor is on file for this visit — the form will be generated
+              without one. Add a referring doctor to the appointment or scan request first
+              if this visit was referred.
+            </p>
+          )}
           {items.length === 0 && (
             <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
               No item numbers could be suggested for this study type. Add at least

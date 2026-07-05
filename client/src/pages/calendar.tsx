@@ -3847,6 +3847,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
           submitLabel={latestAobForm?.status === "pending_signature" ? "Save & sign" : "Create & sign"}
           submittingLabel={latestAobForm?.status === "pending_signature" ? "Saving…" : "Creating…"}
           isPending={createAobMutation.isPending}
+          referringDoctorName={latestAobForm?.referringDoctorName || (viewingAppointment as any)?.referringDoctorName || null}
           onSubmit={(items) => viewingAppointment && createAobMutation.mutate({ appointmentId: viewingAppointment.id, items })}
         />
 
