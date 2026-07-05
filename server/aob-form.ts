@@ -83,10 +83,12 @@ const F = {
   referralDateBoxes: { startX: 473, pitch: 57, fontSize: 20, y: { practitioner: 354, patient: 333 } },
   // "Date of service, imaging procedure or first specimen collection" — top-right
   // of the form near "Patient ref number". Six boxes in DD/MM/YY groups; the box
-  // pitch is NOT uniform (the last pair is squeezed narrower against the table's
-  // right divider on the real template), so this uses explicit per-box X centres
-  // rather than a single startX+pitch like the other boxed fields.
-  dateOfServiceBoxes: { xPositions: [1440, 1493, 1546, 1599, 1646, 1678], fontSize: 20, y: { practitioner: 187, patient: 155 } },
+  // pitch is NOT perfectly uniform (there's a larger gap where the printed slash
+  // sits, between box2/3 and box4/5), so this uses explicit per-box X centres
+  // rather than a single startX+pitch like the other boxed fields. Calibrated by
+  // measuring the actual box edges (hand-marked in red by the user) directly in
+  // pixel space and mapping back to this file's 1754px coordinate space.
+  dateOfServiceBoxes: { xPositions: [1379, 1431, 1498, 1550, 1612, 1664], fontSize: 26, y: { practitioner: 174, patient: 142 } },
   inHospitalNo: { x: 545, size: 20, y: { practitioner: 393, patient: 361 } },
   providerBoxes: { startX: 405, pitch: 51, fontSize: 20, y: { practitioner: 482, patient: 465 } },
   doctorAddress: { x: 70, y: 562, lineH: 24, fontSize: 19, maxChars: 40, maxLines: 3 },
