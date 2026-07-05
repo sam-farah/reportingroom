@@ -799,6 +799,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   }, []);
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
   const [resizingAppointment, setResizingAppointment] = useState<{ apt: Appointment; edge: "top" | "bottom" } | null>(null);
+  // Coarse-pointer (touch) devices don't get reliable native HTML5 drag-and-drop —
+  // it fires accidentally when the user is just scrolling/tapping small slots.
+  // Reschedule via drag is desktop-only; touch users use the Reschedule button instead.
+  const [isCoarsePointer] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia?.("(pointer: coarse)").matches || "ontouchstart" in window;
+  });
 
   const [formData, setFormData] = useState({
     patientName: "",
@@ -2163,7 +2170,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                       return (
                         <div
                           key={apt.id}
-                          draggable
+                          draggable={!isCoarsePointer}
                           onDragStart={(e) => handleDragStart(e, apt)}
                           onDragEnd={handleDragEnd}
                           className={`absolute rounded cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
@@ -2331,7 +2338,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                             return (
                               <div
                                 key={apt.id}
-                                draggable
+                                draggable={!isCoarsePointer}
                                 onDragStart={(e) => handleDragStart(e, apt)}
                                 onDragEnd={handleDragEnd}
                                 className={`absolute rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
