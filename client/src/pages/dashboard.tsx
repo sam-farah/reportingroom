@@ -83,6 +83,7 @@ export default function Dashboard() {
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
   const [preLinkedPatientName, setPreLinkedPatientName] = useState<string>("");
   const [preLinkedExamDate, setPreLinkedExamDate] = useState<string>("");
+  const [preLinkedPhysicianId, setPreLinkedPhysicianId] = useState<number | null>(null);
   const [preLinkedTab, setPreLinkedTab] = useState<"upload" | "draw">("upload");
   const [openReportId, setOpenReportId] = useState<number | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -356,7 +357,7 @@ export default function Dashboard() {
 
       {/* ── Page content ── */}
       {activePanel === "user" ? (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} preLinkedExamDate={preLinkedExamDate} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedExamDate(""); setPreLinkedTab("upload"); }} defaultTab={preLinkedTab} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} preLinkedExamDate={preLinkedExamDate} preLinkedPhysicianId={preLinkedPhysicianId} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedExamDate(""); setPreLinkedPhysicianId(null); setPreLinkedTab("upload"); }} defaultTab={preLinkedTab} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       ) : activePanel === "draw" ? (
         <Draw preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedTab("upload"); }} onDraftCreated={(reportId) => { setOpenReportId(reportId); setActivePanel("reporting-room"); }} />
       ) : activePanel === "reporting-room" ? (
@@ -380,7 +381,7 @@ export default function Dashboard() {
       ) : activePanel === "calendar" ? (
         <Calendar
           onOpenPatient={(patientId) => { setOpenPatientId(patientId); setActivePanel("patients"); }}
-          onBeginStudy={(patientId, patientName, tab) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setPreLinkedTab(tab ?? "upload"); setActivePanel(tab === "draw" ? "draw" : "user"); }}
+          onBeginStudy={(patientId, patientName, tab, physicianId) => { setPreLinkedPatientId(patientId); setPreLinkedPatientName(patientName); setPreLinkedPhysicianId(physicianId ?? null); setPreLinkedTab(tab ?? "upload"); setActivePanel(tab === "draw" ? "draw" : "user"); }}
           initialEditAppointmentId={openAppointmentEditId ?? undefined}
           onAppointmentEditConsumed={() => setOpenAppointmentEditId(null)}
         />
@@ -486,7 +487,7 @@ export default function Dashboard() {
           </Dialog>
         </div>
       ) : (
-        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} preLinkedExamDate={preLinkedExamDate} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedExamDate(""); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
+        <UserPanel preLinkedPatientId={preLinkedPatientId} preLinkedPatientName={preLinkedPatientName} preLinkedExamDate={preLinkedExamDate} preLinkedPhysicianId={preLinkedPhysicianId} onPreLinkedPatientConsumed={() => { setPreLinkedPatientId(null); setPreLinkedPatientName(""); setPreLinkedExamDate(""); setPreLinkedPhysicianId(null); }} onReportGenerated={(id) => { setOpenReportId(id); setActivePanel("reporting-room"); }} />
       )}
 
       <AccountDialog open={accountOpen} onOpenChange={setAccountOpen} currentPhone={(user as any)?.phoneNumber ?? ""} />

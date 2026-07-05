@@ -1287,7 +1287,10 @@ export class DatabaseStorage implements IStorage {
       indication: reportData.indication || 'Digital drawing session completed',
       findings: reportData.findings || 'Digital worksheet completed with drawings and annotations',
       impression: reportData.impression || 'Study completed - awaiting physician review',
-      physicianId: 1, // Default to first physician
+      // Reporting doctor is now chosen early (right after verbal consent, on
+      // the appointment) and inherited server-side by the caller; only fall
+      // back to the first physician if genuinely none was found/passed.
+      physicianId: reportData.physicianId ? parseInt(reportData.physicianId) : 1,
       sonographerId: reportData.sonographerId ? parseInt(reportData.sonographerId) : null,
       digitalWorksheetId: reportData.digitalWorksheetId,
       verbalConsentAt: reportData.verbalConsentAt ?? null,

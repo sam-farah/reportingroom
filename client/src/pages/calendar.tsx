@@ -618,7 +618,7 @@ function PatientApptSearchDialog({
   );
 }
 
-export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppointmentId, onAppointmentEditConsumed }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string, tab?: "upload" | "draw") => void; initialEditAppointmentId?: number | null; onAppointmentEditConsumed?: () => void }) {
+export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppointmentId, onAppointmentEditConsumed }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string, tab?: "upload" | "draw", physicianId?: number | null) => void; initialEditAppointmentId?: number | null; onAppointmentEditConsumed?: () => void }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -641,6 +641,8 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const [showBeginStudy, setShowBeginStudy] = useState(false);
   const [showIdCheck, setShowIdCheck] = useState(false);
   const [showVerbalConsent, setShowVerbalConsent] = useState(false);
+  const [showReportingDoctor, setShowReportingDoctor] = useState(false);
+  const [reportingDoctorId, setReportingDoctorId] = useState("");
   const [studyMode, setStudyMode] = useState<"upload" | "draw">("upload");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [desktopDatePickerOpen, setDesktopDatePickerOpen] = useState(false);
@@ -2977,7 +2979,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
           </DialogContent>
         </Dialog>
 
-        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); setShowIdCheck(false); setShowVerbalConsent(false); } }}>
+        <Dialog open={!!viewingAppointment} onOpenChange={(open) => { if (!open) { setViewingAppointment(null); setShowBeginStudy(false); setShowIdCheck(false); setShowVerbalConsent(false); setShowReportingDoctor(false); setReportingDoctorId(""); } }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
@@ -2996,6 +2998,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   >
                     <ArrowLeft className="w-4 h-4" />
                     Verbal Consent
+                  </button>
+                ) : showReportingDoctor ? (
+                  <button
+                    className="flex items-center gap-1.5 text-base font-semibold text-gray-700 hover:text-gray-900"
+                    onClick={() => setShowReportingDoctor(false)}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Reporting Doctor
                   </button>
                 ) : showBeginStudy ? (
                   <button
@@ -3097,7 +3107,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                             viewingAppointment.writtenConsentAt || viewingAppointment.verbalConsentAt
                           );
                           if (alreadyConsented) {
-                            setShowBeginStudy(true);
+                            if (viewingAppointment.physicianId) {
+                              setShowBeginStudy(true);
+                            } else {
+                              setReportingDoctorId("");
+                              setShowReportingDoctor(true);
+                            }
                           } else {
                             setShowVerbalConsent(true);
                           }
@@ -3138,7 +3153,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                             onSuccess: () => {
                               toast({ title: "Verbal consent recorded", description: "Consent date and time saved for this study." });
                               setShowVerbalConsent(false);
-                              setShowBeginStudy(true);
+                              if (viewingAppointment.physicianId) {
+                                setShowBeginStudy(true);
+                              } else {
+                                setReportingDoctorId("");
+                                setShowReportingDoctor(true);
+                              }
                             },
                           }
                         );
@@ -3149,8 +3169,50 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   </div>
                 )}
 
+                {/* Reporting Doctor sub-panel */}
+                {showReportingDoctor && !showIdCheck && !showVerbalConsent && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-500">
+                      Choose the reporting doctor for <span className="font-medium text-gray-800">{viewingAppointment.patientName}</span>'s study before proceeding. This is used to complete the Medicare Assessment of Benefit form.
+                    </p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reportingDoctorId">Reporting Doctor</Label>
+                      <Select value={reportingDoctorId} onValueChange={setReportingDoctorId}>
+                        <SelectTrigger id="reportingDoctorId">
+                          <SelectValue placeholder="Select reporting doctor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(physicians as Physician[]).filter(p => p.isActive).map((physician) => (
+                            <SelectItem key={physician.id} value={String(physician.id)}>
+                              {physician.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <button
+                      className="w-full py-3 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60"
+                      disabled={!reportingDoctorId || updateMutation.isPending}
+                      onClick={() => {
+                        updateMutation.mutate(
+                          { id: viewingAppointment.id, data: { physicianId: parseInt(reportingDoctorId) } },
+                          {
+                            onSuccess: () => {
+                              toast({ title: "Reporting doctor set", description: "This doctor will be used for the report and Medicare form." });
+                              setShowReportingDoctor(false);
+                              setShowBeginStudy(true);
+                            },
+                          }
+                        );
+                      }}
+                    >
+                      Confirm Reporting Doctor
+                    </button>
+                  </div>
+                )}
+
                 {/* Begin Study sub-panel */}
-                {showBeginStudy && !showIdCheck && !showVerbalConsent && (
+                {showBeginStudy && !showIdCheck && !showVerbalConsent && !showReportingDoctor && (
                   <div className="space-y-3">
                     {(viewingAppointment.writtenConsentAt || viewingAppointment.verbalConsentAt) && (
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-start gap-2.5">
@@ -3172,7 +3234,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                           setViewingAppointment(null);
                           setShowBeginStudy(false);
                           setShowIdCheck(false);
-                          onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "", "upload");
+                          onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "", "upload", viewingAppointment.physicianId ?? null);
                         }
                       }}
                     >
@@ -3191,7 +3253,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                           setViewingAppointment(null);
                           setShowBeginStudy(false);
                           setShowIdCheck(false);
-                          onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "", "draw");
+                          onBeginStudy(viewingAppointment.patientId ?? null, viewingAppointment.patientName || "", "draw", viewingAppointment.physicianId ?? null);
                         }
                       }}
                     >

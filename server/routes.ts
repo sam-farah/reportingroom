@@ -5789,14 +5789,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       console.log("Report generation request:", req.body);
-      const { worksheetId, physicianId, logoUrl } = req.body;
+      const { worksheetId, logoUrl } = req.body;
+      let { physicianId } = req.body;
       
       if (!worksheetId) {
         return res.status(400).json({ error: "Worksheet ID is required" });
-      }
-      
-      if (!physicianId) {
-        return res.status(400).json({ error: "Physician ID is required" });
       }
 
       // Get user's clinic information
@@ -5945,6 +5942,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (e) {
           console.warn('Failed to inherit sonographer for report:', e);
         }
+      }
+
+      // Inherit reporting physician: sonographers now choose the reporting
+      // doctor early — right after verbal consent, on the appointment —
+      // rather than at report-generation time, so by now it should already
+      // be on the patient's appointment. Manual selection (if the client
+      // still passed one, e.g. no matching appointment existed) always wins.
+      if (!physicianId && worksheet.patientId) {
+        try {
+          const apts = await storage.getPatientAppointments(worksheet.patientId);
+          const withPhysician = (apts || [])
+            .filter((a: any) => a.physicianId)
+            .sort((a: any, b: any) =>
+              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+            );
+          if (withPhysician.length > 0) physicianId = withPhysician[0].physicianId;
+        } catch (e) {
+          console.warn('Failed to inherit physician for report:', e);
+        }
+      }
+
+      if (!physicianId) {
+        return res.status(400).json({ error: "Physician ID is required" });
       }
 
       // Inherit verbal consent timestamp from the patient's most recent
@@ -7488,6 +7508,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const draftLinkedPatient = worksheet.patientId ? await storage.getPatient(worksheet.patientId) : null;
 
+      // Inherit reporting physician: sonographers now choose the reporting
+      // doctor early — right after verbal consent, on the appointment —
+      // rather than at report-editing time.
+      let draftPhysicianId: number | null = null;
+      if (worksheet.patientId) {
+        try {
+          const apts = await storage.getPatientAppointments(worksheet.patientId);
+          const withPhysician = (apts || [])
+            .filter((a: any) => a.physicianId)
+            .sort((a: any, b: any) =>
+              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+            );
+          if (withPhysician.length > 0) draftPhysicianId = withPhysician[0].physicianId;
+        } catch (e) {
+          console.warn('Failed to inherit physician for draft report:', e);
+        }
+      }
+
       // Inherit verbal consent timestamp from the patient's most recent
       // appointment where verbal consent was recorded by the sonographer.
       let draftVerbalConsentAt: Date | null = null;
@@ -7534,6 +7572,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         findings: aiGeneratedFindings || `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`,
         impression: aiGeneratedImpression || `${templateName} study completed. Awaiting physician interpretation.\n\nRECOMMENDATIONS:\n- Physician review and interpretation required\n- Clinical correlation recommended\n- Follow-up as clinically indicated`,
         sonographerId: worksheet.sonographerId,
+        physicianId: draftPhysicianId,
         patientId: worksheet.patientId,
         patientUrNumber: draftLinkedPatient?.urNumber ?? null,
       });

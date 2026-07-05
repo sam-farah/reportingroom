@@ -16,7 +16,7 @@ import FileUpload from "./file-upload";
 import DrawingCanvas from "./drawing-canvas";
 import type { Worksheet, Physician, Report, Patient, ScanTypeContentTemplate } from "@shared/schema";
 
-export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, preLinkedExamDate, onPreLinkedPatientConsumed, defaultTab, onReportGenerated }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; preLinkedExamDate?: string; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw"; onReportGenerated?: (reportId: number) => void } = {}) {
+export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, preLinkedExamDate, preLinkedPhysicianId, onPreLinkedPatientConsumed, defaultTab, onReportGenerated }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; preLinkedExamDate?: string; preLinkedPhysicianId?: number | null; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw"; onReportGenerated?: (reportId: number) => void } = {}) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
@@ -72,6 +72,12 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
     if (preLinkedExamDate) {
       setExamDate(preLinkedExamDate);
     }
+    if (preLinkedPhysicianId) {
+      // Reporting doctor was already chosen on the appointment (right after
+      // verbal consent) — prefill it here so the sonographer doesn't have to
+      // pick it again, but it stays editable in case of a genuine override.
+      setSelectedPhysician(String(preLinkedPhysicianId));
+    }
     if (preLinkedPatientId) {
       // Exact match by ID — best case
       const found = allPatients.find(p => p.id === preLinkedPatientId);
@@ -102,7 +108,7 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
         toast({ title: "Select patient", description: `Please confirm the patient record for "${preLinkedPatientName}"` });
       }
     }
-  }, [preLinkedPatientId, preLinkedPatientName, allPatients]);
+  }, [preLinkedPatientId, preLinkedPatientName, preLinkedPhysicianId, allPatients]);
 
   // Handle authentication errors
   useEffect(() => {
