@@ -110,7 +110,7 @@ const F = {
   dateOfServiceBoxes: { xPositions: [1379, 1431, 1498, 1550, 1612, 1664], fontSize: 26, y: { practitioner: 174, patient: 142 } },
   inHospitalNo: { x: 545, size: 20, y: { practitioner: 393, patient: 361 } },
   providerBoxes: { startX: 405, pitch: 51, fontSize: 20, y: { practitioner: 482, patient: 465 } },
-  doctorAddress: { x: 70, y: 562, lineH: 24, fontSize: 19, maxChars: 40, maxLines: 3 },
+  doctorAddress: { x: 95, y: 562, lineH: 24, fontSize: 19, maxChars: 40, maxLines: 3 },
   lspnBoxes: { startX: 281, pitch: 53, fontSize: 21, y: { practitioner: 664, patient: 649 } },
   numPatients: { x: 720, y: 782, fontSize: 21 },
   assignorYes: { x: { practitioner: 262, patient: 242 }, y: { practitioner: 923, patient: 939 }, size: 24 },
@@ -258,10 +258,19 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
     Array.isArray(aobForm.items) ? [...aobForm.items] : []
   ).sort((a, b) => (b.feeCents || 0) - (a.feeCents || 0));
 
+  // "Full name and provider number or address of practitioner who rendered or
+  // will render the above service(s)" is the physician who actually performed/
+  // signed off the scan — NOT the referring doctor (that's the separate
+  // "requesting or referring practitioner" box above). Falls back to the
+  // referring doctor's details only if no physician was recorded on the report,
+  // so the field is never left blank.
   const renderingPractitionerText = [
-    aobForm.referringDoctorName || "",
-    aobForm.referringDoctorProviderNumber ? `(Provider No: ${aobForm.referringDoctorProviderNumber})` : "",
-    aobForm.referringDoctorAddress || "",
+    aobForm.physicianName || aobForm.referringDoctorName || "",
+    aobForm.physicianProviderNumber
+      ? `(Provider No: ${aobForm.physicianProviderNumber})`
+      : (!aobForm.physicianName && aobForm.referringDoctorProviderNumber
+          ? `(Provider No: ${aobForm.referringDoctorProviderNumber})`
+          : ""),
   ].filter(Boolean).join("  ");
 
   // Signature is shared between both copies — decode/resize it once.

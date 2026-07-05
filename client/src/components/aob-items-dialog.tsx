@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/command";
 import { Plus, X, ChevronsUpDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { calculateVisitBilling, formatCents, MBS_ITEMS } from "@shared/mbs";
+import { applyVascularAllocation, calculateVisitBilling, formatCents, MBS_ITEMS } from "@shared/mbs";
 
 export interface AobLineItem {
   item: string;
@@ -202,15 +202,17 @@ export function AobItemsDialog({
                                 value={`${num} ${info.description}`}
                                 onSelect={() => {
                                   setItems((prev) =>
-                                    prev.map((l, idx) =>
-                                      idx === i
-                                        ? {
-                                            ...l,
-                                            item: num,
-                                            description: info.description,
-                                            feeCents: info.scheduleFeeCents,
-                                          }
-                                        : l,
+                                    applyVascularAllocation(
+                                      prev.map((l, idx) =>
+                                        idx === i
+                                          ? {
+                                              ...l,
+                                              item: num,
+                                              description: info.description,
+                                              feeCents: info.scheduleFeeCents,
+                                            }
+                                          : l,
+                                      ),
                                     ),
                                   );
                                   setPickerIndex(null);

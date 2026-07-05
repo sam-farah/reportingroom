@@ -451,3 +451,36 @@ export function calculateVisitBilling(
     unmappedScanTypes,
   };
 }
+
+/**
+ * Re-applies the vascular ultrasound Multiple Services formula (100% / 60% / 50%,
+ * highest schedule fee first, ties broken by lowest item number) to a free-edited
+ * line-item list — e.g. after staff pick/add/remove an item in the Assessment of
+ * Benefit confirmation dialog. Only items recognised in MBS_ITEMS with category
+ * DI_VASCULAR are touched; everything else (Category 2, general items, unknown/
+ * manual entries) is left exactly as-is so manual fee overrides aren't clobbered.
+ */
+export function applyVascularAllocation<T extends { item: string; feeCents: number }>(
+  items: T[],
+): T[] {
+  const vascularIdx = items
+    .map((line, idx) => ({ line, idx }))
+    .filter(({ line }) => MBS_ITEMS[line.item]?.category === "DI_VASCULAR");
+
+  if (vascularIdx.length < 2) return items;
+
+  const sorted = [...vascularIdx].sort((a, b) => {
+    const feeA = MBS_ITEMS[a.line.item].scheduleFeeCents;
+    const feeB = MBS_ITEMS[b.line.item].scheduleFeeCents;
+    if (feeA !== feeB) return feeB - feeA;
+    return Number(a.line.item) - Number(b.line.item);
+  });
+
+  const result = [...items];
+  sorted.forEach(({ idx }, rank) => {
+    const info = MBS_ITEMS[result[idx].item];
+    const pct = rank === 0 ? 1 : rank === 1 ? 0.6 : 0.5;
+    result[idx] = { ...result[idx], feeCents: Math.round(info.scheduleFeeCents * pct) };
+  });
+  return result;
+}
