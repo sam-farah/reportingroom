@@ -1122,8 +1122,9 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         </div>
       </div>
 
-      <div className={`${isFullscreen ? 'flex flex-1 min-h-0' : 'grid grid-cols-1 lg:grid-cols-4 gap-6'}`}>
-        {/* Drawing Tools */}
+      <div className={`${isFullscreen ? 'flex flex-1 min-h-0' : hasPencilKit ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 lg:grid-cols-4 gap-6'}`}>
+        {/* Drawing Tools — hidden on iPad native app, which is Apple Pencil-only */}
+        {!hasPencilKit && (
         <div className={`${isFullscreen ? 'w-64 shrink-0 border-r bg-gray-50 p-4 overflow-y-auto' : ''}`}>
           <Card className={`${isFullscreen ? 'border-0 shadow-none bg-transparent' : 'lg:col-span-1'}`}>
             <CardHeader className={isFullscreen ? 'px-0 pb-2' : ''}>
@@ -1329,15 +1330,16 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
             </CardContent>
           </Card>
         </div>
+        )}
 
         {/* Canvas Area */}
         <div className={`${isFullscreen ? 'flex-1 flex items-center justify-center bg-white p-4' : ''}`}>
-          <Card className={`${isFullscreen ? 'border-0 shadow-none w-full h-full' : 'lg:col-span-3'}`}>
+          <Card className={`${isFullscreen ? 'border-0 shadow-none w-full h-full' : hasPencilKit ? '' : 'lg:col-span-3'}`}>
             <CardContent className={`${isFullscreen ? 'p-0 h-full flex items-center justify-center' : 'p-4'}`}>
               <div className={`border rounded-lg relative ${isFullscreen ? 'w-full h-full flex items-center justify-center' : 'max-h-[600px] overflow-auto'}`}>
                 <canvas
                   ref={canvasRef}
-                  className={currentTool.type === 'text' ? 'cursor-text' : currentTool.type === 'eraser' ? 'cursor-pointer' : 'cursor-crosshair'}
+                  className={hasPencilKit ? 'cursor-pointer' : currentTool.type === 'text' ? 'cursor-text' : currentTool.type === 'eraser' ? 'cursor-pointer' : 'cursor-crosshair'}
                   style={{ 
                     maxWidth: isFullscreen ? 'calc(100vw - 320px)' : '100%',
                     maxHeight: isFullscreen ? 'calc(100vh - 140px)' : '600px',
@@ -1347,12 +1349,22 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
                     transformOrigin: 'center center',
                     willChange: 'transform',
                   }}
-                  onPointerDown={startDrawing}
-                  onPointerMove={draw}
-                  onPointerUp={stopDrawing}
-                  onPointerLeave={stopDrawing}
-                  onPointerCancel={stopDrawing}
+                  onPointerDown={hasPencilKit ? undefined : startDrawing}
+                  onPointerMove={hasPencilKit ? undefined : draw}
+                  onPointerUp={hasPencilKit ? undefined : stopDrawing}
+                  onPointerLeave={hasPencilKit ? undefined : stopDrawing}
+                  onPointerCancel={hasPencilKit ? undefined : stopDrawing}
+                  onClick={hasPencilKit ? openPencilKit : undefined}
                 />
+                {/* On iPad, tapping the canvas opens the native Apple Pencil
+                    surface directly — no separate web drawing mode. */}
+                {hasPencilKit && !pencilKitPending && (
+                  <div className="absolute inset-x-0 bottom-2 flex justify-center pointer-events-none">
+                    <span className="text-xs bg-black/60 text-white rounded-full px-3 py-1">
+                      Tap to draw with Apple Pencil
+                    </span>
+                  </div>
+                )}
                 {/* Floating text annotation input */}
                 {textInput && (
                   <input
