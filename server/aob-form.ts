@@ -111,8 +111,17 @@ const F = {
     descMaxCharsPerLine: 17,
     descMaxLines: 2,
     descLineH: 21,
-    itemX: 1015,
     fontSize: 20,
+    // "Item number" is itself a boxed field on the real form: 5 boxes, one digit
+    // each (MBS item numbers are always 5 digits). Same per-glyph centred
+    // rendering as the other boxed fields — a left-aligned free-text string
+    // (the old approach) overflowed out of box 1 since it ignored the boxes
+    // entirely. Calibrated the same way as the date-of-service field: from a
+    // user screenshot with the real box edges hand-marked in red, mapped back
+    // to this file's 1754px space via linear regression against two already-
+    // known template X positions (descX and the old itemX) visible in the
+    // same screenshot.
+    itemBoxes: { startX: 1047, pitch: 53.25, boxes: 5, fontSize: 22 },
     // "Benefit assigned" is itself a boxed field on the real form: 3 boxes for
     // dollars, a printed decimal dot between box 3 and box 4, then 2 boxes for
     // cents — 5 boxes total (measured directly from the template pixels, not
@@ -272,10 +281,28 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
     parts.push(xMark(F.assignorYes.x, F.assignorYes.y, F.assignorYes.size));
     parts.push(xMark(F.agreementPostAssignment.x, F.agreementPostAssignment.y, F.agreementPostAssignment.size));
 
-    const { rowCentersByCopy, baselineOffset, descX, descMaxCharsPerLine, descMaxLines, descLineH, itemX, fontSize, benefitBoxes } = F.servicesTable;
+    const { rowCentersByCopy, baselineOffset, descX, descMaxCharsPerLine, descMaxLines, descLineH, itemBoxes, fontSize, benefitBoxes } = F.servicesTable;
     const rowCenters = rowCentersByCopy[copy];
     const benefitStartX = benefitBoxes.startX[copy];
     const benefitPitch = benefitBoxes.pitch[copy];
+
+    // Item number is right-aligned into its 5 boxes (MBS item numbers are
+    // normally exactly 5 digits, but this is robust to shorter codes too —
+    // same right-align/pad convention as the benefit-dollars boxes). If a
+    // code somehow exceeds 5 digits it overflows left of box 1 rather than
+    // silently dropping digits.
+    const renderItemBoxes = (item: string, y: number) => {
+      const digits = digitsAndLetters(item);
+      const padded = digits.padStart(itemBoxes.boxes, " ");
+      const offset = padded.length - itemBoxes.boxes;
+      padded.split("").forEach((ch, i) => {
+        if (ch === " ") return;
+        const boxIndex = i - offset;
+        parts.push(
+          `<text x="${itemBoxes.startX + boxIndex * itemBoxes.pitch}" y="${y}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${itemBoxes.fontSize}" fill="#1a1a6e">${escapeXml(ch)}</text>`,
+        );
+      });
+    };
 
     // "Benefit assigned" is itself a boxed field on the real form (see F.servicesTable.benefitBoxes):
     // dollarBoxes boxes for dollars, a printed decimal dot, then centsBoxes boxes for cents. We only
@@ -310,7 +337,7 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
       descLines.forEach((line, li) => {
         parts.push(`<text x="${descX}" y="${y + li * descLineH}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#1a1a6e">${escapeXml(line)}</text>`);
       });
-      parts.push(`<text x="${itemX}" y="${y}" font-family="Arial, sans-serif" font-size="${fontSize}" fill="#1a1a6e">${escapeXml(it.item)}</text>`);
+      renderItemBoxes(it.item || "", y);
       renderBenefitBoxes(it.feeCents, y);
     });
 
