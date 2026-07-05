@@ -591,6 +591,13 @@ export const appointments = pgTable("appointments", {
   referringDoctorEmail: varchar("referring_doctor_email", { length: 255 }),
   referringDoctorFax: varchar("referring_doctor_fax", { length: 50 }),
   referringDoctorProviderNumber: varchar("referring_doctor_provider_number", { length: 50 }),
+  // The date the referral itself was written/sent by the referring doctor —
+  // distinct from the appointment date. Captured here so it's available even
+  // when the referral arrived as an external fax/PDF/paper form that never
+  // went through the electronic Scan Request import flow (which has its own
+  // AI-extracted requestDate). Used as a fallback source for the Assessment
+  // of Benefit form's referral date when no linked scan request exists.
+  referralDate: varchar("referral_date", { length: 20 }),
   copyToName: varchar("copy_to_name", { length: 255 }),
   copyToEmail: varchar("copy_to_email", { length: 255 }),
   copyToFax: varchar("copy_to_fax", { length: 50 }),

@@ -682,6 +682,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     referringDoctorEmail: "",
     referringDoctorFax: "",
     referringDoctorProviderNumber: "",
+    referralDate: "",
     copyToName: "",
     copyToEmail: "",
     copyToFax: "",
@@ -1213,6 +1214,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       referringDoctorEmail: "",
       referringDoctorFax: "",
       referringDoctorProviderNumber: "",
+      referralDate: "",
       copyToName: "",
       copyToEmail: "",
       copyToFax: "",
@@ -1443,6 +1445,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       referringDoctorEmail: (appointment as any).referringDoctorEmail || "",
       referringDoctorFax: (appointment as any).referringDoctorFax || "",
       referringDoctorProviderNumber: (appointment as any).referringDoctorProviderNumber || "",
+      referralDate: (appointment as any).referralDate || "",
       copyToName: (appointment as any).copyToName || "",
       copyToEmail: (appointment as any).copyToEmail || "",
       copyToFax: (appointment as any).copyToFax || "",
@@ -1546,6 +1549,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       referringDoctorEmail: formData.referringDoctorEmail || null,
       referringDoctorFax: formData.referringDoctorFax || null,
       referringDoctorProviderNumber: formData.referringDoctorProviderNumber || null,
+      referralDate: formData.referralDate || null,
       copyToName: copyToList[0]?.name || null,
       copyToEmail: copyToList[0]?.email || null,
       copyToFax: copyToList[0]?.fax || null,
@@ -2894,6 +2898,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-500">Provider No.</Label>
                       <Input placeholder="123456AB" value={formData.referringDoctorProviderNumber} onChange={(e) => setFormData(prev => ({ ...prev, referringDoctorProviderNumber: e.target.value }))} className="text-sm h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Referral/Request Date</Label>
+                      <Input type="date" value={formData.referralDate} onChange={(e) => setFormData(prev => ({ ...prev, referralDate: e.target.value }))} className="text-sm h-8" />
                     </div>
                   </div>
                 </div>

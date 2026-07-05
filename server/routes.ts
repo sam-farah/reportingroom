@@ -4409,13 +4409,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let referringDoctorName: string | undefined = matchedAppointment?.referringDoctorName ?? undefined;
         let referringDoctorProviderNumber: string | undefined = matchedAppointment?.referringDoctorProviderNumber ?? undefined;
         let referringDoctorAddress: string | undefined;
-        let referralDate: string | undefined;
+        // Fall back to the referral date captured directly on the appointment
+        // (e.g. from a fax/paper referral) when there's no linked scan request,
+        // or the scan request has no request date of its own.
+        let referralDate: string | undefined = (matchedAppointment as any)?.referralDate ?? undefined;
         try {
           const scanRequest = matchedAppointment ? await storage.getScanRequestByAppointmentId(matchedAppointment.id) : undefined;
           if (scanRequest) {
             referringDoctorName = scanRequest.referringDoctorName ?? referringDoctorName;
             referringDoctorProviderNumber = scanRequest.referringDoctorProviderNumber ?? referringDoctorProviderNumber;
-            referralDate = scanRequest.requestDate ?? undefined;
+            referralDate = scanRequest.requestDate ?? referralDate;
             if (scanRequest.referringDoctorId) {
               const savedDoctor = await storage.getReferringDoctor(scanRequest.referringDoctorId);
               if (savedDoctor) {
@@ -4570,13 +4573,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let referringDoctorName: string | undefined = appointment.referringDoctorName ?? undefined;
         let referringDoctorProviderNumber: string | undefined = appointment.referringDoctorProviderNumber ?? undefined;
         let referringDoctorAddress: string | undefined;
-        let referralDate: string | undefined;
+        // Fall back to the referral date captured directly on the appointment
+        // (e.g. from a fax/paper referral) when there's no linked scan request,
+        // or the scan request has no request date of its own.
+        let referralDate: string | undefined = (appointment as any).referralDate ?? undefined;
         try {
           const scanRequest = await storage.getScanRequestByAppointmentId(appointment.id);
           if (scanRequest) {
             referringDoctorName = scanRequest.referringDoctorName ?? referringDoctorName;
             referringDoctorProviderNumber = scanRequest.referringDoctorProviderNumber ?? referringDoctorProviderNumber;
-            referralDate = scanRequest.requestDate ?? undefined;
+            referralDate = scanRequest.requestDate ?? referralDate;
             if (scanRequest.referringDoctorId) {
               const savedDoctor = await storage.getReferringDoctor(scanRequest.referringDoctorId);
               if (savedDoctor) {
