@@ -35,6 +35,18 @@ function xMark(x: number, y: number, size: number): string {
     <line x1="${x + size - 2}" y1="${y + 2}" x2="${x + 2}" y2="${y + size - 2}" stroke="#1a1a6e" stroke-width="2"/>`;
 }
 
+// Draws a check ("✓") mark centred at (x, y), given size — used where the
+// real form expects a tick rather than an X (e.g. "Expiry date checked").
+function checkMark(x: number, y: number, size: number): string {
+  const shortLegX = x - size * 0.35;
+  const shortLegY = y;
+  const vertexX = x - size * 0.08;
+  const vertexY = y + size * 0.32;
+  const longLegX = x + size * 0.42;
+  const longLegY = y - size * 0.38;
+  return `<polyline points="${shortLegX},${shortLegY} ${vertexX},${vertexY} ${longLegX},${longLegY}" fill="none" stroke="#1a1a6e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+
 // Wraps text into up to `maxLines` lines of at most `maxCharsPerLine` chars.
 // If any words don't fit, the last kept line always gets an ellipsis so
 // truncation is visibly indicated rather than silently dropping words
@@ -75,12 +87,18 @@ const F = {
   // the first for surname, the second for first name — not one combined
   // "Surname, First" string on a single line. Y differs per copy (the two
   // template photos have slightly different vertical layouts); X is shared.
-  fullNameSurname: { x: 230, fontSize: 22, y: { practitioner: 114, patient: 79 } },
-  fullNameFirstName: { x: 230, fontSize: 22, y: { practitioner: 166, patient: 133 } },
+  fullNameSurname: { x: 270, fontSize: 22, y: { practitioner: 114, patient: 79 } },
+  fullNameFirstName: { x: 270, fontSize: 22, y: { practitioner: 166, patient: 133 } },
   // Date of birth is a plain dotted line (not individual digit boxes like the
   // Medicare/date-of-service fields), so it's rendered as free text, but must
   // be formatted "DD MM YYYY" rather than the raw ISO string from the DB.
-  dob: { x: 230, fontSize: 20, y: { practitioner: 219, patient: 186 } },
+  dob: { x: 270, fontSize: 20, y: { practitioner: 219, patient: 186 } },
+  // "Expiry date checked" — the real form has a faint pre-printed placeholder
+  // mark (a light-gray "X" watermark) right after that label; we draw an
+  // actual check ("✓") on top of it per clinic instruction, not an X. Shared
+  // X (both copies line up here); Y differs per copy like the other header
+  // fields (patient copy's row sits ~25px higher).
+  expiryDateChecked: { x: 745, size: 26, y: { practitioner: 220, patient: 195 } },
   // Boxed digit fields — one glyph is centred inside each printed box (rather
   // than a single string with letter-spacing, which drifts out of the boxes).
   // The X geometry (first-box centre + pitch) is shared by both copies; only
@@ -144,16 +162,13 @@ const F = {
     },
   },
   renderingPractitioner: { x: 805, y: 1075, lineH: 24, fontSize: 20, maxChars: 48, maxLines: 2 },
-  // Signature sits directly on the "Assignor's signature" dotted line —
-  // lineBottomY is where the bottom edge of the signature image is placed, so
-  // it must land right on the line, not further down overlapping the label
-  // text beneath it. Y differs per copy (patient copy's lower half of the
-  // page is shifted down relative to the practitioner copy, unlike the
-  // header fields where the two copies are nearly aligned).
-  // maxH kept modest (60, not the naive 85) because the patient copy's gap
-  // between the declaration paragraph and the signature line is tighter than
-  // the practitioner copy's — a taller signature would clip into the text.
-  signature: { x: 75, maxW: 300, maxH: 60, lineBottomY: { practitioner: 1098, patient: 1090 } },
+  // Signature is deliberately drawn LARGER than the dotted line's own height
+  // and positioned to sit over the "Assignor's signature" label text below
+  // the line (per clinic instruction — overlapping some printed words there
+  // is fine). lineBottomY is the bottom edge of the signature image; x is
+  // shifted right so a normal-width signature lands over the label rather
+  // than the blank space to its left.
+  signature: { x: 130, maxW: 450, maxH: 95, lineBottomY: { practitioner: 1146, patient: 1155 } },
   // "Date (DD MM YYYY)" — the template already prints the two "/" separators;
   // we only draw the DD / MM / YYYY digit groups into the gaps between them
   // (no slashes in our own text, or they'd double up with the printed ones).
@@ -311,6 +326,7 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
       parts.push(boxedTextAtPositions(F.dateOfServiceBoxes, dateOfServiceDigits));
     }
     parts.push(xMark(F.inHospitalNo.x, F.inHospitalNo.y[copy], F.inHospitalNo.size));
+    parts.push(checkMark(F.expiryDateChecked.x, F.expiryDateChecked.y[copy], F.expiryDateChecked.size));
 
     if (providerNumber) {
       parts.push(boxedText(F.providerBoxes, providerNumber));
