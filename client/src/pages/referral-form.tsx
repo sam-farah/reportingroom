@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { CheckCircle, AlertCircle, Loader2, User, Stethoscope, FileText, Phone } from "lucide-react";
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
-import { MbsItemBadges } from "@/components/mbs-billing-summary";
 
 type ClinicInfo = { name: string; logoUrl: string | null; phone: string | null; address: string | null };
 
@@ -251,8 +250,8 @@ export default function ReferralFormPage() {
                   <Input required type="tel" value={form.patientPhone} onChange={(e) => setForm((p) => ({ ...p, patientPhone: e.target.value }))} placeholder="04xx xxx xxx" className="mt-1" />
                 </div>
                 <div>
-                  <Label className="text-sm">Email <span className="text-red-500">*</span></Label>
-                  <Input required type="email" value={form.patientEmail} onChange={(e) => setForm((p) => ({ ...p, patientEmail: e.target.value }))} placeholder="patient@email.com" className="mt-1" />
+                  <Label className="text-sm">Email</Label>
+                  <Input type="email" value={form.patientEmail} onChange={(e) => setForm((p) => ({ ...p, patientEmail: e.target.value }))} placeholder="patient@email.com" className="mt-1" />
                 </div>
               </div>
               <div>
@@ -325,7 +324,6 @@ export default function ReferralFormPage() {
                           onCheckedChange={() => toggleScanType(st.name)}
                         />
                         <span className="text-sm">{st.name}</span>
-                        <MbsItemBadges scanType={st.name} />
                       </label>
                       {checked && st.hasLaterality && (
                         <div className="ml-6 mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -425,7 +423,6 @@ export default function ReferralFormPage() {
               submitting ||
               !form.patientName ||
               !form.patientPhone ||
-              !form.patientEmail ||
               !form.referringDoctorName ||
               !form.referringDoctorProviderNumber ||
               !form.clinicalIndication ||
