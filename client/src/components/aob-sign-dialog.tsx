@@ -54,8 +54,7 @@ export function AobSignDialog({ form, onOpenChange, onSigned }: AobSignDialogPro
     const c = canvasRef.current;
     const ctx = getCtx();
     if (c && ctx) {
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.clearRect(0, 0, c.width, c.height);
     }
     setSignatureEmpty(true);
   };
@@ -120,8 +119,6 @@ export function AobSignDialog({ form, onOpenChange, onSigned }: AobSignDialogPro
                 if (el && !el.dataset.init) {
                   el.width = 1400;
                   el.height = 600;
-                  const ctx = el.getContext("2d");
-                  if (ctx) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, el.width, el.height); }
                   el.dataset.init = "1";
                 }
               }}

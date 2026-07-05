@@ -71,8 +71,16 @@ function wrapToLines(text: string, maxCharsPerLine: number, maxLines: number): s
 // Equipment Number and SCP are intentionally left blank — the app doesn't
 // track them, same as the prior custom-built document.
 const F = {
-  fullName: { x: 228, y: 130, fontSize: 24 },
-  dob: { x: 260, y: 245, fontSize: 20 },
+  // "Patient's full name" spans TWO separate dotted lines on the real form —
+  // the first for surname, the second for first name — not one combined
+  // "Surname, First" string on a single line. Y differs per copy (the two
+  // template photos have slightly different vertical layouts); X is shared.
+  fullNameSurname: { x: 230, fontSize: 22, y: { practitioner: 114, patient: 79 } },
+  fullNameFirstName: { x: 230, fontSize: 22, y: { practitioner: 166, patient: 133 } },
+  // Date of birth is a plain dotted line (not individual digit boxes like the
+  // Medicare/date-of-service fields), so it's rendered as free text, but must
+  // be formatted "DD MM YYYY" rather than the raw ISO string from the DB.
+  dob: { x: 230, fontSize: 20, y: { practitioner: 219, patient: 186 } },
   // Boxed digit fields — one glyph is centred inside each printed box (rather
   // than a single string with letter-spacing, which drifts out of the boxes).
   // The X geometry (first-box centre + pitch) is shared by both copies; only
@@ -136,8 +144,24 @@ const F = {
     },
   },
   renderingPractitioner: { x: 805, y: 1075, lineH: 24, fontSize: 20, maxChars: 48, maxLines: 2 },
-  signature: { x: 75, maxW: 300, maxH: 85, lineBottomY: 1122 },
-  signDate: { x: 598, y: 1093, fontSize: 16 },
+  // Signature sits directly on the "Assignor's signature" dotted line —
+  // lineBottomY is where the bottom edge of the signature image is placed, so
+  // it must land right on the line, not further down overlapping the label
+  // text beneath it. Y differs per copy (patient copy's lower half of the
+  // page is shifted down relative to the practitioner copy, unlike the
+  // header fields where the two copies are nearly aligned).
+  // maxH kept modest (60, not the naive 85) because the patient copy's gap
+  // between the declaration paragraph and the signature line is tighter than
+  // the practitioner copy's — a taller signature would clip into the text.
+  signature: { x: 75, maxW: 300, maxH: 60, lineBottomY: { practitioner: 1098, patient: 1090 } },
+  // "Date (DD MM YYYY)" — the template already prints the two "/" separators;
+  // we only draw the DD / MM / YYYY digit groups into the gaps between them
+  // (no slashes in our own text, or they'd double up with the printed ones).
+  signDate: {
+    groupX: { dd: 648, mm: 698, yyyy: 761 },
+    fontSize: 16,
+    y: { practitioner: 1093, patient: 1080 },
+  },
 };
 
 async function loadTemplate(templatePath: string): Promise<{ buffer: Buffer; width: number; height: number }> {
@@ -167,7 +191,31 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
   const CLINIC_TZ = resolveClinicTimeZone(clinic);
   const now = new Date();
 
-  const dobDisplay = aobForm.patientDateOfBirth || "";
+  // DOB is a plain dotted-line field (not boxed digits), but must be
+  // formatted "DD MM YYYY" rather than the raw ISO string stored in the DB
+  // (e.g. "1980-05-15") or an ambiguous 8-digit string.
+  const formatDobDisplay = (raw: unknown): string => {
+    const s = String(raw ?? "").trim();
+    if (!s) return "";
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]} ${iso[2]} ${iso[1]}`;
+    const digitsOnly = s.replace(/[^0-9]/g, "");
+    if (digitsOnly.length === 8) {
+      const lead = parseInt(digitsOnly.slice(0, 4), 10);
+      if (lead >= 1900 && lead <= 2100) return `${digitsOnly.slice(6, 8)} ${digitsOnly.slice(4, 6)} ${digitsOnly.slice(0, 4)}`; // YYYYMMDD
+      return `${digitsOnly.slice(0, 2)} ${digitsOnly.slice(2, 4)} ${digitsOnly.slice(4, 8)}`; // DDMMYYYY
+    }
+    return s;
+  };
+  const dobDisplay = formatDobDisplay(aobForm.patientDateOfBirth);
+  // The "Patient's full name" field is two separate dotted lines on the real
+  // form (surname, then first name) — patientName is stored as "First Last",
+  // so split on the first space rather than assuming a "Surname, First"
+  // convention that isn't actually used anywhere else in the app.
+  const fullNameStr = String(aobForm.patientName ?? "").trim();
+  const firstSpaceIdx = fullNameStr.indexOf(" ");
+  const patientFirstName = firstSpaceIdx === -1 ? fullNameStr : fullNameStr.slice(0, firstSpaceIdx);
+  const patientSurname = firstSpaceIdx === -1 ? "" : fullNameStr.slice(firstSpaceIdx + 1).trim();
   const medicareDigits = digitsAndLetters(aobForm.medicareNumber) + digitsAndLetters(aobForm.medicareIrn);
   // The app stores dates as ISO (yyyy-MM-dd, from a native <input type="date">)
   // or occasionally a bare 8-digit string, so parse first and reorder to DD MM YY
@@ -211,7 +259,11 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
     .png()
     .toBuffer();
 
+  // The template already prints the "/" separators between DD/MM/YYYY, so we
+  // draw the digit groups only (no slashes of our own, which would double up).
   const signedDateStr = now.toLocaleDateString("en-AU", { timeZone: CLINIC_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
+  const [signedDd, signedMm, signedYyyy] = signedDateStr.split("/");
+  const signedDateParts = { dd: signedDd, mm: signedMm, yyyy: signedYyyy };
 
   const buildOverlaySvg = (width: number, height: number): string => {
     const parts: string[] = [];
@@ -247,8 +299,9 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
         )
         .join("");
 
-    parts.push(`<text x="${F.fullName.x}" y="${F.fullName.y}" font-family="Arial, sans-serif" font-size="${F.fullName.fontSize}" fill="#1a1a6e">${escapeXml(aobForm.patientName)}</text>`);
-    parts.push(`<text x="${F.dob.x}" y="${F.dob.y}" font-family="Arial, sans-serif" font-size="${F.dob.fontSize}" fill="#1a1a6e">${escapeXml(dobDisplay)}</text>`);
+    parts.push(`<text x="${F.fullNameSurname.x}" y="${F.fullNameSurname.y[copy]}" font-family="Arial, sans-serif" font-size="${F.fullNameSurname.fontSize}" fill="#1a1a6e">${escapeXml(patientSurname)}</text>`);
+    parts.push(`<text x="${F.fullNameFirstName.x}" y="${F.fullNameFirstName.y[copy]}" font-family="Arial, sans-serif" font-size="${F.fullNameFirstName.fontSize}" fill="#1a1a6e">${escapeXml(patientFirstName)}</text>`);
+    parts.push(`<text x="${F.dob.x}" y="${F.dob.y[copy]}" font-family="Arial, sans-serif" font-size="${F.dob.fontSize}" fill="#1a1a6e">${escapeXml(dobDisplay)}</text>`);
     parts.push(boxedText(F.medicareBoxes, medicareDigits));
 
     if (referralDateDigits) {
@@ -346,7 +399,10 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
       parts.push(`<text x="${F.renderingPractitioner.x}" y="${F.renderingPractitioner.y + i * F.renderingPractitioner.lineH}" font-family="Arial, sans-serif" font-size="${F.renderingPractitioner.fontSize}" fill="#1a1a6e">${escapeXml(line)}</text>`);
     });
 
-    parts.push(`<text x="${F.signDate.x}" y="${F.signDate.y}" font-family="Arial, sans-serif" font-size="${F.signDate.fontSize}" fill="#1a1a6e">${escapeXml(signedDateStr)}</text>`);
+    const signDateY = F.signDate.y[copy];
+    parts.push(`<text x="${F.signDate.groupX.dd}" y="${signDateY}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.signDate.fontSize}" fill="#1a1a6e">${escapeXml(signedDateParts.dd)}</text>`);
+    parts.push(`<text x="${F.signDate.groupX.mm}" y="${signDateY}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.signDate.fontSize}" fill="#1a1a6e">${escapeXml(signedDateParts.mm)}</text>`);
+    parts.push(`<text x="${F.signDate.groupX.yyyy}" y="${signDateY}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.signDate.fontSize}" fill="#1a1a6e">${escapeXml(signedDateParts.yyyy)}</text>`);
 
     return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${parts.join("\n")}</svg>`;
   };
@@ -354,10 +410,13 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
   const templatePath = copy === "practitioner" ? PRACTITIONER_TEMPLATE : PATIENT_TEMPLATE;
   const { buffer, width, height } = await loadTemplate(templatePath);
   const overlaySvg = buildOverlaySvg(width, height);
-  const sigTop = F.signature.lineBottomY - sigH;
+  const sigTop = F.signature.lineBottomY[copy] - sigH;
   return sharp(buffer)
     .composite([
       { input: Buffer.from(overlaySvg), top: 0, left: 0 },
+      // Signature PNG keeps its alpha channel (transparent background) —
+      // composited directly over the template rather than flattened onto an
+      // opaque white rect, so only the pen strokes appear.
       { input: sigResized, top: sigTop, left: F.signature.x },
     ])
     .jpeg({ quality: 92 })
