@@ -27,3 +27,11 @@ match: exact UR-number match, or exactly ONE patient matching full name **and**
 DOB. Never link on name alone, and never pick the "first" of several candidates —
 in a clinical system, mis-filing a record is worse than leaving it unlinked for a
 human to resolve.
+
+## Referring doctor is not stored on reports
+`reports` has no referring-doctor column. It only lives on `appointments`
+(`referringDoctorName` etc). Anywhere a report needs to display/use the referring
+doctor (e.g. the patient-info box header), look it up via the patient's most
+recent appointment that has one set — see `fetchReferringDoctorName()` in
+`client/src/lib/report-distribution.ts`, reused by all report HTML render paths
+(print/PDF export, both distribute dialogs) so they stay consistent.

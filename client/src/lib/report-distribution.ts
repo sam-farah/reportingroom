@@ -216,6 +216,26 @@ export interface ReportHtmlDeps {
   clinicLogoApiUrl?: string | null;
 }
 
+/** Look up the most recent referring doctor recorded against a patient's
+ *  appointments, for display in the report's patient-info box. Returns null
+ *  when the patient has no appointment with a referring doctor on file. */
+export async function fetchReferringDoctorName(patientId?: number | null): Promise<string> {
+  if (!patientId) return "";
+  try {
+    const { resolveUrl } = await import("@/lib/api");
+    const res = await fetch(resolveUrl(`/api/patients/${patientId}/appointments`), { credentials: "include" });
+    if (!res.ok) return "";
+    const appointments: any[] = await res.json();
+    const sorted = [...appointments].sort(
+      (a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime(),
+    );
+    const latest = sorted.find((a) => a.referringDoctorName);
+    return latest?.referringDoctorName || "";
+  } catch {
+    return "";
+  }
+}
+
 async function toBase64(url: string): Promise<string | null> {
   try {
     const { resolveUrl } = await import("@/lib/api");
@@ -267,6 +287,8 @@ export async function buildReportHtml(
       sonographerAms = sono.amsNumber || "";
     }
   }
+
+  const referringDoctorName = await fetchReferringDoctorName((report as any).patientId);
 
   // Worksheet image — prefer the labelled copy, then the raw upload, then the
   // digital worksheet. No re-labelling here (the patient file uses what exists).
@@ -428,6 +450,7 @@ export async function buildReportHtml(
     <div class="pi-full"><span class="label">Study:</span> ${displayStudyType}</div>
     <div class="pi">${accessionId ? `<span class="label">Accession:</span> ${accessionId}` : ""}</div>
     <div class="pi">${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}${sonographerAms ? ` <span class="label">AMS</span> ${sonographerAms}` : ""}` : ""}</div>
+    ${referringDoctorName ? `<div class="pi-full"><span class="label">Referring Doctor:</span> ${referringDoctorName}</div>` : ""}
   </div>
 
   ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ""}

@@ -1098,9 +1098,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     input.click();
   };
 
-  const handleExportPDF = (report: Report) => {
+  const handleExportPDF = async (report: Report) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
+
+    const { fetchReferringDoctorName } = await import("@/lib/report-distribution");
+    const referringDoctorName = await fetchReferringDoctorName((report as any).patientId);
 
     const template = templates.find((t: ReportTemplate) => t.id === (editingReport?.templateId || (report as EditableReport).templateId)) || templates[0];
     const pc = template?.primaryColor || '#0066cc';
@@ -1213,6 +1216,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     <div class="pi"><span class="label">Exam Date:</span> ${formatDobAU(report.examDate)}</div>
     <div class="pi"><span class="label">Report ID:</span> ${report.id}</div>
     <div class="pi"><span class="label">Report Date:</span> ${format(new Date(), 'dd/MM/yyyy')}</div>
+    ${referringDoctorName ? `<div class="pi"><span class="label">Referring Doctor:</span> ${referringDoctorName}</div>` : ''}
   </div>
 
   ${template?.showStudyType !== false ? `<div class="section"><div class="section-title">Study Type</div><div class="section-content">${report.studyType}</div></div>` : ''}
@@ -1336,6 +1340,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       }
     }
     const sonographerWithAms = sonographerName + (sonographerAms ? ` (AMS ${sonographerAms})` : "");
+
+    // Look up referring doctor from the patient's most recent appointment
+    const { fetchReferringDoctorName } = await import("@/lib/report-distribution");
+    const referringDoctorName = await fetchReferringDoctorName((report as any).patientId);
 
     // Always regenerate the labelled worksheet right before sending so the
     // header strip reflects the current report data (patient name, UR, exam
@@ -1502,6 +1510,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     <div class="pi-full"><span class="label">Study:</span> ${displayStudyType}</div>
     <div class="pi">${accessionId ? `<span class="label">Accession:</span> ${accessionId}` : ''}</div>
     <div class="pi">${sonographerName ? `<span class="label">Sonographer:</span> ${sonographerName}${sonographerAms ? ` <span class="label">AMS</span> ${sonographerAms}` : ''}` : ''}</div>
+    ${referringDoctorName ? `<div class="pi-full"><span class="label">Referring Doctor:</span> ${referringDoctorName}</div>` : ''}
   </div>
 
   ${template?.showIndication !== false ? `<div class="section"><div class="section-title">Clinical Indication</div><div class="section-content">${report.indication}</div></div>` : ''}
