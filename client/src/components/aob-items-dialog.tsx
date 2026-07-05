@@ -201,7 +201,7 @@ export function AobItemsDialog({
                         <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-96 p-0" align="start">
+                    <PopoverContent className="w-96 p-0 z-[210]" align="start">
                       <Command
                         filter={(value, search) =>
                           value.toLowerCase().includes(search.toLowerCase())
