@@ -211,6 +211,140 @@ async function generateAttendanceCertificate(opts: {
   return { blob, base64, filename };
 }
 
+async function generatePatientAppointmentCopy(opts: {
+  appointment: any;
+  patient: any | null;
+  clinic: any | null;
+  prepInstructions: string | null;
+}): Promise<{ blob: Blob; filename: string }> {
+  const { appointment, patient, clinic, prepInstructions } = opts;
+  const apptDate = new Date(appointment.appointmentDate);
+  const generatedAt = format(new Date(), "d MMM yyyy 'at' h:mm a");
+
+  const fullName = patient
+    ? `${patient.firstName} ${patient.lastName}`
+    : (appointment.patientName || "");
+  const dobDisplay = formatDobDDMMYYYY(patient?.dateOfBirth || appointment.patientDob);
+
+  const logoRaw = clinic?.logoUrl ? await fetchAsDataUrl("/api/clinic/logo") : null;
+  const logoDataUrl = logoRaw ? await downscaleImage(logoRaw, 600, "image/jpeg", 0.85, "#ffffff") : null;
+
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+  const pageW = 210;
+  const margin = 22;
+  let y = 25;
+
+  if (logoDataUrl) {
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = logoDataUrl;
+      });
+      const targetW = 50;
+      const targetH = (img.height / img.width) * targetW;
+      pdf.addImage(logoDataUrl, "PNG", pageW - margin - targetW, y - 5, targetW, targetH);
+    } catch { /* ignore */ }
+  }
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(16);
+  pdf.text("Appointment Confirmation", margin, y);
+  y += 6;
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(120, 120, 120);
+  pdf.text("Patient Copy", margin, y);
+  pdf.setTextColor(0, 0, 0);
+  y += 14;
+
+  pdf.setDrawColor(210, 210, 210);
+  pdf.line(margin, y, pageW - margin, y);
+  y += 10;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(12);
+  pdf.text(fullName || "Patient", margin, y);
+  y += 7;
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+  if (dobDisplay) { pdf.text(`DOB: ${dobDisplay}`, margin, y); y += 7; }
+  y += 3;
+
+  const row = (label: string, value: string) => {
+    pdf.setFont("helvetica", "bold");
+    pdf.text(label, margin, y);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(value, margin + 42, y);
+    y += 8;
+  };
+
+  row("Date:", format(apptDate, "PPPP"));
+  row("Time:", `${format(apptDate, "p")} (${appointment.duration} min)`);
+  if (appointment.scanType) row("Scan Type:", appointment.scanType);
+  if (clinic?.name) row("Location:", clinic.name);
+  if (clinic?.address) row("Address:", clinic.address);
+  if (clinic?.phone) row("Phone:", clinic.phone);
+
+  y += 6;
+  if (prepInstructions && prepInstructions.trim()) {
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.text("Preparation Instructions", margin, y);
+    y += 7;
+    pdf.setFont("helvetica", "normal");
+    const lines = pdf.splitTextToSize(prepInstructions.trim(), pageW - margin * 2);
+    pdf.text(lines, margin, y);
+    y += lines.length * 6 + 8;
+  }
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.setTextColor(120, 120, 120);
+  pdf.text(
+    "Please bring this confirmation with you and arrive 10 minutes before your scheduled time.",
+    margin,
+    y,
+    { maxWidth: pageW - margin * 2 },
+  );
+
+  pdf.setFontSize(8);
+  pdf.text(`Generated: ${generatedAt}`, pageW - margin, 287, { align: "right" });
+
+  const safeName = (fullName || "patient").replace(/[^a-z0-9]+/gi, "_");
+  const filename = `Appointment_${safeName}_${format(apptDate, "yyyy-MM-dd")}.pdf`;
+  const blob = pdf.output("blob");
+  return { blob, filename };
+}
+
+// Opens the browser's native print dialog for a PDF blob via a hidden iframe.
+function printPdfBlob(blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.src = url;
+  document.body.appendChild(iframe);
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch {
+      // Fallback: open in a new tab so the user can print manually.
+      window.open(url, "_blank");
+    }
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+      URL.revokeObjectURL(url);
+    }, 60000);
+  };
+}
+
 function parseReferralNotes(notes: string | null | undefined): { referrerName: string | null; cleanNotes: string | null } {
   if (!notes) return { referrerName: null, cleanNotes: null };
   const match = notes.match(/^\[Referral from: ([^\]]+)\]\n?/);
@@ -637,6 +771,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     saved: boolean;
   } | null>(null);
   const [generatingCertificate, setGeneratingCertificate] = useState(false);
+  const [printingPatientCopy, setPrintingPatientCopy] = useState(false);
   const [emailingCertificate, setEmailingCertificate] = useState(false);
   const [showBeginStudy, setShowBeginStudy] = useState(false);
   const [showIdCheck, setShowIdCheck] = useState(false);
@@ -891,6 +1026,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
 
   const { data: sonographers = [] } = useQuery<Sonographer[]>({
     queryKey: ["/api/sonographers"],
+  });
+
+  const { data: scanPrepInstructionsList = [] } = useQuery<{ scanType: string; instructions: string }[]>({
+    queryKey: ["/api/scan-prep-instructions"],
   });
 
   const { data: calendarReferringDoctors = [] } = useQuery<any[]>({
@@ -3609,6 +3748,39 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                                 {generatingCertificate ? "Generating…" : "Attendance Certificate"}
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem
+                              disabled={printingPatientCopy}
+                              onSelect={async (e) => {
+                                e.preventDefault();
+                                if (printingPatientCopy) return;
+                                setPrintingPatientCopy(true);
+                                const apt = viewingAppointment;
+                                const resolvedPatient = apt.patientId
+                                  ? allCalendarPatients.find(pt => pt.id === apt.patientId)
+                                  : undefined;
+                                const prep = apt.scanType
+                                  ? scanPrepInstructionsList.find(p => p.scanType === apt.scanType)?.instructions
+                                  : undefined;
+                                try {
+                                  const { blob } = await generatePatientAppointmentCopy({
+                                    appointment: apt,
+                                    patient: resolvedPatient || null,
+                                    clinic: clinicData || null,
+                                    prepInstructions: prep || null,
+                                  });
+                                  printPdfBlob(blob);
+                                } catch (err: any) {
+                                  toast({ title: "Error", description: err?.message || "Failed to generate patient copy", variant: "destructive" });
+                                } finally {
+                                  setPrintingPatientCopy(false);
+                                }
+                              }}
+                              className="text-teal-700 focus:text-teal-700"
+                              data-testid="menu-print-patient-copy"
+                            >
+                              <FileText className="w-4 h-4 mr-2" />
+                              {printingPatientCopy ? "Preparing…" : "Print Patient Copy"}
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onSelect={(e) => {
