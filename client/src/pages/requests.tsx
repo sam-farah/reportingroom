@@ -558,6 +558,13 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
         notes: form.notes || null,
         status: "scheduled",
         force: !!force,
+        // Snapshot the referring doctor onto the appointment itself (not just
+        // the scan request) so the Assessment of Benefit form still has a
+        // referring doctor to show even if the scan request is later
+        // archived, deleted, or unlinked from this appointment.
+        referringDoctorName: request.referringDoctorName || null,
+        referringDoctorProviderNumber: request.referringDoctorProviderNumber || null,
+        referralDate: request.requestDate || null,
       };
       const apptRes = await fetch("/api/appointments", {
         method: "POST",

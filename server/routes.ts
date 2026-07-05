@@ -4426,6 +4426,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 referringDoctorProviderNumber = savedDoctor.providerNumber ?? referringDoctorProviderNumber;
               }
             }
+            // Backfill the appointment's own referring-doctor fields from the
+            // scan request if they're missing. Older appointments scheduled
+            // before this snapshot existed relied entirely on this live join —
+            // if the scan request is later archived/deleted/unlinked, the
+            // referring doctor would silently disappear from future forms.
+            if (matchedAppointment && !matchedAppointment.referringDoctorName && referringDoctorName) {
+              storage.updateAppointment(matchedAppointment.id, {
+                referringDoctorName,
+                referringDoctorProviderNumber: referringDoctorProviderNumber ?? null,
+                referralDate: referralDate ?? null,
+              } as any).catch((e) => console.warn("Sono-complete: failed to backfill appointment referring doctor", e));
+            }
           }
         } catch (scanReqErr) {
           console.warn("Sono-complete: failed to look up scan request for referring doctor details", scanReqErr);
@@ -4589,6 +4601,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 referringDoctorAddress = savedDoctor.address ?? undefined;
                 referringDoctorProviderNumber = savedDoctor.providerNumber ?? referringDoctorProviderNumber;
               }
+            }
+            // Backfill the appointment's own referring-doctor fields from the
+            // scan request if they're missing. Older appointments scheduled
+            // before this snapshot existed relied entirely on this live join —
+            // if the scan request is later archived/deleted/unlinked, the
+            // referring doctor would silently disappear from future forms.
+            if (!appointment.referringDoctorName && referringDoctorName) {
+              storage.updateAppointment(appointment.id, {
+                referringDoctorName,
+                referringDoctorProviderNumber: referringDoctorProviderNumber ?? null,
+                referralDate: referralDate ?? null,
+              } as any).catch((e) => console.warn("Appointment AoB: failed to backfill appointment referring doctor", e));
             }
           }
         } catch (scanReqErr) {
@@ -9670,6 +9694,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const matchedPatient = await storage.findMatchingPatient(clinicId, patientName, patientDob || null, patientPhone || null);
 
       const patientEmailVal = patientEmail || null;
+      // Snapshot the referring doctor onto the appointment itself (not just
+      // the scan request created below) so the Assessment of Benefit form
+      // still has a referring doctor even if that scan request is later
+      // archived, deleted, or unlinked from this appointment.
+      const today = new Date().toISOString().split("T")[0];
       const appointment = await storage.createAppointment({
         clinicId,
         patientName,
@@ -9684,10 +9713,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sonographerId: null,
         patientId: matchedPatient?.id ?? null,
         createdBy: req.user.id,
-      });
+        referringDoctorName: referrerFullName,
+        referralDate: today,
+      } as any);
 
       // Create corresponding scan request
-      const today = new Date().toISOString().split("T")[0];
       const referrerScanRequest = await storage.createScanRequest({
         clinicId,
         patientName,
