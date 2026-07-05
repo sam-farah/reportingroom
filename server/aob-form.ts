@@ -35,18 +35,6 @@ function xMark(x: number, y: number, size: number): string {
     <line x1="${x + size - 2}" y1="${y + 2}" x2="${x + 2}" y2="${y + size - 2}" stroke="#1a1a6e" stroke-width="2"/>`;
 }
 
-// Draws a check ("✓") mark centred at (x, y), given size — used where the
-// real form expects a tick rather than an X (e.g. "Expiry date checked").
-function checkMark(x: number, y: number, size: number): string {
-  const shortLegX = x - size * 0.35;
-  const shortLegY = y;
-  const vertexX = x - size * 0.08;
-  const vertexY = y + size * 0.32;
-  const longLegX = x + size * 0.42;
-  const longLegY = y - size * 0.38;
-  return `<polyline points="${shortLegX},${shortLegY} ${vertexX},${vertexY} ${longLegX},${longLegY}" fill="none" stroke="#1a1a6e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
-}
-
 // Wraps text into up to `maxLines` lines of at most `maxCharsPerLine` chars.
 // If any words don't fit, the last kept line always gets an ellipsis so
 // truncation is visibly indicated rather than silently dropping words
@@ -93,12 +81,17 @@ const F = {
   // Medicare/date-of-service fields), so it's rendered as free text, but must
   // be formatted "DD MM YYYY" rather than the raw ISO string from the DB.
   dob: { x: 270, fontSize: 20, y: { practitioner: 219, patient: 186 } },
-  // "Expiry date checked" — the real form has a faint pre-printed placeholder
-  // mark (a light-gray "X" watermark) right after that label; we draw an
-  // actual check ("✓") on top of it per clinic instruction, not an X. Shared
-  // X (both copies line up here); Y differs per copy like the other header
-  // fields (patient copy's row sits ~25px higher).
+  // "Expiry date checked" — per updated clinic instruction this ALWAYS gets an
+  // X (not a checkmark — this reverses an earlier decision). Shared X (both
+  // copies line up here); Y differs per copy like the other header fields
+  // (patient copy's row sits ~25px higher).
   expiryDateChecked: { x: 745, size: 26, y: { practitioner: 220, patient: 195 } },
+  // "Patient ref number" — small dashed box directly left of "Date of service"
+  // on the header row; we print the patient's Medicare number here too. Same
+  // baseline Y as dateOfServiceBoxes (same printed row on both copies) since
+  // they're calibrated together. Box is narrow (~45px) so text is small and
+  // center-anchored, allowed to overflow slightly rather than truncate.
+  patientRefNumber: { x: 1187, fontSize: 13, y: { practitioner: 174, patient: 142 } },
   // Boxed digit fields — one glyph is centred inside each printed box (rather
   // than a single string with letter-spacing, which drifts out of the boxes).
   // The X geometry (first-box centre + pitch) is shared by both copies; only
@@ -121,7 +114,9 @@ const F = {
   lspnBoxes: { startX: 281, pitch: 53, fontSize: 21, y: { practitioner: 664, patient: 649 } },
   numPatients: { x: 720, y: 782, fontSize: 21 },
   assignorYes: { x: 250, y: 955, size: 18 },
-  agreementPostAssignment: { x: 492, y: 866, size: 18 },
+  // NOTE: "Post-assignment" under Agreement Type used to always get an X here
+  // (F.agreementPostAssignment) — removed per updated clinic instruction; the
+  // field is intentionally left unmarked now.
   // The services table has 12 physical rows (~62px pitch). The two template
   // scans have slightly different vertical layouts, so each copy needs its own
   // set of row CENTRES (pixel-calibrated against the real digit boxes). The
@@ -163,12 +158,12 @@ const F = {
   },
   renderingPractitioner: { x: 805, y: 1075, lineH: 24, fontSize: 20, maxChars: 48, maxLines: 2 },
   // Signature is deliberately drawn LARGER than the dotted line's own height
-  // and positioned to sit over the "Assignor's signature" label text below
-  // the line (per clinic instruction — overlapping some printed words there
-  // is fine). lineBottomY is the bottom edge of the signature image; x is
-  // shifted right so a normal-width signature lands over the label rather
-  // than the blank space to its left.
-  signature: { x: 130, maxW: 450, maxH: 95, lineBottomY: { practitioner: 1146, patient: 1155 } },
+  // and positioned to sit inside the "Assignor's signature" box (per clinic
+  // instruction — overlapping some printed words there is fine). lineBottomY
+  // is the bottom edge of the signature image; x/lineBottomY recalibrated
+  // against a hand-marked user screenshot showing the exact target box.
+  // Size (maxW/maxH) intentionally left unchanged — only position moved.
+  signature: { x: 210, maxW: 450, maxH: 95, lineBottomY: { practitioner: 1128, patient: 1137 } },
   // "Date (DD MM YYYY)" — the template already prints the two "/" separators;
   // we only draw the DD / MM / YYYY digit groups into the gaps between them
   // (no slashes in our own text, or they'd double up with the printed ones).
@@ -326,7 +321,13 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
       parts.push(boxedTextAtPositions(F.dateOfServiceBoxes, dateOfServiceDigits));
     }
     parts.push(xMark(F.inHospitalNo.x, F.inHospitalNo.y[copy], F.inHospitalNo.size));
-    parts.push(checkMark(F.expiryDateChecked.x, F.expiryDateChecked.y[copy], F.expiryDateChecked.size));
+    parts.push(xMark(F.expiryDateChecked.x, F.expiryDateChecked.y[copy], F.expiryDateChecked.size));
+
+    if (medicareDigits) {
+      parts.push(
+        `<text x="${F.patientRefNumber.x}" y="${F.patientRefNumber.y[copy]}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.patientRefNumber.fontSize}" fill="#1a1a6e">${escapeXml(medicareDigits)}</text>`,
+      );
+    }
 
     if (providerNumber) {
       parts.push(boxedText(F.providerBoxes, providerNumber));
@@ -348,7 +349,6 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
     parts.push(`<text x="${F.numPatients.x}" y="${F.numPatients.y}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.numPatients.fontSize}" fill="#1a1a6e">1</text>`);
 
     parts.push(xMark(F.assignorYes.x, F.assignorYes.y, F.assignorYes.size));
-    parts.push(xMark(F.agreementPostAssignment.x, F.agreementPostAssignment.y, F.agreementPostAssignment.size));
 
     const { rowCentersByCopy, baselineOffset, descX, descMaxCharsPerLine, descMaxLines, descLineH, itemBoxes, fontSize, benefitBoxes } = F.servicesTable;
     const rowCenters = rowCentersByCopy[copy];
