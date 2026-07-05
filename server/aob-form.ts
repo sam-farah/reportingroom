@@ -98,7 +98,7 @@ const F = {
   // the Y baseline differs, because the two template photos have slightly
   // different vertical layouts (same reason the services table needs per-copy
   // row centres).
-  medicareBoxes: { startX: 283, pitch: 53, fontSize: 21, y: { practitioner: 286, patient: 278 } },
+  medicareBoxes: { startX: 283, pitch: 53, fontSize: 25, y: { practitioner: 280, patient: 241 } },
   referralDateBoxes: { startX: 473, pitch: 57, fontSize: 20, y: { practitioner: 354, patient: 333 } },
   // "Date of service, imaging procedure or first specimen collection" — top-right
   // of the form near "Patient ref number". Six boxes in DD/MM/YY groups; the box
@@ -113,7 +113,7 @@ const F = {
   doctorAddress: { x: 70, y: 562, lineH: 24, fontSize: 19, maxChars: 40, maxLines: 3 },
   lspnBoxes: { startX: 281, pitch: 53, fontSize: 21, y: { practitioner: 664, patient: 649 } },
   numPatients: { x: 720, y: 782, fontSize: 21 },
-  assignorYes: { x: 250, y: 955, size: 18 },
+  assignorYes: { x: { practitioner: 262, patient: 242 }, y: { practitioner: 923, patient: 939 }, size: 24 },
   // NOTE: "Post-assignment" under Agreement Type used to always get an X here
   // (F.agreementPostAssignment) — removed per updated clinic instruction; the
   // field is intentionally left unmarked now.
@@ -360,7 +360,7 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
 
     parts.push(`<text x="${F.numPatients.x}" y="${F.numPatients.y}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${F.numPatients.fontSize}" fill="#1a1a6e">1</text>`);
 
-    parts.push(xMark(F.assignorYes.x, F.assignorYes.y, F.assignorYes.size));
+    parts.push(xMark(F.assignorYes.x[copy], F.assignorYes.y[copy], F.assignorYes.size));
 
     const { rowCentersByCopy, baselineOffset, descX, descMaxCharsPerLine, descMaxLines, descLineH, itemBoxes, fontSize, benefitBoxes } = F.servicesTable;
     const rowCenters = rowCentersByCopy[copy];

@@ -33,12 +33,12 @@ type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "cal
 
 const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; superAdminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",  icon: CalendarIcon },
+  { id: "email",          label: "Email",     icon: Mail, comingSoon: true },
   { id: "user",           label: "Upload",    icon: Upload },
   { id: "draw",           label: "Draw",      icon: PenLine },
   { id: "reporting-room", label: "Reports",   icon: FolderOpen },
   { id: "patients",       label: "Patients",  icon: UserCircle },
   { id: "messages",       label: "Messages",  icon: MessageSquare },
-  { id: "email",          label: "Email",     icon: Mail },
   { id: "chat",           label: "Team Chat", icon: MessageCircle },
   { id: "requests",       label: "Requests",  icon: ClipboardList },
   { id: "contacts",       label: "Contacts",  icon: BookUser },
