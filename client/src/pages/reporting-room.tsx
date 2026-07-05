@@ -2194,15 +2194,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       Amend
                     </Button>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDeleteReport(report)}
-                    className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 px-2"
-                    disabled={deleteReportMutation.isPending}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
                 </div>
               </div>
             </CardContent>
