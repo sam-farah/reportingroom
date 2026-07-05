@@ -245,8 +245,10 @@ export function AobItemsDialog({
                                   prev.map((m, idx) => (idx === i ? true : m)),
                                 );
                                 setItems((prev) =>
-                                  prev.map((l, idx) =>
-                                    idx === i ? { ...l, item: "" } : l,
+                                  applyVascularAllocation(
+                                    prev.map((l, idx) =>
+                                      idx === i ? { ...l, item: "" } : l,
+                                    ),
                                   ),
                                 );
                                 setPickerIndex(null);
@@ -306,7 +308,9 @@ export function AobItemsDialog({
                 size="sm"
                 className="mt-5 text-gray-400 hover:text-red-600"
                 onClick={() => {
-                  setItems((prev) => prev.filter((_, idx) => idx !== i));
+                  setItems((prev) =>
+                    applyVascularAllocation(prev.filter((_, idx) => idx !== i)),
+                  );
                   setManualEntry((prev) => prev.filter((_, idx) => idx !== i));
                   setPickerIndex(null);
                 }}
