@@ -148,6 +148,9 @@ export interface ScanRequestExtraction {
   clinicalIndication: string | null;
   clinicalHistory: string | null;
   notes: string | null;
+  /** ISO yyyy-MM-dd, only when confidently found on the document (e.g. "Date of Request", "Referral Date", a letterhead/signature date). Null if absent or ambiguous — never guess. */
+  requestDate: string | null;
+  requestDateConfident: boolean;
   confidence: number;
 }
 
@@ -184,12 +187,13 @@ export async function extractScanRequestFromImage(
 - Clinical indication (reason for referral / clinical question)
 - Relevant clinical history
 - Any other notes
+- Date of request / referral date — look for a label like "Date of Request", "Referral Date", "Date", or a date written near the referring doctor's signature/letterhead at the top or bottom of the document. This is the date the REFERRING DOCTOR wrote/sent the referral — NOT today's date, NOT a date of birth, and NOT an appointment/scan date if one happens to also be printed. Only return it if you can clearly identify a date that is unambiguously the request/referral date. If there are multiple dates on the page and it's not clear which one is the referral date, or no date is present at all, return null rather than guessing.
 ${scanTypeList}
 
 Return JSON exactly in this shape:
-{ "patientName": string|null, "patientDob": string|null, "patientPhone": string|null, "patientEmail": string|null, "referringDoctorName": string|null, "referringDoctorProviderNumber": string|null, "scanTypes": string[], "urgency": string|null, "clinicalIndication": string|null, "clinicalHistory": string|null, "notes": string|null, "confidence": number }
+{ "patientName": string|null, "patientDob": string|null, "patientPhone": string|null, "patientEmail": string|null, "referringDoctorName": string|null, "referringDoctorProviderNumber": string|null, "scanTypes": string[], "urgency": string|null, "clinicalIndication": string|null, "clinicalHistory": string|null, "notes": string|null, "requestDate": string|null, "requestDateConfident": boolean, "confidence": number }
 
-Use null for any field you cannot find. confidence is your overall extraction confidence 0-1. Do not invent data that is not present in the document.`
+requestDate must be in ISO format YYYY-MM-DD (convert whatever format is written, e.g. "12/03/2026" or "3rd March 2026", to ISO). requestDateConfident is true only if you are confident requestDate is correct and unambiguous. Use null for any field you cannot find. confidence is your overall extraction confidence 0-1. Do not invent data that is not present in the document.`
         },
         {
           role: "user",
@@ -209,6 +213,13 @@ Use null for any field you cannot find. confidence is your overall extraction co
       ? result.urgency.toLowerCase()
       : null;
 
+    // Only trust a well-formed ISO date the model marked as confident — a
+    // malformed or unconfident value defaults to null so the UI falls back
+    // to today's date (upload date) instead of silently applying a wrong one.
+    const isIsoDate = typeof result.requestDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(result.requestDate);
+    const requestDateConfident = isIsoDate && result.requestDateConfident === true;
+    const requestDate = requestDateConfident ? result.requestDate : null;
+
     return {
       patientName: result.patientName || null,
       patientDob: result.patientDob || null,
@@ -221,6 +232,8 @@ Use null for any field you cannot find. confidence is your overall extraction co
       clinicalIndication: result.clinicalIndication || null,
       clinicalHistory: result.clinicalHistory || null,
       notes: result.notes || null,
+      requestDate,
+      requestDateConfident,
       confidence: Math.max(0, Math.min(1, result.confidence || 0)),
     };
   } catch (error) {

@@ -663,9 +663,18 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
         clinicalIndication: x.clinicalIndication || "",
         clinicalHistory: x.clinicalHistory || "",
         notes: x.notes || "",
+        // The date the referring doctor actually wrote the referral — distinct
+        // from today (the upload date). Only trust it if the AI found it
+        // unambiguously on the document; otherwise keep today's date as the
+        // default but flag it below so staff know to check/correct it.
+        requestDate: x.requestDate || format(new Date(), "yyyy-MM-dd"),
         sourcePdfFilename: data.sourcePdfFilename || null,
       });
-      setImportNotice("We read this from the uploaded document — please check every field before saving. The original file is attached to this request.");
+      setImportNotice(
+        x.requestDate
+          ? "We read this from the uploaded document — please check every field before saving. The original file is attached to this request."
+          : "We read this from the uploaded document — please check every field before saving. We couldn't confidently find a request/referral date on this document, so it's defaulted to today; please update it if the referral was written on an earlier date. The original file is attached to this request."
+      );
       setIsRequestOpen(true);
       toast({ title: "Document read", description: "Review the details we found, then save the request." });
     } catch (err: any) {

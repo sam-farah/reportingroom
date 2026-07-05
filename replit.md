@@ -127,6 +127,7 @@ Preferred communication style: Simple, everyday language.
 #### Referring Doctors & Scan Requests
 - **Referring Doctors**: Clinic-scoped directory of referring GPs/specialists — name, practice, provider number, phone, fax, email, address. Searchable and reusable across requests.
 - **Scan Requests**: Electronic referral form capturing patient details (linked to existing patients or free-text), referring doctor (linked or free-text), scan types (from canonical list), urgency (Routine/Urgent/ASAP/STAT), clinical indication, clinical history, notes, and status (Pending/Scheduled/Completed/Cancelled). Accessible from the "Requests" nav item.
+- **Request date on uploaded/scanned referrals**: `requestDate` defaults to today when created via the website form, but for an uploaded referral PDF/image "today" is the upload date, not the date the referring doctor actually wrote the referral. The AI extraction (`extractScanRequestFromImage`) now also looks for a request/referral date on the document itself and returns it only when unambiguous (`requestDateConfident`); the upload flow (`requests.tsx`) prefills it when found, otherwise keeps today's date but flags in the import notice that staff should check/correct it. This date flows through to the AoB form's referral date field once the request is linked.
 
 #### Data Models
 - **Users**: Authentication and profile management (email/password with `passwordHash` bcrypt field)
