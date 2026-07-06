@@ -4577,7 +4577,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       try {
         const patient = appointment.patientId ? await storage.getPatient(appointment.patientId) : undefined;
-        const physician = appointment.physicianId ? await storage.getPhysician(appointment.physicianId) : undefined;
+
+        // The "rendering practitioner" (bottom-right box) must be the doctor who
+        // actually reported the scan, not just whoever was tentatively assigned
+        // to the appointment. If a report was written for this patient on the
+        // same day, its physicianId is the authoritative source — it reflects
+        // who really signed off the study, which can differ from (or simply be
+        // more reliably populated than) the appointment's own physicianId.
+        let reportPhysicianId: number | undefined;
+        if (appointment.patientId) {
+          try {
+            const apptDate = new Date(appointment.appointmentDate);
+            const dayStart = new Date(apptDate); dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(apptDate); dayEnd.setHours(23, 59, 59, 999);
+            const patientReports = await storage.getPatientReports(appointment.patientId);
+            const matchingReport = patientReports.find((r) => {
+              if (!r.physicianId) return false;
+              const examDate = new Date(r.examDate);
+              return !isNaN(examDate.getTime()) && examDate >= dayStart && examDate <= dayEnd;
+            });
+            reportPhysicianId = matchingReport?.physicianId ?? undefined;
+          } catch (reportLookupErr) {
+            console.warn("Appointment AoB: failed to look up matching report for physician", reportLookupErr);
+          }
+        }
+        const physician = await storage.getPhysician(reportPhysicianId ?? appointment.physicianId ?? -1);
 
         // Referring-doctor details come from the linked scan request (the
         // authoritative referral record), falling back to the appointment's own
