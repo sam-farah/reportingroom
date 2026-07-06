@@ -10100,7 +10100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = (req as any).user;
       if (!user?.clinicId) return res.status(400).json({ error: "No clinic" });
 
-      const newKey = require("crypto").randomBytes(24).toString("hex");
+      const newKey = crypto.randomBytes(24).toString("hex");
       await storage.updateClinic(user.clinicId, { dicomApiKey: newKey } as any);
       res.json({ dicomApiKey: newKey });
     } catch (err) {

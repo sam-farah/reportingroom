@@ -26,3 +26,4 @@
 - [User field encryption](user-field-encryption.md) — users table isn't auto-encrypted like reports; to encrypt a user column you must hand-encrypt every write + add decryptFields to getUser/getUserByEmail; never feed encryptFields output to Drizzle.
 - [Capacitor iPad shell & CORS](capacitor-ipad-cors.md) — CORS allowlist must include localhost + *.replit.dev patterns or Replit's own dev origin gets blocked; resolveUrl() in api.ts is the single URL-resolution hook.
 - [Assessment of Benefit (AoB) document](assessment-of-benefit-form.md) — overlaid onto real scanned Medicare form images (pixel-calibrated, not drawn from scratch); referring-doctor data comes from the scan request not the appointment.
+- [Stray require() in ESM server code](esm-stray-require.md) — `require(...)` inside real (executed) server TS silently throws at runtime since package.json is `"type":"module"`; tsc won't catch it.
