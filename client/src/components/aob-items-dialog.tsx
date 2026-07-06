@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Popover,
   PopoverTrigger,
   PopoverContent,
@@ -55,6 +62,16 @@ interface AobItemsDialogProps {
    * a preview, not the source of truth.
    */
   referringDoctorName?: string | null;
+  /**
+   * Reporting doctor selection — needed so staff can pick who reported the
+   * scan before the patient leaves, since the report itself may not be
+   * written/finalized yet at that point. Optional: when omitted, the
+   * dropdown is hidden and the server falls back to its own resolution
+   * (matching finalized report, then the appointment's assigned physician).
+   */
+  physicians?: { id: number; name: string }[];
+  reportingPhysicianId?: number | null;
+  onReportingPhysicianChange?: (physicianId: number | null) => void;
   onSubmit: (items: AobLineItem[]) => void;
 }
 
@@ -76,6 +93,9 @@ export function AobItemsDialog({
   submittingLabel = "Saving…",
   isPending = false,
   referringDoctorName,
+  physicians,
+  reportingPhysicianId,
+  onReportingPhysicianChange,
   onSubmit,
 }: AobItemsDialogProps) {
   const [items, setItems] = useState<AobLineItem[]>([]);
@@ -131,6 +151,31 @@ export function AobItemsDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          {physicians && (
+            <div>
+              <Label className="text-xs text-gray-500">Reporting doctor</Label>
+              <Select
+                value={reportingPhysicianId != null ? String(reportingPhysicianId) : "auto"}
+                onValueChange={(v) => onReportingPhysicianChange?.(v === "auto" ? null : Number(v))}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Auto-detect from report" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto-detect from report</SelectItem>
+                  {physicians.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Select if the report hasn't been written/finalized yet — otherwise the doctor
+                who signed the report will be used automatically.
+              </p>
+            </div>
+          )}
           {referringDoctorName ? (
             <p className="text-xs text-slate-500">
               Referring doctor: <span className="font-medium text-slate-700">{referringDoctorName}</span>

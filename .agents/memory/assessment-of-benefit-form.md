@@ -55,6 +55,9 @@ description: Non-obvious data-sourcing and content decisions for the Medicare As
 
 - `xMark(x, y, size)` treats (x, y) as the checkbox's TOP-LEFT corner; the X strokes are drawn to centre at (x + size/2, y + size/2). SVG `<text>` `y` is the BASELINE (≈ box-centre + 5), a different convention — don't copy a checkbox's y into a text field or vice-versa. Checkboxes need per-copy Y for the same reason digit boxes do (the "In-hospital: No" X printed below its box on the patient copy until given a per-copy y).
 
+- The rendering-practitioner (bottom-right box) resolution order is: explicit staff override (physicianId passed from the calendar's `AobItemsDialog` "Reporting doctor" dropdown) > same-day report's `physicianId` > appointment's `physicianId`. The override exists because staff often need to record who reported before any report is written/finalized (right after the scan, patient still present) — don't remove it in favor of pure auto-detection.
+  **Why:** auto-detection alone (matching report/appointment) can't cover the common "patient about to leave, no report yet" case.
+
 - Referral date on the AoB comes from `scanRequest.requestDate`, which is stored ISO `yyyy-MM-dd` (native `<input type="date">`), NOT DDMMYYYY. `referralDateDigits` must reorder ISO → DDMMYY for the six D D M M Y Y boxes; a bare 8-digit value is disambiguated by a plausible leading year (1900–2100 ⇒ YYYYMMDD, else DDMMYYYY).
   **Why:** the original code assumed DDMMYYYY, so "2026-07-04" printed as 20/26/04 — a wrong date on a government billing document. The 6 rendered digits happen to look plausible, so this is easy to miss unless you check the actual stored format.
   **How to apply:** any AoB date field sourced from app data is ISO; reorder, don't slice front-to-back.

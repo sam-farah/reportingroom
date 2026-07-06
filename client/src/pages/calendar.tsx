@@ -763,6 +763,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const [viewingAppointment, setViewingAppointment] = useState<Appointment | null>(null);
   const [aobSignForm, setAobSignForm] = useState<AssessmentOfBenefitForm | null>(null);
   const [aobCreateOpen, setAobCreateOpen] = useState(false);
+  const [aobReportingPhysicianId, setAobReportingPhysicianId] = useState<number | null>(null);
   const [certificateDialog, setCertificateDialog] = useState<{
     appointment: Appointment;
     blob: Blob;
@@ -1185,14 +1186,15 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   };
 
   const createAobMutation = useMutation({
-    mutationFn: async ({ appointmentId, items }: { appointmentId: number; items: AobLineItem[] }) => {
-      const res = await apiRequest(`/api/appointments/${appointmentId}/assessment-of-benefit`, "POST", { items });
+    mutationFn: async ({ appointmentId, items, physicianId }: { appointmentId: number; items: AobLineItem[]; physicianId?: number | null }) => {
+      const res = await apiRequest(`/api/appointments/${appointmentId}/assessment-of-benefit`, "POST", { items, physicianId });
       return await res.json();
     },
     onSuccess: (form: AssessmentOfBenefitForm) => {
       queryClient.invalidateQueries({ queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"] });
       queryClient.invalidateQueries({ queryKey: ["/api/assessment-of-benefit/pending"] });
       setAobCreateOpen(false);
+      setAobReportingPhysicianId(null);
       // Flow straight into capturing the patient's signature.
       setAobSignForm(form);
       toast({ title: "Form created", description: "Assessment of Benefits form ready for signature." });
@@ -4037,7 +4039,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
         {/* Assessment of Benefits — generate / regenerate a form on demand */}
         <AobItemsDialog
           open={aobCreateOpen}
-          onOpenChange={setAobCreateOpen}
+          onOpenChange={(open) => { setAobCreateOpen(open); if (!open) setAobReportingPhysicianId(null); }}
           scanTypes={viewingAppointment?.scanType ? viewingAppointment.scanType.split(", ") : []}
           initialItems={latestAobForm ? latestAobForm.items : undefined}
           title={latestAobForm?.status === "pending_signature" ? "Edit item numbers" : "Generate Assessment of Benefits"}
@@ -4052,7 +4054,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
           submittingLabel={latestAobForm?.status === "pending_signature" ? "Saving…" : "Creating…"}
           isPending={createAobMutation.isPending}
           referringDoctorName={latestAobForm?.referringDoctorName || (viewingAppointment as any)?.referringDoctorName || null}
-          onSubmit={(items) => viewingAppointment && createAobMutation.mutate({ appointmentId: viewingAppointment.id, items })}
+          physicians={physicians.map((p) => ({ id: p.id, name: p.name }))}
+          reportingPhysicianId={aobReportingPhysicianId}
+          onReportingPhysicianChange={setAobReportingPhysicianId}
+          onSubmit={(items) => viewingAppointment && createAobMutation.mutate({ appointmentId: viewingAppointment.id, items, physicianId: aobReportingPhysicianId })}
         />
 
         {/* Attendance Certificate — Download or Email */}

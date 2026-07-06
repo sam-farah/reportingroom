@@ -4561,10 +4561,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Appointment not found" });
       }
 
-      const { items } = req.body || {};
+      const { items, physicianId: overridePhysicianIdRaw } = req.body || {};
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ error: "At least one Medicare item is required" });
       }
+      const overridePhysicianId =
+        overridePhysicianIdRaw != null && !isNaN(Number(overridePhysicianIdRaw))
+          ? Number(overridePhysicianIdRaw)
+          : undefined;
       const normalizedItems = items.map((it: any) => ({
         item: String(it.item ?? ""),
         description: String(it.description ?? ""),
@@ -4584,8 +4588,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // same day, its physicianId is the authoritative source — it reflects
         // who really signed off the study, which can differ from (or simply be
         // more reliably populated than) the appointment's own physicianId.
+        // An explicit staff selection (passed from the AoB item dialog) always
+        // takes priority — staff may need to record this before the report
+        // exists yet, e.g. straight after the scan.
         let reportPhysicianId: number | undefined;
-        if (appointment.patientId) {
+        if (!overridePhysicianId && appointment.patientId) {
           try {
             const apptDate = new Date(appointment.appointmentDate);
             const dayStart = new Date(apptDate); dayStart.setHours(0, 0, 0, 0);
@@ -4601,7 +4608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn("Appointment AoB: failed to look up matching report for physician", reportLookupErr);
           }
         }
-        const physician = await storage.getPhysician(reportPhysicianId ?? appointment.physicianId ?? -1);
+        const physician = await storage.getPhysician(overridePhysicianId ?? reportPhysicianId ?? appointment.physicianId ?? -1);
 
         // Referring-doctor details come from the linked scan request (the
         // authoritative referral record), falling back to the appointment's own
