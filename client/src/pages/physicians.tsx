@@ -1662,7 +1662,7 @@ export default function Clinic() {
                       onChange={(e) => setClinicForm(prev => ({ ...prev, locationSpecificPracticeNumber: e.target.value } as any))}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Shown on Assessment of Benefit forms if your practice has one. Leave blank if not applicable.
+                      Shown on Assignment of Benefit forms if your practice has one. Leave blank if not applicable.
                     </p>
                   </div>
 

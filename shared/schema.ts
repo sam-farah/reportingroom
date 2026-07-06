@@ -64,7 +64,7 @@ export const clinics = pgTable("clinics", {
   dicomApiKey: varchar("dicom_api_key", { length: 100 }), // API key for DICOM Modality Worklist bridge
   publicHolidayRegion: varchar("public_holiday_region", { length: 20 }), // e.g. "AU-VIC", "AU-NSW", "AU", "NZ", "US", "GB", "CA" — used to fetch & display public holidays on the calendar
   timezone: varchar("timezone", { length: 64 }).notNull().default('Australia/Sydney'), // IANA timezone for rendering all patient-facing dates/times (appointments, reminders, consent, certificates)
-  locationSpecificPracticeNumber: varchar("location_specific_practice_number", { length: 50 }), // Medicare Location Specific Practice Number (LSPN) for this clinic site, shown on the Assessment of Benefit form
+  locationSpecificPracticeNumber: varchar("location_specific_practice_number", { length: 50 }), // Medicare Location Specific Practice Number (LSPN) for this clinic site, shown on the Assignment of Benefit form
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -615,7 +615,7 @@ export const insertAppointmentSchema = createInsertSchema(appointments).omit({
 export type Appointment = typeof appointments.$inferSelect;
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 
-// Assessment of Benefit forms — the Medicare claim confirmation + patient
+// Assignment of Benefit forms — the Medicare claim confirmation + patient
 // signature captured at (or shortly after) the end of a study. A pending
 // row is created when the sonographer confirms billed items on report
 // completion; it's signed later, potentially by a different staff member,

@@ -1181,7 +1181,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const handleAobSigned = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"] });
     queryClient.invalidateQueries({ queryKey: ["/api/assessment-of-benefit/pending"] });
-    toast({ title: "Signed", description: "Assessment of Benefits form signed." });
+    toast({ title: "Signed", description: "Assignment of Benefits form signed." });
     setAobSignForm(null);
   };
 
@@ -1197,7 +1197,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       setAobReportingPhysicianId(null);
       // Flow straight into capturing the patient's signature.
       setAobSignForm(form);
-      toast({ title: "Form created", description: "Assessment of Benefits form ready for signature." });
+      toast({ title: "Form created", description: "Assignment of Benefits form ready for signature." });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Could not create the form.", variant: "destructive" });
@@ -3324,7 +3324,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                 {showReportingDoctor && !showIdCheck && !showVerbalConsent && (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-500">
-                      Choose the reporting doctor for <span className="font-medium text-gray-800">{viewingAppointment.patientName}</span>'s study before proceeding. This is used to complete the Medicare Assessment of Benefit form.
+                      Choose the reporting doctor for <span className="font-medium text-gray-800">{viewingAppointment.patientName}</span>'s study before proceeding. This is used to complete the Medicare Assignment of Benefit form.
                     </p>
                     <div className="space-y-1.5">
                       <Label htmlFor="reportingDoctorId">Reporting Doctor</Label>
@@ -3904,7 +3904,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   />
                 )}
 
-                {/* Assessment of Benefits — patient signature captured here, on the
+                {/* Assignment of Benefits — patient signature captured here, on the
                     calendar. Item numbers come from the sonographer's workflow but can
                     be edited here if required; the signature is captured full-screen
                     (hiding the calendar) so patients can sign on the iPad. */}
@@ -3912,7 +3912,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   <div className="border rounded-md p-3 space-y-2">
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                       <ShieldCheck className="w-4 h-4 text-teal-600" />
-                      Assessment of Benefits
+                      Assignment of Benefits
                     </div>
                     {latestAobForm?.status === "signed" && (
                       <>
@@ -3963,7 +3963,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                           data-testid="button-complete-aob"
                         >
                           <PenLine className="w-4 h-4" />
-                          Complete Assessment of Benefits form
+                          Complete Assignment of Benefits form
                         </Button>
                       </>
                     )}
@@ -3985,7 +3985,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                     >
                       <FilePlus className="w-4 h-4" />
                       {!latestAobForm
-                        ? "Generate Assessment of Benefits form"
+                        ? "Generate Assignment of Benefits form"
                         : latestAobForm.status === "pending_signature"
                           ? "Edit item numbers"
                           : "Generate a new form"}
@@ -4029,25 +4029,25 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
           </DialogContent>
         </Dialog>
 
-        {/* Assessment of Benefits — patient signature */}
+        {/* Assignment of Benefits — patient signature */}
         <AobSignDialog
           form={aobSignForm}
           onOpenChange={(open) => { if (!open) setAobSignForm(null); }}
           onSigned={handleAobSigned}
         />
 
-        {/* Assessment of Benefits — generate / regenerate a form on demand */}
+        {/* Assignment of Benefits — generate / regenerate a form on demand */}
         <AobItemsDialog
           open={aobCreateOpen}
           onOpenChange={(open) => { setAobCreateOpen(open); if (!open) setAobReportingPhysicianId(null); }}
           scanTypes={viewingAppointment?.scanType ? viewingAppointment.scanType.split(", ") : []}
           initialItems={latestAobForm ? latestAobForm.items : undefined}
-          title={latestAobForm?.status === "pending_signature" ? "Edit item numbers" : "Generate Assessment of Benefits"}
+          title={latestAobForm?.status === "pending_signature" ? "Edit item numbers" : "Generate Assignment of Benefits"}
           description={
             latestAobForm?.status === "pending_signature"
               ? "These item numbers came from the sonographer's workflow. Edit them here if required, then capture the patient's signature. This is not a submitted claim."
               : latestAobForm
-                ? "Start a new Assessment of Benefits form. The previous form's item numbers are carried over — edit them if required, then capture the patient's signature. This is not a submitted claim."
+                ? "Start a new Assignment of Benefits form. The previous form's item numbers are carried over — edit them if required, then capture the patient's signature. This is not a submitted claim."
                 : "Confirm the Medicare items for this visit, then capture the patient's signature. Suggested items only — check they are clinically correct. This is not a submitted claim."
           }
           submitLabel={latestAobForm?.status === "pending_signature" ? "Save & sign" : "Create & sign"}

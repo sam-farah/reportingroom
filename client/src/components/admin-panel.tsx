@@ -3346,9 +3346,9 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "5 July 2026",
     tag: "New",
-    title: "Generate Assessment of Benefits forms directly within Reporting Room",
+    title: "Generate Assignment of Benefits forms directly within Reporting Room",
     detail:
-      "When a sonographer marks a study \"Sono Complete\", a confirmation dialog now shows the suggested Medicare item numbers, descriptions, and fees for the visit — prefilled automatically from the scan type, and editable line-by-line before completing the study.\n\nConfirming generates an Assessment of Benefits (Medicare Bulk Bill Webclaim) form ready for the patient's signature, which is captured separately from the calendar. The form is overlaid onto the real Medicare form layout, using the referring doctor and referral details already on file.",
+      "When a sonographer marks a study \"Sono Complete\", a confirmation dialog now shows the suggested Medicare item numbers, descriptions, and fees for the visit — prefilled automatically from the scan type, and editable line-by-line before completing the study.\n\nConfirming generates an Assignment of Benefits (Medicare Bulk Bill Webclaim) form ready for the patient's signature, which is captured separately from the calendar. The form is overlaid onto the real Medicare form layout, using the referring doctor and referral details already on file.",
   },
   {
     date: "30 June 2026",

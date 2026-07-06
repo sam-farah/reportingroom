@@ -79,7 +79,7 @@ export function AobSignDialog({ form, onOpenChange, onSigned }: AobSignDialogPro
         <DialogHeader className="px-6 py-4 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2 text-xl">
             <ShieldCheck className="w-6 h-6 text-teal-600" />
-            Assessment of Benefits — Patient Signature
+            Assignment of Benefits — Patient Signature
           </DialogTitle>
         </DialogHeader>
         {form && (

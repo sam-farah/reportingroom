@@ -511,8 +511,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     },
     onSuccess: (updated: Report & { appointmentCompleted?: { id: number } | null }) => {
       const appointmentMessage = updated.appointmentCompleted
-        ? "Report marked complete and the matching appointment was set to Completed. The patient's Assessment of Benefits form can be signed from the appointment screen."
-        : "Report marked as complete by sonographer. The patient's Assessment of Benefits form can be signed from the appointment screen.";
+        ? "Report marked complete and the matching appointment was set to Completed. The patient's Assignment of Benefits form can be signed from the appointment screen."
+        : "Report marked as complete by sonographer. The patient's Assignment of Benefits form can be signed from the appointment screen.";
       toast({ title: "Sonographer Complete", description: appointmentMessage });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       // Refresh calendar/home so the appointment status reflects immediately.
@@ -527,7 +527,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     },
   });
 
-  // Opens the Assessment of Benefits confirmation dialog. Item prefill and
+  // Opens the Assignment of Benefits confirmation dialog. Item prefill and
   // editing now live in the shared AobItemsDialog; confirming here is required
   // to complete the study (the patient signature is captured later).
   const openAobConfirm = (report: Report) => {
@@ -3964,14 +3964,14 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         </DialogContent>
       </Dialog>
 
-      {/* Assessment of Benefits confirmation — required before a study can be
+      {/* Assignment of Benefits confirmation — required before a study can be
           marked sonographer-complete. The patient signature itself happens
           later, from the appointment screen. */}
       <AobItemsDialog
         open={!!aobConfirmReport}
         onOpenChange={(open) => { if (!open) setAobConfirmReport(null); }}
         scanTypes={aobConfirmReport ? aobConfirmReport.studyType.split(",") : []}
-        title="Confirm Assessment of Benefits"
+        title="Confirm Assignment of Benefits"
         description="Confirm the Medicare items billed for this visit before completing the study. The patient's signature is captured separately, later, from the appointment screen."
         submitLabel="Confirm & Complete Study"
         submittingLabel="Confirming..."

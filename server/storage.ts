@@ -366,7 +366,7 @@ export interface IStorage {
   createPatientDocument(document: InsertPatientDocument): Promise<PatientDocument>;
   deletePatientDocument(id: number): Promise<void>;
 
-  // Assessment of Benefit forms (Medicare claim confirmation + patient signature)
+  // Assignment of Benefit forms (Medicare claim confirmation + patient signature)
   createAssessmentOfBenefitForm(form: InsertAssessmentOfBenefitForm): Promise<AssessmentOfBenefitForm>;
   getAssessmentOfBenefitForm(id: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined>;

@@ -76,7 +76,7 @@ interface AobItemsDialogProps {
 }
 
 /**
- * Shared Assessment of Benefits item-confirmation dialog. Prefills the suggested
+ * Shared Assignment of Benefits item-confirmation dialog. Prefills the suggested
  * Medicare items from the given scan type(s) and lets staff edit them line-by-line
  * (pick from the MBS list or enter manually, edit description/fee, add/remove rows)
  * before confirming. Used both when marking a study "Sono Complete" (Reporting Room)
@@ -87,7 +87,7 @@ export function AobItemsDialog({
   onOpenChange,
   scanTypes,
   initialItems,
-  title = "Confirm Assessment of Benefits",
+  title = "Confirm Assignment of Benefits",
   description = "Confirm the Medicare items billed for this visit. Suggested items only — check they are clinically correct before continuing. This is not a submitted claim.",
   submitLabel = "Confirm",
   submittingLabel = "Saving…",

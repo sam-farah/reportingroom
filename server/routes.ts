@@ -4332,7 +4332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
 
-      // Assessment of Benefit confirmation is required to complete a study —
+      // Assignment of Benefit confirmation is required to complete a study —
       // the sonographer (or whoever finishes the report) must confirm the
       // Medicare items billed for this visit before the study can be marked
       // complete. The patient signature itself can happen later/elsewhere.
@@ -4353,7 +4353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // We match by patientId + same calendar day as the report's exam date.
       // We deliberately do NOT touch appointments that are already completed,
       // cancelled, or no-show. The matched appointment (if any) also supplies
-      // the referring doctor snapshot for the Assessment of Benefit form.
+      // the referring doctor snapshot for the Assignment of Benefit form.
       let appointmentCompleted: { id: number } | null = null;
       let matchedAppointment: Appointment | undefined;
       try {
@@ -4392,7 +4392,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("Sono-complete: failed to auto-complete matching appointment", apptErr);
       }
 
-      // Snapshot the data needed for the Assessment of Benefit form. Snapshotting
+      // Snapshot the data needed for the Assignment of Benefit form. Snapshotting
       // (rather than joining live at sign time) means the form stays accurate
       // even if the patient/physician/referrer records change later.
       let aobForm = null;
@@ -4401,7 +4401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const physician = report.physicianId ? await storage.getPhysician(report.physicianId) : undefined;
         const clinicId = user?.clinicId ?? report.clinicId ?? null;
 
-        // The referring doctor's details for the Assessment of Benefit form are
+        // The referring doctor's details for the Assignment of Benefit form are
         // sourced from the originating scan request (if this appointment came
         // from one) rather than the appointment's own referring-doctor fields,
         // since the request carries the authoritative referral record — and, if
@@ -4471,8 +4471,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           confirmedByName: completedBy,
         } as InsertAssessmentOfBenefitForm);
       } catch (aobErr) {
-        console.error("Sono-complete: failed to create Assessment of Benefit form", aobErr);
-        return res.status(500).json({ error: "Failed to record Assessment of Benefit confirmation" });
+        console.error("Sono-complete: failed to create Assignment of Benefit form", aobErr);
+        return res.status(500).json({ error: "Failed to record Assignment of Benefit confirmation" });
       }
 
       res.json({ ...report, appointmentCompleted, assessmentOfBenefitForm: aobForm });
@@ -4482,7 +4482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Assessment of Benefit form for a report — a fallback surface for the
+  // Assignment of Benefit form for a report — a fallback surface for the
   // patient-signature step alongside the appointment screen. Some reports
   // never get auto-matched to an appointment (no same-day booking existed
   // yet, or the report has no linked patient at all), which would otherwise
@@ -4501,12 +4501,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const form = await storage.getAssessmentOfBenefitFormByReportId(id);
       res.json(form ?? null);
     } catch (error) {
-      console.error("Error fetching Assessment of Benefit form for report:", error);
-      res.status(500).json({ error: "Failed to fetch Assessment of Benefit form" });
+      console.error("Error fetching Assignment of Benefit form for report:", error);
+      res.status(500).json({ error: "Failed to fetch Assignment of Benefit form" });
     }
   });
 
-  // All Assessment of Benefit forms still awaiting a patient signature for the
+  // All Assignment of Benefit forms still awaiting a patient signature for the
   // caller's clinic. Used by Reporting Room to show a "Complete Assessment of
   // Benefits form" button directly on completed report cards, so the signature
   // step is reachable even when the form never got linked to an appointment.
@@ -4517,12 +4517,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const forms = await storage.getPendingAssessmentOfBenefitFormsByClinic(user.clinicId);
       res.json(forms);
     } catch (error) {
-      console.error("Error fetching pending Assessment of Benefit forms:", error);
-      res.status(500).json({ error: "Failed to fetch pending Assessment of Benefit forms" });
+      console.error("Error fetching pending Assignment of Benefit forms:", error);
+      res.status(500).json({ error: "Failed to fetch pending Assignment of Benefit forms" });
     }
   });
 
-  // Assessment of Benefit forms for an appointment (the patient-signature step,
+  // Assignment of Benefit forms for an appointment (the patient-signature step,
   // decoupled from sonographer completion — surfaced on the appointment screen).
   app.get("/api/appointments/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {
     try {
@@ -4536,12 +4536,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const forms = await storage.getAssessmentOfBenefitFormsByAppointmentId(id);
       res.json(forms);
     } catch (error) {
-      console.error("Error fetching Assessment of Benefit forms:", error);
-      res.status(500).json({ error: "Failed to fetch Assessment of Benefit forms" });
+      console.error("Error fetching Assignment of Benefit forms:", error);
+      res.status(500).json({ error: "Failed to fetch Assignment of Benefit forms" });
     }
   });
 
-  // Generate an Assessment of Benefit form directly from an appointment, on
+  // Generate an Assignment of Benefit form directly from an appointment, on
   // demand. Normally the form is created automatically at "Sono Complete", but
   // staff also need to be able to create one at any time from the appointment
   // screen — e.g. a study was never marked complete, or a mistake was made and a
@@ -4682,16 +4682,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.json(aobForm);
       } catch (aobErr) {
-        console.error("Appointment AoB: failed to create Assessment of Benefit form", aobErr);
-        return res.status(500).json({ error: "Failed to create Assessment of Benefit form" });
+        console.error("Appointment AoB: failed to create Assignment of Benefit form", aobErr);
+        return res.status(500).json({ error: "Failed to create Assignment of Benefit form" });
       }
     } catch (error) {
-      console.error("Error creating Assessment of Benefit form from appointment:", error);
-      res.status(500).json({ error: "Failed to create Assessment of Benefit form" });
+      console.error("Error creating Assignment of Benefit form from appointment:", error);
+      res.status(500).json({ error: "Failed to create Assignment of Benefit form" });
     }
   });
 
-  // Patient signs the Assessment of Benefit form — generates the signed
+  // Patient signs the Assignment of Benefit form — generates the signed
   // document and marks the form as signed. Can happen well after the study,
   // typically by admin staff from the appointment screen.
   app.post("/api/assessment-of-benefit/:id/sign", isAuthenticated, async (req, res) => {
@@ -4703,7 +4703,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const aobForm = await storage.getAssessmentOfBenefitForm(id);
       if (!aobForm || (aobForm.clinicId != null && aobForm.clinicId !== user.clinicId)) {
-        return res.status(404).json({ error: "Assessment of Benefit form not found" });
+        return res.status(404).json({ error: "Assignment of Benefit form not found" });
       }
       if (aobForm.status === "signed") {
         return res.status(400).json({ error: "This form has already been signed" });
@@ -4805,8 +4805,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw genErr;
       }
     } catch (error) {
-      console.error("Error signing Assessment of Benefit form:", error);
-      res.status(500).json({ error: "Failed to sign Assessment of Benefit form" });
+      console.error("Error signing Assignment of Benefit form:", error);
+      res.status(500).json({ error: "Failed to sign Assignment of Benefit form" });
     }
   });
 
@@ -9829,7 +9829,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const patientEmailVal = patientEmail || null;
       // Snapshot the referring doctor onto the appointment itself (not just
-      // the scan request created below) so the Assessment of Benefit form
+      // the scan request created below) so the Assignment of Benefit form
       // still has a referring doctor even if that scan request is later
       // archived, deleted, or unlinked from this appointment.
       const today = new Date().toISOString().split("T")[0];

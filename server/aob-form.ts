@@ -7,7 +7,7 @@ import { saveFileToDB, getFileFromDB } from "./services/fileStorage";
 import { storage } from "./storage";
 
 // The two template images are real, blank Medicare Bulk Bill Webclaim
-// "Assessment of Benefit" form copies supplied by the clinic. We overlay the
+// "Assignment of Benefit" form copies supplied by the clinic. We overlay the
 // confirmed billing/referral/patient data (and the patient's signature)
 // directly onto these exact form images rather than drawing a document from
 // scratch, so the output looks identical to the real paper form.
@@ -494,7 +494,7 @@ export async function generateAssessmentOfBenefitDocument(
     const namePart = String(aobForm.patientName || "patient").replace(/\s+/g, "-");
     await storage.createPatientDocument({
       patientId: aobForm.patientId,
-      title: "Assessment of Benefit (Clinic Copy)",
+      title: "Assignment of Benefit (Clinic Copy)",
       documentDate: isoDate,
       fileUrl: `/uploads/${practitionerFilename}`,
       filename: practitionerFilename,
@@ -503,7 +503,7 @@ export async function generateAssessmentOfBenefitDocument(
     } as any);
     await storage.createPatientDocument({
       patientId: aobForm.patientId,
-      title: "Assessment of Benefit (Patient Copy)",
+      title: "Assignment of Benefit (Patient Copy)",
       documentDate: isoDate,
       fileUrl: `/uploads/${patientFilename}`,
       filename: patientFilename,
