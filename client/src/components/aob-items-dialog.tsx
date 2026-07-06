@@ -161,7 +161,7 @@ export function AobItemsDialog({
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Auto-detect from report" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[210]">
                   <SelectItem value="auto">Auto-detect from report</SelectItem>
                   {physicians.map((p) => (
                     <SelectItem key={p.id} value={String(p.id)}>
