@@ -79,7 +79,7 @@ export default function Dashboard() {
   const [openPatientEditId, setOpenPatientEditId] = useState<number | null>(null);
   const [openAppointmentEditId, setOpenAppointmentEditId] = useState<number | null>(null);
   const [dicomDialogOpen, setDicomDialogOpen] = useState(false);
-  const [dicomPendingPath, setDicomPendingPath] = useState<string>("/ui/app/");
+  const [dicomPendingPath, setDicomPendingPath] = useState<string>("/");
   const [preLinkedPatientId, setPreLinkedPatientId] = useState<number | null>(null);
   const [preLinkedPatientName, setPreLinkedPatientName] = useState<string>("");
   const [preLinkedExamDate, setPreLinkedExamDate] = useState<string>("");
@@ -427,7 +427,7 @@ export default function Dashboard() {
           <Button
             size="lg"
             className="w-full gap-2 mb-6 h-12 text-base"
-            onClick={() => { setDicomPendingPath("/ui/app/"); setDicomDialogOpen(true); }}
+            onClick={() => { setDicomPendingPath("/"); setDicomDialogOpen(true); }}
           >
             <ExternalLink className="w-5 h-5" />
             Open DICOM Viewer

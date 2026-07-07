@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## DICOM Integration
 - **Orthanc DICOM Server**: Accessible via Tailscale VPN at `100.108.175.83:8042`
 - **DICOM panel** in the app (`/dicom` nav item) provides a launcher with three quick links:
-  - **OHIF Viewer** (`/ui/app/`) — main study viewer
+  - **OHIF Viewer** (`/`) — main study viewer
   - **Orthanc Explorer** (`/app/explorer.html`) — study management
   - **REST API** (`/`) — Orthanc index
 - Not embeddable inline because Orthanc is HTTP and the app is HTTPS (mixed-content policy); opens in a new tab
