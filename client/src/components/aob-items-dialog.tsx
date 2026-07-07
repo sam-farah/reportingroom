@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,13 +9,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Popover,
   PopoverTrigger,
@@ -38,6 +31,9 @@ export interface AobLineItem {
   description: string;
   feeCents: number;
 }
+
+// Internal type that adds a stable key so React can reconcile deletions correctly.
+type ItemRow = AobLineItem & { _uid: number };
 
 interface AobItemsDialogProps {
   open: boolean;
@@ -79,8 +75,8 @@ interface AobItemsDialogProps {
  * Shared Assignment of Benefits item-confirmation dialog. Prefills the suggested
  * Medicare items from the given scan type(s) and lets staff edit them line-by-line
  * (pick from the MBS list or enter manually, edit description/fee, add/remove rows)
- * before confirming. Used both when marking a study "Sono Complete" (Reporting Room)
- * and when generating a form on-demand from the calendar appointment screen.
+ * before confirming. Used when generating a form on-demand from the calendar
+ * appointment screen.
  */
 export function AobItemsDialog({
   open,
@@ -98,9 +94,11 @@ export function AobItemsDialog({
   onReportingPhysicianChange,
   onSubmit,
 }: AobItemsDialogProps) {
-  const [items, setItems] = useState<AobLineItem[]>([]);
+  const [items, setItems] = useState<ItemRow[]>([]);
   const [manualEntry, setManualEntry] = useState<boolean[]>([]);
   const [pickerIndex, setPickerIndex] = useState<number | null>(null);
+  const uidRef = useRef(0);
+  const nextUid = () => { uidRef.current += 1; return uidRef.current; };
 
   // Sorted once — the reference list rarely changes and is small (~15 items).
   const mbsItemOptions = useMemo(
@@ -132,7 +130,7 @@ export function AobItemsDialog({
         feeCents: l.allocatedFeeCents,
       }));
     }
-    setItems(lines);
+    setItems(lines.map((l) => ({ ...l, _uid: nextUid() })));
     // Items normally come from the same MBS reference data, but fall back to
     // manual-entry mode defensively if one somehow isn't in the list.
     setManualEntry(lines.map((l) => !MBS_ITEMS[l.item]));
@@ -142,6 +140,23 @@ export function AobItemsDialog({
 
   const validItems = items.filter((l) => l.item.trim() || l.description.trim());
   const total = items.reduce((sum, l) => sum + (l.feeCents || 0), 0);
+
+  const updateItem = (uid: number, patch: Partial<AobLineItem>) =>
+    setItems((prev) =>
+      prev.map((l) => (l._uid === uid ? { ...l, ...patch } : l)),
+    );
+
+  const deleteItem = (uid: number) => {
+    setItems((prev) => {
+      const next = prev.filter((l) => l._uid !== uid);
+      return applyVascularAllocation(next);
+    });
+    setManualEntry((prev) => {
+      const idx = items.findIndex((l) => l._uid === uid);
+      return idx === -1 ? prev : prev.filter((_, i) => i !== idx);
+    });
+    setPickerIndex(null);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -154,22 +169,23 @@ export function AobItemsDialog({
           {physicians && (
             <div>
               <Label className="text-xs text-gray-500">Reporting doctor</Label>
-              <Select
+              {/* Native <select> — works on iPad/iOS where Radix Select can fail inside a Dialog */}
+              <select
                 value={reportingPhysicianId != null ? String(reportingPhysicianId) : "auto"}
-                onValueChange={(v) => onReportingPhysicianChange?.(v === "auto" ? null : Number(v))}
+                onChange={(e) =>
+                  onReportingPhysicianChange?.(
+                    e.target.value === "auto" ? null : Number(e.target.value),
+                  )
+                }
+                className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Auto-detect from report" />
-                </SelectTrigger>
-                <SelectContent className="z-[210]">
-                  <SelectItem value="auto">Auto-detect from report</SelectItem>
-                  {physicians.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <option value="auto">Auto-detect from report</option>
+                {physicians.map((p) => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
               <p className="text-[11px] text-gray-400 mt-1">
                 Select if the report hasn't been written/finalized yet — otherwise the doctor
                 who signed the report will be used automatically.
@@ -194,20 +210,14 @@ export function AobItemsDialog({
             </p>
           )}
           {items.map((line, i) => (
-            <div key={i} className="flex items-start gap-2 border rounded-md p-2">
+            <div key={line._uid} className="flex items-start gap-2 border rounded-md p-2">
               <div className="w-48 flex-shrink-0">
                 <Label className="text-xs text-gray-500">Item</Label>
                 {manualEntry[i] ? (
                   <div className="flex items-center gap-1">
                     <Input
                       value={line.item}
-                      onChange={(e) =>
-                        setItems((prev) =>
-                          prev.map((l, idx) =>
-                            idx === i ? { ...l, item: e.target.value } : l,
-                          ),
-                        )
-                      }
+                      onChange={(e) => updateItem(line._uid, { item: e.target.value })}
                       placeholder="Item #"
                       className="h-8 text-sm font-mono"
                     />
@@ -268,8 +278,8 @@ export function AobItemsDialog({
                                 onSelect={() => {
                                   setItems((prev) =>
                                     applyVascularAllocation(
-                                      prev.map((l, idx) =>
-                                        idx === i
+                                      prev.map((l) =>
+                                        l._uid === line._uid
                                           ? {
                                               ...l,
                                               item: num,
@@ -311,8 +321,8 @@ export function AobItemsDialog({
                                 );
                                 setItems((prev) =>
                                   applyVascularAllocation(
-                                    prev.map((l, idx) =>
-                                      idx === i ? { ...l, item: "" } : l,
+                                    prev.map((l) =>
+                                      l._uid === line._uid ? { ...l, item: "" } : l,
                                     ),
                                   ),
                                 );
@@ -334,13 +344,7 @@ export function AobItemsDialog({
                 <Label className="text-xs text-gray-500">Description</Label>
                 <Input
                   value={line.description}
-                  onChange={(e) =>
-                    setItems((prev) =>
-                      prev.map((l, idx) =>
-                        idx === i ? { ...l, description: e.target.value } : l,
-                      ),
-                    )
-                  }
+                  onChange={(e) => updateItem(line._uid, { description: e.target.value })}
                   className="h-8 text-sm"
                 />
               </div>
@@ -352,18 +356,9 @@ export function AobItemsDialog({
                   value={(line.feeCents / 100).toFixed(2)}
                   onChange={(e) => {
                     const dollars = parseFloat(e.target.value);
-                    setItems((prev) =>
-                      prev.map((l, idx) =>
-                        idx === i
-                          ? {
-                              ...l,
-                              feeCents: isNaN(dollars)
-                                ? 0
-                                : Math.round(dollars * 100),
-                            }
-                          : l,
-                      ),
-                    );
+                    updateItem(line._uid, {
+                      feeCents: isNaN(dollars) ? 0 : Math.round(dollars * 100),
+                    });
                   }}
                   className="h-8 text-sm"
                 />
@@ -372,13 +367,7 @@ export function AobItemsDialog({
                 variant="ghost"
                 size="sm"
                 className="mt-5 text-gray-400 hover:text-red-600"
-                onClick={() => {
-                  setItems((prev) =>
-                    applyVascularAllocation(prev.filter((_, idx) => idx !== i)),
-                  );
-                  setManualEntry((prev) => prev.filter((_, idx) => idx !== i));
-                  setPickerIndex(null);
-                }}
+                onClick={() => deleteItem(line._uid)}
               >
                 <X className="w-4 h-4" />
               </Button>
@@ -390,7 +379,7 @@ export function AobItemsDialog({
             onClick={() => {
               setItems((prev) => [
                 ...prev,
-                { item: "", description: "", feeCents: 0 },
+                { item: "", description: "", feeCents: 0, _uid: nextUid() },
               ]);
               setManualEntry((prev) => [...prev, false]);
             }}
@@ -411,7 +400,7 @@ export function AobItemsDialog({
             Cancel
           </Button>
           <Button
-            onClick={() => onSubmit(validItems)}
+            onClick={() => onSubmit(validItems.map(({ _uid, ...l }) => l))}
             disabled={isPending || validItems.length === 0}
             className="bg-teal-600 hover:bg-teal-700 text-white"
           >
