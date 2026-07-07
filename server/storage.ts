@@ -371,6 +371,7 @@ export interface IStorage {
   getAssessmentOfBenefitForm(id: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormsByAppointmentId(appointmentId: number): Promise<AssessmentOfBenefitForm[]>;
+  getAssessmentOfBenefitFormsByClinicId(clinicId: number): Promise<AssessmentOfBenefitForm[]>;
   getPendingAssessmentOfBenefitFormsByClinic(clinicId: number): Promise<AssessmentOfBenefitForm[]>;
   deleteSupersededPendingAobForms(appointmentId: number, clinicId: number, exceptId: number): Promise<number>;
   claimAssessmentOfBenefitFormForSigning(id: number, updates: {
@@ -1794,6 +1795,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(assessmentOfBenefitForms)
       .where(eq(assessmentOfBenefitForms.appointmentId, appointmentId))
+      .orderBy(desc(assessmentOfBenefitForms.createdAt));
+  }
+
+  async getAssessmentOfBenefitFormsByClinicId(clinicId: number): Promise<AssessmentOfBenefitForm[]> {
+    return await db
+      .select()
+      .from(assessmentOfBenefitForms)
+      .where(eq(assessmentOfBenefitForms.clinicId, clinicId))
       .orderBy(desc(assessmentOfBenefitForms.createdAt));
   }
 

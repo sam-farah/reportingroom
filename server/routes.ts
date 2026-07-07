@@ -4515,6 +4515,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Finance dashboard: all Assignment of Benefit forms for the caller's clinic.
+  // Restricted to the designated finance user only — AoB totals are the
+  // clinic's revenue record, so this is deliberately not role-based.
+  const FINANCE_USER_EMAIL = "samf@nexusvascularimaging.com";
+  app.get("/api/finance/aob-forms", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(403).json({ error: "No clinic" });
+      if ((user.email || "").toLowerCase() !== FINANCE_USER_EMAIL) {
+        return res.status(403).json({ error: "Not authorised to view finance data" });
+      }
+      const forms = await storage.getAssessmentOfBenefitFormsByClinicId(user.clinicId);
+      const clinic = await storage.getClinic(user.clinicId);
+      const tz = resolveClinicTimeZone(clinic);
+      // Only the fields the dashboard needs — leave Medicare numbers etc. out.
+      // dateKey is the clinic-local YYYY-MM-DD the revenue belongs to: the date
+      // of service when known, otherwise the form's creation date in the
+      // clinic's timezone (never the browser's or the server's).
+      res.json(forms.map(f => ({
+        id: f.id,
+        status: f.status,
+        totalValueCents: f.totalValueCents,
+        items: f.items,
+        patientName: f.patientName,
+        physicianName: f.physicianName,
+        dateOfService: f.dateOfService,
+        signedAt: f.signedAt,
+        createdAt: f.createdAt,
+        dateKey: (f.dateOfService && /^\d{4}-\d{2}-\d{2}$/.test(f.dateOfService))
+          ? f.dateOfService
+          : f.createdAt ? clinicIsoDate(new Date(f.createdAt), tz) : null,
+      })));
+    } catch (error) {
+      console.error("Error fetching finance AoB forms:", error);
+      res.status(500).json({ error: "Failed to fetch finance data" });
+    }
+  });
+
   // Assignment of Benefit forms for an appointment (the patient-signature step,
   // decoupled from sonographer completion — surfaced on the appointment screen).
   app.get("/api/appointments/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {
