@@ -4332,14 +4332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
 
-      // Assignment of Benefit confirmation is required to complete a study —
-      // the sonographer (or whoever finishes the report) must confirm the
-      // Medicare items billed for this visit before the study can be marked
-      // complete. The patient signature itself can happen later/elsewhere.
       const items = Array.isArray(req.body?.items) ? req.body.items : [];
-      if (items.length === 0) {
-        return res.status(400).json({ error: "At least one confirmed billing item is required to complete the study" });
-      }
       const totalValueCents = items.reduce((sum: number, it: any) => sum + (Number(it.feeCents) || 0), 0);
 
       const user = await storage.getUser(req.session.userId!);

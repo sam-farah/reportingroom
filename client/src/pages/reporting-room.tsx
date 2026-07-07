@@ -20,7 +20,6 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
 import type { Report, ReportTemplate, Physician, ReferringDoctor, ReportDistribution, Sonographer, ReportWorksheetPage } from "@shared/schema";
 import { MbsItemBadges } from "@/components/mbs-billing-summary";
-import { AobItemsDialog } from "@/components/aob-items-dialog";
 import { resolveClinicTimeZone } from "@shared/timezones";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
@@ -182,11 +181,6 @@ interface EditableReport extends Report {
   templateId?: number;
 }
 
-interface AobLineItem {
-  item: string;
-  description: string;
-  feeCents: number;
-}
 
 export default function ReportingRoom({ initialOpenReportId, onReportOpened, onStartAnotherScan, onOpenPatient }: { initialOpenReportId?: number | null; onReportOpened?: () => void; onStartAnotherScan?: (params: { patientId: number | null; patientName: string; examDate: string }) => void; onOpenPatient?: (patientId: number) => void } = {}) {
   const { toast } = useToast();
@@ -202,7 +196,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [currentPage, setCurrentPage] = useState(1);
   const [isAmendDialogOpen, setIsAmendDialogOpen] = useState(false);
   const [amendingReport, setAmendingReport] = useState<EditableReport | null>(null);
-  const [aobConfirmReport, setAobConfirmReport] = useState<Report | null>(null);
   const [amendmentReason, setAmendmentReason] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [activeTextArea, setActiveTextArea] = useState<string | null>(null);
@@ -505,34 +498,25 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   });
 
   const sonographerCompleteMutation = useMutation({
-    mutationFn: async ({ reportId, items }: { reportId: number; items: AobLineItem[] }) => {
-      const response = await apiRequest(`/api/reports/${reportId}/sonographer-complete`, "POST", { items });
+    mutationFn: async (reportId: number) => {
+      const response = await apiRequest(`/api/reports/${reportId}/sonographer-complete`, "POST", {});
       return await response.json();
     },
     onSuccess: (updated: Report & { appointmentCompleted?: { id: number } | null }) => {
       const appointmentMessage = updated.appointmentCompleted
-        ? "Report marked complete and the matching appointment was set to Completed. The patient's Assignment of Benefits form can be signed from the appointment screen."
-        : "Report marked as complete by sonographer. The patient's Assignment of Benefits form can be signed from the appointment screen.";
+        ? "Report marked complete and the matching appointment was set to Completed."
+        : "Report marked as complete by sonographer.";
       toast({ title: "Sonographer Complete", description: appointmentMessage });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
-      // Refresh calendar/home so the appointment status reflects immediately.
       if (updated.appointmentCompleted) {
         queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
       }
       if (editingReport && editingReport.id === updated.id) setEditingReport(updated as any);
-      setAobConfirmReport(null);
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Could not mark as complete.", variant: "destructive" });
     },
   });
-
-  // Opens the Assignment of Benefits confirmation dialog. Item prefill and
-  // editing now live in the shared AobItemsDialog; confirming here is required
-  // to complete the study (the patient signature is captured later).
-  const openAobConfirm = (report: Report) => {
-    setAobConfirmReport(report);
-  };
 
   const archiveReportMutation = useMutation({
     mutationFn: async (reportId: number) => {
@@ -2126,11 +2110,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       variant="outline"
                       size="sm"
                       className="flex-1 text-teal-600 border-teal-200 hover:bg-teal-50 text-xs"
-                      onClick={() => openAobConfirm(report)}
+                      onClick={() => sonographerCompleteMutation.mutate(report.id)}
                       disabled={sonographerCompleteMutation.isPending}
                     >
                       <ClipboardCheck className="w-3 h-3 mr-1" />
-                      Sono Complete
+                      {sonographerCompleteMutation.isPending ? "..." : "Sono Complete"}
                     </Button>
                   )}
                   {!(report as any).isArchived ? (
@@ -2878,11 +2862,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       variant="outline"
                       size="sm"
                       className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
-                      onClick={() => openAobConfirm(editingReport)}
+                      onClick={() => sonographerCompleteMutation.mutate(editingReport.id)}
                       disabled={sonographerCompleteMutation.isPending}
                     >
                       <ClipboardCheck className="w-4 h-4 mr-2" />
-                      Mark Sono Complete
+                      {sonographerCompleteMutation.isPending ? "Completing..." : "Mark Sono Complete"}
                     </Button>
                   )}
                 </div>
@@ -3302,11 +3286,11 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       variant="outline"
                       size="sm"
                       className="w-full text-teal-600 border-teal-200 hover:bg-teal-50"
-                      onClick={() => openAobConfirm(editingReport)}
+                      onClick={() => sonographerCompleteMutation.mutate(editingReport.id)}
                       disabled={sonographerCompleteMutation.isPending}
                     >
                       <ClipboardCheck className="w-4 h-4 mr-2" />
-                      Mark Sono Complete
+                      {sonographerCompleteMutation.isPending ? "Completing..." : "Mark Sono Complete"}
                     </Button>
                   )}
                 </div>
@@ -3963,22 +3947,6 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Assignment of Benefits confirmation — required before a study can be
-          marked sonographer-complete. The patient signature itself happens
-          later, from the appointment screen. */}
-      <AobItemsDialog
-        open={!!aobConfirmReport}
-        onOpenChange={(open) => { if (!open) setAobConfirmReport(null); }}
-        scanTypes={aobConfirmReport ? aobConfirmReport.studyType.split(",") : []}
-        title="Confirm Assignment of Benefits"
-        description="Confirm the Medicare items billed for this visit before completing the study. The patient's signature is captured separately, later, from the appointment screen."
-        submitLabel="Confirm & Complete Study"
-        submittingLabel="Confirming..."
-        isPending={sonographerCompleteMutation.isPending}
-        onSubmit={(items) => aobConfirmReport && sonographerCompleteMutation.mutate({ reportId: aobConfirmReport.id, items })}
-      />
-
 
       {/* Unsaved changes confirmation */}
       <AlertDialog open={isCloseConfirmOpen} onOpenChange={setIsCloseConfirmOpen}>
