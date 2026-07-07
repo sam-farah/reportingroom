@@ -453,21 +453,35 @@ export function calculateVisitBilling(
 }
 
 /**
- * Re-applies the vascular ultrasound Multiple Services formula (100% / 60% / 50%,
- * highest schedule fee first, ties broken by lowest item number) to a free-edited
- * line-item list — e.g. after staff pick/add/remove an item in the Assessment of
- * Benefit confirmation dialog. Only items recognised in MBS_ITEMS with category
- * DI_VASCULAR are touched; everything else (Category 2, general items, unknown/
- * manual entries) is left exactly as-is so manual fee overrides aren't clobbered.
+ * Re-applies the same-day Medicare fee rules to a free-edited line-item list —
+ * e.g. after staff pick/add/remove an item in the Assignment of Benefit
+ * confirmation dialog:
+ *
+ * 1. Vascular ultrasound Multiple Services formula (100% / 60% / 50%, highest
+ *    schedule fee first, ties broken by lowest item number) across DI_VASCULAR
+ *    items. A single remaining vascular item is restored to 100% of its schedule
+ *    fee — important when a discounted (60%/50%) line was carried over from a
+ *    previous form and its sibling item was then deleted.
+ * 2. Rule A (-$5) on DI_GENERAL items that are not the highest-fee diagnostic
+ *    imaging "service" of the day, treating the vascular bundle as one service.
+ *    If the bundle itself is not the highest service, the bundle's -$5 is taken
+ *    off its top-ranked line (matching calculateVisitBilling's total).
+ *
+ * Policy: fees for recognised DI_VASCULAR and DI_GENERAL items are always
+ * recomputed from the schedule fee — manual fee edits on those items are
+ * intentionally overwritten whenever the rules re-run (item pick/delete/dialog
+ * open) so the displayed fees always follow the Medicare same-day rules.
+ * Category 2 items and unknown/manual entries are left exactly as-is.
  */
 export function applyVascularAllocation<T extends { item: string; feeCents: number }>(
   items: T[],
 ): T[] {
-  const vascularIdx = items
+  const result = [...items];
+
+  // --- Vascular Multiple Services formula (100% / 60% / 50%) ---
+  const vascularIdx = result
     .map((line, idx) => ({ line, idx }))
     .filter(({ line }) => MBS_ITEMS[line.item]?.category === "DI_VASCULAR");
-
-  if (vascularIdx.length < 2) return items;
 
   const sorted = [...vascularIdx].sort((a, b) => {
     const feeA = MBS_ITEMS[a.line.item].scheduleFeeCents;
@@ -476,11 +490,52 @@ export function applyVascularAllocation<T extends { item: string; feeCents: numb
     return Number(a.line.item) - Number(b.line.item);
   });
 
-  const result = [...items];
+  let vascularBundleCents = 0;
   sorted.forEach(({ idx }, rank) => {
     const info = MBS_ITEMS[result[idx].item];
     const pct = rank === 0 ? 1 : rank === 1 ? 0.6 : 0.5;
-    result[idx] = { ...result[idx], feeCents: Math.round(info.scheduleFeeCents * pct) };
+    const allocated = Math.round(info.scheduleFeeCents * pct);
+    vascularBundleCents += allocated;
+    result[idx] = { ...result[idx], feeCents: allocated };
   });
+
+  // --- Rule A (-$5 per additional DI service) on general DI items ---
+  const generalIdx = result
+    .map((line, idx) => ({ line, idx }))
+    .filter(({ line }) => MBS_ITEMS[line.item]?.category === "DI_GENERAL");
+
+  if (generalIdx.length > 0) {
+    const services = [
+      ...(vascularBundleCents > 0 ? [{ key: "__vascular_bundle__", feeCents: vascularBundleCents, idx: -1 }] : []),
+      ...generalIdx.map(({ line, idx }) => ({
+        key: line.item,
+        feeCents: MBS_ITEMS[line.item].scheduleFeeCents,
+        idx,
+      })),
+    ].sort((a, b) => b.feeCents - a.feeCents);
+
+    services.forEach((svc, rank) => {
+      if (svc.idx === -1) return; // vascular bundle handled above
+      const info = MBS_ITEMS[result[svc.idx].item];
+      const reduction = rank === 0 ? 0 : 500;
+      result[svc.idx] = {
+        ...result[svc.idx],
+        feeCents: Math.max(0, info.scheduleFeeCents - reduction),
+      };
+    });
+
+    // If the vascular bundle is not the highest-fee service of the day it also
+    // loses $5 under Rule A — take it off the bundle's top-ranked line so the
+    // total matches calculateVisitBilling's ruleAAdjustmentCents.
+    const vascularIsHighest = services[0]?.idx === -1;
+    if (vascularBundleCents > 0 && !vascularIsHighest) {
+      const topIdx = sorted[0].idx;
+      result[topIdx] = {
+        ...result[topIdx],
+        feeCents: Math.max(0, result[topIdx].feeCents - 500),
+      };
+    }
+  }
+
   return result;
 }

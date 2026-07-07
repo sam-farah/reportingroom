@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { calculateVisitBilling, getMbsClaimForScanType, parseScanWithSide, formatCents } from "../shared/mbs";
+import { applyVascularAllocation, calculateVisitBilling, getMbsClaimForScanType, parseScanWithSide, formatCents } from "../shared/mbs";
 
 // parseScanWithSide
 {
@@ -83,6 +83,78 @@ import { calculateVisitBilling, getMbsClaimForScanType, parseScanWithSide, forma
   const r = getMbsClaimForScanType("Something not in the list");
   assert.strictEqual(r.lines, null);
   assert.strictEqual(r.suggestable, false);
+}
+
+// applyVascularAllocation: single vascular item restored to 100% (stale 60% carried over)
+{
+  const items = applyVascularAllocation([
+    { item: "55292", feeCents: 11982 }, // stale 60% from a deleted sibling
+  ]);
+  assert.strictEqual(items[0].feeCents, 19970);
+}
+
+// applyVascularAllocation: two vascular items → 100% + 60%
+{
+  const items = applyVascularAllocation([
+    { item: "55292", feeCents: 19970 },
+    { item: "55292", feeCents: 19970 },
+  ]);
+  const fees = items.map(i => i.feeCents).sort((a, b) => b - a);
+  assert.deepStrictEqual(fees, [19970, Math.round(19970 * 0.6)]);
+}
+
+// applyVascularAllocation: Rule A -$5 on general item when vascular bundle is highest
+{
+  const items = applyVascularAllocation([
+    { item: "55292", feeCents: 11982 },
+    { item: "55054", feeCents: 12860 },
+    { item: "11611", feeCents: 7625 },
+  ]);
+  const byItem = Object.fromEntries(items.map(i => [i.item, i.feeCents]));
+  assert.strictEqual(byItem["55292"], 19970); // restored to 100%
+  assert.strictEqual(byItem["55054"], 12860 - 500); // Rule A -$5
+  assert.strictEqual(byItem["11611"], 7625); // CAT2 untouched
+}
+
+// applyVascularAllocation: general item alone (no vascular) keeps full fee
+{
+  const items = applyVascularAllocation([
+    { item: "55054", feeCents: 12360 }, // stale -$5 from a deleted vascular sibling
+  ]);
+  assert.strictEqual(items[0].feeCents, 12860);
+}
+
+// applyVascularAllocation: multiple general items, no vascular → highest full fee, others -$5
+{
+  const items = applyVascularAllocation([
+    { item: "55054", feeCents: 12860 },
+    { item: "55054", feeCents: 12860 },
+  ]);
+  const fees = items.map(i => i.feeCents).sort((a, b) => b - a);
+  assert.deepStrictEqual(fees, [12860, 12860 - 500]);
+}
+
+// applyVascularAllocation: vascular bundle + general → bundle highest keeps 100%, general -$5
+// (with current MBS data every vascular fee > every general fee, so the bundle is always
+// the highest service; the bundle-not-highest -$5 branch is future-proofing only)
+{
+  const items = applyVascularAllocation([
+    { item: "55244", feeCents: 19970 },
+    { item: "55054", feeCents: 12860 },
+  ]);
+  const byItem = Object.fromEntries(items.map(i => [i.item, i.feeCents]));
+  assert.strictEqual(byItem["55244"], 19970);
+  assert.strictEqual(byItem["55054"], 12360);
+}
+
+// applyVascularAllocation: unknown/manual entries left untouched
+{
+  const items = applyVascularAllocation([
+    { item: "99999", feeCents: 5000 },
+    { item: "", feeCents: 1234 },
+  ]);
+  assert.strictEqual(items[0].feeCents, 5000);
+  assert.strictEqual(items[1].feeCents, 1234);
 }
 
 console.log("All shared/mbs.ts tests passed.");

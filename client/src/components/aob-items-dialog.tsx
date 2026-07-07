@@ -130,6 +130,10 @@ export function AobItemsDialog({
         feeCents: l.allocatedFeeCents,
       }));
     }
+    // Re-apply the Medicare same-day rules to carried-over items so stale
+    // allocations (e.g. a 60% fee whose sibling item was deleted on a previous
+    // form) are corrected as soon as the dialog opens.
+    lines = applyVascularAllocation(lines);
     setItems(lines.map((l) => ({ ...l, _uid: nextUid() })));
     // Items normally come from the same MBS reference data, but fall back to
     // manual-entry mode defensively if one somehow isn't in the list.
