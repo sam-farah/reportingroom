@@ -51,7 +51,6 @@ import {
   startOfMonth,
   endOfMonth,
   subDays,
-  subMonths,
   eachDayOfInterval,
   eachMonthOfInterval,
 } from "date-fns";
@@ -248,43 +247,43 @@ export default function Finance() {
     });
   }, [rangeForms, fromDate, toDate]);
 
-  // Monthly "stock chart" series: revenue, recurring expenses and net profit
-  // per month across the selected range.
-  const monthlyChartData = useMemo(() => {
-    // The monthly "stock chart" is independent of the narrow day-range filter
-    // (which drives the daily bars). It always spans the full history — from
-    // the earliest month that has revenue or a recurring expense, up to the
-    // current month — so the trend line always has multiple points.
-    const revenueByMonth = new Map<string, number>();
-    for (const f of withKeys) {
-      const mk = f.dateKey.slice(0, 7);
-      revenueByMonth.set(mk, (revenueByMonth.get(mk) ?? 0) + (f.totalValueCents || 0));
+  // Average monthly recurring cost across the months spanned by the selected
+  // range. This is the flat line the cumulative revenue is charted against.
+  const avgMonthlyCostCents = useMemo(() => {
+    const from = parseISO(fromDate);
+    const to = parseISO(toDate);
+    if (!isValid(from) || !isValid(to) || from > to) return 0;
+    const months = eachMonthOfInterval({ start: startOfMonth(from), end: startOfMonth(to) });
+    if (months.length === 0) return 0;
+    const total = months.reduce(
+      (s, d) => s + monthlyExpenseCents(expenses ?? [], format(d, "yyyy-MM")),
+      0,
+    );
+    return total / months.length;
+  }, [expenses, fromDate, toDate]);
+
+  // Graph mode: cumulative revenue over the selected range, plotted against a
+  // flat line for the average monthly recurring cost over the same range.
+  const graphData = useMemo(() => {
+    const from = parseISO(fromDate);
+    const to = parseISO(toDate);
+    if (!isValid(from) || !isValid(to) || from > to) return [];
+    const byDay = new Map<string, number>();
+    for (const f of rangeForms) {
+      byDay.set(f.dateKey, (byDay.get(f.dateKey) ?? 0) + (f.totalValueCents || 0));
     }
-    const candidateMonths: string[] = [thisMonthKey];
-    revenueByMonth.forEach((_, mk) => candidateMonths.push(mk));
-    for (const e of expenses ?? []) {
-      if (/^\d{4}-\d{2}$/.test(e.startMonth)) candidateMonths.push(e.startMonth);
-    }
-    const valid = candidateMonths.filter((k) => /^\d{4}-\d{2}$/.test(k)).sort();
-    if (valid.length === 0) return [];
-    // Cap the window to the most recent 24 months for readability.
-    const end = startOfMonth(parseISO(`${thisMonthKey}-01`));
-    const floor = format(subMonths(end, 23), "yyyy-MM");
-    const startKey = valid[0] < floor ? floor : valid[0];
-    const start = startOfMonth(parseISO(`${startKey}-01`));
-    if (start > end) return [];
-    return eachMonthOfInterval({ start, end }).map((d) => {
-      const mk = format(d, "yyyy-MM");
-      const revenue = revenueByMonth.get(mk) ?? 0;
-      const expenseCents = monthlyExpenseCents(expenses ?? [], mk);
+    const monthlyCost = Math.round(avgMonthlyCostCents) / 100;
+    let cumulative = 0;
+    return eachDayOfInterval({ start: from, end: to }).map((d) => {
+      const key = format(d, "yyyy-MM-dd");
+      cumulative += byDay.get(key) ?? 0;
       return {
-        month: format(d, "MMM yyyy"),
-        revenue: Math.round(revenue) / 100,
-        expenses: Math.round(expenseCents) / 100,
-        net: Math.round(revenue - expenseCents) / 100,
+        day: format(d, "d MMM"),
+        cumulativeRevenue: Math.round(cumulative) / 100,
+        monthlyCost,
       };
     });
-  }, [withKeys, expenses, thisMonthKey]);
+  }, [rangeForms, avgMonthlyCostCents, fromDate, toDate]);
 
   const setPreset = (preset: "7d" | "30d" | "month" | "all") => {
     if (preset === "7d") {
@@ -377,7 +376,7 @@ export default function Finance() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="flex items-center gap-3">
               <CardTitle className="text-base">
-                {chartMode === "daily" ? "Revenue by day" : "Monthly performance"}
+                {chartMode === "daily" ? "Revenue by day" : "Cumulative revenue vs. monthly cost"}
               </CardTitle>
               <div className="inline-flex rounded-md border border-gray-200 p-0.5 bg-gray-50">
                 <button
@@ -400,38 +399,34 @@ export default function Finance() {
                 </button>
               </div>
             </div>
-            {chartMode === "daily" ? (
-              <div className="flex flex-wrap items-end gap-2">
-                <div>
-                  <Label className="text-xs text-gray-500">From</Label>
-                  <Input
-                    type="date"
-                    value={fromDate}
-                    max={toDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="h-8 text-sm w-40"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">To</Label>
-                  <Input
-                    type="date"
-                    value={toDate}
-                    min={fromDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="h-8 text-sm w-40"
-                  />
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("7d")}>7 days</Button>
-                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("30d")}>30 days</Button>
-                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("month")}>This month</Button>
-                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("all")}>All</Button>
-                </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <Label className="text-xs text-gray-500">From</Label>
+                <Input
+                  type="date"
+                  value={fromDate}
+                  max={toDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="h-8 text-sm w-40"
+                />
               </div>
-            ) : (
-              <p className="text-xs text-gray-500 self-center">Last 24 months of revenue vs. expenses</p>
-            )}
+              <div>
+                <Label className="text-xs text-gray-500">To</Label>
+                <Input
+                  type="date"
+                  value={toDate}
+                  min={fromDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="h-8 text-sm w-40"
+                />
+              </div>
+              <div className="flex gap-1">
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("7d")}>7 days</Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("30d")}>30 days</Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("month")}>This month</Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("all")}>All</Button>
+              </div>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -457,12 +452,12 @@ export default function Finance() {
                 </ResponsiveContainer>
               </div>
             )
-          ) : monthlyChartData.length === 0 ? (
-            <p className="text-sm text-gray-500 py-10 text-center">No revenue or expenses to chart yet.</p>
+          ) : graphData.length === 0 ? (
+            <p className="text-sm text-gray-500 py-10 text-center">No data in the selected range.</p>
           ) : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={monthlyChartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <ComposedChart data={graphData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} />
@@ -470,44 +465,32 @@ export default function Finance() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                  <XAxis dataKey="day" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `$${v}`} width={55} />
                   <Tooltip
-                    formatter={(value: number, name: string) => [
-                      `$${Number(value).toFixed(2)}`,
-                      name.charAt(0).toUpperCase() + name.slice(1),
-                    ]}
+                    formatter={(value: number, name: string) => [`$${Number(value).toFixed(2)}`, name]}
                     labelStyle={{ fontSize: 12 }}
                     contentStyle={{ fontSize: 12, borderRadius: 8 }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Area
                     type="monotone"
-                    dataKey="revenue"
+                    dataKey="cumulativeRevenue"
                     stroke="#0d9488"
                     strokeWidth={2}
                     fill="url(#revFill)"
-                    dot={{ r: 2.5 }}
+                    dot={false}
                     activeDot={{ r: 4 }}
-                    name="Revenue"
+                    name="Cumulative revenue"
                   />
                   <Line
                     type="monotone"
-                    dataKey="expenses"
+                    dataKey="monthlyCost"
                     stroke="#ef4444"
                     strokeWidth={2}
-                    dot={{ r: 2.5 }}
-                    activeDot={{ r: 4 }}
-                    name="Expenses"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="net"
-                    stroke="#6366f1"
-                    strokeWidth={2}
-                    dot={{ r: 2.5 }}
-                    activeDot={{ r: 4 }}
-                    name="Net"
+                    strokeDasharray="5 4"
+                    dot={false}
+                    name="Avg monthly cost"
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -518,19 +501,10 @@ export default function Finance() {
               Range total: {formatCents(sumCents(rangeForms))} ({rangeForms.length} form{rangeForms.length === 1 ? "" : "s"})
             </p>
           )}
-          {!isLoading && chartMode === "monthly" && (
+          {!isLoading && chartMode === "monthly" && graphData.length > 0 && (
             <p className="text-sm text-gray-600 mt-2 text-right font-medium">
-              This month — Revenue {formatCents(sumCents(monthForms))} · Expenses{" "}
-              {formatCents(monthlyExpenseCents(expenses ?? [], thisMonthKey))} · Net{" "}
-              <span
-                className={
-                  sumCents(monthForms) - monthlyExpenseCents(expenses ?? [], thisMonthKey) >= 0
-                    ? "text-emerald-600"
-                    : "text-red-600"
-                }
-              >
-                {formatCents(sumCents(monthForms) - monthlyExpenseCents(expenses ?? [], thisMonthKey))}
-              </span>
+              Cumulative revenue {formatCents(sumCents(rangeForms))} · Avg monthly cost{" "}
+              {formatCents(Math.round(avgMonthlyCostCents))}
             </p>
           )}
         </CardContent>
