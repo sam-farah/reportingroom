@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone, MessageSquare, MessageCircle, Mail, Loader2, DollarSign } from "lucide-react";
+import { User, Settings, LogOut, FolderOpen, Users, Calendar as CalendarIcon, UserCircle, Monitor, ClipboardList, Upload, MapPin, PenLine, HelpCircle, ScanLine, BookUser, ExternalLink, Building2, Shield, Megaphone, MessageSquare, MessageCircle, Mail, Loader2 } from "lucide-react";
 import logoIconPath from "@assets/Screenshot 2025-07-26 201200_1753524822284.png";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,11 +28,10 @@ import ClinicsAdmin from "./clinics-admin";
 import Messages from "./messages";
 import Email from "./email";
 import Chat from "./chat";
-import Finance from "./finance";
 
-type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board" | "clinics" | "messages" | "email" | "chat" | "finance";
+type Panel = "user" | "admin" | "reporting-room" | "physicians" | "staff" | "calendar" | "patients" | "requests" | "contacts" | "draw" | "templates" | "help" | "dicom" | "notice-board" | "clinics" | "messages" | "email" | "chat";
 
-const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; superAdminOnly?: boolean; financeOnly?: boolean; comingSoon?: boolean }[] = [
+const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?: boolean; superAdminOnly?: boolean; comingSoon?: boolean }[] = [
   { id: "calendar",       label: "Calendar",  icon: CalendarIcon },
   { id: "email",          label: "Email",     icon: Mail, comingSoon: true },
   { id: "user",           label: "Upload",    icon: Upload },
@@ -44,7 +43,6 @@ const NAV_ITEMS: { id: Panel; label: string; icon: React.ElementType; adminOnly?
   { id: "requests",       label: "Requests",  icon: ClipboardList },
   { id: "contacts",       label: "Contacts",  icon: BookUser },
   { id: "dicom",          label: "DICOM",     icon: ScanLine },
-  { id: "finance",        label: "Finance",   icon: DollarSign, financeOnly: true },
   { id: "staff",          label: "Team",      icon: Users, adminOnly: true },
   { id: "admin",          label: "Admin",     icon: Settings },
   { id: "clinics",        label: "Clinics",   icon: Building2, superAdminOnly: true },
@@ -70,7 +68,6 @@ const PAGE_TITLES: Record<Panel, string> = {
   "messages":       "Messages",
   "email":          "Email Inbox",
   "chat":           "Team Chat",
-  "finance":        "Finance",
 };
 
 export default function Dashboard() {
@@ -199,9 +196,8 @@ export default function Dashboard() {
     },
   });
 
-  const isFinanceUser = (user?.email || "").toLowerCase() === "samf@nexusvascularimaging.com";
   const visibleNav = NAV_ITEMS.filter(item =>
-    (!item.adminOnly || isOwnerOrAdmin) && (!item.superAdminOnly || isSuperAdmin) && (!item.financeOnly || isFinanceUser)
+    (!item.adminOnly || isOwnerOrAdmin) && (!item.superAdminOnly || isSuperAdmin)
   );
 
   return (
@@ -414,8 +410,6 @@ export default function Dashboard() {
         <NoticeBoard />
       ) : activePanel === "clinics" && isSuperAdmin ? (
         <ClinicsAdmin />
-      ) : activePanel === "finance" && isFinanceUser ? (
-        <Finance />
       ) : activePanel === "dicom" ? (
         <div className="p-8 max-w-2xl mx-auto w-full" style={{ paddingTop: "48px" }}>
           {/* Header */}

@@ -20,12 +20,14 @@ import type { TrainingPair, Physician, ReportTemplate, Clinic, ScanTypeContentTe
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 import ScanDurationsTab from "./scan-durations-tab";
 import MbsReferenceTab from "./mbs-reference-tab";
+import Finance from "@/pages/finance";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemplates?: () => void }) {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
   const isOwnerOrAdmin = currentUser?.role === "clinic_owner" || currentUser?.role === "admin";
+  const isFinanceUser = (currentUser?.email || "").toLowerCase() === "samf@nexusvascularimaging.com";
   const [worksheetFile, setWorksheetFile] = useState<File | null>(null);
   const [reportFile, setReportFile] = useState<File | null>(null);
   const [category, setCategory] = useState("");
@@ -752,6 +754,9 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
           <TabsTrigger value="clinic-settings" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏥 Clinic Settings</TabsTrigger>
           <TabsTrigger value="scan-durations" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">⏱️ Scan Durations</TabsTrigger>
           <TabsTrigger value="mbs-billing" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🧾 MBS Billing</TabsTrigger>
+          {isFinanceUser && (
+            <TabsTrigger value="finance" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">💵 Finance</TabsTrigger>
+          )}
           <TabsTrigger value="monitoring" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">📊 System Monitoring</TabsTrigger>
           <TabsTrigger value="wait-analytics" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">⏳ Wait Analytics</TabsTrigger>
           <TabsTrigger value="clinics" className="w-full justify-start gap-2 px-3 py-2.5 text-sm">🏢 Clinic Analytics</TabsTrigger>
@@ -1144,6 +1149,12 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
         <TabsContent value="mbs-billing">
           <MbsReferenceTab />
         </TabsContent>
+
+        {isFinanceUser && (
+          <TabsContent value="finance">
+            <Finance />
+          </TabsContent>
+        )}
 
         <TabsContent value="monitoring" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
