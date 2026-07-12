@@ -51,6 +51,7 @@ import {
   startOfMonth,
   endOfMonth,
   subDays,
+  subMonths,
   eachDayOfInterval,
   eachMonthOfInterval,
 } from "date-fns";
@@ -250,15 +251,29 @@ export default function Finance() {
   // Monthly "stock chart" series: revenue, recurring expenses and net profit
   // per month across the selected range.
   const monthlyChartData = useMemo(() => {
-    const from = parseISO(fromDate);
-    const to = parseISO(toDate);
-    if (!isValid(from) || !isValid(to) || from > to) return [];
+    // The monthly "stock chart" is independent of the narrow day-range filter
+    // (which drives the daily bars). It always spans the full history — from
+    // the earliest month that has revenue or a recurring expense, up to the
+    // current month — so the trend line always has multiple points.
     const revenueByMonth = new Map<string, number>();
-    for (const f of rangeForms) {
+    for (const f of withKeys) {
       const mk = f.dateKey.slice(0, 7);
       revenueByMonth.set(mk, (revenueByMonth.get(mk) ?? 0) + (f.totalValueCents || 0));
     }
-    return eachMonthOfInterval({ start: startOfMonth(from), end: startOfMonth(to) }).map((d) => {
+    const candidateMonths: string[] = [thisMonthKey];
+    revenueByMonth.forEach((_, mk) => candidateMonths.push(mk));
+    for (const e of expenses ?? []) {
+      if (/^\d{4}-\d{2}$/.test(e.startMonth)) candidateMonths.push(e.startMonth);
+    }
+    const valid = candidateMonths.filter((k) => /^\d{4}-\d{2}$/.test(k)).sort();
+    if (valid.length === 0) return [];
+    // Cap the window to the most recent 24 months for readability.
+    const end = startOfMonth(parseISO(`${thisMonthKey}-01`));
+    const floor = format(subMonths(end, 23), "yyyy-MM");
+    const startKey = valid[0] < floor ? floor : valid[0];
+    const start = startOfMonth(parseISO(`${startKey}-01`));
+    if (start > end) return [];
+    return eachMonthOfInterval({ start, end }).map((d) => {
       const mk = format(d, "yyyy-MM");
       const revenue = revenueByMonth.get(mk) ?? 0;
       const expenseCents = monthlyExpenseCents(expenses ?? [], mk);
@@ -269,7 +284,7 @@ export default function Finance() {
         net: Math.round(revenue - expenseCents) / 100,
       };
     });
-  }, [rangeForms, expenses, fromDate, toDate]);
+  }, [withKeys, expenses, thisMonthKey]);
 
   const setPreset = (preset: "7d" | "30d" | "month" | "all") => {
     if (preset === "7d") {
@@ -385,34 +400,38 @@ export default function Finance() {
                 </button>
               </div>
             </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <div>
-                <Label className="text-xs text-gray-500">From</Label>
-                <Input
-                  type="date"
-                  value={fromDate}
-                  max={toDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="h-8 text-sm w-40"
-                />
+            {chartMode === "daily" ? (
+              <div className="flex flex-wrap items-end gap-2">
+                <div>
+                  <Label className="text-xs text-gray-500">From</Label>
+                  <Input
+                    type="date"
+                    value={fromDate}
+                    max={toDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="h-8 text-sm w-40"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">To</Label>
+                  <Input
+                    type="date"
+                    value={toDate}
+                    min={fromDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="h-8 text-sm w-40"
+                  />
+                </div>
+                <div className="flex gap-1">
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("7d")}>7 days</Button>
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("30d")}>30 days</Button>
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("month")}>This month</Button>
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("all")}>All</Button>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs text-gray-500">To</Label>
-                <Input
-                  type="date"
-                  value={toDate}
-                  min={fromDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="h-8 text-sm w-40"
-                />
-              </div>
-              <div className="flex gap-1">
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("7d")}>7 days</Button>
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("30d")}>30 days</Button>
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("month")}>This month</Button>
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setPreset("all")}>All</Button>
-              </div>
-            </div>
+            ) : (
+              <p className="text-xs text-gray-500 self-center">Last 24 months of revenue vs. expenses</p>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -439,7 +458,7 @@ export default function Finance() {
               </div>
             )
           ) : monthlyChartData.length === 0 ? (
-            <p className="text-sm text-gray-500 py-10 text-center">No data in the selected range.</p>
+            <p className="text-sm text-gray-500 py-10 text-center">No revenue or expenses to chart yet.</p>
           ) : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -468,6 +487,8 @@ export default function Finance() {
                     stroke="#0d9488"
                     strokeWidth={2}
                     fill="url(#revFill)"
+                    dot={{ r: 2.5 }}
+                    activeDot={{ r: 4 }}
                     name="Revenue"
                   />
                   <Line
@@ -475,7 +496,8 @@ export default function Finance() {
                     dataKey="expenses"
                     stroke="#ef4444"
                     strokeWidth={2}
-                    dot={false}
+                    dot={{ r: 2.5 }}
+                    activeDot={{ r: 4 }}
                     name="Expenses"
                   />
                   <Line
@@ -483,16 +505,32 @@ export default function Finance() {
                     dataKey="net"
                     stroke="#6366f1"
                     strokeWidth={2}
-                    dot={false}
+                    dot={{ r: 2.5 }}
+                    activeDot={{ r: 4 }}
                     name="Net"
                   />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
           )}
-          {!isLoading && rangeForms.length > 0 && (
+          {!isLoading && chartMode === "daily" && rangeForms.length > 0 && (
             <p className="text-sm text-gray-600 mt-2 text-right font-medium">
               Range total: {formatCents(sumCents(rangeForms))} ({rangeForms.length} form{rangeForms.length === 1 ? "" : "s"})
+            </p>
+          )}
+          {!isLoading && chartMode === "monthly" && (
+            <p className="text-sm text-gray-600 mt-2 text-right font-medium">
+              This month — Revenue {formatCents(sumCents(monthForms))} · Expenses{" "}
+              {formatCents(monthlyExpenseCents(expenses ?? [], thisMonthKey))} · Net{" "}
+              <span
+                className={
+                  sumCents(monthForms) - monthlyExpenseCents(expenses ?? [], thisMonthKey) >= 0
+                    ? "text-emerald-600"
+                    : "text-red-600"
+                }
+              >
+                {formatCents(sumCents(monthForms) - monthlyExpenseCents(expenses ?? [], thisMonthKey))}
+              </span>
             </p>
           )}
         </CardContent>
