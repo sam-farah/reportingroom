@@ -247,23 +247,28 @@ export default function Finance() {
     });
   }, [rangeForms, fromDate, toDate]);
 
-  // Average monthly recurring cost across the months spanned by the selected
-  // range. This is the flat line the cumulative revenue is charted against.
-  const avgMonthlyCostCents = useMemo(() => {
+  // Recurring cost prorated to the exact number of days in the selected range.
+  // We take the average monthly recurring cost across the months the range
+  // touches, convert it to a per-day rate (monthly / avg days-per-month), then
+  // multiply by the number of days selected. This is the flat line the
+  // cumulative revenue is charted against, so a 7-day window shows ~7 days of
+  // cost — not a whole month.
+  const AVG_DAYS_PER_MONTH = 365.25 / 12;
+  const periodCostCents = useMemo(() => {
     const from = parseISO(fromDate);
     const to = parseISO(toDate);
     if (!isValid(from) || !isValid(to) || from > to) return 0;
     const months = eachMonthOfInterval({ start: startOfMonth(from), end: startOfMonth(to) });
     if (months.length === 0) return 0;
-    const total = months.reduce(
-      (s, d) => s + monthlyExpenseCents(expenses ?? [], format(d, "yyyy-MM")),
-      0,
-    );
-    return total / months.length;
+    const avgMonthlyCents =
+      months.reduce((s, d) => s + monthlyExpenseCents(expenses ?? [], format(d, "yyyy-MM")), 0) /
+      months.length;
+    const numDays = eachDayOfInterval({ start: from, end: to }).length;
+    return (avgMonthlyCents / AVG_DAYS_PER_MONTH) * numDays;
   }, [expenses, fromDate, toDate]);
 
   // Graph mode: cumulative revenue over the selected range, plotted against a
-  // flat line for the average monthly recurring cost over the same range.
+  // flat line for the recurring cost prorated to the same range.
   const graphData = useMemo(() => {
     const from = parseISO(fromDate);
     const to = parseISO(toDate);
@@ -272,7 +277,7 @@ export default function Finance() {
     for (const f of rangeForms) {
       byDay.set(f.dateKey, (byDay.get(f.dateKey) ?? 0) + (f.totalValueCents || 0));
     }
-    const monthlyCost = Math.round(avgMonthlyCostCents) / 100;
+    const periodCost = Math.round(periodCostCents) / 100;
     let cumulative = 0;
     return eachDayOfInterval({ start: from, end: to }).map((d) => {
       const key = format(d, "yyyy-MM-dd");
@@ -280,10 +285,10 @@ export default function Finance() {
       return {
         day: format(d, "d MMM"),
         cumulativeRevenue: Math.round(cumulative) / 100,
-        monthlyCost,
+        periodCost,
       };
     });
-  }, [rangeForms, avgMonthlyCostCents, fromDate, toDate]);
+  }, [rangeForms, periodCostCents, fromDate, toDate]);
 
   const setPreset = (preset: "7d" | "30d" | "month" | "all") => {
     if (preset === "7d") {
@@ -485,12 +490,12 @@ export default function Finance() {
                   />
                   <Line
                     type="monotone"
-                    dataKey="monthlyCost"
+                    dataKey="periodCost"
                     stroke="#ef4444"
                     strokeWidth={2}
                     strokeDasharray="5 4"
                     dot={false}
-                    name="Avg monthly cost"
+                    name="Cost for period"
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -503,8 +508,9 @@ export default function Finance() {
           )}
           {!isLoading && chartMode === "monthly" && graphData.length > 0 && (
             <p className="text-sm text-gray-600 mt-2 text-right font-medium">
-              Cumulative revenue {formatCents(sumCents(rangeForms))} · Avg monthly cost{" "}
-              {formatCents(Math.round(avgMonthlyCostCents))}
+              Cumulative revenue {formatCents(sumCents(rangeForms))} · Cost for period{" "}
+              {formatCents(Math.round(periodCostCents))} ({graphData.length} day
+              {graphData.length === 1 ? "" : "s"})
             </p>
           )}
         </CardContent>
