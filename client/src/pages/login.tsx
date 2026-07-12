@@ -209,7 +209,7 @@ export default function LoginPage() {
 
         <div className="relative z-10 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20 backdrop-blur">
-            <img src={logoIconPath} alt="Reporting Room" className="h-8 w-8 object-contain" />
+            <img src={logoIconPath} alt="Reporting Room" className="logo-animated h-8 w-8 object-contain" />
           </div>
           <span className="text-lg font-semibold tracking-tight">Reporting Room</span>
         </div>
@@ -258,7 +258,7 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/15">
-              <img src={logoIconPath} alt="Reporting Room" className="h-7 w-7 object-contain" />
+              <img src={logoIconPath} alt="Reporting Room" className="logo-animated h-7 w-7 object-contain" />
             </div>
             <span className="text-lg font-semibold tracking-tight text-slate-900">Reporting Room</span>
           </div>

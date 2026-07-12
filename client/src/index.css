@@ -176,3 +176,29 @@ html.native-app body[data-scroll-locked] {
   margin-right: 0 !important;
   position: static !important;
 }
+
+/* ──────────────────────────────────────────────────────────────
+   Subtle logo animation — a gentle "breathing" scale with a soft
+   glow pulse. Disabled for users who prefer reduced motion.
+   ────────────────────────────────────────────────────────────── */
+@keyframes logo-breathe {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(56, 189, 248, 0));
+  }
+  50% {
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.45));
+  }
+}
+
+.logo-animated {
+  animation: logo-breathe 3.8s ease-in-out infinite;
+  will-change: transform, filter;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-animated {
+    animation: none;
+  }
+}
