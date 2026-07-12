@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { queryClient } from "@/lib/queryClient";
 
-const IDLE_MINUTES = 20;
+const IDLE_MINUTES = 60;
 
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "wheel"] as const;
 

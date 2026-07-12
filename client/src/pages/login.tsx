@@ -173,7 +173,7 @@ export default function LoginPage() {
             <>
               {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("reason") === "idle" && (
                 <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="banner-idle-logout">
-                  You were signed out automatically after 20 minutes of inactivity. Please sign in again to continue.
+                  You were signed out automatically after 1 hour of inactivity. Please sign in again to continue.
                 </div>
               )}
               {noPhone && (

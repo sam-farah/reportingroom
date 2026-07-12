@@ -3451,9 +3451,9 @@ const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; 
   {
     date: "27 May 2026",
     tag: "New",
-    title: "Automatic sign-out after 20 minutes of inactivity",
+    title: "Automatic sign-out after 1 hour of inactivity",
     detail:
-      "For security, the app now signs you out automatically after 20 minutes of no activity (no mouse movement, clicks, typing, scrolling or touches). When it happens you're taken back to the sign-in page with an amber notice explaining why. The kiosk view and the patient/referrer portals are unaffected — those are designed to be left running.",
+      "For security, the app now signs you out automatically after 1 hour of no activity (no mouse movement, clicks, typing, scrolling or touches). When it happens you're taken back to the sign-in page with an amber notice explaining why. The kiosk view and the patient/referrer portals are unaffected — those are designed to be left running.",
   },
   {
     date: "27 May 2026",
