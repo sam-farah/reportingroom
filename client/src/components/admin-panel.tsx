@@ -3344,6 +3344,13 @@ function WaitAnalyticsPanel() {
 // Newest entries first. Keep descriptions plain-English for end users.
 const CHANGELOG: { date: string; tag: "Fix" | "New" | "Improve"; title: string; detail: string }[] = [
   {
+    date: "12 July 2026",
+    tag: "New",
+    title: "Landscape worksheets are now supported end-to-end",
+    detail:
+      "When you upload a worksheet that's wider than it is tall, the app now asks whether it should be treated as landscape. Your choice is remembered against that worksheet.\n\nOn the reporting screen, landscape worksheets display in a wider frame so they're easy to read, and there's a rotate button if you ever need to override the orientation the app guessed.\n\nWhen a report is sent out — as a PDF, copied HTML, or email — the page always stays a standard portrait A4, with the landscape worksheet rotated into the image itself. That means it survives faxing and Outlook without the layout breaking. Existing worksheets are unaffected and stay portrait.",
+  },
+  {
     date: "5 July 2026",
     tag: "New",
     title: "Generate Assignment of Benefits forms directly within Reporting Room",
