@@ -41,6 +41,8 @@ import {
   CANONICAL_SCAN_TYPES,
   type Appointment,
   type InsertAssessmentOfBenefitForm,
+  insertRecurringExpenseSchema,
+  recurringExpenseFieldsSchema,
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage, extractScanRequestFromImage } from "./services/openai";
 import { convertPdfToImage, convertPdfToImages, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
@@ -4573,6 +4575,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting finance AoB form:", error);
       res.status(500).json({ error: "Failed to delete finance form" });
+    }
+  });
+
+  // Recurring monthly expenses (finance dashboard). Same samf-only gate and
+  // clinic scoping as the rest of the finance surface.
+  const requireFinanceUser = async (req: any, res: any) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user?.clinicId) {
+      res.status(403).json({ error: "No clinic" });
+      return null;
+    }
+    if ((user.email || "").toLowerCase() !== FINANCE_USER_EMAIL) {
+      res.status(403).json({ error: "Not authorised to manage finance data" });
+      return null;
+    }
+    return user;
+  };
+
+  app.get("/api/finance/expenses", isAuthenticated, async (req, res) => {
+    try {
+      const user = await requireFinanceUser(req, res);
+      if (!user) return;
+      const expenses = await storage.getRecurringExpensesByClinic(user.clinicId!);
+      res.json(expenses);
+    } catch (error) {
+      console.error("Error fetching recurring expenses:", error);
+      res.status(500).json({ error: "Failed to fetch expenses" });
+    }
+  });
+
+  app.post("/api/finance/expenses", isAuthenticated, async (req, res) => {
+    try {
+      const user = await requireFinanceUser(req, res);
+      if (!user) return;
+      const parsed = insertRecurringExpenseSchema.parse({ ...req.body, clinicId: user.clinicId });
+      const created = await storage.createRecurringExpense(parsed);
+      res.status(201).json(created);
+    } catch (error: any) {
+      if (error?.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid expense data", details: error.errors });
+      }
+      console.error("Error creating recurring expense:", error);
+      res.status(500).json({ error: "Failed to create expense" });
+    }
+  });
+
+  app.patch("/api/finance/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await requireFinanceUser(req, res);
+      if (!user) return;
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid expense ID" });
+      const updates = recurringExpenseFieldsSchema.omit({ clinicId: true }).partial().parse(req.body);
+      const updated = await storage.updateRecurringExpense(id, user.clinicId!, updates);
+      if (!updated) return res.status(404).json({ error: "Expense not found" });
+      res.json(updated);
+    } catch (error: any) {
+      if (error?.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid expense data", details: error.errors });
+      }
+      console.error("Error updating recurring expense:", error);
+      res.status(500).json({ error: "Failed to update expense" });
+    }
+  });
+
+  app.delete("/api/finance/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await requireFinanceUser(req, res);
+      if (!user) return;
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid expense ID" });
+      const deleted = await storage.deleteRecurringExpense(id, user.clinicId!);
+      if (!deleted) return res.status(404).json({ error: "Expense not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting recurring expense:", error);
+      res.status(500).json({ error: "Failed to delete expense" });
     }
   });
 

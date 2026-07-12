@@ -661,6 +661,38 @@ export const insertAssessmentOfBenefitFormSchema = createInsertSchema(assessment
 export type AssessmentOfBenefitForm = typeof assessmentOfBenefitForms.$inferSelect;
 export type InsertAssessmentOfBenefitForm = z.infer<typeof insertAssessmentOfBenefitFormSchema>;
 
+// Recurring monthly expenses for the finance dashboard (rent, salaries, etc.).
+// Each row applies once per calendar month from startMonth through endMonth
+// (inclusive), or ongoing when endMonth is null and active is true.
+export const recurringExpenses = pgTable("recurring_expenses", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id).notNull(),
+  label: varchar("label", { length: 255 }).notNull(),
+  amountCents: integer("amount_cents").notNull().default(0),
+  category: varchar("category", { length: 50 }),
+  startMonth: varchar("start_month", { length: 7 }).notNull(), // YYYY-MM
+  endMonth: varchar("end_month", { length: 7 }), // YYYY-MM, null = ongoing
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const recurringExpenseFieldsSchema = createInsertSchema(recurringExpenses, {
+  amountCents: z.number().int().min(0),
+  startMonth: z.string().regex(/^\d{4}-\d{2}$/, "startMonth must be YYYY-MM"),
+  endMonth: z.string().regex(/^\d{4}-\d{2}$/, "endMonth must be YYYY-MM").nullable().optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRecurringExpenseSchema = recurringExpenseFieldsSchema.refine(
+  (v) => !v.endMonth || v.endMonth >= v.startMonth,
+  { message: "endMonth must be on or after startMonth", path: ["endMonth"] },
+);
+
+export type RecurringExpense = typeof recurringExpenses.$inferSelect;
+export type InsertRecurringExpense = z.infer<typeof insertRecurringExpenseSchema>;
+
 // Patient Portal Invitations
 export const patientPortalInvitations = pgTable("patient_portal_invitations", {
   id: serial("id").primaryKey(),

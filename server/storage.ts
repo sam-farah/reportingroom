@@ -146,6 +146,9 @@ import {
   assessmentOfBenefitForms,
   type AssessmentOfBenefitForm,
   type InsertAssessmentOfBenefitForm,
+  recurringExpenses,
+  type RecurringExpense,
+  type InsertRecurringExpense,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, ne, desc, gte, lte, and, or, ilike, sql, max, isNull, inArray } from "drizzle-orm";
@@ -386,6 +389,10 @@ export interface IStorage {
   finalizeAssessmentOfBenefitFormDocuments(id: number, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined>;
   rollbackAssessmentOfBenefitFormSigning(id: number): Promise<void>;
   deleteAssessmentOfBenefitForm(id: number, clinicId: number): Promise<boolean>;
+  getRecurringExpensesByClinic(clinicId: number): Promise<RecurringExpense[]>;
+  createRecurringExpense(expense: InsertRecurringExpense): Promise<RecurringExpense>;
+  updateRecurringExpense(id: number, clinicId: number, updates: Partial<InsertRecurringExpense>): Promise<RecurringExpense | undefined>;
+  deleteRecurringExpense(id: number, clinicId: number): Promise<boolean>;
   getPatientNotes(patientId: number): Promise<PatientNote[]>;
   createPatientNote(note: InsertPatientNote): Promise<PatientNote>;
 
@@ -1911,6 +1918,41 @@ export class DatabaseStorage implements IStorage {
         eq(assessmentOfBenefitForms.clinicId, clinicId),
       ))
       .returning({ id: assessmentOfBenefitForms.id });
+    return deleted.length > 0;
+  }
+
+  async getRecurringExpensesByClinic(clinicId: number): Promise<RecurringExpense[]> {
+    return await db
+      .select()
+      .from(recurringExpenses)
+      .where(eq(recurringExpenses.clinicId, clinicId))
+      .orderBy(desc(recurringExpenses.createdAt));
+  }
+
+  async createRecurringExpense(expense: InsertRecurringExpense): Promise<RecurringExpense> {
+    const [created] = await db.insert(recurringExpenses).values(expense).returning();
+    return created;
+  }
+
+  async updateRecurringExpense(
+    id: number,
+    clinicId: number,
+    updates: Partial<InsertRecurringExpense>,
+  ): Promise<RecurringExpense | undefined> {
+    const { clinicId: _ignored, ...safe } = updates as any;
+    const [row] = await db
+      .update(recurringExpenses)
+      .set(safe)
+      .where(and(eq(recurringExpenses.id, id), eq(recurringExpenses.clinicId, clinicId)))
+      .returning();
+    return row;
+  }
+
+  async deleteRecurringExpense(id: number, clinicId: number): Promise<boolean> {
+    const deleted = await db
+      .delete(recurringExpenses)
+      .where(and(eq(recurringExpenses.id, id), eq(recurringExpenses.clinicId, clinicId)))
+      .returning({ id: recurringExpenses.id });
     return deleted.length > 0;
   }
 
