@@ -6,6 +6,15 @@ import { applyVascularAllocation, calculateVisitBilling, getMbsClaimForScanType,
   assert.deepStrictEqual(parseScanWithSide("Lower limb DVT (Left)"), { canonical: "Lower limb DVT", side: "unilateral" });
   assert.deepStrictEqual(parseScanWithSide("Carotid and vertebral"), { canonical: "Carotid and vertebral", side: null });
   assert.deepStrictEqual(parseScanWithSide("Upper limb arteries (Bilateral)"), { canonical: "Upper limb arteries", side: "bilateral" });
+  assert.deepStrictEqual(parseScanWithSide("Lower limb DVT (Unilateral)"), { canonical: "Lower limb DVT", side: "unilateral" });
+}
+
+// A "(Unilateral)" tag (from the calendar booking form) maps like Left/Right
+{
+  const r = calculateVisitBilling(["Lower limb DVT (Unilateral)"]);
+  assert.strictEqual(r.lines.length, 1);
+  assert.strictEqual(r.lines[0].item, "55244");
+  assert.strictEqual(r.lines[0].allocatedFeeCents, 19970);
 }
 
 // Single unilateral scan

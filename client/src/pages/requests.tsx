@@ -457,10 +457,11 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
   const { data: sonographers = [] } = useQuery<Sonographer[]>({ queryKey: ["/api/sonographers"] });
   const { data: scanDurations = [] } = useQuery<(ScanDurationSetting & { hasLaterality: boolean })[]>({ queryKey: ["/api/scan-durations"] });
 
-  // Strip a "(Left)" / "(Right)" / "(Bilateral)" suffix that the online referral
-  // form encodes into the scan name, returning the canonical name + side.
+  // Strip a "(Left)" / "(Right)" / "(Bilateral)" / "(Unilateral)" suffix that the
+  // online referral form (or the calendar booking form) encodes into the scan
+  // name, returning the canonical name + side.
   const parseScanWithSide = (raw: string): { canonical: string; side: "unilateral" | "bilateral" | null } => {
-    const m = raw.match(/^(.*?)\s*\((Left|Right|Bilateral)\)\s*$/i);
+    const m = raw.match(/^(.*?)\s*\((Left|Right|Bilateral|Unilateral)\)\s*$/i);
     if (!m) return { canonical: raw, side: null };
     const tag = m[2].toLowerCase();
     return { canonical: m[1].trim(), side: tag === "bilateral" ? "bilateral" : "unilateral" };

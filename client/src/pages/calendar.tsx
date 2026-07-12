@@ -1377,10 +1377,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", phone: "", email: "", address: "", city: "", state: "", zipCode: "", medicareNumber: "", medicareIrn: "", medicareExpiry: "", emergencyContactName: "", emergencyContactPhone: "" });
   };
 
-  // Strip a "(Left)" / "(Right)" / "(Bilateral)" suffix that the online referral
-  // form encodes into the scan name, returning the canonical name + side.
+  // Strip a "(Left)" / "(Right)" / "(Bilateral)" / "(Unilateral)" suffix that the
+  // online referral form (or a previous edit here) encodes into the scan name,
+  // returning the canonical name + side.
   const parseScanWithSide = (raw: string): { canonical: string; side: "unilateral" | "bilateral" | null } => {
-    const m = raw.match(/^(.*?)\s*\((Left|Right|Bilateral)\)\s*$/i);
+    const m = raw.match(/^(.*?)\s*\((Left|Right|Bilateral|Unilateral)\)\s*$/i);
     if (!m) return { canonical: raw, side: null };
     const tag = m[2].toLowerCase();
     return { canonical: m[1].trim(), side: tag === "bilateral" ? "bilateral" : "unilateral" };
@@ -1408,13 +1409,19 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     return String(total);
   };
 
-  const handleScanTypeToggle = (scanType: string) => {
+  // Toggle works on the CANONICAL scan name: stored entries may carry a side
+  // suffix (e.g. "Lower limb DVT (Left)" from the online referral form), so a
+  // plain equality check would leave those entries invisible to the checkbox —
+  // it would look unticked, ticking would add a duplicate, and unticking could
+  // never remove the suffixed original.
+  const handleScanTypeToggle = (canonicalName: string) => {
     setFormData(prev => {
-      const nextTypes = prev.scanTypes.includes(scanType)
-        ? prev.scanTypes.filter(t => t !== scanType)
-        : [...prev.scanTypes, scanType];
+      const isSelected = prev.scanTypes.some(st => parseScanWithSide(st).canonical === canonicalName);
+      const nextTypes = isSelected
+        ? prev.scanTypes.filter(st => parseScanWithSide(st).canonical !== canonicalName)
+        : [...prev.scanTypes, canonicalName];
       const nextLaterality = { ...prev.laterality };
-      if (!nextTypes.includes(scanType)) delete nextLaterality[scanType];
+      if (isSelected) delete nextLaterality[canonicalName];
       return {
         ...prev,
         scanTypes: nextTypes,
@@ -1424,13 +1431,22 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     });
   };
 
-  const handleLateralityChange = (scanType: string, lat: "unilateral" | "bilateral") => {
+  const handleLateralityChange = (canonicalName: string, lat: "unilateral" | "bilateral") => {
     setFormData(prev => {
-      const nextLaterality = { ...prev.laterality, [scanType]: lat };
+      // If an entry's name encodes a side that no longer matches the chosen
+      // laterality (e.g. "X (Left)" but staff picked Bilateral), drop the stale
+      // tag — otherwise the encoded side would silently win in calcDuration.
+      const nextTypes = prev.scanTypes.map(st => {
+        const p = parseScanWithSide(st);
+        if (p.canonical !== canonicalName) return st;
+        return p.side && p.side !== lat ? canonicalName : st;
+      });
+      const nextLaterality = { ...prev.laterality, [canonicalName]: lat };
       return {
         ...prev,
+        scanTypes: nextTypes,
         laterality: nextLaterality,
-        duration: calcDuration(prev.scanTypes, nextLaterality),
+        duration: calcDuration(nextTypes, nextLaterality),
       };
     });
   };
@@ -1576,6 +1592,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const handleEditAppointment = (appointment: Appointment) => {
     const appointmentDate = new Date(appointment.appointmentDate);
     const scanTypesArray = appointment.scanType ? appointment.scanType.split(", ") : [];
+    // Rebuild the unilateral/bilateral choices from any side tags encoded in the
+    // stored scan names, so re-calculated durations honour what was booked
+    // instead of silently defaulting everything to bilateral.
+    const initialLaterality: Record<string, "unilateral" | "bilateral"> = {};
+    for (const st of scanTypesArray) {
+      const { canonical, side } = parseScanWithSide(st);
+      if (side) initialLaterality[canonical] = side;
+    }
     setFormData({
       patientName: appointment.patientName,
       patientDob: appointment.patientDob || "",
@@ -1585,7 +1609,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       appointmentTime: format(appointmentDate, "HH:mm"),
       duration: String(appointment.duration),
       scanTypes: scanTypesArray,
-      laterality: {},
+      laterality: initialLaterality,
       physicianId: appointment.physicianId ? String(appointment.physicianId) : "",
       sonographerId: appointment.sonographerId ? String(appointment.sonographerId) : "",
       notes: appointment.notes || "",
@@ -1690,7 +1714,20 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       patientId: formData.patientId,
       appointmentDate: appointmentDateTime.toISOString(),
       duration: parseInt(formData.duration),
-      scanType: formData.scanTypes.length > 0 ? formData.scanTypes.join(", ") : null,
+      // Persist a "(Unilateral)" tag on side-aware scans picked as unilateral in
+      // this form, so the choice survives a later re-edit (bilateral is the
+      // default and stays implicit; referral-encoded Left/Right tags are kept).
+      scanType: formData.scanTypes.length > 0
+        ? formData.scanTypes.map(st => {
+            const { canonical, side } = parseScanWithSide(st);
+            if (side) return st;
+            const setting = scanDurations.find(s => s.scanType === canonical && s.isEnabled);
+            if (setting?.hasLaterality && formData.laterality[canonical] === "unilateral") {
+              return `${canonical} (Unilateral)`;
+            }
+            return st;
+          }).join(", ")
+        : null,
       physicianId: formData.physicianId ? parseInt(formData.physicianId) : null,
       sonographerId: formData.sonographerId ? parseInt(formData.sonographerId) : null,
       notes: formData.notes || null,
@@ -2902,9 +2939,16 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                       const setting = scanDurations.find(s => s.scanType === ct.name);
                       return setting ? setting.isEnabled : true;
                     }).map((ct) => {
-                      const isChecked = formData.scanTypes.includes(ct.name);
+                      // Match on the canonical name so entries carrying a side
+                      // suffix (e.g. "Lower limb DVT (Left)") still tick their box.
+                      const matchingEntry = formData.scanTypes.find(st => parseScanWithSide(st).canonical === ct.name);
+                      const isChecked = !!matchingEntry;
                       const scanSetting = scanDurations.find(s => s.scanType === ct.name);
                       const showLaterality = isChecked && (scanSetting?.hasLaterality ?? ct.hasLaterality);
+                      const effectiveLat =
+                        (matchingEntry ? parseScanWithSide(matchingEntry).side : null) ??
+                        formData.laterality[ct.name] ??
+                        "bilateral";
                       return (
                         <div key={ct.name} className="space-y-1">
                           <div className="flex items-center space-x-2">
@@ -2925,7 +2969,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                                   type="button"
                                   onClick={() => handleLateralityChange(ct.name, lat)}
                                   className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                                    (formData.laterality[ct.name] ?? "bilateral") === lat
+                                    effectiveLat === lat
                                       ? "bg-blue-600 text-white border-blue-600"
                                       : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
                                   }`}

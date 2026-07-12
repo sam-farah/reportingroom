@@ -229,9 +229,9 @@ export const SCAN_TYPE_MBS: Record<string, ScanTypeMbsMapping> = {
   },
 };
 
-/** Splits a stored scan type string like "Lower limb DVT (Left)" into its canonical name and side. */
+/** Splits a stored scan type string like "Lower limb DVT (Left)" or "Varicose veins (Unilateral)" into its canonical name and side. */
 export function parseScanWithSide(raw: string): { canonical: string; side: "unilateral" | "bilateral" | null } {
-  const m = raw.match(/^(.*?)\s*\((Left|Right|Bilateral)\)\s*$/i);
+  const m = raw.match(/^(.*?)\s*\((Left|Right|Bilateral|Unilateral)\)\s*$/i);
   if (!m) return { canonical: raw, side: null };
   const tag = m[2].toLowerCase();
   return { canonical: m[1].trim(), side: tag === "bilateral" ? "bilateral" : "unilateral" };
