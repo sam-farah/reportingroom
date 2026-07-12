@@ -4555,6 +4555,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete an Assignment of Benefit form from the finance dashboard (e.g. test
+  // forms). Same samf-only gate as the finance list, and clinic-scoped so a
+  // form can only be removed from within its own clinic.
+  app.delete("/api/finance/aob-forms/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.status(403).json({ error: "No clinic" });
+      if ((user.email || "").toLowerCase() !== FINANCE_USER_EMAIL) {
+        return res.status(403).json({ error: "Not authorised to manage finance data" });
+      }
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid form ID" });
+      const deleted = await storage.deleteAssessmentOfBenefitForm(id, user.clinicId);
+      if (!deleted) return res.status(404).json({ error: "Form not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting finance AoB form:", error);
+      res.status(500).json({ error: "Failed to delete finance form" });
+    }
+  });
+
   // Assignment of Benefit forms for an appointment (the patient-signature step,
   // decoupled from sonographer completion — surfaced on the appointment screen).
   app.get("/api/appointments/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {

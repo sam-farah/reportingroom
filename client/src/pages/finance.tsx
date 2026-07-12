@@ -1,12 +1,24 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DollarSign, CalendarDays, TrendingUp, FileCheck2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { DollarSign, CalendarDays, TrendingUp, FileCheck2, Trash2, Loader2 } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -48,13 +60,33 @@ function sumCents(forms: FinanceForm[]): number {
 }
 
 export default function Finance() {
+  const { toast } = useToast();
   const todayKey = format(new Date(), "yyyy-MM-dd");
   const [fromDate, setFromDate] = useState<string>(format(subDays(new Date(), 29), "yyyy-MM-dd"));
   const [toDate, setToDate] = useState<string>(todayKey);
+  const [pendingDelete, setPendingDelete] = useState<FinanceForm | null>(null);
 
   const { data: forms, isLoading, error } = useQuery<FinanceForm[]>({
     queryKey: ["/api/finance/aob-forms"],
     retry: false,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest(`/api/finance/aob-forms/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/finance/aob-forms"] });
+      toast({ title: "Entry deleted", description: "The form has been removed from finance." });
+      setPendingDelete(null);
+    },
+    onError: () => {
+      toast({
+        title: "Could not delete",
+        description: "Something went wrong removing this entry. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const withKeys = useMemo(
@@ -261,7 +293,7 @@ export default function Finance() {
           ) : (
             <div className="divide-y">
               {rangeForms.map((f) => (
-                <div key={f.id} className="py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <div key={f.id} className="py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1" data-testid={`row-finance-form-${f.id}`}>
                   <span className="text-sm text-gray-500 w-24 flex-shrink-0 font-mono">
                     {format(parseISO(f.dateKey), "d MMM yyyy")}
                   </span>
@@ -279,12 +311,58 @@ export default function Finance() {
                   <span className="text-sm font-semibold text-gray-900 w-20 text-right flex-shrink-0">
                     {formatCents(f.totalValueCents || 0)}
                   </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 flex-shrink-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => setPendingDelete(f)}
+                    title="Delete entry"
+                    data-testid={`button-delete-form-${f.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the Assignment of Benefits form for{" "}
+              <span className="font-medium text-gray-900">
+                {pendingDelete?.patientName || "Unknown patient"}
+              </span>{" "}
+              ({formatCents(pendingDelete?.totalValueCents || 0)}) from finance. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
+              }}
+              disabled={deleteMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

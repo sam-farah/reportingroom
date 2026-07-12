@@ -385,6 +385,7 @@ export interface IStorage {
   }): Promise<AssessmentOfBenefitForm | undefined>;
   finalizeAssessmentOfBenefitFormDocuments(id: number, documentUrl: string, patientDocumentUrl?: string): Promise<AssessmentOfBenefitForm | undefined>;
   rollbackAssessmentOfBenefitFormSigning(id: number): Promise<void>;
+  deleteAssessmentOfBenefitForm(id: number, clinicId: number): Promise<boolean>;
   getPatientNotes(patientId: number): Promise<PatientNote[]>;
   createPatientNote(note: InsertPatientNote): Promise<PatientNote>;
 
@@ -1898,6 +1899,19 @@ export class DatabaseStorage implements IStorage {
         eq(assessmentOfBenefitForms.id, id),
         isNull(assessmentOfBenefitForms.documentUrl),
       ));
+  }
+
+  // Permanently remove an Assignment of Benefit form (e.g. test forms).
+  // Clinic-scoped so a form can only be deleted from within its own clinic.
+  async deleteAssessmentOfBenefitForm(id: number, clinicId: number): Promise<boolean> {
+    const deleted = await db
+      .delete(assessmentOfBenefitForms)
+      .where(and(
+        eq(assessmentOfBenefitForms.id, id),
+        eq(assessmentOfBenefitForms.clinicId, clinicId),
+      ))
+      .returning({ id: assessmentOfBenefitForms.id });
+    return deleted.length > 0;
   }
 
   async getPatientNotes(patientId: number): Promise<PatientNote[]> {
