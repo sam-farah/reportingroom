@@ -136,6 +136,10 @@ export const worksheets = pgTable("worksheets", {
   // via the authenticated report-scoped endpoint. The marker lives on the row
   // itself so the guard holds even if the page's join row is later orphaned.
   isReportPage: boolean("is_report_page").default(false),
+  // On-screen display orientation confirmed by the uploader. "landscape" means
+  // the worksheet is shown wide while working AND is rotated 90° onto a portrait
+  // page for transmission (so faxes/prints stay portrait, read side-on).
+  orientation: varchar("orientation", { length: 10 }).default("portrait"),
 });
 
 export const reports = pgTable("reports", {

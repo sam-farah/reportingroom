@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { format } from "date-fns";
 import type { Report, ReportTemplate, Physician, Sonographer } from "@shared/schema";
+import { toTransmissionDataUrl, type WorksheetOrientation } from "@/lib/image-orientation";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Pure formatting helpers (mirrors client/src/pages/reporting-room.tsx).
@@ -138,7 +139,10 @@ async function addReportToPdf(
     }
 
     // Append worksheet(s) — the primary worksheet first, then any extra pages
-    // (e.g. Left / Right), each on its own A4 page with auto orientation.
+    // (e.g. Left / Right), each on its own PORTRAIT A4 page. Landscape
+    // worksheets are already rotated 90° into the image bytes upstream, so the
+    // page itself always stays portrait (survives fax/Outlook — the reader
+    // simply turns the printout side-on).
     const appendImagePage = async (dataUrl: string) => {
       const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
@@ -149,13 +153,10 @@ async function addReportToPdf(
       const scale = Math.min(A4_W_MM / wsImg.width, A4_H_MM / wsImg.height);
       const drawW = wsImg.width * scale;
       const drawH = wsImg.height * scale;
-      const orientation = drawH > drawW ? "portrait" : "landscape";
-      if (!first) pdf.addPage([A4_W_MM, A4_H_MM], orientation);
+      if (!first) pdf.addPage([A4_W_MM, A4_H_MM], "portrait");
       first = false;
-      const pageW = orientation === "landscape" ? A4_H_MM : A4_W_MM;
-      const pageH = orientation === "landscape" ? A4_W_MM : A4_H_MM;
-      const xOff = (pageW - drawW) / 2;
-      const yOff = (pageH - drawH) / 2;
+      const xOff = (A4_W_MM - drawW) / 2;
+      const yOff = (A4_H_MM - drawH) / 2;
       const fmt = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
       pdf.addImage(dataUrl, fmt, xOff, yOff, drawW, drawH);
     };
@@ -302,15 +303,32 @@ export async function buildReportHtml(
     worksheetDataUrl = await toBase64(`/api/digital-worksheets/${report.digitalWorksheetId}/image`);
   }
 
+  // Landscape worksheets are transmitted rotated 90° onto a portrait page. The
+  // orientation flag lives on the raw worksheet (report.worksheetId); the
+  // labelled copy inherits it. Digital worksheets are always portrait.
+  if (report.worksheetId && worksheetDataUrl) {
+    let primaryOrientation: WorksheetOrientation = "portrait";
+    try {
+      const { resolveUrl } = await import("@/lib/api");
+      const metaRes = await fetch(resolveUrl(`/api/worksheets/${report.worksheetId}/meta`), { credentials: "include" });
+      if (metaRes.ok) {
+        const meta = await metaRes.json();
+        if (meta?.orientation === "landscape") primaryOrientation = "landscape";
+      }
+    } catch { /* default portrait */ }
+    worksheetDataUrl = await toTransmissionDataUrl(worksheetDataUrl, primaryOrientation);
+  }
+
   // Extra worksheet pages (e.g. Left / Right) attached to this report.
   const extraWorksheetDataUrls: string[] = [];
   try {
     const { resolveUrl } = await import("@/lib/api");
     const pagesRes = await fetch(resolveUrl(`/api/reports/${report.id}/worksheet-pages`), { credentials: "include" });
     if (pagesRes.ok) {
-      const pages: { id: number; worksheetId: number }[] = await pagesRes.json();
+      const pages: { id: number; worksheetId: number; orientation?: WorksheetOrientation }[] = await pagesRes.json();
       for (const p of pages) {
-        const url = await toBase64(`/api/reports/${report.id}/worksheet-pages/${p.id}/image`);
+        let url = await toBase64(`/api/reports/${report.id}/worksheet-pages/${p.id}/image`);
+        if (url) url = await toTransmissionDataUrl(url, p.orientation);
         if (url) extraWorksheetDataUrls.push(url);
       }
     }

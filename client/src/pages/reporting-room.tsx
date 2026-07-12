@@ -26,6 +26,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import TextShortcuts from "@/components/text-shortcuts";
 import { Link } from "wouter";
+import { detectOrientationWithConfirm, toTransmissionDataUrl, type WorksheetOrientation } from "@/lib/image-orientation";
 
 function formatDobAU(dob: string | null | undefined): string {
   if (!dob) return "";
@@ -149,7 +150,9 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
       if (yMm < totalHeightMm) pdf.addPage();
     }
     // Append worksheet(s) — primary first, then any extra pages (Left/Right),
-    // each on its own A4 page with auto orientation.
+    // each on its own PORTRAIT A4 page. Landscape worksheets are already rotated
+    // 90° into the image bytes upstream, so the page itself always stays portrait
+    // (survives fax/Outlook — the reader simply turns the printout side-on).
     const appendImagePage = async (dataUrl: string) => {
       const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
@@ -159,11 +162,8 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
       });
       const scale = Math.min(A4_W_MM / wsImg.width, A4_H_MM / wsImg.height);
       const drawW = wsImg.width * scale, drawH = wsImg.height * scale;
-      const orientation = drawH > drawW ? "portrait" : "landscape";
-      pdf.addPage([A4_W_MM, A4_H_MM], orientation);
-      const pageW = orientation === "landscape" ? A4_H_MM : A4_W_MM;
-      const pageH = orientation === "landscape" ? A4_W_MM : A4_H_MM;
-      const xOff = (pageW - drawW) / 2, yOff = (pageH - drawH) / 2;
+      pdf.addPage([A4_W_MM, A4_H_MM], "portrait");
+      const xOff = (A4_W_MM - drawW) / 2, yOff = (A4_H_MM - drawH) / 2;
       const fmt = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
       pdf.addImage(dataUrl, fmt, xOff, yOff, drawW, drawH);
     };
@@ -821,8 +821,20 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         catch { resolve(null); }
       });
       if (!blob) return { ok: false };
+      // The labelled copy mirrors the raw worksheet's pixel orientation, so it
+      // inherits the raw's landscape/portrait flag (kept consistent post-merge,
+      // when report.worksheetId becomes the labelled copy itself).
+      let inheritedOrientation: WorksheetOrientation = "portrait";
+      try {
+        const metaRes = await fetch(`/api/worksheets/${wsId}/meta`, { credentials: 'include' });
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          if (meta?.orientation === "landscape") inheritedOrientation = "landscape";
+        }
+      } catch { /* default portrait */ }
       const formData = new FormData();
       formData.append("worksheet", new File([blob], `labelled-${id}.jpg`, { type: 'image/jpeg' }));
+      formData.append("orientation", inheritedOrientation);
       const uploadRes = await fetch(`/api/worksheets/upload`, { method: "POST", body: formData, credentials: 'include' });
       if (!uploadRes.ok) {
         console.warn(`[labelling] upload failed for report ${id}: ${uploadRes.status}`);
@@ -928,10 +940,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       setReuploadDragOver(false);
       return;
     }
+    const orientation = await detectOrientationWithConfirm(file);
     setReuploadLoading(true);
     try {
       const formData = new FormData();
       formData.append("worksheet", file);
+      formData.append("orientation", orientation);
       // Hard timeout so the spinner can't hang forever if the network or proxy
       // silently drops the request.
       const ctrl = new AbortController();
@@ -1004,16 +1018,33 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const [addPageDrawOpen, setAddPageDrawOpen] = useState(false);
   const [extraPageUploading, setExtraPageUploading] = useState(false);
 
+  // Primary worksheet display orientation (portrait/landscape). The flag lives on
+  // the raw worksheet (report.worksheetId); the on-screen viewer and the override
+  // toggle both read/write it here.
+  const primaryWorksheetId = (editingReport as any)?.worksheetId as number | undefined;
+  const { data: primaryWsMeta } = useQuery<{ id: number; orientation: WorksheetOrientation }>({
+    queryKey: ["/api/worksheets", primaryWorksheetId, "meta"],
+    enabled: !!primaryWorksheetId && !editingReport?.digitalWorksheetId,
+  });
+  const primaryOrientation: WorksheetOrientation = primaryWsMeta?.orientation === "landscape" ? "landscape" : "portrait";
+  const toggleOrientationMutation = useMutation({
+    mutationFn: async (next: WorksheetOrientation) =>
+      apiRequest(`/api/worksheets/${primaryWorksheetId}/orientation`, "PATCH", { orientation: next }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/worksheets", primaryWorksheetId, "meta"] }),
+  });
+
   const invalidateExtraPages = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/reports", editingReportId, "worksheet-pages"] });
   };
 
   const uploadExtraPage = async (file: File) => {
     if (!editingReportId) return;
+    const orientation = await detectOrientationWithConfirm(file);
     setExtraPageUploading(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("orientation", orientation);
       const res = await fetch(`/api/reports/${editingReportId}/worksheet-pages/upload`, {
         method: "POST",
         body: formData,
@@ -1351,6 +1382,21 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       worksheetDataUrl = await toBase64(`/api/digital-worksheets/${report.digitalWorksheetId}/image`);
     }
 
+    // Landscape worksheets are transmitted rotated 90° onto a portrait page. The
+    // orientation flag lives on the raw worksheet (report.worksheetId); the
+    // labelled copy inherits it. Digital worksheets are always portrait.
+    if (report.worksheetId && worksheetDataUrl) {
+      let primaryOrientation: WorksheetOrientation = "portrait";
+      try {
+        const metaRes = await fetch(`/api/worksheets/${report.worksheetId}/meta`, { credentials: "include" });
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          if (meta?.orientation === "landscape") primaryOrientation = "landscape";
+        }
+      } catch { /* default portrait */ }
+      worksheetDataUrl = await toTransmissionDataUrl(worksheetDataUrl, primaryOrientation);
+    }
+
     const clinic = clinicSettings;
     const template = templates.find((t: ReportTemplate) => t.id === ((report as EditableReport).templateId)) || templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
     const pc = template?.primaryColor || '#0066cc';
@@ -1413,7 +1459,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       if (pagesRes.ok) {
         const pages = await pagesRes.json();
         for (const page of pages) {
-          const url = await toBase64(`/api/reports/${report.id}/worksheet-pages/${page.id}/image`);
+          let url = await toBase64(`/api/reports/${report.id}/worksheet-pages/${page.id}/image`);
+          if (url) url = await toTransmissionDataUrl(url, page.orientation);
           if (url) extraWorksheetDataUrls.push(url);
         }
       }
@@ -2463,6 +2510,8 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   <WorksheetViewer 
                     worksheetId={(editingReport as any).labelledWorksheetId || editingReport.worksheetId} 
                     alt="Uploaded Worksheet"
+                    orientation={primaryOrientation}
+                    onToggleOrientation={primaryWorksheetId ? (next) => toggleOrientationMutation.mutate(next) : undefined}
                   />
                 ) : (
                   <div className="text-center text-gray-500">

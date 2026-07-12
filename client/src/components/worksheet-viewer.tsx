@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Loader2, ExternalLink, AlertTriangle, RotateCw } from 'lucide-react';
 
 interface WorksheetViewerProps {
   worksheetId: number;
   alt?: string;
   className?: string;
   containerClassName?: string;
+  orientation?: 'portrait' | 'landscape';
+  onToggleOrientation?: (next: 'portrait' | 'landscape') => void;
 }
 
-export function WorksheetViewer({ worksheetId, alt = "Worksheet", className = "", containerClassName = "" }: WorksheetViewerProps) {
+export function WorksheetViewer({ worksheetId, alt = "Worksheet", className = "", containerClassName = "", orientation = 'portrait', onToggleOrientation }: WorksheetViewerProps) {
   const [state, setState] = useState<'loading' | 'image' | 'pdf' | 'error'>('loading');
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -89,13 +91,34 @@ export function WorksheetViewer({ worksheetId, alt = "Worksheet", className = ""
   }
 
   if (state === 'image' && blobUrl) {
+    const isLandscape = orientation === 'landscape';
     return (
-      <div className={`w-full h-full flex items-center justify-center ${containerClassName}`}>
-        <img
-          src={blobUrl}
-          alt={alt}
-          className={`max-w-full max-h-full object-contain border border-gray-300 rounded-lg ${className}`}
-        />
+      <div className={`w-full h-full flex flex-col ${containerClassName}`}>
+        {onToggleOrientation && (
+          <div className="flex items-center justify-between gap-2 px-1 pt-1 shrink-0">
+            <span className="text-xs text-gray-500">
+              {isLandscape
+                ? 'Landscape — will be rotated to fit a portrait page when printed, faxed or emailed'
+                : 'Portrait'}
+            </span>
+            <button
+              type="button"
+              onClick={() => onToggleOrientation(isLandscape ? 'portrait' : 'landscape')}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 whitespace-nowrap"
+              title="Correct the worksheet orientation"
+            >
+              <RotateCw className="w-3 h-3" />
+              {isLandscape ? 'Show as portrait' : 'Show as landscape'}
+            </button>
+          </div>
+        )}
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <img
+            src={blobUrl}
+            alt={alt}
+            className={`max-w-full max-h-full object-contain border border-gray-300 rounded-lg ${className}`}
+          />
+        </div>
       </div>
     );
   }

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import type { Worksheet } from "@shared/schema";
+import { detectOrientationWithConfirm } from "@/lib/image-orientation";
 
 interface FileUploadProps {
   onFileUploaded: (worksheet: Worksheet) => void;
@@ -34,8 +35,10 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
+      const orientation = await detectOrientationWithConfirm(file);
       const formData = new FormData();
       formData.append('worksheet', file);
+      formData.append('orientation', orientation);
 
       const response = await fetch('/api/worksheets/upload', {
         method: 'POST',

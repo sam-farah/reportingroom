@@ -3903,6 +3903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Await DB backup before responding — prevents file loss on server restart
       await saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname);
 
+      const orientation = req.body?.orientation === "landscape" ? "landscape" : "portrait";
       const worksheet = await storage.createWorksheet({
         filename: req.file.filename,
         originalName: req.file.originalname,
@@ -3910,7 +3911,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientName: null,
         patientDob: null,
         examDate: null,
-        ocrProcessed: false
+        ocrProcessed: false,
+        orientation,
       });
 
       res.json(worksheet);
@@ -5566,6 +5568,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return report;
   };
 
+  // Authorise access to a worksheet through the report that owns it. Worksheets
+  // have no clinicId of their own, so we scope via any report in the caller's
+  // clinic that references this worksheet as its primary (worksheetId) or
+  // labelled (labelledWorksheetId) copy. Returns the worksheet or null (404).
+  const resolveAuthorisedWorksheet = async (
+    worksheetId: number,
+    userId: string,
+    res: any,
+  ): Promise<any | null> => {
+    const deny = () => {
+      res.status(404).json({ error: "Worksheet not found" });
+      return null;
+    };
+    const ws = await storage.getWorksheet(worksheetId);
+    if (!ws) return deny();
+    const user = await storage.getUser(userId);
+    if (!user) return deny();
+
+    const linked = await storage.getReportsByWorksheet(worksheetId);
+    const inClinic = async (report: any): Promise<boolean> => {
+      if (report.clinicId != null) return report.clinicId === user.clinicId;
+      if (report.patientId) {
+        const patient = await storage.getPatient(report.patientId);
+        return !!patient && patient.clinicId === user.clinicId;
+      }
+      return false;
+    };
+    for (const report of linked) {
+      if (await inClinic(report)) return ws;
+    }
+    return deny();
+  };
+
   app.get("/api/reports/:id/worksheet-pages", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -5573,10 +5608,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const report = await resolveAuthorisedReport(id, req.session.userId!, res);
       if (!report) return;
       const pages = await storage.getReportWorksheetPages(id);
-      res.json(pages);
+      // Attach each page's worksheet orientation so the client can display it
+      // wide and rotate it correctly for transmission.
+      const enriched = await Promise.all(
+        pages.map(async (p) => {
+          const ws = await storage.getWorksheet(p.worksheetId);
+          return { ...p, orientation: ws?.orientation ?? "portrait" };
+        }),
+      );
+      res.json(enriched);
     } catch (error) {
       console.error("Get worksheet pages error:", error);
       res.status(500).json({ error: "Failed to fetch worksheet pages" });
+    }
+  });
+
+  // Lightweight worksheet metadata (orientation) for the reporting screen and
+  // transmission rotation. Authenticated; returns no PII.
+  app.get("/api/worksheets/:id/meta", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid worksheet ID" });
+      const ws = await resolveAuthorisedWorksheet(id, req.session.userId!, res);
+      if (!ws) return;
+      res.json({ id: ws.id, orientation: ws.orientation ?? "portrait" });
+    } catch (error) {
+      console.error("Get worksheet meta error:", error);
+      res.status(500).json({ error: "Failed to fetch worksheet metadata" });
+    }
+  });
+
+  // Toggle a worksheet's display orientation (portrait/landscape) — used by the
+  // reporting-screen override when auto-detection guessed wrong.
+  app.patch("/api/worksheets/:id/orientation", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid worksheet ID" });
+      const ws = await resolveAuthorisedWorksheet(id, req.session.userId!, res);
+      if (!ws) return;
+      const orientation = req.body?.orientation === "landscape" ? "landscape" : "portrait";
+      const updated = await storage.updateWorksheet(id, { orientation });
+      if (!updated) return res.status(404).json({ error: "Worksheet not found" });
+      res.json({ id: updated.id, orientation: updated.orientation ?? "portrait" });
+    } catch (error) {
+      console.error("Update worksheet orientation error:", error);
+      res.status(500).json({ error: "Failed to update worksheet orientation" });
     }
   });
 
@@ -5604,6 +5680,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let nextOrder = existing.reduce((m, p) => Math.max(m, p.pageOrder + 1), 0);
       const rawLabel = typeof req.body?.label === "string" ? req.body.label.trim() : "";
       const label = rawLabel ? rawLabel.slice(0, 60) : null;
+      // PDF pages are rasterised portrait; only single-image uploads carry a
+      // confirmed landscape flag from the client.
+      const pageOrientation = !isPdf && req.body?.orientation === "landscape" ? "landscape" : "portrait";
       const created: any[] = [];
 
       const makePage = async (filename: string, originalName: string) => {
@@ -5616,6 +5695,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           examDate: report.examDate ?? null,
           ocrProcessed: false,
           isReportPage: true,
+          orientation: pageOrientation,
         });
         try {
           const page = await storage.createReportWorksheetPage({
