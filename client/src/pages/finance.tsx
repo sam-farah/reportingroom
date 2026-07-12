@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { DollarSign, CalendarDays, TrendingUp, FileCheck2, Trash2, Loader2 } from "lucide-react";
+import { DollarSign, CalendarDays, TrendingUp, FileCheck2, Trash2, Loader2, Filter } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -108,12 +108,15 @@ export default function Finance() {
   const weekForms = withKeys.filter((f) => f.dateKey >= weekStartKey && f.dateKey <= weekEndKey);
   const monthForms = withKeys.filter((f) => f.dateKey >= monthStartKey && f.dateKey <= monthEndKey);
 
-  // Date-range filter (inclusive) for the chart and the list
+  // Date-range filter (inclusive) for the summary card, chart, and list.
+  // Uses the same validity guard as the chart so an invalid/reversed/blank
+  // range yields an empty result everywhere (no desync).
   const rangeForms = useMemo(() => {
-    const from = fromDate || "0000-01-01";
-    const to = toDate || "9999-12-31";
+    const from = parseISO(fromDate);
+    const to = parseISO(toDate);
+    if (!isValid(from) || !isValid(to) || from > to) return [];
     return withKeys
-      .filter((f) => f.dateKey >= from && f.dateKey <= to)
+      .filter((f) => f.dateKey >= fromDate && f.dateKey <= toDate)
       .sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1));
   }, [withKeys, fromDate, toDate]);
 
@@ -161,10 +164,18 @@ export default function Finance() {
     );
   }
 
+  const rangeLabel = (() => {
+    const from = parseISO(fromDate);
+    const to = parseISO(toDate);
+    if (!isValid(from) || !isValid(to)) return "";
+    return `${format(from, "d MMM")} – ${format(to, "d MMM yyyy")}`;
+  })();
+
   const summaryCards = [
     { label: "Today", forms: todayForms, icon: DollarSign, accent: "text-emerald-600 bg-emerald-50" },
     { label: "This Week", forms: weekForms, icon: CalendarDays, accent: "text-blue-600 bg-blue-50" },
     { label: "This Month", forms: monthForms, icon: TrendingUp, accent: "text-violet-600 bg-violet-50" },
+    { label: "Selected Range", forms: rangeForms, icon: Filter, accent: "text-teal-600 bg-teal-50", sub: rangeLabel },
   ];
 
   return (
@@ -178,11 +189,11 @@ export default function Finance() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {summaryCards.map(({ label, forms: fs, icon: Icon, accent }) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {summaryCards.map(({ label, forms: fs, icon: Icon, accent, sub }) => {
           const signed = fs.filter((f) => f.status === "signed");
           return (
-            <Card key={label}>
+            <Card key={label} className={sub ? "border-teal-200 bg-teal-50/30" : undefined}>
               <CardContent className="pt-5">
                 <div className="flex items-start justify-between">
                   <div>
@@ -191,6 +202,9 @@ export default function Finance() {
                       <Skeleton className="h-8 w-28 mt-1" />
                     ) : (
                       <p className="text-2xl font-bold text-gray-900 mt-0.5">{formatCents(sumCents(fs))}</p>
+                    )}
+                    {!isLoading && sub && (
+                      <p className="text-[11px] text-teal-700 font-medium mt-1">{sub}</p>
                     )}
                     {!isLoading && (
                       <p className="text-xs text-gray-500 mt-1">
