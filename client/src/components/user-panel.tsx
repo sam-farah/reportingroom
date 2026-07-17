@@ -8,13 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import FileUpload from "./file-upload";
 import DrawingCanvas from "./drawing-canvas";
-import type { Worksheet, Physician, Report, Patient, ScanTypeContentTemplate } from "@shared/schema";
+import type { Worksheet, Physician, Report, Patient, ScanTypeContentTemplate, Sonographer } from "@shared/schema";
 
 export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, preLinkedExamDate, preLinkedPhysicianId, onPreLinkedPatientConsumed, defaultTab, onReportGenerated }: { preLinkedPatientId?: number | null; preLinkedPatientName?: string; preLinkedExamDate?: string; preLinkedPhysicianId?: number | null; onPreLinkedPatientConsumed?: () => void; defaultTab?: "upload" | "draw"; onReportGenerated?: (reportId: number) => void } = {}) {
   const { toast } = useToast();
@@ -30,6 +32,9 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
   const [linkedPatient, setLinkedPatient] = useState<Patient | null>(null);
   const [patientSearch, setPatientSearch] = useState("");
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmChecked, setConfirmChecked] = useState(false);
+  const [confirmSonographerId, setConfirmSonographerId] = useState<string>("");
 
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
@@ -53,6 +58,11 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
   const { data: contentTemplates = [] } = useQuery<ScanTypeContentTemplate[]>({
     queryKey: ["/api/content-templates"],
   });
+
+  const { data: sonographers = [] } = useQuery<Sonographer[]>({
+    queryKey: ["/api/sonographers"],
+  });
+  const activeSonographers = sonographers.filter((s) => s.isActive !== false);
 
   // Only show content templates that have actual content saved (green-dot ones)
   const populatedContentTemplates = contentTemplates.filter(
@@ -409,7 +419,56 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
       return;
     }
 
-    generateReportMutation.mutate();
+    // Checkpoint: the sonographer must confirm patient details (name, DOB,
+    // exam date) and the performing sonographer BEFORE the report is
+    // generated and filed — catching mistakes here avoids delete-and-restart.
+    setConfirmChecked(false);
+    setConfirmSonographerId("");
+    setShowConfirmDialog(true);
+  };
+
+  // Persist the confirmed details onto the worksheet, then generate.
+  const confirmAndGenerateMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedWorksheet) throw new Error("No worksheet selected");
+      const res = await fetch(`/api/worksheets/${selectedWorksheet.id}/details`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          patientName: patientName || "",
+          patientDob: patientDob || "",
+          examDate: examDate || "",
+          sonographerId: confirmSonographerId ? parseInt(confirmSonographerId) : null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(err.error || "Failed to save confirmed details");
+      }
+      return res.json();
+    },
+    onSuccess: (updated: Worksheet) => {
+      setSelectedWorksheet(updated);
+      setShowConfirmDialog(false);
+      generateReportMutation.mutate();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Couldn't Save Details",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const dobMismatch =
+    !!linkedPatient?.dateOfBirth && !!patientDob && linkedPatient.dateOfBirth !== patientDob;
+
+  const formatDmy = (iso: string | null | undefined) => {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return y && m && d ? `${d}/${m}/${y}` : iso;
   };
 
   return (
@@ -695,6 +754,114 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
           </Card>
         </div>
       </div>
+
+      {/* Pre-generation confirmation checkpoint */}
+      <Dialog open={showConfirmDialog} onOpenChange={(open) => { if (!confirmAndGenerateMutation.isPending) setShowConfirmDialog(open); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirm Study Details</DialogTitle>
+            <DialogDescription>
+              Please double-check these details before the report is generated. Correcting a mistake here saves deleting the study later.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="confirmName">Patient Name</Label>
+              <Input
+                id="confirmName"
+                value={patientName}
+                onChange={(e) => setPatientName(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="confirmDob">Date of Birth</Label>
+                <Input
+                  id="confirmDob"
+                  type="date"
+                  value={patientDob}
+                  onChange={(e) => setPatientDob(e.target.value)}
+                  className={dobMismatch ? "border-red-400 bg-red-50" : ""}
+                />
+              </div>
+              <div>
+                <Label htmlFor="confirmExamDate">Date of Study</Label>
+                <Input
+                  id="confirmExamDate"
+                  type="date"
+                  value={examDate}
+                  onChange={(e) => setExamDate(e.target.value)}
+                />
+              </div>
+            </div>
+            {dobMismatch && (
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                This DOB doesn't match the linked patient record ({formatDmy(linkedPatient?.dateOfBirth)} for {linkedPatient?.firstName} {linkedPatient?.lastName}). Please check which is correct before continuing.
+              </div>
+            )}
+            <div>
+              <Label>Sonographer</Label>
+              <Select value={confirmSonographerId || "auto"} onValueChange={(v) => setConfirmSonographerId(v === "auto" ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select sonographer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">
+                    <span className="text-gray-500">Auto — from the patient's appointment</span>
+                  </SelectItem>
+                  {activeSonographers.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.title ? `${s.title} ` : ""}{s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-400 mt-1">
+                Leave on Auto to use the sonographer from the scheduled appointment, or pick one explicitly.
+              </p>
+            </div>
+            {linkedPatient && (
+              <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-800">
+                Linked patient: <span className="font-semibold">{linkedPatient.firstName} {linkedPatient.lastName}</span>
+                {linkedPatient.urNumber && <> · UR {linkedPatient.urNumber}</>}
+                {linkedPatient.dateOfBirth && <> · DOB {formatDmy(linkedPatient.dateOfBirth)}</>}
+              </div>
+            )}
+            <label className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer">
+              <Checkbox
+                checked={confirmChecked}
+                onCheckedChange={(v) => setConfirmChecked(v === true)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-amber-900">
+                I have checked the patient name, date of birth, date of study and sonographer, and they are correct.
+              </span>
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowConfirmDialog(false)}
+              disabled={confirmAndGenerateMutation.isPending}
+            >
+              Go Back
+            </Button>
+            <Button
+              onClick={() => confirmAndGenerateMutation.mutate()}
+              disabled={!confirmChecked || confirmAndGenerateMutation.isPending || generateReportMutation.isPending}
+              className="medical-btn-primary"
+            >
+              {confirmAndGenerateMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</>
+              ) : (
+                <><CheckCircle className="w-4 h-4 mr-2" /> Confirm & Generate</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

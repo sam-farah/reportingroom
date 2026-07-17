@@ -55,6 +55,7 @@ import { chatHub } from "./chat-ws";
 import { generateAssessmentOfBenefitDocument } from "./aob-form";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
+import { z } from "zod";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import sharp from "sharp";
@@ -5753,6 +5754,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Update worksheet orientation error:", error);
       res.status(500).json({ error: "Failed to update worksheet orientation" });
+    }
+  });
+
+  // Pre-generation confirmation checkpoint: the sonographer confirms (and can
+  // correct) the patient name, DOB, exam date and sonographer BEFORE the
+  // report is generated and filed — so mistakes don't require deleting the
+  // study and starting over.
+  app.patch("/api/worksheets/:id/details", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid worksheet ID" });
+      const ws = await resolveAuthorisedWorksheet(id, req.session.userId!, res);
+      if (!ws) return;
+
+      const detailsSchema = z.object({
+        patientName: z.string().trim().max(200).optional(),
+        patientDob: z
+          .string()
+          .trim()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "DOB must be YYYY-MM-DD")
+          .or(z.literal(""))
+          .optional(),
+        examDate: z
+          .string()
+          .trim()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Exam date must be YYYY-MM-DD")
+          .or(z.literal(""))
+          .optional(),
+        sonographerId: z.number().int().positive().nullable().optional(),
+      });
+      const parsed = detailsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid details", details: parsed.error.flatten() });
+      }
+
+      const updates: Record<string, any> = {};
+      if (parsed.data.patientName !== undefined) updates.patientName = parsed.data.patientName || null;
+      if (parsed.data.patientDob !== undefined) updates.patientDob = parsed.data.patientDob || null;
+      if (parsed.data.examDate !== undefined) updates.examDate = parsed.data.examDate || null;
+      if (parsed.data.sonographerId !== undefined) {
+        if (parsed.data.sonographerId !== null) {
+          // Only allow referencing a real, active sonographer profile.
+          const sono = await storage.getSonographer(parsed.data.sonographerId);
+          if (!sono || sono.isActive === false) {
+            return res.status(400).json({ error: "Invalid sonographer" });
+          }
+        }
+        updates.sonographerId = parsed.data.sonographerId;
+      }
+
+      const updated = await storage.updateWorksheet(id, updates);
+      if (!updated) return res.status(404).json({ error: "Worksheet not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Update worksheet details error:", error);
+      res.status(500).json({ error: "Failed to update worksheet details" });
     }
   });
 
