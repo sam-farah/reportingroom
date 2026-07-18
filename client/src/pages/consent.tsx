@@ -25,10 +25,35 @@ export default function ConsentPage() {
   const sigDrawing = useRef(false);
   const sigLastPt = useRef<{ x: number; y: number } | null>(null);
 
+  const consentBoxRef = useRef<HTMLDivElement | null>(null);
+  const consentEndRef = useRef<HTMLDivElement | null>(null);
+
   const { data, isLoading, error } = useQuery<ConsentData>({
     queryKey: ["/api/consent", token],
     retry: false,
   });
+
+  // Reliable "read to the end" detection: an IntersectionObserver watches a
+  // sentinel element at the very end of the consent text. Pixel-math scroll
+  // checks fail on some phones (fractional scrollTop when zoomed), which left
+  // the sign button permanently disabled for some patients.
+  useEffect(() => {
+    const box = consentBoxRef.current;
+    const end = consentEndRef.current;
+    if (!box || !end || consentScrolled) return;
+    if (box.scrollHeight <= box.clientHeight + 16) {
+      setConsentScrolled(true);
+      return;
+    }
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((en) => en.isIntersecting)) setConsentScrolled(true);
+      },
+      { root: box, threshold: 0.1 }
+    );
+    obs.observe(end);
+    return () => obs.disconnect();
+  }, [data, consentScrolled]);
 
   // Size the canvas to its rendered width (responsive on phones).
   useEffect(() => {
@@ -186,17 +211,16 @@ export default function ConsentPage() {
           </div>
 
           <div
-            ref={(el) => {
-              if (el && el.scrollHeight <= el.clientHeight + 8) setConsentScrolled(true);
-            }}
-            className="border rounded-lg p-4 bg-white max-h-[45vh] overflow-y-auto whitespace-pre-wrap text-slate-800 text-[15px] leading-relaxed"
+            ref={consentBoxRef}
+            className="border rounded-lg p-4 bg-white max-h-[45vh] overflow-y-auto text-slate-800 text-[15px] leading-relaxed"
             onScroll={(e) => {
               const t = e.currentTarget;
-              if (t.scrollTop + t.clientHeight >= t.scrollHeight - 8) setConsentScrolled(true);
+              if (Math.ceil(t.scrollTop) + t.clientHeight >= t.scrollHeight - 24) setConsentScrolled(true);
             }}
             data-testid="text-consent-body"
           >
-            {data.consentText}
+            <div className="whitespace-pre-wrap">{data.consentText}</div>
+            <div ref={consentEndRef} className="h-px" />
           </div>
           {!consentScrolled && (
             <p className="text-sm text-amber-600 text-center">Please scroll to the end of the consent text.</p>
