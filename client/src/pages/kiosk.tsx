@@ -482,7 +482,7 @@ export default function Kiosk() {
           )}
 
           {registerMode === "form" && url && (
-            <div className="w-full max-w-3xl flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
+            <div className="w-full max-w-3xl flex flex-col h-[calc(100vh-120px)] [height:calc(100dvh-120px)]">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-lg text-gray-600">
                   Please complete the registration form below.
