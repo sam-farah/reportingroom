@@ -5765,8 +5765,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid worksheet ID" });
-      const ws = await resolveAuthorisedWorksheet(id, req.session.userId!, res);
-      if (!ws) return;
+
+      // Authorisation: this checkpoint runs BEFORE any report exists, so we
+      // can't use resolveAuthorisedWorksheet (it authorises via linked
+      // reports and would always 404 pre-generation). Instead: if reports
+      // are linked, one must be in the caller's clinic; if none are linked
+      // yet, the worksheet's linked patient (if any) must be in the
+      // caller's clinic.
+      const ws = await storage.getWorksheet(id);
+      const user = await storage.getUser(req.session.userId!);
+      const deny = () => res.status(404).json({ error: "Worksheet not found" });
+      if (!ws || ws.isReportPage || !user) return deny();
+
+      const linkedReports = await storage.getReportsByWorksheet(id);
+      if (linkedReports.length > 0) {
+        let authorised = false;
+        for (const report of linkedReports) {
+          if (report.clinicId != null) {
+            if (report.clinicId === user.clinicId) { authorised = true; break; }
+          } else if (report.patientId) {
+            const p = await storage.getPatient(report.patientId);
+            if (p && p.clinicId === user.clinicId) { authorised = true; break; }
+          }
+        }
+        if (!authorised) return deny();
+      } else if (ws.patientId) {
+        const patient = await storage.getPatient(ws.patientId);
+        if (!patient || patient.clinicId !== user.clinicId) return deny();
+      }
 
       const detailsSchema = z.object({
         patientName: z.string().trim().max(200).optional(),
