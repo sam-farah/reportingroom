@@ -140,25 +140,28 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
     while (yMm < totalHeightMm) {
       let pageHeightMm = Math.min(A4_H_MM, totalHeightMm - yMm);
       // Avoid orphaning a short trailing block (e.g. the signature block) onto
-      // its own near-empty page: if less than 32mm would remain after this
-      // page, absorb it here and compress the page slightly (max ~11%
-      // vertically) — far less jarring than a page with three lines on it.
+      // its own near-empty page: if less than 35mm would remain after this
+      // page, absorb it here. The whole page is then drawn slightly smaller at
+      // a UNIFORM scale (centred, max ~11% reduction) so nothing is distorted.
       const remainingAfter = totalHeightMm - yMm - pageHeightMm;
-      if (remainingAfter > 0 && remainingAfter < 32) pageHeightMm = totalHeightMm - yMm;
+      if (remainingAfter > 0 && remainingAfter < 35) pageHeightMm = totalHeightMm - yMm;
       const srcY = Math.round((yMm / totalHeightMm) * contentBottomPx);
       const srcH = Math.round((pageHeightMm / totalHeightMm) * contentBottomPx);
       const slice = document.createElement("canvas");
       slice.width = canvas.width;
       slice.height = Math.max(srcH, 1);
       slice.getContext("2d")!.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
-      pdf.addImage(slice.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, A4_W_MM, Math.min(pageHeightMm, A4_H_MM));
+      const fitScale = Math.min(1, A4_H_MM / pageHeightMm);
+      const drawWmm = A4_W_MM * fitScale;
+      const drawHmm = pageHeightMm * fitScale;
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.88), "JPEG", (A4_W_MM - drawWmm) / 2, 0, drawWmm, drawHmm);
       yMm += pageHeightMm;
       if (yMm < totalHeightMm) pdf.addPage();
     }
     // Append worksheet(s) — primary first, then any extra pages (Left/Right),
-    // each on its own PORTRAIT A4 page. Landscape worksheets are already rotated
-    // 90° into the image bytes upstream, so the page itself always stays portrait
-    // (survives fax/Outlook — the reader simply turns the printout side-on).
+    // each on its own A4 page. Wide (landscape) images get a true LANDSCAPE
+    // A4 page so PDF viewers display them upright; portrait images get a
+    // portrait page.
     const appendImagePage = async (dataUrl: string) => {
       const wsImg = await new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
@@ -166,10 +169,13 @@ async function generateReportPdfBase64(html: string, worksheetDataUrl?: string |
         img.onerror = reject;
         img.src = dataUrl;
       });
-      const scale = Math.min(A4_W_MM / wsImg.width, A4_H_MM / wsImg.height);
+      const isWide = wsImg.width > wsImg.height;
+      const pageW = isWide ? A4_H_MM : A4_W_MM;
+      const pageH = isWide ? A4_W_MM : A4_H_MM;
+      pdf.addPage([A4_W_MM, A4_H_MM], isWide ? "landscape" : "portrait");
+      const scale = Math.min(pageW / wsImg.width, pageH / wsImg.height);
       const drawW = wsImg.width * scale, drawH = wsImg.height * scale;
-      pdf.addPage([A4_W_MM, A4_H_MM], "portrait");
-      const xOff = (A4_W_MM - drawW) / 2, yOff = (A4_H_MM - drawH) / 2;
+      const xOff = (pageW - drawW) / 2, yOff = (pageH - drawH) / 2;
       const fmt = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
       pdf.addImage(dataUrl, fmt, xOff, yOff, drawW, drawH);
     };
@@ -1388,11 +1394,14 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       worksheetDataUrl = await toBase64(`/api/digital-worksheets/${report.digitalWorksheetId}/image`);
     }
 
-    // Landscape worksheets are transmitted rotated 90° onto a portrait page. The
-    // orientation flag lives on the raw worksheet (report.worksheetId); the
-    // labelled copy inherits it. Digital worksheets are always portrait.
+    // Landscape handling. The orientation flag lives on the raw worksheet
+    // (report.worksheetId); the labelled copy inherits it.
+    //   - PDF: the raw (un-rotated) image is used — the PDF generator puts wide
+    //     images on a true LANDSCAPE A4 page so viewers show them upright.
+    //   - HTML (email body / Copy HTML): the rotation is baked into the image
+    //     bytes so the portrait document flow survives email clients and fax.
+    let primaryOrientation: WorksheetOrientation = "portrait";
     if (report.worksheetId && worksheetDataUrl) {
-      let primaryOrientation: WorksheetOrientation = "portrait";
       try {
         const metaRes = await fetch(`/api/worksheets/${report.worksheetId}/meta`, { credentials: "include" });
         if (metaRes.ok) {
@@ -1400,8 +1409,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
           if (meta?.orientation === "landscape") primaryOrientation = "landscape";
         }
       } catch { /* default portrait */ }
-      worksheetDataUrl = await toTransmissionDataUrl(worksheetDataUrl, primaryOrientation);
     }
+    const worksheetHtmlDataUrl = worksheetDataUrl
+      ? await toTransmissionDataUrl(worksheetDataUrl, primaryOrientation)
+      : null;
 
     const clinic = clinicSettings;
     const template = templates.find((t: ReportTemplate) => t.id === ((report as EditableReport).templateId)) || templates.find((t: ReportTemplate) => t.isDefault) || templates[0];
@@ -1460,14 +1471,16 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     // Fetch any extra worksheet pages (e.g. Left / Right) attached to this report.
     // Each becomes its own A4 page in the PDF, after the primary worksheet.
     const extraWorksheetDataUrls: string[] = [];
+    const extraWorksheetHtmlDataUrls: string[] = [];
     try {
       const pagesRes = await fetch(`/api/reports/${report.id}/worksheet-pages`, { credentials: "include" });
       if (pagesRes.ok) {
         const pages = await pagesRes.json();
         for (const page of pages) {
-          let url = await toBase64(`/api/reports/${report.id}/worksheet-pages/${page.id}/image`);
-          if (url) url = await toTransmissionDataUrl(url, page.orientation);
-          if (url) extraWorksheetDataUrls.push(url);
+          const url = await toBase64(`/api/reports/${report.id}/worksheet-pages/${page.id}/image`);
+          if (!url) continue;
+          extraWorksheetDataUrls.push(url);
+          extraWorksheetHtmlDataUrls.push((await toTransmissionDataUrl(url, page.orientation)) || url);
         }
       }
     } catch (err) {
@@ -1590,7 +1603,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 </html>`;
 
     const hasWs = !!labelledWorksheetDataUrl;
-    const htmlWithWs = makeHtml(labelledWorksheetDataUrl, '', extraWorksheetDataUrls);
+    const htmlWithWs = makeHtml(worksheetHtmlDataUrl, '', extraWorksheetHtmlDataUrls);
     const htmlNoWs = makeHtml(null, '', []);
     if (updateState) {
       setDistributeHasWorksheet(hasWs);

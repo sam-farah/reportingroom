@@ -11,10 +11,12 @@ description: How worksheet orientation drives on-screen display vs transmission 
 
 **On-screen:** wide image shown naturally (object-contain) IS upright. The "rotate/override" toggle only flips the persisted flag (PATCH `/api/worksheets/:id/orientation`); it does not rotate pixels on screen. Its real effect is changing transmission behavior.
 
-**Transmission (PDF + copy-HTML + email):** the page ALWAYS stays portrait A4. For landscape worksheets the image is rotated 90° CW **into the image bytes** (`rotateDataUrl90CW` in `client/src/lib/image-orientation.ts`) at data-URL build time — NOT via CSS/page-orientation — so it survives fax gateways and Outlook. Reader turns the printout side-on.
-**Why bytes not CSS:** fax/Outlook drop CSS transforms and page-orientation hints.
+**Transmission is SPLIT (user-requested 2026-07-24):**
+- **PDF:** the RAW un-rotated image is used; `appendImagePage` detects wide images (w>h) and adds a TRUE landscape A4 page (`pdf.addPage([210,297],'landscape')`, page becomes 297×210). Portrait images get a portrait page. So the PDF page orientation follows pixel dimensions, not the DB flag.
+- **HTML (email body / Copy HTML):** rotation is still baked 90° CW **into the image bytes** (`rotateDataUrl90CW` via `toTransmissionDataUrl`) per the DB flag, kept portrait-flow — fax/Outlook drop CSS transforms and page-orientation hints.
+- Collectors therefore produce TWO url sets: raw (`worksheetDataUrl`/`extraWorksheetDataUrls`, fed to PDF generators) and rotated (`worksheetHtmlDataUrl`/`extraWorksheetHtmlDataUrls`, fed only to `makeHtml`). Never feed the rotated set to a PDF path — a rotated-tall image would land sideways on a landscape page.
 
-**Two client PDF paths must stay in sync:** `reporting-room.tsx` (inline `appendImagePage` + `buildDistributeHtml`) and `client/src/lib/report-distribution.ts` (patient-file distribute, used by report-distribute-dialog). Both had an auto `drawH>drawW → landscape page` branch that was REMOVED — always portrait now.
+**Two client PDF paths must stay in sync:** `reporting-room.tsx` (inline `appendImagePage` + `buildDistributeHtml`) and `client/src/lib/report-distribution.ts` (patient-file distribute, used by report-distribute-dialog).
 
 **Detection on upload:** `detectOrientationWithConfirm(file)` measures pixels, and only if width ≥ 1.2×height asks the uploader (window.confirm) landscape-vs-portrait. PDFs and drawn worksheets default portrait. Wired into every user-facing upload (file-upload.tsx, reporting-room reupload, extra-page upload). Existing rows default portrait → nothing pre-existing changes.
 
