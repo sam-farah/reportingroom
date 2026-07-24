@@ -126,11 +126,12 @@ async function addReportToPdf(
     let yMm = 0;
     while (yMm < totalHeightMm) {
       let pageHeightMm = Math.min(A4_H_MM, totalHeightMm - yMm);
-      // Avoid orphaning a tiny sliver (e.g. one signature line) onto its own
-      // page: if less than 15mm would remain after this page, absorb it here
-      // and compress the page slightly (max ~5%) — visually unnoticeable.
+      // Avoid orphaning a short trailing block (e.g. the signature block) onto
+      // its own near-empty page: if less than 32mm would remain after this
+      // page, absorb it here and compress the page slightly (max ~11%
+      // vertically) — far less jarring than a page with three lines on it.
       const remainingAfter = totalHeightMm - yMm - pageHeightMm;
-      if (remainingAfter > 0 && remainingAfter < 15) pageHeightMm = totalHeightMm - yMm;
+      if (remainingAfter > 0 && remainingAfter < 32) pageHeightMm = totalHeightMm - yMm;
       const srcY = Math.round((yMm / totalHeightMm) * contentBottomPx);
       const srcH = Math.round((pageHeightMm / totalHeightMm) * contentBottomPx);
       if (!first) pdf.addPage();

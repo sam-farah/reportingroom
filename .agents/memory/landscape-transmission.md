@@ -1,23 +1,27 @@
 ---
 name: Landscape worksheet transmission rotation
-description: Rotate-for-transmission must be guarded by actual pixel dimensions, not just the orientation flag
+description: Why landscape worksheets went out un-rotated, and how sliver pages are avoided in report PDFs
 ---
 
 Landscape-flagged worksheets are rotated 90° into the image bytes for
 transmission (portrait A4 page, reader turns the printout side-on).
 
-**Why:** a production report shipped with the worksheet sideways AND
-shrunken because the stored image was already portrait-shaped (a labelled
-copy saved pre-rotated) while the orientation flag on the raw worksheet
-still said "landscape" — so the transmission path rotated it a second
-time.
+**Real root cause (corrected):** the "sideways + shrunken" worksheet in
+sent PDFs was NOT double rotation — the image was never rotated at all.
+Two contributing holes were fixed: (1) the labelling merge copied only
+name/OCR fields to the labelled copy, dropping the orientation flag when
+the raw worksheet was deleted (server now carries `orientation` across);
+(2) a stale browser tab / old published bundle generates client-side
+PDFs with old code — always confirm the user republished AND reloaded
+before re-diagnosing client PDF output.
 
-**How to apply:** any rotate-for-transmission decision must check the
-actual pixel dimensions (only rotate when width > height), never trust
-the orientation flag alone. The guard lives in the shared rotate helper
-so all PDF/HTML/email paths inherit it.
+**How to apply:** when a client-generated PDF looks wrong, first compare
+the embedded image dimensions (`pdfimages -list`) against the DB flag
+(prod read-only query) — that tells you immediately whether rotation ran.
+The rotate helper also guards on pixel dimensions (only rotates when
+width > height), which is harmless belt-and-braces.
 
 Related: the PDF page-slicing loops (duplicated in the distribution lib
-and the reporting room) absorb trailing slivers < 15mm into the previous
-page by slight compression, so a lone signature line never gets its own
-near-blank page. Both copies must be kept in sync.
+and the reporting room) absorb a trailing block < 32mm into the previous
+page by slight vertical compression (max ~11%), so a lone signature
+block never gets its own near-blank page. Both copies must stay in sync.

@@ -4165,6 +4165,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               await storage.updateWorksheet(labelledId, {
                 originalName: original.originalName,
                 ocrProcessed: original.ocrProcessed ?? false,
+                // Carry the display/transmission orientation onto the labelled
+                // copy — the raw worksheet (which holds the uploader-confirmed
+                // flag) is about to be deleted. Without this, landscape
+                // worksheets lose their flag and go out un-rotated in PDFs.
+                orientation: original.orientation ?? "portrait",
               } as any);
             }
             // Repoint the report's primary worksheet to the labelled copy so the
