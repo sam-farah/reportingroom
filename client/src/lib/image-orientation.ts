@@ -72,6 +72,11 @@ export async function rotateDataUrl90CW(dataUrl: string): Promise<string> {
   const img = await loadImageEl(dataUrl);
   const w = img.naturalWidth;
   const h = img.naturalHeight;
+  // Guard: only rotate when the pixels are actually wider than tall. Some
+  // stored images flagged "landscape" are already portrait-shaped (e.g. a
+  // labelled copy saved pre-rotated) — rotating those again puts them
+  // sideways and shrunken on the page.
+  if (w <= h) return dataUrl;
   const canvas = document.createElement("canvas");
   canvas.width = h;
   canvas.height = w;

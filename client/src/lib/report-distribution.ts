@@ -125,7 +125,12 @@ async function addReportToPdf(
     const totalHeightMm = (contentBottomPx * A4_W_MM) / canvas.width;
     let yMm = 0;
     while (yMm < totalHeightMm) {
-      const pageHeightMm = Math.min(A4_H_MM, totalHeightMm - yMm);
+      let pageHeightMm = Math.min(A4_H_MM, totalHeightMm - yMm);
+      // Avoid orphaning a tiny sliver (e.g. one signature line) onto its own
+      // page: if less than 15mm would remain after this page, absorb it here
+      // and compress the page slightly (max ~5%) — visually unnoticeable.
+      const remainingAfter = totalHeightMm - yMm - pageHeightMm;
+      if (remainingAfter > 0 && remainingAfter < 15) pageHeightMm = totalHeightMm - yMm;
       const srcY = Math.round((yMm / totalHeightMm) * contentBottomPx);
       const srcH = Math.round((pageHeightMm / totalHeightMm) * contentBottomPx);
       if (!first) pdf.addPage();
@@ -134,7 +139,7 @@ async function addReportToPdf(
       slice.width = canvas.width;
       slice.height = Math.max(srcH, 1);
       slice.getContext("2d")!.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
-      pdf.addImage(slice.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, A4_W_MM, pageHeightMm);
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, A4_W_MM, Math.min(pageHeightMm, A4_H_MM));
       yMm += pageHeightMm;
     }
 

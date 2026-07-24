@@ -21,6 +21,7 @@
 - [Capacitor local plugin registration](capacitor-local-plugin-registration.md) — app-local iOS plugins fail isPluginAvailable in Cap 6+; register via registerPluginInstance in a CAPBridgeViewController subclass, not the .m macro.
 - [PencilKit / worksheet drawing](pencilkit-drawing.md) — TWO separate drawing UIs (draw.tsx is the primary one, drawing-canvas.tsx the other); native export must crop to template aspect, re-import must keep canvas geometry stable.
 - [Report → patient file linking](report-patient-linking.md) — patient file queries reports strictly by patientId; worksheet-without-patient → orphaned report; auto-link only on unambiguous UR or single name+DOB match.
+- [Landscape transmission](landscape-transmission.md) — rotate-for-transmission only when pixels are wider than tall; the orientation flag alone can double-rotate pre-rotated labelled copies.
 - [Worksheet auth pre-report](worksheet-auth-pre-report.md) — resolveAuthorisedWorksheet needs a linked report; pre-generation routes must authorise via worksheet.patientId's clinic instead.
 - [Extra report worksheet pages](report-worksheet-pages.md) — multi-page worksheets are ordinary worksheet rows; serve PHI only via authed report-scoped route, guard with a per-row marker (not the join row), delete join row before worksheet (no cascade).
 - [Appointment clinic scoping & kiosk registered-state](appointment-clinic-scoping.md) — set appointment clinicId from session (never client); null clinic_id breaks kiosk consent/registration; "registered" = ANY completed token, not just latest.
