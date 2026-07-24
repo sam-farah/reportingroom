@@ -1327,15 +1327,21 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
   });
 
   // Clinical documentation vs non-clinical (appointments, notes, etc.)
+  // Consent Forms and Medicare Assignment of Benefit forms are stored as
+  // patient documents but are administrative paperwork, not clinical docs.
   const CLINICAL_DOC_TYPES = ['report', 'worksheet', 'digitalWorksheet', 'document'];
-  const matchesDocCategory = (type: string) => {
+  const NON_CLINICAL_DOC_TITLES = /^(consent form|assignment of benefit)/i;
+  const matchesDocCategory = (entry: { type: string; title: string }) => {
     if (docCategoryFilter === 'all') return true;
-    const isClinical = CLINICAL_DOC_TYPES.includes(type);
+    let isClinical = CLINICAL_DOC_TYPES.includes(entry.type);
+    if (entry.type === 'document' && NON_CLINICAL_DOC_TITLES.test(entry.title || '')) {
+      isClinical = false;
+    }
     return docCategoryFilter === 'clinical' ? isClinical : !isClinical;
   };
 
-  const activeDocuments = allDocuments.filter(d => !d.isArchived && matchesDocCategory(d.type));
-  const archivedDocuments = allDocuments.filter(d => d.isArchived && matchesDocCategory(d.type));
+  const activeDocuments = allDocuments.filter(d => !d.isArchived && matchesDocCategory(d));
+  const archivedDocuments = allDocuments.filter(d => d.isArchived && matchesDocCategory(d));
 
   // Display a yyyy-MM-dd (or ISO) date string as dd-MM-yyyy (Australian).
   // The underlying doc.date stays yyyy-MM-dd so sorting and visit-grouping keep working.
