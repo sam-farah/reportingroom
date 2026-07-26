@@ -72,11 +72,17 @@ public class PencilKitPlugin: CAPPlugin, CAPBridgedPlugin {
 // When the user taps Done the drawing is composited over the background
 // image (if any) and returned as a PNG data URL.
 
-class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPickerObserver {
+class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPickerObserver, UIScrollViewDelegate {
 
     var backgroundDataUrl: String?
     var completion: ((Result<String, Error>) -> Void)?
 
+    // Outer scroll view provides two-finger pinch-zoom and pan while the
+    // pencil (or a single finger) draws. Both the template image and the
+    // PencilKit canvas live inside contentContainer so they zoom together
+    // and strokes stay perfectly aligned with the template.
+    private let scrollView = UIScrollView()
+    private let contentContainer = UIView()
     private let canvasView = PKCanvasView()
     private var toolPicker: PKToolPicker?
     private var backgroundImageView: UIImageView?
@@ -84,6 +90,7 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .white
+        setupScrollView()
         setupBackground()
         setupCanvas()
         setupToolbar()
@@ -95,6 +102,45 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
     }
 
     // MARK: Setup helpers
+
+    private func setupScrollView() {
+        scrollView.delegate = self
+        scrollView.minimumZoomScale = 1.0
+        scrollView.maximumZoomScale = 5.0
+        scrollView.bouncesZoom = true
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.delaysContentTouches = false
+        // Two fingers pan/zoom; one finger or the Apple Pencil draws.
+        scrollView.panGestureRecognizer.minimumNumberOfTouches = 2
+        scrollView.panGestureRecognizer.maximumNumberOfTouches = 2
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scrollView)
+
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(contentContainer)
+
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 56),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            contentContainer.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            contentContainer.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            contentContainer.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+            contentContainer.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
+        ])
+    }
+
+    // Only the outer scroll view zooms — the PKCanvasView (itself a scroll
+    // view, with scrolling disabled) must not get a zoom view from us.
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        return scrollView === self.scrollView ? contentContainer : nil
+    }
 
     private func setupBackground() {
         guard let dataUrl = backgroundDataUrl else { return }
@@ -108,12 +154,12 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
             let imageView = UIImageView(image: image)
             imageView.contentMode = .scaleAspectFit
             imageView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(imageView)
+            contentContainer.addSubview(imageView)
             NSLayoutConstraint.activate([
-                imageView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 56),
-                imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                imageView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+                imageView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+                imageView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+                imageView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
             ])
             backgroundImageView = imageView
         }
@@ -125,13 +171,15 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
         canvasView.isOpaque = false
         // Allow finger drawing — users may not always have an Apple Pencil attached.
         canvasView.drawingPolicy = .anyInput
+        // The outer scroll view owns zoom/pan; the canvas must not scroll itself.
+        canvasView.isScrollEnabled = false
         canvasView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(canvasView)
+        contentContainer.addSubview(canvasView)
         NSLayoutConstraint.activate([
-            canvasView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 56),
-            canvasView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            canvasView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            canvasView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            canvasView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            canvasView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            canvasView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            canvasView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
         ])
     }
 

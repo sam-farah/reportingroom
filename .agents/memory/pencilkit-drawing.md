@@ -39,3 +39,16 @@ be checked against all three consumers: `draw.tsx`, `drawing-canvas.tsx`, and th
 
 Native-app changes only reach the iPad after the user runs `npm run build` + `npx cap sync ios`
 and rebuilds in Xcode — the iPad app bundles a static web build.
+
+# Native zoom/pan + auto-open (2026-07-26)
+
+- Pinch-zoom/pan inside the native canvas: an OUTER UIScrollView (2-finger pan,
+  viewForZooming → contentContainer holding bg image + PKCanvasView with
+  isScrollEnabled=false) owns all zoom. Never zoom the PKCanvasView itself — the
+  sibling background image wouldn't follow and strokes would desync. Export math
+  (canvasView.bounds) is zoom-independent by design.
+- draw.tsx auto-opens the native pencil canvas once per worksheet session via a
+  templateReadyKey signal. This MUST be debounced with "opened" marked at timer
+  FIRE time: the fullscreen transition + resize listener redraw the template and
+  bump the key again within ~400ms, and a naive schedule-then-guard cancels the
+  timer while burning the one-shot flag → pencil never opens.

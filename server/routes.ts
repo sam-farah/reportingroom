@@ -7787,7 +7787,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/digital-worksheets/:id", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const worksheet = await storage.updateDigitalWorksheet(parseInt(id), req.body);
+      const worksheetId = parseInt(id);
+      if (isNaN(worksheetId)) {
+        return res.status(400).json({ message: "Invalid worksheet ID" });
+      }
+      const worksheet = await storage.updateDigitalWorksheet(worksheetId, req.body);
       res.json(worksheet);
     } catch (error) {
       console.error("Error updating digital worksheet:", error);

@@ -157,6 +157,11 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   const cachedRectRef = useRef<DOMRect | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
 
+  // Native Apple Pencil auto-launch bookkeeping (iPad app only)
+  const autoOpenedPencilKitRef = useRef(false);
+  const pencilKitBusyRef = useRef(false);
+  const [templateReadyKey, setTemplateReadyKey] = useState(0);
+
   // Fetch worksheet templates
   const { data: worksheetTemplates } = useQuery({
     queryKey: ["/api/worksheet-templates"],
@@ -204,7 +209,10 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
 
   const updateWorksheetMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}`, "PUT", data);
+      // Guard against stale auto-saves firing after the session ended —
+      // without this the request goes to /api/digital-worksheets/undefined.
+      if (!currentWorksheet?.id) return null;
+      const response = await apiRequest(`/api/digital-worksheets/${currentWorksheet.id}`, "PUT", data);
       return await response.json();
     },
     onSuccess: () => {
@@ -217,12 +225,17 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
 
   const createDraftReportMutation = useMutation({
     mutationFn: async () => {
+      const worksheetId = currentWorksheet?.id;
+      if (!worksheetId) {
+        // Previously this silently POSTed to .../undefined and nothing happened.
+        throw new Error("No active worksheet session. Please select a scan type and start a session, then try again.");
+      }
       // Save current canvas state before creating report (simplified)
-      if (canvasRef.current && currentWorksheet) {
+      if (canvasRef.current) {
         try {
           const canvasData = canvasRef.current.toDataURL('image/jpeg', 0.8);
           // Direct API call instead of using mutation to avoid hanging
-          await apiRequest(`/api/digital-worksheets/${currentWorksheet.id}`, "PUT", {
+          await apiRequest(`/api/digital-worksheets/${worksheetId}`, "PUT", {
             drawingData: canvasData,
             drawingHistory: JSON.stringify(drawingHistory.slice(-5)),
           });
@@ -234,7 +247,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       
       // Create draft report with timeout
       const response = await Promise.race([
-        apiRequest(`/api/digital-worksheets/${currentWorksheet?.id}/create-draft-report`, "POST", {}),
+        apiRequest(`/api/digital-worksheets/${worksheetId}/create-draft-report`, "POST", {}),
         new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000)
         )
@@ -345,6 +358,10 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
           // Save initial state to history
           const initialState = canvas.toDataURL();
           setDrawingHistory([initialState]);
+          
+          // Signal that the template is on the canvas (drives the iPad
+          // auto-launch of the Apple Pencil surface).
+          setTemplateReadyKey(k => k + 1);
           
           console.log(`Template loaded: ${canvas.width}x${canvas.height}, Fullscreen: ${isFullscreen}`);
         } catch (err) {
@@ -690,7 +707,8 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   // composited result replaces the canvas so Create Draft Report / Export work
   // unchanged. Only reachable inside the Capacitor iOS app.
   const openPencilKit = async () => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || pencilKitBusyRef.current) return;
+    pencilKitBusyRef.current = true;
     setPencilKitPending(true);
     try {
       const bgDataUrl = canvasRef.current.toDataURL('image/png');
@@ -738,9 +756,32 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         });
       }
     } finally {
+      pencilKitBusyRef.current = false;
       setPencilKitPending(false);
     }
   };
+
+  // On the iPad app, jump straight into Apple Pencil drawing as soon as the
+  // worksheet template is ready — no extra "Draw with Apple Pencil" tap.
+  // Runs once per worksheet session; after Cancel/Done the user is back on
+  // the worksheet page, where tapping the canvas re-opens the pencil surface.
+  useEffect(() => {
+    autoOpenedPencilKitRef.current = false;
+  }, [currentWorksheet?.id]);
+
+  useEffect(() => {
+    if (!templateReadyKey || !hasPencilKit || autoOpenedPencilKitRef.current || !currentWorksheet) return;
+    // Debounce: the fullscreen transition and resize listener re-draw the
+    // template and bump templateReadyKey again within a few hundred ms. Each
+    // bump pushes the launch out so only the final (settled) layout's timer
+    // fires. Mark "opened" when we actually launch — NOT when scheduled — so
+    // a cancelled timer doesn't burn the session's single auto-open.
+    const t = setTimeout(() => {
+      autoOpenedPencilKitRef.current = true;
+      openPencilKit();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [templateReadyKey]);
 
   const createPatientWorksheet = () => {
     if (!selectedTemplate || !patientInfo.patientName || !patientInfo.sonographerId) {
@@ -1094,17 +1135,6 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
             <Undo className="w-4 h-4 mr-2" />
             Undo
           </Button>
-          {hasPencilKit && (
-            <Button
-              onClick={openPencilKit}
-              disabled={pencilKitPending}
-              size={isFullscreen ? "sm" : "default"}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <PenTool className="w-4 h-4 mr-2" />
-              {pencilKitPending ? "Opening…" : "Draw with Apple Pencil"}
-            </Button>
-          )}
           <Button 
             onClick={() => setShowCreateDraftDialog(true)}
             size={isFullscreen ? "sm" : "default"}
