@@ -52,3 +52,10 @@ and rebuilds in Xcode — the iPad app bundles a static web build.
   FIRE time: the fullscreen transition + resize listener redraw the template and
   bump the key again within ~400ms, and a naive schedule-then-guard cancels the
   timer while burning the one-shot flag → pencil never opens.
+
+## Autosave & resume (added 2026-07-26)
+- Native sheet emits debounced (3s) JPEG "autosave" snapshots + immediate flush on app-switch; a `sessionEnded` flag in the Swift controller blocks any emit after Done/Cancel.
+- INVARIANT: every worksheet PUT from draw.tsx must go through the single serialized save chain (`queueWorksheetSave`) — direct `apiRequest` PUTs reintroduce stale-overwrite races.
+- While the native sheet is open the web canvas is stale: visibility/unmount flush must stay suppressed (`nativeSessionActiveRef`) or it clobbers richer native snapshots.
+- Resume: pending restore snapshot is painted over the template on load and is SPENT the moment the native sheet consumes it as background — clearing later risks repainting stale strokes; clearing earlier loses the restore on the fullscreen resize re-render.
+- Server side: digital-worksheet mutation routes all authorize via canAccessDigitalWorksheet; PUT accepts only drawingData/drawingHistory/annotations (lifecycle/linkage fields are server-managed).
