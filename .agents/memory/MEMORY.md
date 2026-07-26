@@ -31,3 +31,4 @@
 - [Landscape worksheets](landscape-worksheets.md) — orientation flag read off raw report.worksheetId; transmission always portrait A4 with image rotated 90° into bytes (not CSS); two client PDF paths must stay in sync.
 - [Scan-type side suffixes](scan-type-side-suffixes.md) — scanType entries may carry (Left)/(Right)/(Bilateral)/(Unilateral) tags; always parse via parseScanWithSide, never exact-match names.
 - [Stray require() in ESM server code](esm-stray-require.md) — `require(...)` inside real (executed) server TS silently throws at runtime since package.json is `"type":"module"`; tsc won't catch it.
+- [GitHub push](github-push.md) — repo sam-farah/reportingroom (public); platform gitPush fails (BRANCH_ALREADY_EXISTS); push via $GITHUB_TOKEN Basic extraheader; connector is proxy-only.
