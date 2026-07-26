@@ -46,3 +46,8 @@ labelled copy is already correct). Consequence: edits made AFTER labelling are n
 re-stamped onto a merged worksheet — acceptable because consent/header data is
 normally set before labelling. Existing already-double-labelled rows can't be
 un-stacked (raw gone); fix is to replace/re-upload the worksheet.
+
+## Digital (iPad-drawn) worksheets
+- Digital worksheets now flow through the SAME labelling pipeline (BUILD #7): generateLabelledCanvas reads the RAW digital drawing via /api/digital-worksheets/:id/image, uploads the labelled copy as a NEW worksheets row, PATCHes report.labelledWorksheetId. The raw digital_worksheets row is NEVER modified or deleted (unlike uploads, where the raw is deleted post-merge) — so force re-labelling always regenerates from a clean source; stacking is impossible.
+- Orientation: digital drawings are always portrait; the /meta orientation fetch only applies when report.worksheetId exists.
+- iPad-created draft reports must carry clinicId (set server-side from the creating user) or clinic-scoped routes (worksheet-pages etc.) 404 on them.

@@ -59,3 +59,9 @@ and rebuilds in Xcode — the iPad app bundles a static web build.
 - While the native sheet is open the web canvas is stale: visibility/unmount flush must stay suppressed (`nativeSessionActiveRef`) or it clobbers richer native snapshots.
 - Resume: pending restore snapshot is painted over the template on load and is SPENT the moment the native sheet consumes it as background — clearing later risks repainting stale strokes; clearing earlier loses the restore on the fullscreen resize re-render.
 - Server side: digital-worksheet mutation routes all authorize via canAccessDigitalWorksheet; PUT accepts only drawingData/drawingHistory/annotations (lifecycle/linkage fields are server-managed).
+
+## Done/Cancel lifecycle (BUILD #7 hardening)
+- `pendingRestoreRef` is the "canvas state to overlay after any template reload" — loadTemplate repaints it when `restore.worksheetId === currentWorksheet.id`. It is cleared at native-sheet OPEN (session owns truth), then REPOPULATED at close: Done → the imported composite; Cancel/native-failure → the pre-open snapshot. Without this, the resize fired by the sheet dismissing reloads the template and blanks the drawing, and the next flush/pre-save persists the blank.
+- Done import uses onload/onerror (NOT img.decode() — flaky on WebKit with multi-MB data URLs). If the preview import fails, the raw native PNG is still queued to the server (losing pixels is worse than losing the preview) — so drawingData may be PNG, not JPEG; downstream consumers must not assume jpeg.
+- Swift cancelTapped confirms via UIAlertController when strokes exist ("Discard this drawing?"); silent Cancel-discard was indistinguishable from "drawings not saved" in the field.
+- Field signature of a lost drawing: exactly ONE worksheet PUT (the pre-draft save) and no composite save between Done and Create Draft in server logs.

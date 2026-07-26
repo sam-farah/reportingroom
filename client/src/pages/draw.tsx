@@ -275,12 +275,14 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         // Previously this silently POSTed to .../undefined and nothing happened.
         throw new Error("No active worksheet session. Please select a scan type and start a session, then try again.");
       }
-      // Save current canvas state before creating report (simplified)
-      if (canvasRef.current) {
+      // Save the authoritative drawing state before creating the report —
+      // canvasStateForSave lets a pending native snapshot (e.g. after a
+      // failed preview import) win over a stale web canvas.
+      const canvasData = canvasStateForSave(worksheetId);
+      if (canvasData) {
         try {
-          const canvasData = canvasRef.current.toDataURL('image/jpeg', 0.8);
           // Awaits the whole save chain, so any in-flight autosave snapshot
-          // lands first and this final canvas state wins.
+          // lands first and this final state wins.
           await queueWorksheetSave(worksheetId, {
             drawingData: canvasData,
             drawingHistory: JSON.stringify(drawingHistory.slice(-5)),
@@ -406,8 +408,13 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
           if (restore && restore.worksheetId === currentWorksheet?.id && restore.drawingData) {
             try {
               const savedImg = new Image();
-              savedImg.src = restore.drawingData; // data URL — never taints the canvas
-              await savedImg.decode();
+              // onload/onerror instead of decode() — decode() is flaky on
+              // WebKit with multi-MB data URLs.
+              await new Promise<void>((resolve, reject) => {
+                savedImg.onload = () => resolve();
+                savedImg.onerror = () => reject(new Error('restore decode failed'));
+                savedImg.src = restore.drawingData; // data URL — never taints the canvas
+              });
               ctx.drawImage(savedImg, 0, 0, canvas.width, canvas.height);
             } catch (e) {
               console.warn("Could not restore autosaved drawing:", e);
@@ -457,6 +464,8 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     ctx.fillStyle = currentTool.color;
     ctx.font = `bold ${currentTool.size}px Arial, sans-serif`;
     ctx.textBaseline = 'top';
+    // Placing text mutates the web canvas — it is authoritative now.
+    pendingRestoreRef.current = null;
     ctx.fillText(text, textInput.canvasX, textInput.canvasY);
     setTextInput(null);
     // Save to history
@@ -515,6 +524,9 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     }
 
     const canvas = canvasRef.current;
+    // A direct web stroke makes the canvas authoritative — any pending
+    // native/restore snapshot is now older than what's on screen.
+    pendingRestoreRef.current = null;
     // Cache the bounding rect ONCE per stroke — avoids forced layout reflow
     // on every pointermove (which is the #1 perf killer for canvas drawing).
     const rect = canvas.getBoundingClientRect();
@@ -717,6 +729,8 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
 
   const undoLastAction = () => {
     if (drawingHistory.length <= 1 || !canvasRef.current || !templateImage) return;
+    // Undo repaints from web history — the canvas is authoritative now.
+    pendingRestoreRef.current = null;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -750,6 +764,9 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
 
   const clearCanvas = () => {
     if (!canvasRef.current || !selectedTemplate || !templateImage) return;
+    // Explicit reset: the template becomes the authoritative state — drop any
+    // pending native/restore snapshot so it can't repaint or be saved.
+    pendingRestoreRef.current = null;
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -774,52 +791,83 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     setPencilKitPending(true);
     try {
       const bgDataUrl = canvasRef.current.toDataURL('image/png');
-      // The background handed to the native sheet already contains any
-      // restored autosave snapshot — from here the native session owns the
-      // truth, so the pending restore is spent. Without this, a later template
-      // reload (resize/fullscreen) could repaint the stale snapshot over newer
-      // work and the flush would persist it.
+      // From here the native session owns the truth, so the pending restore
+      // is spent — a later template reload must not repaint a stale snapshot.
       pendingRestoreRef.current = null;
       nativeSessionActiveRef.current = true;
-      const result = await presentPencilCanvas({ backgroundDataUrl: bgDataUrl });
-      nativeSessionActiveRef.current = false;
-      const img = new Image();
-      img.src = result.dataUrl;
-      // Await decode so the button stays disabled until the import is finished
-      // (prevents overlapping opens) and we never draw a half-loaded image.
-      await img.decode();
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      // Keep the canvas at its existing template geometry so the web tools
-      // (Clear / Undo / Eraser, which redraw templateImage at canvas dims)
-      // keep working. Draw the result aspect-fit and centred — no distortion.
-      const cw = canvas.width;
-      const ch = canvas.height;
-      const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
-      const dw = img.naturalWidth * scale;
-      const dh = img.naturalHeight * scale;
-      const dx = (cw - dw) / 2;
-      const dy = (ch - dh) / 2;
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1.0;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, cw, ch);
-      ctx.drawImage(img, dx, dy, dw, dh);
-      ctx.restore();
-      const newState = canvas.toDataURL('image/jpeg', 0.8);
-      setDrawingHistory(prev => [...prev, newState].slice(-5));
-      // Persist the final composite immediately (serialized behind any
-      // in-flight autosave) so a crash right after Done loses nothing.
+      let result: { dataUrl: string };
+      try {
+        result = await presentPencilCanvas({ backgroundDataUrl: bgDataUrl });
+      } catch (presentErr) {
+        // Cancel (or a native failure). Dismissing the sheet can fire a
+        // resize → template reload, which would blank the canvas — keep the
+        // pre-open state as the reload overlay so nothing visually vanishes.
+        const widCancel = currentWorksheetIdRef.current;
+        if (widCancel) pendingRestoreRef.current = { worksheetId: widCancel, drawingData: bgDataUrl };
+        throw presentErr;
+      } finally {
+        nativeSessionActiveRef.current = false;
+      }
+      // Done: the native composite is now the authoritative canvas state.
+      // Import it into the web canvas; whether or not that succeeds, the
+      // composite is queued to the server (serialized behind any in-flight
+      // autosave) — losing pixels is far worse than losing the preview.
       const widForFinal = currentWorksheetIdRef.current;
-      if (widForFinal) queueWorksheetSave(widForFinal, { drawingData: newState });
-      toast({
-        title: "Drawing captured",
-        description: "Your Apple Pencil drawing has been added to the worksheet.",
-      });
+      try {
+        const img = new Image();
+        // onload/onerror instead of img.decode(): decode() is flaky on WebKit
+        // with multi-MB data URLs and would silently drop the whole import.
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('Could not decode the drawing image'));
+          img.src = result.dataUrl;
+        });
+        const canvas = canvasRef.current;
+        if (!canvas) throw new Error('Canvas unavailable after drawing');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas unavailable after drawing');
+        // Keep the canvas at its existing template geometry so the web tools
+        // (Clear / Undo / Eraser, which redraw templateImage at canvas dims)
+        // keep working. Draw the result aspect-fit and centred — no distortion.
+        const cw = canvas.width;
+        const ch = canvas.height;
+        const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
+        const dw = img.naturalWidth * scale;
+        const dh = img.naturalHeight * scale;
+        const dx = (cw - dw) / 2;
+        const dy = (ch - dh) / 2;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, cw, ch);
+        ctx.drawImage(img, dx, dy, dw, dh);
+        ctx.restore();
+        const newState = canvas.toDataURL('image/jpeg', 0.8);
+        setDrawingHistory(prev => [...prev, newState].slice(-5));
+        if (widForFinal) {
+          // A template reload (resize/fullscreen settling after the sheet
+          // dismisses) repaints this instead of wiping back to the template.
+          pendingRestoreRef.current = { worksheetId: widForFinal, drawingData: newState };
+          queueWorksheetSave(widForFinal, { drawingData: newState });
+        }
+        toast({
+          title: "Drawing captured",
+          description: "Your Apple Pencil drawing has been added to the worksheet.",
+        });
+      } catch (importErr: any) {
+        // Preview import failed — persist the raw native export untouched so
+        // the drawing still reaches the server and survives template reloads.
+        if (widForFinal) {
+          pendingRestoreRef.current = { worksheetId: widForFinal, drawingData: result.dataUrl };
+          queueWorksheetSave(widForFinal, { drawingData: result.dataUrl });
+        }
+        toast({
+          title: "Drawing saved",
+          description: "The drawing was saved, but the preview couldn't refresh. It will appear on the report.",
+        });
+      }
     } catch (err: any) {
       // The user tapping Cancel rejects with "cancelled" — not an error.
       if (err?.message !== 'cancelled') {
@@ -885,19 +933,36 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   // Flush the current canvas to the server immediately — used when the page is
   // hidden (app switch / tab close) or the Draw panel unmounts, where waiting
   // for the 10s debounced auto-save would lose the last strokes.
+  // The authoritative drawing state for saves. Normally the live web canvas —
+  // but when pendingRestoreRef holds a snapshot for this worksheet that the
+  // canvas may not have painted yet (Done composite, Cancel snapshot, or the
+  // raw native export after a failed preview import), that snapshot wins:
+  // saving the canvas then would overwrite real strokes with a stale template.
+  // The ref is cleared the moment the user mutates the web canvas directly
+  // (stroke / clear / undo), making the canvas authoritative again.
+  const canvasStateForSave = (worksheetId: number, quality = 0.8): string | null => {
+    const restore = pendingRestoreRef.current;
+    if (restore && restore.worksheetId === worksheetId && restore.drawingData) {
+      return restore.drawingData;
+    }
+    if (!canvasRef.current) return null;
+    try {
+      return canvasRef.current.toDataURL('image/jpeg', quality);
+    } catch {
+      // toDataURL can throw on a tainted canvas — nothing useful to save then.
+      return null;
+    }
+  };
+
   const flushAutoSave = useCallback(() => {
     const worksheetId = currentWorksheetIdRef.current;
-    if (!worksheetId || !canvasRef.current) return;
+    if (!worksheetId) return;
     // While the native Apple Pencil sheet is up the web canvas is stale
     // (template only) — flushing it would clobber the richer native autosave
     // snapshots. The native layer flushes itself on app-switch instead.
     if (nativeSessionActiveRef.current) return;
-    try {
-      const data = canvasRef.current.toDataURL("image/jpeg", 0.6);
-      queueWorksheetSave(worksheetId, { drawingData: data });
-    } catch {
-      // toDataURL can throw on a tainted canvas — nothing useful to save then.
-    }
+    const data = canvasStateForSave(worksheetId, 0.6);
+    if (data) queueWorksheetSave(worksheetId, { drawingData: data });
   }, []);
 
   useEffect(() => {
@@ -977,15 +1042,13 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
 
   // End the current drawing session (auto-saves first, then returns to template selection).
   const endSession = () => {
-    if (canvasRef.current && currentWorksheet) {
-      try {
-        const canvasData = canvasRef.current.toDataURL('image/jpeg', 0.8);
+    if (currentWorksheet) {
+      const canvasData = canvasStateForSave(currentWorksheet.id);
+      if (canvasData) {
         updateWorksheetMutation.mutate({
           drawingData: canvasData,
           drawingHistory: JSON.stringify(drawingHistory.slice(-5)),
         });
-      } catch (e) {
-        console.warn('Failed to auto-save before ending session:', e);
       }
     }
     setIsFullscreen(false);

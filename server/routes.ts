@@ -8112,7 +8112,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Attribute the draft to the creator's clinic — a null clinicId makes
+      // the report invisible to clinic-scoped routes (worksheet-pages etc.)
+      // and breaks multi-tenant filtering.
+      const draftCreator = req.session?.userId ? await storage.getUser(req.session.userId) : null;
+
       const draftReport = await storage.createDraftReport({
+        clinicId: draftCreator?.clinicId ?? null,
         digitalWorksheetId: worksheet.id,
         patientName: worksheet.patientName,
         patientDob: worksheet.patientDob,

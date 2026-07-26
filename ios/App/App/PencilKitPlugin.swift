@@ -321,6 +321,25 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
     // MARK: Actions
 
     @objc private func cancelTapped() {
+        // Confirm before discarding real work — Cancel sits next to Done, so
+        // accidental discards (and "my drawing didn't save" reports) are easy.
+        if !canvasView.drawing.strokes.isEmpty {
+            let alert = UIAlertController(
+                title: "Discard this drawing?",
+                message: "Your pencil strokes from this session won't be kept.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Keep Drawing", style: .cancel))
+            alert.addAction(UIAlertAction(title: "Discard", style: .destructive) { [weak self] _ in
+                self?.finishCancel()
+            })
+            present(alert, animated: true)
+            return
+        }
+        finishCancel()
+    }
+
+    private func finishCancel() {
         sessionEnded = true
         autosaveWorkItem?.cancel()
         dismiss(animated: true) { [weak self] in

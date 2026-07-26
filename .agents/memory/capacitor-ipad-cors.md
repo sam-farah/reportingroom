@@ -65,3 +65,6 @@ Plain `npm run build` → native bundle with empty API base → login fails with
 (native-only, hardcoded in client/src/main.tsx) must be bumped every iPad release —
 it is the user's only visual freshness check. Full Mac flow: IPAD_HANDOFF.md
 (git pull → npm run build:ipad → npx cap sync ios → npx cap open ios).
+
+## Relative fetch audit
+- Raw `fetch('/api/...')` resolves against capacitor://localhost in the native shell and silently fails. reporting-room.tsx is fully wrapped with resolveUrl() (July 2026, BUILD #7) — including the labelling, distribution, docx, and worksheet-pages paths. Other pages may still carry raw fetches; wrap with resolveUrl() + `credentials: 'include'` (cross-origin from the shell needs it).

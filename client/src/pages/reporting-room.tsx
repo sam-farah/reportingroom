@@ -1,3 +1,4 @@
+import { resolveUrl } from "@/lib/api";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus, AlertCircle } from "lucide-react";
@@ -683,7 +684,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
         : null;
     if (!imageUrl) return null;
 
-    const worksheetRes = await fetch(imageUrl, { credentials: 'include' });
+    const worksheetRes = await fetch(resolveUrl(imageUrl), { credentials: 'include' });
     if (!worksheetRes.ok) return null;
     const worksheetBlob = await worksheetRes.blob();
     const worksheetDataUrl = await new Promise<string>((resolve) => {
@@ -695,7 +696,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     let logoImg: HTMLImageElement | null = null;
     if (clinicLogoApiUrl) {
       try {
-        const logoRes = await fetch(clinicLogoApiUrl, { credentials: 'include' });
+        const logoRes = await fetch(resolveUrl(clinicLogoApiUrl), { credentials: 'include' });
         if (logoRes.ok) {
           const logoBlob = await logoRes.blob();
           const logoDataUrl = await new Promise<string>((resolve) => {
@@ -815,8 +816,12 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (labelInProgressRef.current) return { ok: false };
     const id = report.id;
     const wsId = (report as any).worksheetId;
+    const digitalWsId = (report as any).digitalWorksheetId;
     const labelledId = (report as any).labelledWorksheetId;
-    if (!wsId || (report as any).digitalWorksheetId) return { ok: false };
+    // Digital (iPad-drawn) worksheets are labelled through the same pipeline:
+    // generateLabelledCanvas reads the RAW digital drawing (never modified),
+    // so re-labelling can never stack a second header.
+    if (!wsId && !digitalWsId) return { ok: false };
     // Post-merge, the report's primary worksheet IS the labelled (header-stamped)
     // copy — the raw original was deleted on merge. Re-labelling it (even with
     // `force`) would read the already-labelled image and stack a SECOND header.
@@ -838,17 +843,19 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       // inherits the raw's landscape/portrait flag (kept consistent post-merge,
       // when report.worksheetId becomes the labelled copy itself).
       let inheritedOrientation: WorksheetOrientation = "portrait";
-      try {
-        const metaRes = await fetch(`/api/worksheets/${wsId}/meta`, { credentials: 'include' });
-        if (metaRes.ok) {
-          const meta = await metaRes.json();
-          if (meta?.orientation === "landscape") inheritedOrientation = "landscape";
-        }
-      } catch { /* default portrait */ }
+      if (wsId) {
+        try {
+          const metaRes = await fetch(resolveUrl(`/api/worksheets/${wsId}/meta`), { credentials: 'include' });
+          if (metaRes.ok) {
+            const meta = await metaRes.json();
+            if (meta?.orientation === "landscape") inheritedOrientation = "landscape";
+          }
+        } catch { /* default portrait */ }
+      }
       const formData = new FormData();
       formData.append("worksheet", new File([blob], `labelled-${id}.jpg`, { type: 'image/jpeg' }));
       formData.append("orientation", inheritedOrientation);
-      const uploadRes = await fetch(`/api/worksheets/upload`, { method: "POST", body: formData, credentials: 'include' });
+      const uploadRes = await fetch(resolveUrl(`/api/worksheets/upload`), { method: "POST", body: formData, credentials: 'include' });
       if (!uploadRes.ok) {
         console.warn(`[labelling] upload failed for report ${id}: ${uploadRes.status}`);
         return { ok: false };
@@ -877,8 +884,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (!clinicData) return; // wait for clinic data so the header has a logo
 
     const candidate = reports.find((r: any) =>
-      r.worksheetId &&
-      !r.digitalWorksheetId &&
+      (r.worksheetId || r.digitalWorksheetId) &&
       !r.labelledWorksheetId &&
       (labelAttemptsRef.current.get(r.id) ?? 0) < 2
     );
@@ -965,7 +971,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const timeoutId = setTimeout(() => ctrl.abort(), 90_000);
       let uploadRes: Response;
       try {
-        uploadRes = await fetch("/api/worksheets/upload", {
+        uploadRes = await fetch(resolveUrl("/api/worksheets/upload"), {
           method: "POST",
           body: formData,
           credentials: 'include',
@@ -992,7 +998,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       // Patch report: point at the new worksheet, clear any digital worksheet,
       // and clear the previous labelled worksheet id so the auto-retry effect
       // generates a fresh labelled copy from the new file.
-      const patchRes = await fetch(`/api/reports/${editingReport.id}`, {
+      const patchRes = await fetch(resolveUrl(`/api/reports/${editingReport.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
@@ -1058,7 +1064,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       const formData = new FormData();
       formData.append("file", file);
       formData.append("orientation", orientation);
-      const res = await fetch(`/api/reports/${editingReportId}/worksheet-pages/upload`, {
+      const res = await fetch(resolveUrl(`/api/reports/${editingReportId}/worksheet-pages/upload`), {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -1080,7 +1086,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     if (!editingReportId) return;
     setAddPageDrawOpen(false);
     try {
-      const res = await fetch(`/api/reports/${editingReportId}/worksheet-pages/draw`, {
+      const res = await fetch(resolveUrl(`/api/reports/${editingReportId}/worksheet-pages/draw`), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -1100,7 +1106,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const deleteExtraPage = async (pageId: number) => {
     if (!editingReportId) return;
     try {
-      const res = await fetch(`/api/reports/${editingReportId}/worksheet-pages/${pageId}`, {
+      const res = await fetch(resolveUrl(`/api/reports/${editingReportId}/worksheet-pages/${pageId}`), {
         method: "DELETE",
         credentials: "include",
       });
@@ -1269,7 +1275,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const handleExportDOCX = async (report: Report) => {
     try {
       const templateId = editingReport?.templateId || 1;
-      const response = await fetch(`/api/reports/${report.id}/docx?templateId=${templateId}`);
+      const response = await fetch(resolveUrl(`/api/reports/${report.id}/docx?templateId=${templateId}`), { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to generate DOCX');
       
       const blob = await response.blob();
@@ -1378,7 +1384,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     // date, sonographer, etc.) — even if those fields were edited after the
     // initial labelling pass. Falls through silently on failure.
     let effectiveLabelledId = (report as any).labelledWorksheetId as number | undefined;
-    if (report.worksheetId && !report.digitalWorksheetId) {
+    if (report.worksheetId || report.digitalWorksheetId) {
       const result = await labelReport(report, { force: true });
       if (result.ok && result.newWorksheetId) {
         effectiveLabelledId = result.newWorksheetId;
@@ -1404,7 +1410,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     let primaryOrientation: WorksheetOrientation = "portrait";
     if (report.worksheetId && worksheetDataUrl) {
       try {
-        const metaRes = await fetch(`/api/worksheets/${report.worksheetId}/meta`, { credentials: "include" });
+        const metaRes = await fetch(resolveUrl(`/api/worksheets/${report.worksheetId}/meta`), { credentials: "include" });
         if (metaRes.ok) {
           const meta = await metaRes.json();
           if (meta?.orientation === "landscape") primaryOrientation = "landscape";
@@ -1474,7 +1480,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
     const extraWorksheetDataUrls: string[] = [];
     const extraWorksheetHtmlDataUrls: string[] = [];
     try {
-      const pagesRes = await fetch(`/api/reports/${report.id}/worksheet-pages`, { credentials: "include" });
+      const pagesRes = await fetch(resolveUrl(`/api/reports/${report.id}/worksheet-pages`), { credentials: "include" });
       if (pagesRes.ok) {
         const pages = await pagesRes.json();
         for (const page of pages) {
@@ -1673,7 +1679,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       } catch (pdfErr) {
         console.warn("PDF generation failed for Copy HTML record:", pdfErr);
       }
-      await fetch(`/api/reports/${distributeReport.id}/distributions`, {
+      await fetch(resolveUrl(`/api/reports/${distributeReport.id}/distributions`), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -1759,7 +1765,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       } catch (pdfErr) {
         console.warn("Report PDF generation failed, sending without attachment:", pdfErr);
       }
-      const res = await fetch(`/api/reports/${distributeReport.id}/send-email`, {
+      const res = await fetch(resolveUrl(`/api/reports/${distributeReport.id}/send-email`), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -1815,7 +1821,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
       } catch (pdfErr) {
         console.warn("PDF generation failed for fax, sending without attachment:", pdfErr);
       }
-      const res = await fetch(`/api/reports/${distributeReport.id}/send-fax`, {
+      const res = await fetch(resolveUrl(`/api/reports/${distributeReport.id}/send-fax`), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -1936,7 +1942,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
 
       if (labelledId) {
         // Already-labelled copy exists — fetch and wrap in PDF.
-        const wsRes = await fetch(`/api/worksheets/${labelledId}/image`, { credentials: 'include' });
+        const wsRes = await fetch(resolveUrl(`/api/worksheets/${labelledId}/image`), { credentials: 'include' });
         if (!wsRes.ok) throw new Error("Failed to fetch labelled worksheet");
         const wsBlob = await wsRes.blob();
         const wsDataUrl = await new Promise<string>((resolve) => {
@@ -2517,7 +2523,9 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                 ) : editingReport.digitalWorksheetId ? (
                   <div className="w-full h-full flex items-center justify-center">
                     <ApiImage
-                      src={`/api/digital-worksheets/${editingReport.digitalWorksheetId}/image`}
+                      src={(editingReport as any).labelledWorksheetId
+                        ? `/api/worksheets/${(editingReport as any).labelledWorksheetId}/image`
+                        : `/api/digital-worksheets/${editingReport.digitalWorksheetId}/image`}
                       alt="Digital Worksheet"
                       className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
                     />

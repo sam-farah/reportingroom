@@ -1330,6 +1330,11 @@ export class DatabaseStorage implements IStorage {
 
   async createDraftReport(reportData: any): Promise<Report> {
     const reportToInsert = {
+      // Clinic + patient linkage — without these the draft is invisible to
+      // clinic-scoped routes and never appears in the patient's file.
+      clinicId: reportData.clinicId ?? null,
+      patientId: reportData.patientId ?? null,
+      patientUrNumber: reportData.patientUrNumber ?? null,
       patientName: reportData.patientName,
       patientDob: reportData.patientDob,
       examDate: reportData.examDate,
