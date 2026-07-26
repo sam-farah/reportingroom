@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Edit3, FileText, Download, Eye, Calendar, User, Save, X, ChevronLeft, ChevronRight, Trash2, CheckCircle2, CheckCircle, Minimize2, Type, Hash, Mic, Share2, Copy, Check, Undo2, Archive, ClipboardCheck, PlusCircle, Upload, Plus, AlertCircle } from "lucide-react";
 import InlineVoiceRecorder from "@/components/inline-voice-recorder";
 import { WorksheetViewer } from "@/components/worksheet-viewer";
+import { ApiImage } from "@/components/api-image";
 import DrawingCanvas from "@/components/drawing-canvas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2515,13 +2516,10 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                   </div>
                 ) : editingReport.digitalWorksheetId ? (
                   <div className="w-full h-full flex items-center justify-center">
-                    <img 
+                    <ApiImage
                       src={`/api/digital-worksheets/${editingReport.digitalWorksheetId}/image`}
                       alt="Digital Worksheet"
                       className="max-w-full max-h-full object-contain border border-gray-300 rounded-lg"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
                     />
                   </div>
                 ) : editingReport.worksheetId ? (
@@ -2592,7 +2590,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                       {extraPages.map((page, idx) => (
                         <div key={page.id} className="relative group w-24">
                           <div className="border border-gray-300 rounded-md overflow-hidden bg-white aspect-[3/4] flex items-center justify-center">
-                            <img
+                            <ApiImage
                               src={`/api/reports/${editingReportId}/worksheet-pages/${page.id}/image`}
                               alt={page.label || `Page ${idx + 1}`}
                               className="max-w-full max-h-full object-contain"

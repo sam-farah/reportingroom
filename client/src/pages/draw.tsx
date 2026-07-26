@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { isPencilKitAvailable, presentPencilCanvas } from "@/lib/pencilkit";
+import { isPencilKitAvailable, presentPencilCanvas, addPencilAutosaveListener } from "@/lib/pencilkit";
 import type { WorksheetTemplate, DigitalWorksheet, Sonographer, Patient } from "@shared/schema";
 
 interface DrawingTool {
@@ -162,6 +162,15 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
   const pencilKitBusyRef = useRef(false);
   const [templateReadyKey, setTemplateReadyKey] = useState(0);
 
+  // Autosave / resume bookkeeping. currentWorksheetIdRef mirrors
+  // currentWorksheet.id so async callbacks (native autosave events, page-hide
+  // flushes) never PUT to a stale or missing worksheet id.
+  const currentWorksheetIdRef = useRef<number | null>(null);
+  // When resuming an interrupted session, holds the server-saved drawing to
+  // paint over the template once the canvas is (re)built.
+  const pendingRestoreRef = useRef<{ worksheetId: number; drawingData: string } | null>(null);
+  const [resumeDismissed, setResumeDismissed] = useState(false);
+
   // Fetch worksheet templates
   const { data: worksheetTemplates } = useQuery({
     queryKey: ["/api/worksheet-templates"],
@@ -174,12 +183,31 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     retry: false,
   });
 
+  useEffect(() => {
+    currentWorksheetIdRef.current = currentWorksheet?.id ?? null;
+  }, [currentWorksheet?.id]);
+
+  // The user's own unfinished drawing session from the last 24h (if any) —
+  // lets a sonographer pick up where they left off after an accidental exit.
+  const { data: resumableWorksheet } = useQuery<DigitalWorksheet | null>({
+    queryKey: ["/api/digital-worksheets/resumable"],
+    queryFn: async () => {
+      const res = await fetch(resolveUrl("/api/digital-worksheets/resumable"), { credentials: "include" });
+      if (!res.ok) return null; // older servers lack this route — just skip the banner
+      return await res.json();
+    },
+    enabled: !currentWorksheet,
+    staleTime: 30_000,
+    retry: false,
+  });
+
   const createWorksheetMutation = useMutation({
     mutationFn: async (data: any): Promise<DigitalWorksheet> => {
       const response = await apiRequest("/api/digital-worksheets", "POST", data);
       return await response.json();
     },
     onSuccess: (worksheet: DigitalWorksheet) => {
+      pendingRestoreRef.current = null; // brand-new session — nothing to restore
       setCurrentWorksheet(worksheet);
       setShowPatientDialog(false);
       toast({
@@ -207,13 +235,30 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     },
   });
 
+  // Serialize every worksheet PUT (10s debounced auto-save, native autosave
+  // snapshots, visibility flush, final Done save) through a single chain so an
+  // older in-flight save can never land after — and overwrite — a newer one.
+  const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  const queueWorksheetSave = useCallback((worksheetId: number, payload: Record<string, unknown>) => {
+    const next = saveChainRef.current.then(() =>
+      apiRequest(`/api/digital-worksheets/${worksheetId}`, "PUT", payload).catch((e) => {
+        console.warn("Worksheet save failed:", e);
+      })
+    );
+    saveChainRef.current = next;
+    return next;
+  }, []);
+  // True while the native Apple Pencil sheet is up — the native layer owns
+  // autosave then, so the (stale) web canvas must not be flushed over it.
+  const nativeSessionActiveRef = useRef(false);
+
   const updateWorksheetMutation = useMutation({
     mutationFn: async (data: any) => {
       // Guard against stale auto-saves firing after the session ended —
       // without this the request goes to /api/digital-worksheets/undefined.
       if (!currentWorksheet?.id) return null;
-      const response = await apiRequest(`/api/digital-worksheets/${currentWorksheet.id}`, "PUT", data);
-      return await response.json();
+      await queueWorksheetSave(currentWorksheet.id, data);
+      return null;
     },
     onSuccess: () => {
       // Auto-save successful (silent)
@@ -234,8 +279,9 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       if (canvasRef.current) {
         try {
           const canvasData = canvasRef.current.toDataURL('image/jpeg', 0.8);
-          // Direct API call instead of using mutation to avoid hanging
-          await apiRequest(`/api/digital-worksheets/${worksheetId}`, "PUT", {
+          // Awaits the whole save chain, so any in-flight autosave snapshot
+          // lands first and this final canvas state wins.
+          await queueWorksheetSave(worksheetId, {
             drawingData: canvasData,
             drawingHistory: JSON.stringify(drawingHistory.slice(-5)),
           });
@@ -271,6 +317,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       setCurrentWorksheet(null);
       setSelectedTemplate(null);
       setShowCreateDraftDialog(false);
+      pendingRestoreRef.current = null;
       
       // Navigate to the reporting room panel via callback (no full-page reload)
       setTimeout(() => {
@@ -351,7 +398,22 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
           // Clear and draw template
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          
+
+          // When resuming an interrupted session, paint the autosaved drawing
+          // over the template. The saved image already includes the template
+          // and shares its aspect ratio, so it maps onto the full canvas rect.
+          const restore = pendingRestoreRef.current;
+          if (restore && restore.worksheetId === currentWorksheet?.id && restore.drawingData) {
+            try {
+              const savedImg = new Image();
+              savedImg.src = restore.drawingData; // data URL — never taints the canvas
+              await savedImg.decode();
+              ctx.drawImage(savedImg, 0, 0, canvas.width, canvas.height);
+            } catch (e) {
+              console.warn("Could not restore autosaved drawing:", e);
+            }
+          }
+
           // Store template image for eraser functionality
           setTemplateImage(img);
           
@@ -712,7 +774,15 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     setPencilKitPending(true);
     try {
       const bgDataUrl = canvasRef.current.toDataURL('image/png');
+      // The background handed to the native sheet already contains any
+      // restored autosave snapshot — from here the native session owns the
+      // truth, so the pending restore is spent. Without this, a later template
+      // reload (resize/fullscreen) could repaint the stale snapshot over newer
+      // work and the flush would persist it.
+      pendingRestoreRef.current = null;
+      nativeSessionActiveRef.current = true;
       const result = await presentPencilCanvas({ backgroundDataUrl: bgDataUrl });
+      nativeSessionActiveRef.current = false;
       const img = new Image();
       img.src = result.dataUrl;
       // Await decode so the button stays disabled until the import is finished
@@ -742,6 +812,10 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       ctx.restore();
       const newState = canvas.toDataURL('image/jpeg', 0.8);
       setDrawingHistory(prev => [...prev, newState].slice(-5));
+      // Persist the final composite immediately (serialized behind any
+      // in-flight autosave) so a crash right after Done loses nothing.
+      const widForFinal = currentWorksheetIdRef.current;
+      if (widForFinal) queueWorksheetSave(widForFinal, { drawingData: newState });
       toast({
         title: "Drawing captured",
         description: "Your Apple Pencil drawing has been added to the worksheet.",
@@ -756,6 +830,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         });
       }
     } finally {
+      nativeSessionActiveRef.current = false;
       pencilKitBusyRef.current = false;
       setPencilKitPending(false);
     }
@@ -782,6 +857,91 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     }, 400);
     return () => clearTimeout(t);
   }, [templateReadyKey]);
+
+  // While the native Apple Pencil canvas is open, the iOS plugin emits
+  // debounced "autosave" snapshots (template + strokes, JPEG). Persist them as
+  // a crash-recovery copy on the server. Deliberately does NOT touch the web
+  // canvas or undo history — the user may still tap Cancel to discard.
+  useEffect(() => {
+    if (!hasPencilKit) return;
+    let disposed = false;
+    let handle: Awaited<ReturnType<typeof addPencilAutosaveListener>> = null;
+    addPencilAutosaveListener((dataUrl) => {
+      const worksheetId = currentWorksheetIdRef.current;
+      // Drop snapshots that arrive after Done/Cancel dismissed the sheet —
+      // from then on the import/final-save path owns the worksheet.
+      if (!worksheetId || !nativeSessionActiveRef.current) return;
+      queueWorksheetSave(worksheetId, { drawingData: dataUrl });
+    }).then((h) => {
+      if (disposed) h?.remove();
+      else handle = h;
+    });
+    return () => {
+      disposed = true;
+      handle?.remove();
+    };
+  }, [hasPencilKit]);
+
+  // Flush the current canvas to the server immediately — used when the page is
+  // hidden (app switch / tab close) or the Draw panel unmounts, where waiting
+  // for the 10s debounced auto-save would lose the last strokes.
+  const flushAutoSave = useCallback(() => {
+    const worksheetId = currentWorksheetIdRef.current;
+    if (!worksheetId || !canvasRef.current) return;
+    // While the native Apple Pencil sheet is up the web canvas is stale
+    // (template only) — flushing it would clobber the richer native autosave
+    // snapshots. The native layer flushes itself on app-switch instead.
+    if (nativeSessionActiveRef.current) return;
+    try {
+      const data = canvasRef.current.toDataURL("image/jpeg", 0.6);
+      queueWorksheetSave(worksheetId, { drawingData: data });
+    } catch {
+      // toDataURL can throw on a tainted canvas — nothing useful to save then.
+    }
+  }, []);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushAutoSave();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", flushAutoSave);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", flushAutoSave);
+      // Panel unmount (e.g. switching dashboard tabs) — save what's there.
+      flushAutoSave();
+    };
+  }, [flushAutoSave]);
+
+  // Rebuild a full drawing session from an unfinished worksheet: restores the
+  // patient details, template and autosaved strokes, then re-enters the normal
+  // drawing flow (fullscreen + template load + iPad pencil auto-open).
+  const resumeWorksheet = (worksheet: DigitalWorksheet) => {
+    const templates = (worksheetTemplates as WorksheetTemplate[]) || [];
+    const template = templates.find((t) => t.id === worksheet.templateId);
+    if (!template) {
+      toast({
+        title: "Cannot Resume",
+        description: "The worksheet template for this drawing no longer exists.",
+        variant: "destructive",
+      });
+      return;
+    }
+    pendingRestoreRef.current = worksheet.drawingData
+      ? { worksheetId: worksheet.id, drawingData: worksheet.drawingData }
+      : null;
+    setPatientInfo({
+      patientName: worksheet.patientName || "",
+      patientDob: worksheet.patientDob || "",
+      examDate: worksheet.examDate || new Date().toISOString().split("T")[0],
+      studyType: worksheet.studyType || "",
+      sonographerId: worksheet.sonographerId ? String(worksheet.sonographerId) : "",
+      patientId: worksheet.patientId ?? null,
+    });
+    setSelectedTemplate(template);
+    setCurrentWorksheet(worksheet);
+  };
 
   const createPatientWorksheet = () => {
     if (!selectedTemplate || !patientInfo.patientName || !patientInfo.sonographerId) {
@@ -834,6 +994,7 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
     }
     setCurrentWorksheet(null);
     setSelectedTemplate(null);
+    pendingRestoreRef.current = null;
     setZoom({ scale: 1, offsetX: 0, offsetY: 0 });
     activeTouchesRef.current.clear();
     pinchStartRef.current = null;
@@ -898,6 +1059,30 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
             >
               <X className="w-4 h-4" />
             </button>
+          </div>
+        )}
+
+        {resumableWorksheet && !resumeDismissed && (
+          <div className="mb-6 flex items-center gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl" data-testid="banner-resume-drawing">
+            <div className="w-9 h-9 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+              <PenTool className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-amber-900">Unsaved drawing found</div>
+              <div className="text-xs text-amber-700 truncate">
+                {resumableWorksheet.patientName}
+                {resumableWorksheet.studyType ? ` — ${resumableWorksheet.studyType}` : ""}
+                {resumableWorksheet.updatedAt
+                  ? ` · last saved ${new Date(resumableWorksheet.updatedAt).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+                  : ""}
+              </div>
+            </div>
+            <Button size="sm" onClick={() => resumeWorksheet(resumableWorksheet)} data-testid="button-resume-drawing">
+              Resume drawing
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setResumeDismissed(true)} data-testid="button-dismiss-resume">
+              Dismiss
+            </Button>
           </div>
         )}
 

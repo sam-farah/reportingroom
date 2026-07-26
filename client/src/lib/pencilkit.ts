@@ -9,11 +9,15 @@
  * (see ios/App/App/PencilKitPlugin.swift).
  */
 
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
 interface PencilKitNativePlugin {
   present(options: { backgroundDataUrl?: string | null }): Promise<{ dataUrl: string }>;
   isAvailable(): Promise<{ available: boolean }>;
+  addListener(
+    eventName: 'autosave',
+    listenerFunc: (data: { dataUrl: string }) => void,
+  ): Promise<PluginListenerHandle>;
 }
 
 // registerPlugin returns a proxy bound to the native "PencilKit" plugin.
@@ -59,4 +63,18 @@ export async function presentPencilCanvas(
     backgroundDataUrl: options.backgroundDataUrl ?? null,
   });
   return result as PencilKitResult;
+}
+
+/** Subscribe to debounced autosave snapshots emitted while the native drawing
+ *  canvas is open. Each event carries a JPEG data URL of the composited image
+ *  (background template + strokes) — the same shape "Done" would return.
+ *  Returns null on platforms without the plugin. Remember to call
+ *  `handle.remove()` on cleanup. */
+export async function addPencilAutosaveListener(
+  callback: (dataUrl: string) => void,
+): Promise<PluginListenerHandle | null> {
+  if (!isPencilKitAvailable()) return null;
+  return PencilKit.addListener('autosave', (data) => {
+    if (data?.dataUrl) callback(data.dataUrl);
+  });
 }

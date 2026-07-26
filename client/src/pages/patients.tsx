@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { capitalizeWords } from "@/lib/utils";
+import { ApiImage } from "@/components/api-image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1682,13 +1683,10 @@ export default function Patients({ initialPatientId, initialEditPatientId, onPat
                 <div>
                   <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Worksheet Drawing</h3>
                   <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
-                    <img 
-                      src={`/api/digital-worksheets/${digitalWorksheet.id}/image`} 
-                      alt="Digital Worksheet Drawing" 
+                    <ApiImage
+                      src={`/api/digital-worksheets/${digitalWorksheet.id}/image`}
+                      alt="Digital Worksheet Drawing"
                       className="max-w-full rounded border"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
                     />
                   </div>
                 </div>

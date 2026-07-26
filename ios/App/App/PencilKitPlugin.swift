@@ -8,11 +8,17 @@ import Capacitor
 // Apple Pencil drawing surface. The JS API is:
 //
 //   PencilKit.present({ backgroundDataUrl?: string }) → { dataUrl: string }
+//   PencilKit.addListener('autosave', ({ dataUrl }) => …)
 //
 // backgroundDataUrl  — optional PNG/JPEG data URL to render behind the strokes
 //                      (used to composite the vascular worksheet template)
 // dataUrl            — PNG data URL of the composited drawing (background + strokes)
 //                      This is interchangeable with canvas.toDataURL('image/png').
+//
+// While the canvas is open, an "autosave" event fires ~3s after the drawing
+// last changed (and immediately when the app is about to go inactive) with a
+// JPEG data URL of the same composited image, so the web layer can persist a
+// crash-recovery copy without waiting for Done.
 
 @objc(PencilKitPlugin)
 public class PencilKitPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -48,6 +54,9 @@ public class PencilKitPlugin: CAPPlugin, CAPBridgedPlugin {
             let vc = PencilKitViewController()
             vc.modalPresentationStyle = .fullScreen
             vc.backgroundDataUrl = backgroundDataUrl
+            vc.autosaveHandler = { [weak self] dataUrl in
+                self?.notifyListeners("autosave", data: ["dataUrl": dataUrl])
+            }
             vc.completion = { [weak call] result in
                 guard let call = call else { return }
                 switch result {
@@ -76,6 +85,9 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
 
     var backgroundDataUrl: String?
     var completion: ((Result<String, Error>) -> Void)?
+    /// Called with a JPEG data URL of the composited drawing whenever the
+    /// debounced autosave fires. Runs on the main queue.
+    var autosaveHandler: ((String) -> Void)?
 
     // Outer scroll view provides two-finger pinch-zoom and pan while the
     // pencil (or a single finger) draws. Both the template image and the
@@ -87,6 +99,16 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
     private var toolPicker: PKToolPicker?
     private var backgroundImageView: UIImageView?
 
+    // Debounced autosave bookkeeping. The work item is rescheduled on every
+    // drawing change; it fires 3s after the pencil goes quiet. hasUnsavedChanges
+    // stops redundant exports (e.g. resign-active right after a debounce fired).
+    private var autosaveWorkItem: DispatchWorkItem?
+    // Set the moment Done/Cancel is tapped: from then on no autosave may be
+    // scheduled or emitted, so a late snapshot can never overwrite the final
+    // export (or resurrect a cancelled session) on the JS side.
+    private var sessionEnded = false
+    private var hasUnsavedChanges = false
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .white
@@ -94,6 +116,20 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
         setupBackground()
         setupCanvas()
         setupToolbar()
+        // Flush a snapshot the moment the app loses foreground — this is the
+        // instant before an app switch / iPad slide-over / termination where
+        // in-progress strokes would otherwise be lost.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillResignActive),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        autosaveWorkItem?.cancel()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -251,9 +287,42 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
         ])
     }
 
+    // MARK: Autosave
+
+    // PKCanvasViewDelegate — fires whenever strokes are added, erased or undone.
+    func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+        guard !sessionEnded else { return }
+        hasUnsavedChanges = true
+        autosaveWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.emitAutosave() }
+        autosaveWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: work)
+    }
+
+    @objc private func appWillResignActive() {
+        // App is about to background — flush immediately, don't wait out the debounce.
+        guard !sessionEnded else { return }
+        autosaveWorkItem?.cancel()
+        emitAutosave()
+    }
+
+    private func emitAutosave() {
+        guard !sessionEnded, hasUnsavedChanges, let handler = autosaveHandler else { return }
+        hasUnsavedChanges = false
+        // JPEG keeps the bridge + network payload a fraction of PNG size; the
+        // recovery copy doesn't need lossless quality.
+        exportComposited(format: .jpeg) { result in
+            if case .success(let dataUrl) = result {
+                handler(dataUrl)
+            }
+        }
+    }
+
     // MARK: Actions
 
     @objc private func cancelTapped() {
+        sessionEnded = true
+        autosaveWorkItem?.cancel()
         dismiss(animated: true) { [weak self] in
             self?.completion?(.failure(NSError(
                 domain: "PencilKit",
@@ -264,6 +333,8 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
     }
 
     @objc private func doneTapped() {
+        sessionEnded = true
+        autosaveWorkItem?.cancel()
         exportComposited { [weak self] result in
             DispatchQueue.main.async {
                 self?.dismiss(animated: true) {
@@ -275,13 +346,21 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
 
     // MARK: Export
 
-    /// Composite background + PencilKit strokes → PNG data URL.
+    private enum ExportFormat {
+        case png   // lossless — the Done result the web canvas imports
+        case jpeg  // compact — autosave crash-recovery snapshots
+    }
+
+    /// Composite background + PencilKit strokes → data URL.
     /// When a template background is present, the output is cropped to the
-    /// template's aspect-fit rect so the PNG keeps the template's aspect ratio
+    /// template's aspect-fit rect so the image keeps the template's aspect ratio
     /// (no letterbox margins) and is interchangeable with canvas.toDataURL().
     /// With no background the full canvas bounds are exported. Either way the
-    /// strokes stay aligned with whatever the user drew over.
-    private func exportComposited(completion: @escaping (Result<String, Error>) -> Void) {
+    /// strokes stay aligned with whatever the user drew over. Zoom/pan never
+    /// affects this: the outer scroll view transforms the container, while
+    /// canvasView.bounds (used here) stays constant.
+    private func exportComposited(format: ExportFormat = .png,
+                                  completion: @escaping (Result<String, Error>) -> Void) {
         let bounds = canvasView.bounds
         let scale = UIScreen.main.scale
 
@@ -323,15 +402,31 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
         let strokeImage = drawing.image(from: exportRect, scale: scale)
         strokeImage.draw(in: CGRect(origin: .zero, size: exportRect.size))
 
-        guard let composited = UIGraphicsGetImageFromCurrentImageContext(),
-              let pngData = composited.pngData() else {
+        guard let composited = UIGraphicsGetImageFromCurrentImageContext() else {
             completion(.failure(NSError(domain: "PencilKit", code: 2,
-                                        userInfo: [NSLocalizedDescriptionKey: "Failed to encode PNG"])))
+                                        userInfo: [NSLocalizedDescriptionKey: "Failed to capture composited image"])))
             return
         }
 
-        let base64 = pngData.base64EncodedString()
-        completion(.success("data:image/png;base64,\(base64)"))
+        let dataUrl: String
+        switch format {
+        case .png:
+            guard let pngData = composited.pngData() else {
+                completion(.failure(NSError(domain: "PencilKit", code: 2,
+                                            userInfo: [NSLocalizedDescriptionKey: "Failed to encode PNG"])))
+                return
+            }
+            dataUrl = "data:image/png;base64,\(pngData.base64EncodedString())"
+        case .jpeg:
+            guard let jpegData = composited.jpegData(compressionQuality: 0.6) else {
+                completion(.failure(NSError(domain: "PencilKit", code: 2,
+                                            userInfo: [NSLocalizedDescriptionKey: "Failed to encode JPEG"])))
+                return
+            }
+            dataUrl = "data:image/jpeg;base64,\(jpegData.base64EncodedString())"
+        }
+
+        completion(.success(dataUrl))
     }
 
     /// Returns the largest CGRect with the same aspect ratio as `imageSize`

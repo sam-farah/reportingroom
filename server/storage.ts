@@ -291,6 +291,8 @@ export interface IStorage {
   getDigitalWorksheet(id: number): Promise<DigitalWorksheet | undefined>;
   createDigitalWorksheet(worksheet: InsertDigitalWorksheet): Promise<DigitalWorksheet>;
   updateDigitalWorksheet(id: number, worksheet: Partial<InsertDigitalWorksheet>): Promise<DigitalWorksheet | undefined>;
+  getResumableDigitalWorksheet(userId: string): Promise<DigitalWorksheet | undefined>;
+  getDigitalWorksheetsForClinic(clinicId: number, opts?: { draftsOnly?: boolean }): Promise<DigitalWorksheet[]>;
   getDraftDigitalWorksheets(): Promise<DigitalWorksheet[]>;
   createDraftReport(data: any): Promise<Report>;
 
@@ -1273,6 +1275,45 @@ export class DatabaseStorage implements IStorage {
       .where(eq(digitalWorksheets.id, id))
       .returning();
     return worksheet;
+  }
+
+  // The signed-in user's most recent unfinished drawing session: their own
+  // draft, not archived, has drawing content, touched in the last 24h, and
+  // never turned into a report. Powers the Draw page "resume" banner.
+  async getResumableDigitalWorksheet(userId: string): Promise<DigitalWorksheet | undefined> {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows = await db
+      .select({ worksheet: digitalWorksheets })
+      .from(digitalWorksheets)
+      .leftJoin(reports, eq(reports.digitalWorksheetId, digitalWorksheets.id))
+      .where(
+        and(
+          eq(digitalWorksheets.userId, userId),
+          eq(digitalWorksheets.isDraft, true),
+          sql`${digitalWorksheets.isArchived} IS NOT TRUE`,
+          ne(digitalWorksheets.drawingData, ""),
+          gte(digitalWorksheets.updatedAt, cutoff),
+          isNull(reports.id),
+        ),
+      )
+      .orderBy(desc(digitalWorksheets.updatedAt))
+      .limit(1);
+    return rows[0]?.worksheet;
+  }
+
+  // All digital worksheets created by users of the given clinic. Guards the
+  // list endpoints against cross-clinic PHI exposure (worksheets carry no
+  // clinicId column, so scope flows through the creating user).
+  async getDigitalWorksheetsForClinic(clinicId: number, opts?: { draftsOnly?: boolean }): Promise<DigitalWorksheet[]> {
+    const conditions = [eq(users.clinicId, clinicId)];
+    if (opts?.draftsOnly) conditions.push(eq(digitalWorksheets.isDraft, true));
+    const rows = await db
+      .select({ worksheet: digitalWorksheets })
+      .from(digitalWorksheets)
+      .innerJoin(users, eq(users.id, digitalWorksheets.userId))
+      .where(and(...conditions))
+      .orderBy(desc(digitalWorksheets.createdAt));
+    return rows.map((r) => r.worksheet);
   }
 
   async deleteDigitalWorksheet(id: number): Promise<void> {

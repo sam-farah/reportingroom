@@ -4996,20 +4996,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch { res.status(500).json({ error: "Failed to unarchive worksheet" }); }
   });
 
-  app.post("/api/digital-worksheets/:id/archive", isAuthenticated, async (req, res) => {
+  app.post("/api/digital-worksheets/:id/archive", isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const existing = await storage.getDigitalWorksheet(id);
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      if (!(await canAccessDigitalWorksheet(req.session.userId!, existing))) {
+        return res.status(403).json({ error: "You do not have access to this worksheet" });
+      }
       const row = await storage.archiveDigitalWorksheet(id);
       if (!row) return res.status(404).json({ error: "Not found" });
       res.json(row);
     } catch { res.status(500).json({ error: "Failed to archive digital worksheet" }); }
   });
 
-  app.post("/api/digital-worksheets/:id/unarchive", isAuthenticated, async (req, res) => {
+  app.post("/api/digital-worksheets/:id/unarchive", isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const existing = await storage.getDigitalWorksheet(id);
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      if (!(await canAccessDigitalWorksheet(req.session.userId!, existing))) {
+        return res.status(403).json({ error: "You do not have access to this worksheet" });
+      }
       const row = await storage.unarchiveDigitalWorksheet(id);
       if (!row) return res.status(404).json({ error: "Not found" });
       res.json(row);
@@ -7791,7 +7801,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(worksheetId)) {
         return res.status(400).json({ message: "Invalid worksheet ID" });
       }
-      const worksheet = await storage.updateDigitalWorksheet(worksheetId, req.body);
+      const existing = await storage.getDigitalWorksheet(worksheetId);
+      if (!existing) {
+        return res.status(404).json({ message: "Worksheet not found" });
+      }
+      if (!(await canAccessDigitalWorksheet(req.session.userId!, existing))) {
+        return res.status(403).json({ message: "You do not have access to this worksheet" });
+      }
+      // Only drawing content is client-editable on this route. Ownership,
+      // lifecycle and patient-linkage fields (userId, patientId, isDraft,
+      // completedAt, isArchived, ...) are server-managed and must never be
+      // taken from the request body.
+      const body = req.body ?? {};
+      const updates: Record<string, any> = {};
+      for (const field of ["drawingData", "drawingHistory", "annotations"] as const) {
+        if (field in body) updates[field] = body[field];
+      }
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No updatable fields provided" });
+      }
+      const worksheet = await storage.updateDigitalWorksheet(worksheetId, updates);
       res.json(worksheet);
     } catch (error) {
       console.error("Error updating digital worksheet:", error);
@@ -7801,7 +7830,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/digital-worksheets", isAuthenticated, async (req: any, res) => {
     try {
-      const worksheets = await storage.getAllDigitalWorksheets();
+      // Clinic-scoped: digital worksheets carry PHI and have no clinicId
+      // column, so scope flows through the creating user's clinic.
+      const user = await storage.getUser(req.session.userId!);
+      if (user?.isSuperAdmin) {
+        return res.json(await storage.getAllDigitalWorksheets());
+      }
+      if (user?.clinicId == null) {
+        return res.json([]);
+      }
+      const worksheets = await storage.getDigitalWorksheetsForClinic(user.clinicId);
       res.json(worksheets);
     } catch (error) {
       console.error("Error fetching digital worksheets:", error);
@@ -7811,7 +7849,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/digital-worksheets/drafts", isAuthenticated, async (req: any, res) => {
     try {
-      const drafts = await storage.getDraftDigitalWorksheets();
+      const user = await storage.getUser(req.session.userId!);
+      if (user?.isSuperAdmin) {
+        return res.json(await storage.getDraftDigitalWorksheets());
+      }
+      if (user?.clinicId == null) {
+        return res.json([]);
+      }
+      const drafts = await storage.getDigitalWorksheetsForClinic(user.clinicId, { draftsOnly: true });
       res.json(drafts);
     } catch (error) {
       console.error("Error fetching draft worksheets:", error);
@@ -7819,8 +7864,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Digital worksheet image endpoint
-  app.get("/api/digital-worksheets/:id/image", async (req, res) => {
+  // Access rule shared by the digital-worksheet detail routes: the creator,
+  // a super admin, anyone in the creator's clinic, or anyone in the linked
+  // patient's clinic. Worksheets have no clinicId column, so clinic scope
+  // flows through the creating user / linked patient.
+  const canAccessDigitalWorksheet = async (sessionUserId: string, worksheet: { userId: string; patientId: number | null }): Promise<boolean> => {
+    if (worksheet.userId === sessionUserId) return true;
+    const requester = await storage.getUser(sessionUserId);
+    if (!requester) return false;
+    if (requester.isSuperAdmin) return true;
+    if (requester.clinicId == null) return false;
+    const creator = worksheet.userId ? await storage.getUser(worksheet.userId) : null;
+    if (creator?.clinicId != null && creator.clinicId === requester.clinicId) return true;
+    if (worksheet.patientId) {
+      const patient = await storage.getPatient(worksheet.patientId);
+      if (patient?.clinicId != null && patient.clinicId === requester.clinicId) return true;
+    }
+    return false;
+  };
+
+  // The signed-in user's own most recent unfinished drawing (last 24h, has
+  // strokes, never became a report). Powers the Draw page "resume" banner
+  // after an accidental exit, app switch or crash.
+  app.get("/api/digital-worksheets/resumable", isAuthenticated, async (req: any, res) => {
+    try {
+      const worksheet = await storage.getResumableDigitalWorksheet(req.session.userId!);
+      res.json(worksheet ?? null);
+    } catch (error) {
+      console.error("Error fetching resumable worksheet:", error);
+      res.status(500).json({ message: "Failed to fetch resumable worksheet" });
+    }
+  });
+
+  // Digital worksheet image endpoint. Authenticated + clinic-scoped: these are
+  // patient-identifiable medical drawings behind guessable integer ids, so
+  // they must not be publicly fetchable. Clients load them via fetch() with
+  // credentials (ApiImage / generateLabelledCanvas / toBase64), which works in
+  // both the browser and the native iPad shell.
+  app.get("/api/digital-worksheets/:id/image", isAuthenticated, async (req: any, res) => {
     try {
       const worksheetId = parseInt(req.params.id);
       
@@ -7832,6 +7913,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!worksheet) {
         return res.status(404).json({ error: "Digital worksheet not found" });
+      }
+      
+      if (!(await canAccessDigitalWorksheet(req.session.userId!, worksheet))) {
+        return res.status(403).json({ error: "You do not have access to this worksheet" });
       }
       
       if (!worksheet.drawingData) {
@@ -7849,7 +7934,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Set appropriate headers
       res.setHeader('Content-Type', mimeType);
       res.setHeader('Content-Length', imageBuffer.length);
-      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      // no-store: the drawing mutates continuously while the sonographer
+      // works (autosave), so cached copies go stale and mislead.
+      res.setHeader('Cache-Control', 'private, no-store');
       
       res.send(imageBuffer);
     } catch (error) {
@@ -7873,6 +7960,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!worksheet) {
         console.error("Worksheet not found for ID:", worksheetId);
         return res.status(404).json({ message: "Worksheet not found" });
+      }
+
+      if (!(await canAccessDigitalWorksheet(req.session.userId!, worksheet))) {
+        return res.status(403).json({ message: "You do not have access to this worksheet" });
       }
 
       console.log("Found worksheet:", worksheet.patientName, worksheet.studyType);
