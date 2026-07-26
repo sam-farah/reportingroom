@@ -125,6 +125,15 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
             name: UIApplication.willResignActiveNotification,
             object: nil
         )
+        // Coming back from an app switch or system interruption can leave the
+        // canvas without first-responder status, which silently hides the
+        // floating PencilKit tool palette. Re-assert it on every activation.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
     }
 
     deinit {
@@ -306,6 +315,20 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
         emitAutosave()
     }
 
+    @objc private func appDidBecomeActive() {
+        guard !sessionEnded else { return }
+        restoreToolPicker()
+    }
+
+    /// Re-shows the floating PKToolPicker. UIKit hides it whenever the canvas
+    /// loses first-responder status (alerts, app switches, system popovers)
+    /// and does NOT restore it automatically — every such path must call this.
+    private func restoreToolPicker() {
+        guard !sessionEnded else { return }
+        toolPicker?.setVisible(true, forFirstResponder: canvasView)
+        canvasView.becomeFirstResponder()
+    }
+
     private func emitAutosave() {
         guard !sessionEnded, hasUnsavedChanges, let handler = autosaveHandler else { return }
         hasUnsavedChanges = false
@@ -329,7 +352,12 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
                 message: "Your pencil strokes from this session won't be kept.",
                 preferredStyle: .alert
             )
-            alert.addAction(UIAlertAction(title: "Keep Drawing", style: .cancel))
+            alert.addAction(UIAlertAction(title: "Keep Drawing", style: .cancel) { [weak self] _ in
+                // The alert takes key focus, and UIKit hides the PencilKit tool
+                // palette the moment the canvas stops being first responder —
+                // and never brings it back on its own. Restore it explicitly.
+                DispatchQueue.main.async { self?.restoreToolPicker() }
+            })
             alert.addAction(UIAlertAction(title: "Discard", style: .destructive) { [weak self] _ in
                 self?.finishCancel()
             })

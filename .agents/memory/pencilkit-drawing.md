@@ -65,3 +65,8 @@ and rebuilds in Xcode — the iPad app bundles a static web build.
 - Done import uses onload/onerror (NOT img.decode() — flaky on WebKit with multi-MB data URLs). If the preview import fails, the raw native PNG is still queued to the server (losing pixels is worse than losing the preview) — so drawingData may be PNG, not JPEG; downstream consumers must not assume jpeg.
 - Swift cancelTapped confirms via UIAlertController when strokes exist ("Discard this drawing?"); silent Cancel-discard was indistinguishable from "drawings not saved" in the field.
 - Field signature of a lost drawing: exactly ONE worksheet PUT (the pre-draft save) and no composite save between Done and Create Draft in server logs.
+
+## PKToolPicker visibility is tied to first responder — restore it after EVERY focus steal
+UIKit hides the floating tool palette the moment the PKCanvasView stops being first responder (UIAlertController, app switch, system popover) and NEVER brings it back on its own. Any modal shown over the native canvas (e.g. the Cancel "Discard this drawing?" alert) must restore focus afterwards.
+**Why:** the BUILD #7 discard-confirmation alert killed the palette after "Keep Drawing" — user report "u killed my pencil kit tools".
+**How to apply:** call `restoreToolPicker()` (setVisible(true, forFirstResponder:) + becomeFirstResponder, guarded by !sessionEnded) from every alert-dismiss handler, and it also runs on `didBecomeActiveNotification` for app switches.
