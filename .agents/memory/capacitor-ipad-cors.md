@@ -56,3 +56,12 @@ requests from the native shell.
 
 ## Capacitor config file
 `capacitor.config.ts` at the project root. `webDir` = `dist/public`.
+
+## Mac/Xcode build command (2026-07-26)
+Native iPad builds MUST bake the backend URL at vite-build time: `npm run build:ipad`
+(bakes https://reportingroom.net — the custom domain, confirmed via deployment info).
+Plain `npm run build` → native bundle with empty API base → login fails with WebKit's
+"The string did not match the expected pattern". The red "BUILD #N · tap" badge
+(native-only, hardcoded in client/src/main.tsx) must be bumped every iPad release —
+it is the user's only visual freshness check. Full Mac flow: IPAD_HANDOFF.md
+(git pull → npm run build:ipad → npx cap sync ios → npx cap open ios).
