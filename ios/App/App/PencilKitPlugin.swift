@@ -43,6 +43,11 @@ public class PencilKitPlugin: CAPPlugin, CAPBridgedPlugin {
     //   backgroundDataUrl  String?  — data URL of image to show behind strokes
     @objc func present(_ call: CAPPluginCall) {
         let backgroundDataUrl = call.getString("backgroundDataUrl")
+        // The sheet resolves this call minutes later (Done/Cancel). Without
+        // keepAlive, Capacitor may release the call once this method returns —
+        // resolve() then goes nowhere and the JS promise hangs forever
+        // ("drawing vanished" while autosaves kept working).
+        call.keepAlive = true
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self,
@@ -57,8 +62,9 @@ public class PencilKitPlugin: CAPPlugin, CAPBridgedPlugin {
             vc.autosaveHandler = { [weak self] dataUrl in
                 self?.notifyListeners("autosave", data: ["dataUrl": dataUrl])
             }
-            vc.completion = { [weak call] result in
-                guard let call = call else { return }
+            // Strong capture is deliberate: a weak call can be deallocated
+            // mid-session, silently dropping the Done/Cancel result.
+            vc.completion = { result in
                 switch result {
                 case .success(let dataUrl):
                     call.resolve(["dataUrl": dataUrl])
@@ -380,9 +386,19 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
     }
 
     @objc private func doneTapped() {
+        // Belt-and-braces: flush a compact snapshot through the autosave event
+        // channel (proven reliable) BEFORE the Done result crosses the bridge —
+        // if that result is ever dropped, the server already has the strokes.
+        if hasUnsavedChanges {
+            autosaveWorkItem?.cancel()
+            emitAutosave()
+        }
         sessionEnded = true
         autosaveWorkItem?.cancel()
-        exportComposited { [weak self] result in
+        // JPEG instead of PNG: a full-res PNG data URL is a multi-megabyte
+        // bridge payload; JPEG at 0.9 is ~20× smaller with no visible loss on
+        // line drawings, and the web import re-encodes to JPEG anyway.
+        exportComposited(format: .jpeg, jpegQuality: 0.9) { [weak self] result in
             DispatchQueue.main.async {
                 self?.dismiss(animated: true) {
                     self?.completion?(result)
@@ -407,6 +423,7 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
     /// affects this: the outer scroll view transforms the container, while
     /// canvasView.bounds (used here) stays constant.
     private func exportComposited(format: ExportFormat = .png,
+                                  jpegQuality: CGFloat = 0.6,
                                   completion: @escaping (Result<String, Error>) -> Void) {
         let bounds = canvasView.bounds
         let scale = UIScreen.main.scale
@@ -465,7 +482,7 @@ class PencilKitViewController: UIViewController, PKCanvasViewDelegate, PKToolPic
             }
             dataUrl = "data:image/png;base64,\(pngData.base64EncodedString())"
         case .jpeg:
-            guard let jpegData = composited.jpegData(compressionQuality: 0.6) else {
+            guard let jpegData = composited.jpegData(compressionQuality: jpegQuality) else {
                 completion(.failure(NSError(domain: "PencilKit", code: 2,
                                             userInfo: [NSLocalizedDescriptionKey: "Failed to encode JPEG"])))
                 return

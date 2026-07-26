@@ -70,3 +70,6 @@ and rebuilds in Xcode — the iPad app bundles a static web build.
 UIKit hides the floating tool palette the moment the PKCanvasView stops being first responder (UIAlertController, app switch, system popover) and NEVER brings it back on its own. Any modal shown over the native canvas (e.g. the Cancel "Discard this drawing?" alert) must restore focus afterwards.
 **Why:** the BUILD #7 discard-confirmation alert killed the palette after "Keep Drawing" — user report "u killed my pencil kit tools".
 **How to apply:** call `restoreToolPicker()` (setVisible(true, forFirstResponder:) + becomeFirstResponder, guarded by !sessionEnded) from every alert-dismiss handler, and it also runs on `didBecomeActiveNotification` for app switches.
+
+## Dropped Done-resolve log signature (root cause of the lost drawings)
+Autosave PUT(s) present, NO PUT after Done, worksheet still in /resumable, no web error toast = the present() promise never settled — see capacitor-plugin-call-retention.md. The web import path was never the culprit.
