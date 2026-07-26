@@ -30,20 +30,17 @@ npm install
 
 ## Step 2 — Set the production backend URL
 
-The iOS app must know where the live backend lives.  Create a `.env.native`
-file (or set the variable in your CI/CD system) with the deployed Replit URL:
+The iOS app must know where the live backend lives.  The production URL
+(`https://reportingroom.net`) is baked into the `build:ipad` npm script, so
+no environment variable setup is needed — just run:
 
 ```bash
-# .env.native (do NOT commit this file)
-VITE_API_BASE_URL=https://reporting-room.<your-username>.replit.app
+npm run build:ipad
 ```
 
-Build the frontend with this variable:
-
-```bash
-VITE_API_BASE_URL=https://reporting-room.<your-username>.replit.app \
-  npm run build
-```
+> ⚠️ Do NOT use plain `npm run build` for the iPad app — it produces a bundle
+> with no backend URL, and login fails with "The string did not match the
+> expected pattern".
 
 The compiled output lands in `dist/public/` — this is what the iPad app
 serves locally, with all API calls going to the backend URL above.
@@ -198,12 +195,12 @@ Apple review typically takes 1–3 business days.
   - Go to your Replit project → **Secrets** → add/update `CORS_ORIGIN` with a
     comma-separated list:
     ```
-    capacitor://localhost,https://localhost,https://reporting-room.<user>.replit.app
+    capacitor://localhost,https://localhost,https://reportingroom.net
     ```
   - Redeploy the backend after updating secrets.
 
 ### White screen on launch
-- Make sure you ran `npm run build` **then** `npx cap sync` in that order.
+- Make sure you ran `npm run build:ipad` **then** `npx cap sync ios` in that order.
 - Open the Safari Web Inspector (Safari → Develop → [your device]) and check
   the JavaScript console for errors.
 
@@ -228,8 +225,8 @@ Apple review typically takes 1–3 business days.
 After any code changes to the Reporting Room web app:
 
 ```bash
-# 1. Build the new web bundle
-VITE_API_BASE_URL=https://reporting-room.<user>.replit.app npm run build
+# 1. Build the new web bundle (production URL is baked into the script)
+npm run build:ipad
 
 # 2. Sync into the iOS project
 npx cap sync ios
