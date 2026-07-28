@@ -6320,6 +6320,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Inherit clinical indication from the referrer's scan request form:
+      // the referring doctor's stated indication is authoritative over the
+      // AI's guess from the worksheet image. Look for a scan request linked
+      // to a same-day appointment first, else any appointment for the patient
+      // (most recent first).
+      let requestFormIndication: string | null = null;
+      if (worksheet.patientId) {
+        try {
+          const apts = (await storage.getPatientAppointments(worksheet.patientId)) || [];
+          const candidateApts = [
+            ...sameDayAppointments,
+            ...apts
+              .filter((a: any) => !sameDayAppointments.some((s: any) => s.id === a.id))
+              .sort((a: any, b: any) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()),
+          ];
+          for (const apt of candidateApts) {
+            // Tenant safety: only consider appointments in the user's clinic.
+            if (user?.clinicId && (apt as any).clinicId && (apt as any).clinicId !== user.clinicId) continue;
+            const sr = await storage.getScanRequestByAppointmentId(apt.id);
+            if (!sr) continue;
+            // Only trust the scan request if it belongs to the same clinic
+            // and the same patient as the worksheet.
+            if (user?.clinicId && sr.clinicId !== user.clinicId) continue;
+            if (sr.patientId !== worksheet.patientId) continue;
+            const indication = (sr.clinicalIndication || '').trim();
+            if (indication) {
+              requestFormIndication = indication;
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to inherit clinical indication from scan request:', e);
+        }
+      }
+
       // Inherit sonographer: prefer the worksheet's sonographer, else the
       // same-day appointment's sonographer, else the patient's most recent
       // appointment sonographer.
@@ -6429,7 +6464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientDob: reportData.patientDob,
         examDate: reportData.examDate,
         studyType: reportData.studyType,
-        indication: reportData.indication,
+        indication: requestFormIndication || reportData.indication,
         findings: reportData.findings,
         impression: reportData.impression,
         physicianId,
