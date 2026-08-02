@@ -608,6 +608,10 @@ export const appointments = pgTable("appointments", {
   copyToRecipients: jsonb("copy_to_recipients").$type<{ name?: string; email?: string; fax?: string }[]>().default([]),
   verbalConsentAt: timestamp("verbal_consent_at"), // When the sonographer recorded verbal consent for the study
   writtenConsentAt: timestamp("written_consent_at"), // When written/signed consent was recorded (kiosk or remote device)
+  // Which clinic location this appointment belongs to; null = the clinic's
+  // main location. FK constraint is defined loosely (set null) so deleting a
+  // location moves its appointments back to the main calendar.
+  locationId: integer("location_id"),
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({
@@ -788,6 +792,23 @@ export const systemSettings = pgTable("system_settings", {
 
 export type SystemSetting = typeof systemSettings.$inferSelect;
 
+// Additional clinic locations (satellite sites). The clinic's own address is
+// the implicit "main" location; appointments/events with locationId=null
+// belong to it. Each additional location gets its own calendar view.
+export const clinicLocations = pgTable("clinic_locations", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 200 }).notNull(),
+  address: text("address"),
+  phone: varchar("phone", { length: 50 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertClinicLocationSchema = createInsertSchema(clinicLocations).omit({ id: true, createdAt: true });
+export type ClinicLocation = typeof clinicLocations.$inferSelect;
+export type InsertClinicLocation = z.infer<typeof insertClinicLocationSchema>;
+
 // Scan duration settings per clinic
 export const scanDurationSettings = pgTable("scan_duration_settings", {
   id: serial("id").primaryKey(),
@@ -894,6 +915,8 @@ export const calendarEvents = pgTable("calendar_events", {
   recurrenceEndDate: timestamp("recurrence_end_date"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
+  // Which clinic location this event belongs to; null = main location.
+  locationId: integer("location_id"),
 });
 
 export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true, createdAt: true });

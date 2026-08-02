@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal, ShieldCheck, MessageSquare, FilePlus } from "lucide-react";
+import { MapPin, ChevronLeft, ChevronRight, Plus, Clock, User, Phone, Mail, Calendar as CalendarIcon, X, Edit, Trash2, Search, UserCheck, Undo2, DollarSign, FolderOpen, UserPlus, CalendarX2, Repeat, CalendarClock, PlayCircle, FileUp, PenLine, ArrowLeft, CalendarDays, CheckCircle, Laptop, Hourglass, FileText, MoreHorizontal, ShieldCheck, MessageSquare, FilePlus } from "lucide-react";
 import jsPDF from "jspdf";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -833,6 +833,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     copyToEmail: "",
     copyToFax: "",
     copyToRecipients: [] as { name: string; email: string; fax: string }[],
+    locationId: null as number | null,
   });
 
   const { data: scanDurations = [] } = useQuery<ScanDurationSetting[]>({
@@ -1012,7 +1013,20 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     }
   };
 
-  const { data: appointments = [], isLoading: appointmentsLoading } = useQuery<Appointment[]>({
+  // Additional clinic locations — each acts as its own calendar. null = main location.
+  const { data: clinicLocationsList = [] } = useQuery<{ id: number; name: string; isActive: boolean }[]>({
+    queryKey: ["/api/clinic-locations"],
+  });
+  const activeLocations = clinicLocationsList.filter((l) => l.isActive !== false);
+  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
+  // If the selected location disappears (deleted), fall back to main
+  useEffect(() => {
+    if (selectedLocationId != null && !activeLocations.some((l) => l.id === selectedLocationId)) {
+      setSelectedLocationId(null);
+    }
+  }, [clinicLocationsList]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { data: rawAppointments = [], isLoading: appointmentsLoading } = useQuery<Appointment[]>({
     queryKey: ["/api/appointments", startDate.toISOString(), endDate.toISOString()],
     queryFn: async () => {
       const response = await fetch(`/api/appointments?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`, {
@@ -1023,6 +1037,12 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     },
     refetchInterval: 30000,
   });
+
+  // Only show appointments booked at the currently selected location
+  const appointments = useMemo(
+    () => rawAppointments.filter((a) => (((a as any).locationId ?? null) === selectedLocationId)),
+    [rawAppointments, selectedLocationId]
+  );
 
   const { data: physicians = [] } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
@@ -1370,6 +1390,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       copyToEmail: "",
       copyToFax: "",
       copyToRecipients: [],
+      locationId: selectedLocationId,
     });
     setSelectedPatient(null);
     setPatientSearch("");
@@ -1456,6 +1477,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     setFormData(prev => ({
       ...prev,
       appointmentDate: format(date, "yyyy-MM-dd"),
+      locationId: selectedLocationId,
     }));
     setEditingAppointment(null);
     setIsBookingDialogOpen(true);
@@ -1632,6 +1654,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
         const ln = (appointment as any).copyToName, le = (appointment as any).copyToEmail, lf = (appointment as any).copyToFax;
         return (ln || le || lf) ? [{ name: ln || "", email: le || "", fax: lf || "" }] : [];
       })(),
+      locationId: (appointment as any).locationId ?? null,
     });
     // Only pre-fill selectedPatient if there's a real linked patientId
     if (appointment.patientId) {
@@ -1742,6 +1765,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       copyToEmail: copyToList[0]?.email || null,
       copyToFax: copyToList[0]?.fax || null,
       copyToRecipients: copyToList,
+      locationId: formData.locationId,
     };
 
     if (editingAppointment) {
@@ -1790,9 +1814,14 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     return result;
   };
 
+  const locationCalendarEvents = useMemo(
+    () => rawCalendarEvents.filter((e) => (((e as any).locationId ?? null) === selectedLocationId)),
+    [rawCalendarEvents, selectedLocationId]
+  );
+
   const expandedEvents = useMemo(
-    () => expandEvents(rawCalendarEvents, startDate, addMonths(endDate, 0)),
-    [rawCalendarEvents, startDate, endDate]
+    () => expandEvents(locationCalendarEvents, startDate, addMonths(endDate, 0)),
+    [locationCalendarEvents, startDate, endDate]
   );
 
   const getEventsForDate = (date: Date) =>
@@ -1859,6 +1888,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       recurrence: eventForm.recurrence,
       recurrenceEndDate: eventForm.recurrenceEndDate ? new Date(`${eventForm.recurrenceEndDate}T23:59:00`).toISOString() : null,
       notes: eventForm.notes || null,
+      locationId: selectedLocationId,
     };
     if (editingEvent) {
       updateEventMutation.mutate({ id: editingEvent.id, data: payload });
@@ -1981,6 +2011,23 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
             <p className="text-gray-600 dark:text-gray-400">Manage patient bookings and appointments</p>
           </div>
           <div className="flex gap-2">
+            {activeLocations.length > 0 && (
+              <Select
+                value={selectedLocationId == null ? "main" : String(selectedLocationId)}
+                onValueChange={(v) => setSelectedLocationId(v === "main" ? null : parseInt(v))}
+              >
+                <SelectTrigger className="w-[220px]" data-testid="select-calendar-location">
+                  <MapPin className="w-4 h-4 mr-2 text-gray-500" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">Main location</SelectItem>
+                  {activeLocations.map((loc) => (
+                    <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button variant="outline" onClick={() => setApptSearchOpen(true)} data-testid="button-open-appt-search">
               <Search className="w-4 h-4 mr-2" />
               Find Appointments
@@ -1998,7 +2045,25 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
 
         {/* Mobile header */}
         <div className="flex md:hidden justify-between items-center mb-3">
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Calendar</h1>
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Calendar</h1>
+            {activeLocations.length > 0 && (
+              <Select
+                value={selectedLocationId == null ? "main" : String(selectedLocationId)}
+                onValueChange={(v) => setSelectedLocationId(v === "main" ? null : parseInt(v))}
+              >
+                <SelectTrigger className="h-8 max-w-[140px] text-xs" data-testid="select-calendar-location-mobile">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">Main location</SelectItem>
+                  {activeLocations.map((loc) => (
+                    <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setApptSearchOpen(true)} data-testid="button-open-appt-search-mobile">
               <Search className="w-4 h-4" />
@@ -3028,6 +3093,25 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                     </SelectContent>
                   </Select>
                 </div>
+                {activeLocations.length > 0 && (
+                  <div>
+                    <Label htmlFor="booking-location">Location</Label>
+                    <Select
+                      value={formData.locationId == null ? "main" : String(formData.locationId)}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, locationId: value === "main" ? null : parseInt(value) }))}
+                    >
+                      <SelectTrigger data-testid="select-booking-location">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="main">Main location</SelectItem>
+                        {activeLocations.map((loc) => (
+                          <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 {editingAppointment && (
                   <div>
                     <Label htmlFor="status">Status</Label>

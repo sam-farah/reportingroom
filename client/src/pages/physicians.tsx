@@ -17,7 +17,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle, UserMinus, UserCheck, Wifi, RefreshCw, Download, Copy, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Building2, Stethoscope, Plus, Mail, Clock, CheckCircle, XCircle, UserMinus, UserCheck, Wifi, RefreshCw, Download, Copy, Eye, EyeOff, ExternalLink, MapPin } from "lucide-react";
+import ClinicLocationsTab from "@/components/clinic-locations-tab";
 import { format } from "date-fns";
 
 export default function Clinic() {
@@ -883,7 +884,7 @@ export default function Clinic() {
 
         {/* Tabs */}
         <Tabs defaultValue="physicians" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+          <TabsList className="grid w-full grid-cols-5 max-w-3xl">
             <TabsTrigger value="physicians" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               Physicians
@@ -895,6 +896,10 @@ export default function Clinic() {
             <TabsTrigger value="staff" className="flex items-center gap-2">
               <UserPlus className="w-4 h-4" />
               Staff
+            </TabsTrigger>
+            <TabsTrigger value="locations" className="flex items-center gap-2">
+              <MapPin className="w-4 h-4" />
+              Locations
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <Building2 className="w-4 h-4" />
@@ -1528,6 +1533,10 @@ export default function Clinic() {
           </TabsContent>
 
           {/* Clinic Settings Tab */}
+          <TabsContent value="locations" className="space-y-6">
+            <ClinicLocationsTab />
+          </TabsContent>
+
           <TabsContent value="settings" className="space-y-6">
             <div>
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">

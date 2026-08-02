@@ -1,3 +1,4 @@
+- [Multi-location calendars](clinic-locations.md) — locationId NULL = main location; validate client locationIds via resolveLocationId; conflicts are per-location; delete moves rows back to main.
 - [Multi-tenant route scoping](multi-tenant-route-scoping.md) — every clinic-scoped Express route must role-check then filter by `currentUser.clinicId`; never trust client-supplied clinicId.
 - [Autosave concurrency](autosave-concurrency.md) — drafts use 1.5s debounce + 30s heartbeat with serialized PATCHes and `expectedUpdatedAt` optimistic concurrency; finalised records are immutable server-side.
 - [AI training gaps](ai-training-gaps.md) — generator currently uses `slice(0,3)` + `substring(0,400)` with no scan-type filter; user has parked the fix out of fear of regressions.

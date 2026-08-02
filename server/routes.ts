@@ -950,18 +950,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Appointments API
+  // Tenant guard: only expose appointments belonging to the caller's clinic.
+  // Legacy rows with a null clinicId stay visible (they predate scoping and
+  // belong to the original clinic's data set).
+  const appointmentVisibleToClinic = (a: any, clinicId: number | null | undefined) =>
+    clinicId == null ? true : (a.clinicId == null || a.clinicId === clinicId);
+
   app.get("/api/appointments", isAuthenticated, async (req, res) => {
     try {
+      const clinicId = (req as any).user?.clinicId ?? null;
       const { startDate, endDate } = req.query;
-      if (startDate && endDate) {
-        const appointments = await storage.getAppointmentsByDateRange(
-          new Date(startDate as string),
-          new Date(endDate as string)
-        );
-        return res.json(appointments);
-      }
-      const appointments = await storage.getAllAppointments();
-      res.json(appointments);
+      const appointments = (startDate && endDate)
+        ? await storage.getAppointmentsByDateRange(new Date(startDate as string), new Date(endDate as string))
+        : await storage.getAllAppointments();
+      res.json(appointments.filter((a: any) => appointmentVisibleToClinic(a, clinicId)));
     } catch (error) {
       console.error("Error fetching appointments:", error);
       res.status(500).json({ error: "Failed to fetch appointments" });
@@ -972,7 +974,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const appointment = await storage.getAppointment(id);
-      if (!appointment) {
+      if (!appointment || !appointmentVisibleToClinic(appointment, (req as any).user?.clinicId ?? null)) {
         return res.status(404).json({ error: "Appointment not found" });
       }
       res.json(appointment);
@@ -982,14 +984,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Helper: detect overlapping appointments in the same clinic
+  // Helper: validate a client-supplied locationId against the clinic's
+  // locations. Returns null for "main location" (absent/empty/invalid-clinic),
+  // or the numeric id when it belongs to the clinic.
+  async function resolveLocationId(clinicId: number | null, raw: any): Promise<number | null> {
+    const id = parseInt(raw);
+    if (!raw || isNaN(id)) return null;
+    if (clinicId == null) return null;
+    const loc = await storage.getClinicLocation(id);
+    return loc && loc.clinicId === clinicId ? id : null;
+  }
+
+  // Helper: detect overlapping appointments in the same clinic AND location
+  // (appointments at different locations never conflict).
   async function findApptConflicts(opts: {
     clinicId?: number | null;
+    locationId?: number | null;
     startDate: Date;
     durationMinutes: number;
     excludeId?: number;
   }) {
-    const { clinicId, startDate, durationMinutes, excludeId } = opts;
+    const { clinicId, locationId, startDate, durationMinutes, excludeId } = opts;
     const newStart = startDate.getTime();
     const newEnd = newStart + (durationMinutes || 30) * 60 * 1000;
     // Search a wide window then filter
@@ -1000,6 +1015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (excludeId && a.id === excludeId) return false;
       if (a.status === "cancelled") return false;
       if (clinicId != null && a.clinicId != null && a.clinicId !== clinicId) return false;
+      if ((a.locationId ?? null) !== (locationId ?? null)) return false;
       const aStart = new Date(a.appointmentDate).getTime();
       const aEnd = aStart + ((a.duration || 30) * 60 * 1000);
       return aStart < newEnd && newStart < aEnd;
@@ -1018,10 +1034,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Your account is not linked to a clinic." });
       }
       const startDate = new Date(req.body.appointmentDate);
+      const locationId = await resolveLocationId(clinicId, req.body.locationId);
       const force = req.body.force === true || req.query.force === "true";
       if (!force) {
         const conflicts = await findApptConflicts({
           clinicId,
+          locationId,
           startDate,
           durationMinutes: parseInt(req.body.duration) || 30,
         });
@@ -1044,6 +1062,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appointmentData = {
         ...rest,
         clinicId,
+        locationId,
         createdBy: userId,
         appointmentDate: startDate,
       };
@@ -1058,15 +1077,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/appointments/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const userClinicId = (req as any).user?.clinicId ?? null;
+      const target = await storage.getAppointment(id);
+      if (!target || !appointmentVisibleToClinic(target, userClinicId)) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
       const force = req.body.force === true || req.query.force === "true";
-      // Conflict check only if date or duration is changing
-      if (!force && (req.body.appointmentDate || req.body.duration)) {
-        const existing = await storage.getAppointment(id);
-        if (existing) {
+      // Never trust a client-supplied clinicId on update
+      delete req.body.clinicId;
+      // If the client is changing the location, validate it against the clinic
+      if (req.body.locationId !== undefined) {
+        req.body.locationId = await resolveLocationId(target.clinicId ?? userClinicId, req.body.locationId);
+      }
+      // Conflict check only if date, duration or location is changing
+      if (!force && (req.body.appointmentDate || req.body.duration || req.body.locationId !== undefined)) {
+        const existing = target;
+        {
           const startDate = req.body.appointmentDate ? new Date(req.body.appointmentDate) : new Date(existing.appointmentDate);
           const duration = req.body.duration != null ? (parseInt(req.body.duration) || 30) : (existing.duration || 30);
           const conflicts = await findApptConflicts({
-            clinicId: req.body.clinicId ?? existing.clinicId ?? null,
+            // Clinic comes from the stored appointment / session, never the client
+            clinicId: existing.clinicId ?? userClinicId,
+            locationId: req.body.locationId !== undefined ? req.body.locationId : ((existing as any).locationId ?? null),
             startDate,
             durationMinutes: duration,
             excludeId: id,
@@ -1121,6 +1153,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/appointments/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const existing = await storage.getAppointment(id);
+      if (!existing || !appointmentVisibleToClinic(existing, (req as any).user?.clinicId ?? null)) {
+        return res.status(404).json({ error: "Appointment not found" });
+      }
       await storage.deleteAppointment(id);
       res.status(204).send();
     } catch (error) {
@@ -2491,8 +2527,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { startDate, endDate } = req.query;
       const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
       const end = endDate ? new Date(endDate as string) : new Date(new Date().setMonth(new Date().getMonth() + 12));
+      const clinicId = (req as any).user?.clinicId ?? null;
       const events = await storage.getCalendarEventsByDateRange(start, end);
-      res.json(events);
+      res.json(events.filter((e: any) => appointmentVisibleToClinic(e, clinicId)));
     } catch (error) {
       console.error("Error fetching calendar events:", error);
       res.status(500).json({ error: "Failed to fetch calendar events" });
@@ -2505,6 +2542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const eventData = {
         ...req.body,
         clinicId,
+        locationId: await resolveLocationId(clinicId, req.body.locationId),
         startTime: new Date(req.body.startTime),
         endTime: new Date(req.body.endTime),
         recurrenceEndDate: req.body.recurrenceEndDate ? new Date(req.body.recurrenceEndDate) : null,
@@ -2520,6 +2558,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/calendar-events/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const existingEvent = await storage.getCalendarEvent(id);
+      if (!existingEvent || !appointmentVisibleToClinic(existingEvent, (req as any).user?.clinicId ?? null)) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      delete req.body.clinicId;
+      if (req.body.locationId !== undefined) {
+        req.body.locationId = await resolveLocationId((req as any).user?.clinicId ?? null, req.body.locationId);
+      }
       const eventData = {
         ...req.body,
         startTime: req.body.startTime ? new Date(req.body.startTime) : undefined,
@@ -2538,6 +2584,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/calendar-events/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const existingEvent = await storage.getCalendarEvent(id);
+      if (!existingEvent || !appointmentVisibleToClinic(existingEvent, (req as any).user?.clinicId ?? null)) {
+        return res.status(404).json({ error: "Event not found" });
+      }
       await storage.deleteCalendarEvent(id);
       res.status(204).send();
     } catch (error) {
@@ -9649,6 +9699,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Referring Doctors ──────────────────────────────────────────────
+  // ── Clinic Locations (additional sites, each with its own calendar) ──
+  app.get("/api/clinic-locations", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      res.json(await storage.getClinicLocations(clinicId));
+    } catch { res.status(500).json({ error: "Failed to fetch locations" }); }
+  });
+
+  app.post("/api/clinic-locations", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const role = req.user?.role;
+      if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      if (role !== "owner" && role !== "admin") return res.status(403).json({ error: "Only clinic admins can manage locations" });
+      const name = String(req.body?.name || "").trim();
+      if (!name) return res.status(400).json({ error: "Location name is required" });
+      const location = await storage.createClinicLocation({
+        clinicId,
+        name,
+        address: req.body?.address ? String(req.body.address) : null,
+        phone: req.body?.phone ? String(req.body.phone) : null,
+      });
+      res.status(201).json(location);
+    } catch { res.status(500).json({ error: "Failed to create location" }); }
+  });
+
+  app.put("/api/clinic-locations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const role = req.user?.role;
+      if (role !== "owner" && role !== "admin") return res.status(403).json({ error: "Only clinic admins can manage locations" });
+      const id = parseInt(req.params.id);
+      const existing = await storage.getClinicLocation(id);
+      if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+      const patch: any = {};
+      if (req.body?.name !== undefined) {
+        const name = String(req.body.name).trim();
+        if (!name) return res.status(400).json({ error: "Location name is required" });
+        patch.name = name;
+      }
+      if (req.body?.address !== undefined) patch.address = req.body.address ? String(req.body.address) : null;
+      if (req.body?.phone !== undefined) patch.phone = req.body.phone ? String(req.body.phone) : null;
+      if (req.body?.isActive !== undefined) patch.isActive = !!req.body.isActive;
+      res.json(await storage.updateClinicLocation(id, patch));
+    } catch { res.status(500).json({ error: "Failed to update location" }); }
+  });
+
+  app.delete("/api/clinic-locations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const role = req.user?.role;
+      if (role !== "owner" && role !== "admin") return res.status(403).json({ error: "Only clinic admins can manage locations" });
+      const id = parseInt(req.params.id);
+      const existing = await storage.getClinicLocation(id);
+      if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
+      await storage.deleteClinicLocation(id);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Failed to delete location" }); }
+  });
+
   app.get("/api/referring-doctors", isAuthenticated, async (req: any, res) => {
     try {
       const clinicId = req.user?.clinicId;

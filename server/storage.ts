@@ -61,7 +61,10 @@ import {
   CANONICAL_SCAN_TYPES,
   scanPrepInstructions,
   type ScanPrepInstruction,
+  clinicLocations,
   referringDoctors,
+  type ClinicLocation,
+  type InsertClinicLocation,
   type ReferringDoctor,
   type InsertReferringDoctor,
   scanRequests,
@@ -321,6 +324,7 @@ export interface IStorage {
   
   // Calendar event operations
   getCalendarEventsByDateRange(startDate: Date, endDate: Date): Promise<CalendarEvent[]>;
+  getCalendarEvent(id: number): Promise<CalendarEvent | undefined>;
   createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent>;
   updateCalendarEvent(id: number, event: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
   deleteCalendarEvent(id: number): Promise<void>;
@@ -431,6 +435,11 @@ export interface IStorage {
   deleteScanPrepInstruction(clinicId: number, scanType: string): Promise<void>;
 
   // Referring doctor operations
+  getClinicLocations(clinicId: number): Promise<ClinicLocation[]>;
+  getClinicLocation(id: number): Promise<ClinicLocation | undefined>;
+  createClinicLocation(location: InsertClinicLocation): Promise<ClinicLocation>;
+  updateClinicLocation(id: number, location: Partial<InsertClinicLocation>): Promise<ClinicLocation | undefined>;
+  deleteClinicLocation(id: number): Promise<void>;
   getReferringDoctors(clinicId: number): Promise<ReferringDoctor[]>;
   getReferringDoctor(id: number): Promise<ReferringDoctor | undefined>;
   searchReferringDoctors(clinicId: number, query: string): Promise<ReferringDoctor[]>;
@@ -1503,6 +1512,11 @@ export class DatabaseStorage implements IStorage {
       .orderBy(calendarEvents.startTime);
   }
 
+  async getCalendarEvent(id: number): Promise<CalendarEvent | undefined> {
+    const [event] = await db.select().from(calendarEvents).where(eq(calendarEvents.id, id));
+    return event;
+  }
+
   async createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent> {
     const [newEvent] = await db.insert(calendarEvents).values(event).returning();
     return newEvent;
@@ -2270,6 +2284,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Referring doctor operations
+  async getClinicLocations(clinicId: number): Promise<ClinicLocation[]> {
+    return db.select().from(clinicLocations).where(eq(clinicLocations.clinicId, clinicId)).orderBy(clinicLocations.name);
+  }
+
+  async getClinicLocation(id: number): Promise<ClinicLocation | undefined> {
+    const [loc] = await db.select().from(clinicLocations).where(eq(clinicLocations.id, id));
+    return loc;
+  }
+
+  async createClinicLocation(location: InsertClinicLocation): Promise<ClinicLocation> {
+    const [created] = await db.insert(clinicLocations).values(location).returning();
+    return created;
+  }
+
+  async updateClinicLocation(id: number, location: Partial<InsertClinicLocation>): Promise<ClinicLocation | undefined> {
+    const [updated] = await db.update(clinicLocations).set(location).where(eq(clinicLocations.id, id)).returning();
+    return updated;
+  }
+
+  async deleteClinicLocation(id: number): Promise<void> {
+    // Move this location's appointments/events back to the main calendar
+    // before removing it (no DB-level FK, so do it explicitly).
+    await db.update(appointments).set({ locationId: null }).where(eq(appointments.locationId, id));
+    await db.update(calendarEvents).set({ locationId: null }).where(eq(calendarEvents.locationId, id));
+    await db.delete(clinicLocations).where(eq(clinicLocations.id, id));
+  }
+
   async getReferringDoctors(clinicId: number): Promise<ReferringDoctor[]> {
     return db.select().from(referringDoctors).where(eq(referringDoctors.clinicId, clinicId)).orderBy(referringDoctors.name);
   }
