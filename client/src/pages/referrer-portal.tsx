@@ -12,7 +12,7 @@ import { format, addDays, startOfWeek, addWeeks, subWeeks, parseISO, isSameDay, 
 import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
 type UserInfo = { id: string; firstName: string | null; lastName: string | null; email: string; role: string };
-type ClinicInfo = { name: string; logoUrl: string | null; phone: string | null };
+type ClinicInfo = { name: string; logoUrl: string | null; phone: string | null; mainLocationName?: string | null };
 type BusySlot = { id: number; startTime: string; endTime: string; scanType: string; locationId?: number | null };
 type ClinicLocationInfo = { id: number; name: string; address: string | null };
 type CalendarEvent = { id: number; title: string; startTime: string; endTime: string; color: string };
@@ -54,6 +54,8 @@ export default function ReferrerPortal() {
   const [scanDurations, setScanDurations] = useState<ScanDuration[]>([]);
   const [locations, setLocations] = useState<ClinicLocationInfo[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>("main"); // "main" = clinic's main site
+
+  const mainLocationName = clinic?.mainLocationName || "Main location";
 
   const durationForScanType = (scanType: string): number => {
     if (!scanType) return 30;
@@ -319,7 +321,7 @@ export default function ReferrerPortal() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="main">Main location</SelectItem>
+                      <SelectItem value="main">{mainLocationName}</SelectItem>
                       {locations.map((l) => (
                         <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
                       ))}
@@ -459,7 +461,7 @@ export default function ReferrerPortal() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="main">Main location</SelectItem>
+                      <SelectItem value="main">{mainLocationName}</SelectItem>
                       {locations.map((l) => (
                         <SelectItem key={l.id} value={String(l.id)}>{l.name}{l.address ? ` — ${l.address}` : ""}</SelectItem>
                       ))}

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { ClinicLocation } from "@shared/schema";
+import type { Clinic, ClinicLocation } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +21,22 @@ export default function ClinicLocationsTab() {
     queryKey: ["/api/clinic-locations"],
   });
 
+  const { data: clinic } = useQuery<Clinic>({ queryKey: ["/api/clinic"] });
+  const mainName = clinic?.mainLocationName || "Main location";
+
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [mainDialogOpen, setMainDialogOpen] = useState(false);
+  const [mainNameForm, setMainNameForm] = useState("");
+
+  const mainNameMutation = useMutation({
+    mutationFn: async () => apiRequest("/api/clinic-locations/main", "PUT", { name: mainNameForm.trim() || null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
+      toast({ title: "Main location renamed" });
+      setMainDialogOpen(false);
+    },
+    onError: (e: any) => toast({ title: "Error", description: e?.message || "Failed to rename main location", variant: "destructive" }),
+  });
   const [editing, setEditing] = useState<ClinicLocation | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [deleting, setDeleting] = useState<ClinicLocation | null>(null);
@@ -88,10 +103,28 @@ export default function ClinicLocationsTab() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="flex items-center justify-between py-3 border-b" data-testid="row-location-main">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white">
+                {mainName} <span className="ml-2 text-xs font-normal text-gray-400 border rounded px-1.5 py-0.5">Default</span>
+              </p>
+              <p className="text-sm text-gray-500">
+                {[clinic?.address, clinic?.phone].filter(Boolean).join(" · ") || "Uses your clinic's address from Clinic Settings"}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setMainNameForm(clinic?.mainLocationName || ""); setMainDialogOpen(true); }}
+              data-testid="button-edit-main-location"
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
+          </div>
           {isLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
           ) : locations.length === 0 ? (
-            <p className="text-sm text-gray-500" data-testid="text-no-locations">
+            <p className="text-sm text-gray-500 pt-3" data-testid="text-no-locations">
               No additional locations yet. Your clinic currently runs a single calendar.
             </p>
           ) : (
@@ -166,6 +199,35 @@ export default function ClinicLocationsTab() {
                 data-testid="button-save-location"
               >
                 {saveMutation.isPending ? "Saving…" : editing ? "Save Changes" : "Add Location"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mainDialogOpen} onOpenChange={setMainDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Main Location</DialogTitle>
+            <DialogDescription>
+              This name appears in the location dropdowns on the Calendar, when scheduling requests, and in the referrer portal. Its address and phone come from your Clinic Settings. Leave blank to use "Main location".
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="main-location-name">Display Name</Label>
+              <Input
+                id="main-location-name"
+                placeholder="Main location"
+                value={mainNameForm}
+                onChange={(e) => setMainNameForm(e.target.value)}
+                data-testid="input-main-location-name"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setMainDialogOpen(false)}>Cancel</Button>
+              <Button onClick={() => mainNameMutation.mutate()} disabled={mainNameMutation.isPending} data-testid="button-save-main-location">
+                {mainNameMutation.isPending ? "Saving…" : "Save"}
               </Button>
             </div>
           </div>

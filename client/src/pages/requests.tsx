@@ -424,6 +424,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
   const { data: clinic } = useQuery<Clinic>({
     queryKey: ["/api/clinic"],
   });
+  const mainLocationName = (clinic as any)?.mainLocationName || "Main location";
 
   const { data: smsStatus } = useQuery<{ configured: boolean; fromNumber: string | null }>({
     queryKey: ["/api/sms/status"],
@@ -2053,7 +2054,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="main">Main location</SelectItem>
+                          <SelectItem value="main">{mainLocationName}</SelectItem>
                           {activeLocations.map(l => (
                             <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
                           ))}

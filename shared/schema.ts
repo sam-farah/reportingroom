@@ -65,6 +65,7 @@ export const clinics = pgTable("clinics", {
   publicHolidayRegion: varchar("public_holiday_region", { length: 20 }), // e.g. "AU-VIC", "AU-NSW", "AU", "NZ", "US", "GB", "CA" — used to fetch & display public holidays on the calendar
   timezone: varchar("timezone", { length: 64 }).notNull().default('Australia/Sydney'), // IANA timezone for rendering all patient-facing dates/times (appointments, reminders, consent, certificates)
   locationSpecificPracticeNumber: varchar("location_specific_practice_number", { length: 50 }), // Medicare Location Specific Practice Number (LSPN) for this clinic site, shown on the Assignment of Benefit form
+  mainLocationName: varchar("main_location_name", { length: 255 }), // Display name for the clinic's implicit main location (locationId=null); null → "Main location"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

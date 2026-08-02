@@ -9726,6 +9726,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch { res.status(500).json({ error: "Failed to create location" }); }
   });
 
+  // Rename the clinic's implicit main location (stored on the clinic record,
+  // since "main" isn't a clinic_locations row). Must be registered BEFORE the
+  // :id route so "main" isn't swallowed by parseInt.
+  app.put("/api/clinic-locations/main", isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      const role = req.user?.role;
+      if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      if (role !== "owner" && role !== "admin") return res.status(403).json({ error: "Only clinic admins can manage locations" });
+      const raw = req.body?.name;
+      const name = raw === undefined || raw === null ? null : String(raw).trim() || null;
+      await storage.updateClinic(clinicId, { mainLocationName: name } as any);
+      res.json({ success: true, mainLocationName: name });
+    } catch { res.status(500).json({ error: "Failed to update main location" }); }
+  });
+
   app.put("/api/clinic-locations/:id", isAuthenticated, async (req: any, res) => {
     try {
       const clinicId = req.user?.clinicId;
@@ -10293,7 +10309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.user;
       const clinic = user.clinicId ? await storage.getClinic(user.clinicId) : null;
       const { passwordHash: _, ...safeUser } = user;
-      res.json({ user: safeUser, clinic: clinic ? { name: clinic.name, logoUrl: clinic.logoUrl, phone: clinic.phone } : null });
+      res.json({ user: safeUser, clinic: clinic ? { name: clinic.name, logoUrl: clinic.logoUrl, phone: clinic.phone, mainLocationName: (clinic as any).mainLocationName || null } : null });
     } catch { res.status(500).json({ error: "Failed" }); }
   });
 

@@ -1051,6 +1051,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   const { data: clinicData } = useQuery<{ id: number; name: string; address?: string; city?: string; state?: string; zipCode?: string; phone?: string; fax?: string; email?: string; website?: string; logoUrl?: string }>({
     queryKey: ["/api/clinic"],
   });
+  const mainLocationName = (clinicData as any)?.mainLocationName || "Main location";
 
   const { data: sonographers = [] } = useQuery<Sonographer[]>({
     queryKey: ["/api/sonographers"],
@@ -2021,7 +2022,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="main">Main location</SelectItem>
+                  <SelectItem value="main">{mainLocationName}</SelectItem>
                   {activeLocations.map((loc) => (
                     <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
                   ))}
@@ -2056,7 +2057,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="main">Main location</SelectItem>
+                  <SelectItem value="main">{mainLocationName}</SelectItem>
                   {activeLocations.map((loc) => (
                     <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
                   ))}
@@ -3104,7 +3105,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="main">Main location</SelectItem>
+                        <SelectItem value="main">{mainLocationName}</SelectItem>
                         {activeLocations.map((loc) => (
                           <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
                         ))}
