@@ -387,7 +387,14 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
     physicianId: "",
     sonographerId: "",
     notes: "",
+    locationId: "main",
   });
+
+  // Clinic locations for the schedule step's location picker
+  const { data: clinicLocationsList = [] } = useQuery<{ id: number; name: string; isActive: boolean }[]>({
+    queryKey: ["/api/clinic-locations"],
+  });
+  const activeLocations = clinicLocationsList.filter(l => l.isActive);
 
   // Day's appointments for the selected booking date
   const { data: dayAppointments = [] } = useQuery<Appointment[]>({
@@ -557,6 +564,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
         physicianId: form.physicianId ? parseInt(form.physicianId) : null,
         sonographerId: form.sonographerId ? parseInt(form.sonographerId) : null,
         notes: form.notes || null,
+        locationId: form.locationId && form.locationId !== "main" ? parseInt(form.locationId) : null,
         status: "scheduled",
         force: !!force,
         // Snapshot the referring doctor onto the appointment itself (not just
@@ -1743,6 +1751,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                           physicianId: "",
                           sonographerId: "",
                           notes: viewingRequest.notes || "",
+                          locationId: "main",
                         });
                         setSchedulingRequest(viewingRequest);
                         setViewingStep("schedule");
@@ -1763,8 +1772,9 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
           {viewingRequest && viewingStep === "schedule" && (() => {
             const urgCfg = URGENCY_CONFIG[viewingRequest.urgency] ?? URGENCY_CONFIG.routine;
             const selectedDate = scheduleForm.appointmentDate ? parseISO(scheduleForm.appointmentDate) : new Date();
+            const selLocationId = scheduleForm.locationId && scheduleForm.locationId !== "main" ? parseInt(scheduleForm.locationId) : null;
             const sortedDayAppts = [...dayAppointments]
-              .filter(a => a.status !== "cancelled")
+              .filter(a => a.status !== "cancelled" && ((a.locationId ?? null) === selLocationId))
               .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime());
             return (
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-5">
@@ -2031,6 +2041,26 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                       })()}
                     </div>
                   </div>
+
+                  {activeLocations.length > 0 && (
+                    <div>
+                      <Label className="text-xs">Location</Label>
+                      <Select
+                        value={scheduleForm.locationId}
+                        onValueChange={v => setScheduleForm(p => ({ ...p, locationId: v }))}
+                      >
+                        <SelectTrigger className="mt-1" data-testid="select-schedule-location">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="main">Main location</SelectItem>
+                          {activeLocations.map(l => (
+                            <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
