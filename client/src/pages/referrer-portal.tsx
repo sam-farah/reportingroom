@@ -13,7 +13,8 @@ import { CANONICAL_SCAN_TYPES } from "@shared/schema";
 
 type UserInfo = { id: string; firstName: string | null; lastName: string | null; email: string; role: string };
 type ClinicInfo = { name: string; logoUrl: string | null; phone: string | null };
-type BusySlot = { id: number; startTime: string; endTime: string; scanType: string };
+type BusySlot = { id: number; startTime: string; endTime: string; scanType: string; locationId?: number | null };
+type ClinicLocationInfo = { id: number; name: string; address: string | null };
 type CalendarEvent = { id: number; title: string; startTime: string; endTime: string; color: string };
 type ScanRequest = { id: number; patientName: string; scanTypes: string[]; status: string; urgency: string; requestDate: string; createdAt: string };
 type ScanDuration = { scanType: string; isEnabled: boolean; hasLaterality: boolean; bilateralDuration: number | null; unilateralDuration: number | null };
@@ -51,6 +52,8 @@ export default function ReferrerPortal() {
   const [booking, setBooking] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [scanDurations, setScanDurations] = useState<ScanDuration[]>([]);
+  const [locations, setLocations] = useState<ClinicLocationInfo[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>("main"); // "main" = clinic's main site
 
   const durationForScanType = (scanType: string): number => {
     if (!scanType) return 30;
@@ -76,10 +79,11 @@ export default function ReferrerPortal() {
   const loadCalendar = useCallback(async () => {
     setLoadingCal(true);
     try {
-      const [calRes, reqRes, durRes] = await Promise.all([
+      const [calRes, reqRes, durRes, locRes] = await Promise.all([
         fetch("/api/referrer/calendar", { credentials: "include" }),
         fetch("/api/referrer/requests", { credentials: "include" }),
         fetch("/api/referrer/scan-durations", { credentials: "include" }),
+        fetch("/api/referrer/locations", { credentials: "include" }),
       ]);
       if (calRes.ok) {
         const data = await calRes.json();
@@ -88,6 +92,7 @@ export default function ReferrerPortal() {
       }
       if (reqRes.ok) setMyRequests(await reqRes.json());
       if (durRes.ok) setScanDurations(await durRes.json());
+      if (locRes.ok) setLocations(await locRes.json());
     } catch {}
     setLoadingCal(false);
   }, []);
@@ -147,7 +152,12 @@ export default function ReferrerPortal() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ...bookForm, startTime: start.toISOString(), endTime: end.toISOString() }),
+        body: JSON.stringify({
+          ...bookForm,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          locationId: selectedLocationId !== "main" ? parseInt(selectedLocationId) : null,
+        }),
       });
       if (!r.ok) { const d = await r.json(); alert(d.error || "Failed to book"); return; }
       setBookingSuccess(true);
@@ -199,7 +209,9 @@ export default function ReferrerPortal() {
   const getSlotEvents = (day: Date, hour: number) => {
     const hourStart = new Date(day); hourStart.setHours(hour, 0, 0, 0);
     const hourEnd = new Date(day); hourEnd.setHours(hour, 59, 59, 0);
+    const selLocId = selectedLocationId !== "main" ? parseInt(selectedLocationId) : null;
     return busySlots.filter((s) => {
+      if ((s.locationId ?? null) !== selLocId) return false;
       const st = new Date(s.startTime), en = new Date(s.endTime);
       return isSameDay(st, day) && st < hourEnd && en > hourStart;
     });
@@ -300,9 +312,24 @@ export default function ReferrerPortal() {
               <span className="text-sm font-medium text-gray-700">
                 {format(weekStart, "d MMM")} – {format(addDays(weekStart, 4), "d MMM yyyy")}
               </span>
-              <Button size="sm" onClick={() => openBooking(new Date(), new Date().getHours())} className="gap-1.5">
-                <Plus className="w-4 h-4" /> Book
-              </Button>
+              <div className="flex items-center gap-2">
+                {locations.length > 0 && (
+                  <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                    <SelectTrigger className="h-9 w-44 text-sm" data-testid="select-referrer-location">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="main">Main location</SelectItem>
+                      {locations.map((l) => (
+                        <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button size="sm" onClick={() => openBooking(new Date(), new Date().getHours())} className="gap-1.5">
+                  <Plus className="w-4 h-4" /> Book
+                </Button>
+              </div>
             </div>
 
             <p className="text-xs text-gray-400 flex items-center gap-1">
@@ -424,6 +451,23 @@ export default function ReferrerPortal() {
             </div>
           ) : (
             <form onSubmit={submitBooking} className="space-y-4 mt-1">
+              {locations.length > 0 && (
+                <div>
+                  <Label className="text-sm">Clinic Site *</Label>
+                  <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                    <SelectTrigger className="mt-1" data-testid="select-booking-location">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="main">Main location</SelectItem>
+                      {locations.map((l) => (
+                        <SelectItem key={l.id} value={String(l.id)}>{l.name}{l.address ? ` — ${l.address}` : ""}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-gray-400 mt-1">The calendar shows availability for this site.</p>
+                </div>
+              )}
               <div>
                 <Label className="text-sm">Patient Full Name *</Label>
                 <Input required value={bookForm.patientName} onChange={(e) => setBookForm((p) => ({ ...p, patientName: e.target.value }))} className="mt-1" />

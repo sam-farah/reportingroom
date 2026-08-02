@@ -10297,6 +10297,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch { res.status(500).json({ error: "Failed" }); }
   });
 
+  // Referrer: list the clinic's active locations (for the site picker)
+  app.get("/api/referrer/locations", isReferrer, async (req: any, res) => {
+    try {
+      const clinicId = req.user.clinicId;
+      if (!clinicId) return res.status(403).json({ error: "No clinic associated" });
+      const locations = await storage.getClinicLocations(clinicId);
+      res.json(locations.filter((l: any) => l.isActive).map((l: any) => ({ id: l.id, name: l.name, address: l.address })));
+    } catch {
+      res.status(500).json({ error: "Failed to fetch locations" });
+    }
+  });
+
   // Referrer: get limited calendar (busy slots, no patient names)
   app.get("/api/referrer/scan-durations", isReferrer, async (req: any, res) => {
     try {
@@ -10332,6 +10344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             endTime: end.toISOString(),
             scanType: a.scanType,
             status: "booked",
+            locationId: a.locationId ?? null,
           };
         });
       const filteredEvents = allEvents.filter((e: any) => e.clinicId === clinicId);
@@ -10348,6 +10361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientName, patientDob, patientPhone, patientEmail,
         scanType, startTime, endTime, notes, clinicalIndication,
       } = req.body;
+      const locationId = await resolveLocationId(clinicId, req.body.locationId);
       if (!patientName || !scanType || !startTime || !endTime) {
         return res.status(400).json({ error: "Patient name, scan type, and time are required" });
       }
@@ -10366,6 +10380,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : (match.bilateralDuration ?? 30);
       }
       const apptEnd = new Date(apptStart.getTime() + durationMins * 60000);
+
+      // Server-side double-booking guard (same rule as staff bookings): the
+      // client's busy-slot grid is advisory only and can be stale.
+      const conflicts = await findApptConflicts({
+        clinicId,
+        locationId,
+        startDate: apptStart,
+        durationMinutes: durationMins,
+      });
+      if (conflicts.length > 0) {
+        return res.status(409).json({ error: "That time slot has just been taken. Please pick another slot." });
+      }
+
       const referrerFullName = `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() || "External Referrer";
       const referralPrefix = `[Referral from: ${referrerFullName}]`;
       const combinedNotes = notes ? `${referralPrefix}\n${notes}` : referralPrefix;
@@ -10395,6 +10422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: req.user.id,
         referringDoctorName: referrerFullName,
         referralDate: today,
+        locationId,
       } as any);
 
       // Create corresponding scan request
