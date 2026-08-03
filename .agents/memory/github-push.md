@@ -16,3 +16,5 @@ Repo: https://github.com/sam-farah/reportingroom (PUBLIC, default branch `main`,
 - The GitHub connector is proxy-only: `listConnections('github')` returns `[]` by design. To query the GitHub API, `npm install --no-save @replit/connectors-sdk` then `connectors.proxy("github", "/user/repos?...")` inside a "use impure" function.
 
 **How to apply:** any "push to GitHub" request — skip the broken paths and go straight to the extraheader push. Consider that the repo is public before adding anything sensitive to tracked files.
+
+**Lockfile gotcha (2026-08-03):** `package-lock.json` can get `resolved` URLs pointing at `http://package-firewall.replit.local/npm/...` (Replit-internal). On the user's Mac those DNS-fail (ENOTFOUND) and `npm install` dies with npm's generic "Exit handler never called!". Fix before pushing: `sed -i 's|http://package-firewall.replit.local/npm/|https://registry.npmjs.org/|g' package-lock.json`. Check with `grep -c package-firewall package-lock.json` whenever the Mac build breaks at install.
