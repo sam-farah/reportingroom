@@ -299,6 +299,8 @@ export interface IStorage {
   getDraftDigitalWorksheets(): Promise<DigitalWorksheet[]>;
   createDraftReport(data: any): Promise<Report>;
   applyDraftAiContent(id: number, content: { findings: string; impression: string }, markers: { findings: string; impression: string }): Promise<void>;
+  getClinicReports(clinicId: number): Promise<Report[]>;
+  getRecentClinicReports(limit: number, clinicId: number): Promise<Report[]>;
 
   // Legend entries operations
   getAllLegendEntries(): Promise<LegendEntry[]>;
@@ -910,6 +912,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorksheet(id: number): Promise<void> {
     await db.delete(worksheets).where(eq(worksheets.id, id));
+  }
+
+  // Clinic-scoped report visibility: a report belongs to a clinic either via
+  // its own clinicId, or — for legacy rows created before clinic stamping —
+  // via its linked patient's clinic (same rule as resolveAuthorisedReport).
+  private clinicReportFilter(clinicId: number) {
+    return or(
+      eq(reports.clinicId, clinicId),
+      and(
+        isNull(reports.clinicId),
+        sql`${reports.patientId} IN (SELECT id FROM patients WHERE clinic_id = ${clinicId})`,
+      ),
+    );
+  }
+
+  async getClinicReports(clinicId: number): Promise<Report[]> {
+    const rows = await db.select().from(reports).where(this.clinicReportFilter(clinicId));
+    return rows.map(report => FieldEncryption.decryptFields(report) as Report);
+  }
+
+  async getRecentClinicReports(limit: number, clinicId: number): Promise<Report[]> {
+    const rows = await db
+      .select()
+      .from(reports)
+      .where(this.clinicReportFilter(clinicId))
+      .orderBy(desc(reports.generatedAt))
+      .limit(limit);
+    return rows.map(report => FieldEncryption.decryptFields(report) as Report);
   }
 
   async getAllReports(): Promise<Report[]> {

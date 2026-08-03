@@ -3166,9 +3166,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/patients/:id/reports", isAuthenticated, async (req, res) => {
+  app.get("/api/patients/:id/reports", isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
+      // Clinic scoping: only expose reports of patients in the caller's clinic.
+      const user = await storage.getUser(req.session.userId!);
+      const patient = await storage.getPatient(id);
+      if (!patient || !user?.clinicId || patient.clinicId !== user.clinicId) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
       const reports = await storage.getPatientReports(id);
       res.json(reports);
     } catch (error) {
@@ -3412,6 +3418,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const patientId = parseInt(req.params.id);
       if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
+      // Clinic scoping: only expose distribution history for patients in the
+      // caller's clinic.
+      const trUser = await storage.getUser(req.session.userId!);
+      const trPatient = await storage.getPatient(patientId);
+      if (!trPatient || !trUser?.clinicId || trPatient.clinicId !== trUser.clinicId) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
       const allReports = await storage.getPatientReports(patientId);
       const groups: any[] = [];
       for (const report of allReports) {
@@ -4125,9 +4138,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reports API
-  app.get("/api/reports", isAuthenticated, async (req, res) => {
+  app.get("/api/reports", isAuthenticated, async (req: any, res) => {
     try {
-      const reports = await storage.getAllReports();
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.json([]);
+      const reports = await storage.getClinicReports(user.clinicId);
       res.json(reports);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch reports" });
@@ -4135,9 +4150,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get recent reports (last 50)
-  app.get("/api/reports/recent", isAuthenticated, async (req, res) => {
+  app.get("/api/reports/recent", isAuthenticated, async (req: any, res) => {
     try {
-      const reports = await storage.getRecentReports(50);
+      const user = await storage.getUser(req.session.userId!);
+      if (!user?.clinicId) return res.json([]);
+      const reports = await storage.getRecentClinicReports(50, user.clinicId);
       res.json(reports);
     } catch (error) {
       console.error("Get recent reports error:", error);
@@ -4154,6 +4171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updates = { ...req.body };
       const userId = req.session.userId!;
+      if (!(await resolveAuthorisedReport(reportId, userId, res))) return;
 
       // Capture finalization intent before stripping from regular updates
       const isFinalizingNow = updates.isFinalized === true;
@@ -4288,11 +4306,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid report ID" });
       }
 
-      // Check if report exists before deletion
-      const existingReport = await storage.getReport(reportId);
-      if (!existingReport) {
-        return res.status(404).json({ error: "Report not found" });
-      }
+      // Check if report exists and belongs to the caller's clinic
+      const existingReport = await resolveAuthorisedReport(reportId, req.session.userId!, res);
+      if (!existingReport) return;
 
       // Capture extra worksheet pages first — deleting the report cascade-deletes
       // their join rows, so clean up the dedicated worksheet rows + files
@@ -4319,7 +4335,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/reports/:id/finalize", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
       const userId = req.session.userId!;
+      if (!(await resolveAuthorisedReport(id, userId, res))) return;
 
       // Safety net: if this report isn't linked to a patient, try to link it
       // before finalizing so the finalized report actually shows up in the
@@ -4391,6 +4409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      if (!(await resolveAuthorisedReport(id, req.session.userId!, res))) return;
 
       const items = Array.isArray(req.body?.items) ? req.body.items : [];
       const totalValueCents = items.reduce((sum: number, it: any) => sum + (Number(it.feeCents) || 0), 0);
@@ -4544,13 +4563,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // always has the form's reportId, so it's a safe, unambiguous fallback.
   app.get("/api/reports/:id/assessment-of-benefit", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId!);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
-      const report = await storage.getReport(id);
-      if (!report || (report.clinicId != null && user?.clinicId != null && report.clinicId !== user.clinicId)) {
-        return res.status(404).json({ error: "Report not found" });
-      }
+      const report = await resolveAuthorisedReport(id, req.session.userId!, res);
+      if (!report) return;
       const form = await storage.getAssessmentOfBenefitFormByReportId(id);
       res.json(form ?? null);
     } catch (error) {
@@ -5004,6 +5020,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      if (!(await resolveAuthorisedReport(id, req.session.userId!, res))) return;
       const report = await storage.archiveReport(id);
       if (!report) return res.status(404).json({ error: "Report not found" });
       res.json(report);
@@ -5017,6 +5034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      if (!(await resolveAuthorisedReport(id, req.session.userId!, res))) return;
       const report = await storage.updateReport(id, { isArchived: false, archivedAt: null });
       if (!report) return res.status(404).json({ error: "Report not found" });
       res.json(report);
@@ -5105,6 +5123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = req.session.userId!;
+      if (!(await resolveAuthorisedReport(id, userId, res))) return;
       const { reason, ...reportUpdates } = req.body;
 
       if (!reason || reason.trim() === '') {
@@ -5132,6 +5151,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+
+      if (!(await resolveAuthorisedReport(id, req.session.userId!, res))) return;
 
       const { toEmail, toName, ccEmails, subject, reportHtml, pdfBase64, worksheetPdfBase64, patientName: bodyPatientName } = req.body;
       if (!toEmail || !reportHtml) {
@@ -5245,6 +5266,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+
+      if (!(await resolveAuthorisedReport(id, req.session.userId!, res))) return;
 
       const { faxNumber, pdfBase64, patientName: bodyPatientName } = req.body;
       if (!faxNumber) return res.status(400).json({ error: "faxNumber is required" });
@@ -5624,6 +5647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      if (!(await resolveAuthorisedReport(id, req.session.userId!, res))) return;
       const distributions = await storage.getReportDistributions(id);
       res.json(distributions);
     } catch (error) {
@@ -5637,6 +5661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid report ID" });
+      if (!(await resolveAuthorisedReport(id, req.session.userId!, res))) return;
 
       const user = await storage.getUser(req.session.userId!);
       const body = insertReportDistributionSchema.parse({
@@ -6223,6 +6248,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Worksheet not found" });
       }
 
+      // Clinic scoping: if the worksheet is linked to a patient, that patient
+      // must belong to the caller's clinic. (Worksheets uploaded without a
+      // patient can't be attributed yet — they proceed and are linked later.)
+      if (worksheet.patientId) {
+        const wsPatient = await storage.getPatient(worksheet.patientId);
+        if (!wsPatient || !user?.clinicId || wsPatient.clinicId !== user.clinicId) {
+          return res.status(404).json({ error: "Worksheet not found" });
+        }
+      }
+
       console.log("Found worksheet:", worksheet);
 
       // Read the worksheet file
@@ -6547,11 +6582,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/reports/:id/pdf", isAuthenticated, async (req, res) => {
     try {
       const reportId = parseInt(req.params.id);
-      const report = await storage.getReport(reportId);
-      
-      if (!report) {
-        return res.status(404).json({ error: "Report not found" });
-      }
+      if (isNaN(reportId)) return res.status(400).json({ error: "Invalid report ID" });
+      const report = await resolveAuthorisedReport(reportId, req.session.userId!, res);
+      if (!report) return;
 
       // Get user's clinic information
       const userId = req.session.userId!;
@@ -6879,10 +6912,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid report ID" });
       }
 
-      const report = await storage.getReport(reportId);
-      if (!report) {
-        return res.status(404).json({ error: "Report not found" });
-      }
+      const report = await resolveAuthorisedReport(reportId, req.session.userId!, res);
+      if (!report) return;
 
       // Get template for styling
       const template = await storage.getReportTemplate(templateId) || await storage.getReportTemplate(1);
@@ -7134,7 +7165,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   },
                 },
               }),
-              ...report.findings.split('\n').filter(line => line.trim()).map(line => 
+              ...report.findings.split('\n').filter((line: string) => line.trim()).map((line: string) => 
                 new Paragraph({
                   text: line.trim(),
                   spacing: { after: 120 },
@@ -7163,7 +7194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   },
                 },
               }),
-              ...report.impression.split('\n').filter(line => line.trim()).map(line => 
+              ...report.impression.split('\n').filter((line: string) => line.trim()).map((line: string) => 
                 new Paragraph({
                   text: line.trim(),
                   spacing: { after: 120 },
