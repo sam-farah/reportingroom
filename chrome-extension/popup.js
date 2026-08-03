@@ -44,8 +44,41 @@ function onSignedIn(user) {
   $("whoami").textContent = "Signed in as " + (user.email || "staff");
   show("view-form");
   loadScanTypes();
-  readPage(true); // best-effort auto-read on open
+  loadDoctors();
+  restoreForm().then(() => readPage(true)); // restore saved draft, then best-effort auto-read (fills blanks only)
 }
+
+// ---------- draft persistence (survives closing the popup) ----------
+
+const FORM_FIELDS = ["f-name", "f-dob", "f-phone", "f-email", "f-medicare", "f-medicare-irn", "f-scantype", "f-urgency", "f-doctor", "f-notes"];
+
+function saveForm() {
+  const data = {};
+  FORM_FIELDS.forEach((id) => { const el = $(id); if (el) data[id] = el.value; });
+  chrome.storage.local.set({ rrDraft: data });
+}
+
+async function restoreForm() {
+  try {
+    const { rrDraft } = await chrome.storage.local.get("rrDraft");
+    if (!rrDraft) return;
+    FORM_FIELDS.forEach((id) => {
+      const el = $(id);
+      if (el && rrDraft[id]) el.value = rrDraft[id];
+    });
+  } catch {}
+}
+
+function clearForm() {
+  FORM_FIELDS.forEach((id) => { const el = $(id); if (el) el.value = el.tagName === "SELECT" ? (el.options[0] ? el.options[0].value : "") : ""; });
+  chrome.storage.local.remove("rrDraft");
+  msg("");
+}
+
+FORM_FIELDS.forEach((id) => {
+  document.addEventListener("input", (e) => { if (e.target && e.target.id === id) saveForm(); });
+});
+document.addEventListener("change", (e) => { if (e.target && FORM_FIELDS.includes(e.target.id)) saveForm(); });
 
 $("btn-login").addEventListener("click", async () => {
   msg("");
@@ -110,6 +143,26 @@ async function loadScanTypes() {
   }
 }
 
+// ---------- referring doctors (managed in ReportingRoom → Clinic Setup → Settings) ----------
+
+let DOCTORS = [];
+
+async function loadDoctors() {
+  const sel = $("f-doctor");
+  const prev = sel.value;
+  sel.innerHTML = "<option value=''>— Select referring doctor —</option>";
+  try {
+    DOCTORS = (await api("/api/referring-doctors")) || [];
+    DOCTORS.forEach((d) => {
+      const o = document.createElement("option");
+      o.value = String(d.id);
+      o.textContent = d.name + (d.providerNumber ? " (" + d.providerNumber + ")" : "");
+      sel.appendChild(o);
+    });
+    if (prev) sel.value = prev;
+  } catch {}
+}
+
 // ---------- read patient off the page ----------
 
 // This function is serialized and injected into the current tab. It must be
@@ -159,8 +212,11 @@ function extractPatientFromPage() {
   // Name. Prefer a name in the same small block of the page as the DOB
   // (e.g. Clinic to Cloud's patient card) — pages often list other people
   // (signed-in user, appointment list) elsewhere.
-  const nameRe = /\b(?:Mr|Mrs|Ms|Miss|Mx)\.?\s+([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){1,2})\b/;
-  const nameReDr = /\b(?:Mr|Mrs|Ms|Miss|Mx|Dr)\.?\s+([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){1,2})\b/;
+  // Names must sit on one line ([ \t] only, no newlines) so labels on the next
+  // line (e.g. "ID: 3723") can't get glued on. Also strip a trailing "ID".
+  const nameRe = /(?:^|[\s>])(?:Mr|Mrs|Ms|Miss|Mx)\.?[ \t]+([A-Z][A-Za-z'-]+(?:[ \t]+[A-Z][A-Za-z'-]+){1,2})/;
+  const nameReDr = /(?:^|[\s>])(?:Mr|Mrs|Ms|Miss|Mx|Dr)\.?[ \t]+([A-Z][A-Za-z'-]+(?:[ \t]+[A-Z][A-Za-z'-]+){1,2})/;
+  const cleanName = (n) => n.replace(/([a-z])ID$/, "$1").replace(/[ \t]+ID$/, "").trim();
 
   function nameNearDob(dobRaw) {
     if (!document.body || !document.createTreeWalker) return null;
@@ -176,7 +232,7 @@ function extractPatientFromPage() {
       const t = el.innerText || "";
       if (t.length > 1200) break;
       const m = t.match(nameRe) || t.match(nameReDr);
-      if (m) return m[1];
+      if (m) return cleanName(m[1]);
     }
     return null;
   }
@@ -184,7 +240,7 @@ function extractPatientFromPage() {
   if (!sel && dob) out.name = nameNearDob(dob[0]);
   if (!out.name) {
     const nm = text.match(nameRe) || text.match(nameReDr);
-    if (nm) out.name = nm[1];
+    if (nm) out.name = cleanName(nm[1]);
   }
 
   return out;
@@ -200,12 +256,16 @@ async function readPage(silent) {
     });
     const p = results && results[0] && results[0].result;
     if (!p) throw new Error("Couldn't read the page");
-    if (p.name) $("f-name").value = p.name;
-    if (p.dob) $("f-dob").value = p.dob;
-    if (p.phone) $("f-phone").value = p.phone;
-    if (p.email) $("f-email").value = p.email;
-    if (p.medicare) $("f-medicare").value = p.medicare;
-    if (p.medicareIrn) $("f-medicare-irn").value = p.medicareIrn;
+    // Manual read overwrites; the silent auto-read on open only fills blanks
+    // (so a saved draft isn't clobbered when you come back to the popup).
+    const put = (id, v) => { if (v && (!silent || !$(id).value)) $(id).value = v; };
+    put("f-name", p.name);
+    put("f-dob", p.dob);
+    put("f-phone", p.phone);
+    put("f-email", p.email);
+    put("f-medicare", p.medicare);
+    put("f-medicare-irn", p.medicareIrn);
+    saveForm();
     if (!silent) {
       const found = ["name", "dob", "phone", "email", "medicare"].filter((k) => p[k]).length;
       msg(found
@@ -251,6 +311,7 @@ $("btn-read-pdf").addEventListener("click", async () => {
       for (const o of sel.options) if (o.value === x.scanTypes[0]) { sel.value = o.value; break; }
     }
     if (x.clinicalIndication) $("f-notes").value = x.clinicalIndication;
+    saveForm();
     const found = ["patientName", "patientDob", "patientPhone", "patientEmail", "patientMedicareNumber"].filter((k) => x[k]).length;
     msg(found ? "Read " + found + " detail" + (found > 1 ? "s" : "") + " from the screen." : "Couldn't find patient details on the screen. Make sure they're visible, then try again.", found ? "ok" : "err");
   } catch (e) {
@@ -262,9 +323,14 @@ $("btn-read-pdf").addEventListener("click", async () => {
 
 // ---------- submit ----------
 
+$("btn-clear").addEventListener("click", clearForm);
+
 $("btn-submit").addEventListener("click", async () => {
   const name = $("f-name").value.trim();
   if (!name) return msg("Patient name is required.");
+  const doctorId = $("f-doctor").value;
+  if (!doctorId) return msg("Please select the referring doctor. Doctors are managed in ReportingRoom under Clinic Setup → Settings.");
+  const doctor = DOCTORS.find((d) => String(d.id) === doctorId);
   $("btn-submit").disabled = true;
   msg("");
   try {
@@ -279,6 +345,9 @@ $("btn-submit").addEventListener("click", async () => {
       patientEmail: $("f-email").value.trim() || null,
       patientMedicareNumber: $("f-medicare").value.replace(/\D/g, "") || null,
       patientMedicareIrn: $("f-medicare-irn").value.trim() || null,
+      referringDoctorId: doctor ? doctor.id : null,
+      referringDoctorName: doctor ? doctor.name : null,
+      referringDoctorProviderNumber: doctor ? (doctor.providerNumber || null) : null,
       scanTypes: [$("f-scantype").value],
       urgency: $("f-urgency").value,
       clinicalIndication: $("f-notes").value.trim() || null,
@@ -288,6 +357,8 @@ $("btn-submit").addEventListener("click", async () => {
     msg(created && created.patientId
       ? "Saved and matched to the patient's file ✓"
       : "Saved to the Requests page ✓ (no exact patient match — link it there)", "ok");
+    chrome.storage.local.remove("rrDraft");
+    ["f-name", "f-dob", "f-phone", "f-email", "f-medicare", "f-medicare-irn", "f-notes"].forEach((id) => { $(id).value = ""; });
   } catch (e) {
     msg(e.message);
   } finally {

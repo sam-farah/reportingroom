@@ -48,7 +48,7 @@
 
   <!-- Step: request form -->
   <div id="view-form" class="hidden">
-    <div class="topbar"><span id="whoami"></span><a id="btn-logout">Sign out</a></div>
+    <div class="topbar"><span id="whoami"></span><span><a id="btn-clear" style="margin-right:10px">Clear form</a><a id="btn-logout">Sign out</a></span></div>
     <button id="btn-read" class="secondary" style="margin-top:0">Read patient from this page</button>
     <button id="btn-read-pdf" class="secondary" style="margin-top:6px">Read on-screen PDF (AI)</button>
     <p class="hint">Tip: if it doesn't pick everything up, highlight the patient details on the page first, then click again. For details shown inside a PDF (e.g. a registration form), make sure they're visible on screen and use "Read on-screen PDF".</p>
@@ -65,6 +65,9 @@
       <div style="flex:3"><label>Medicare Number</label><input id="f-medicare" inputmode="numeric" placeholder="1234 56789 1"></div>
       <div style="flex:1"><label>IRN</label><input id="f-medicare-irn" inputmode="numeric" maxlength="1" placeholder="1"></div>
     </div>
+    <label>Referring Doctor</label>
+    <select id="f-doctor"></select>
+    <p class="hint" style="margin-top:2px">Manage this list in ReportingRoom → Clinic Setup → Settings.</p>
     <label>Scan Type</label>
     <select id="f-scantype"></select>
     <label>Urgency</label>

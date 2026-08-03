@@ -10193,6 +10193,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Invalid patient" });
         }
       }
+      // Same for a caller-supplied referring doctor.
+      if (req.body.referringDoctorId) {
+        const doc = await storage.getReferringDoctor(Number(req.body.referringDoctorId));
+        if (!doc || doc.clinicId !== clinicId) {
+          return res.status(400).json({ error: "Invalid referring doctor" });
+        }
+      }
       // If the caller didn't link a patient, try an automatic match on
       // full name + DOB (or full name + phone) within this clinic.
       let autoPatientId: number | null = null;
@@ -10209,6 +10216,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         patientMedicareNumber: normaliseMedicareNumber(req.body.patientMedicareNumber),
         patientMedicareIrn: normaliseMedicareIrn(req.body.patientMedicareIrn),
+        createdByName: `${req.user?.firstName || ""} ${req.user?.lastName || ""}`.trim() || req.user?.email || null,
         clinicId,
         patientId: req.body.patientId ?? autoPatientId ?? null,
         patientLinkSource: req.body.patientId ? "manual_link" : (autoPatientId ? "auto_match" : null),

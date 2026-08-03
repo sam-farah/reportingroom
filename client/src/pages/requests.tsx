@@ -1586,6 +1586,9 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                       {viewingRequest.patientMedicareIrn ? ` — ${viewingRequest.patientMedicareIrn}` : ""}
                     </p>
                   )}
+                  {(viewingRequest as any).createdByName && (
+                    <p className="text-xs text-gray-400">Requested by {(viewingRequest as any).createdByName}</p>
+                  )}
                 </div>
                 {viewingRequest.referringDoctorName && (() => {
                   const linkedDoctor = viewingRequest.referringDoctorId

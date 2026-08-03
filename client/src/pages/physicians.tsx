@@ -21,6 +21,64 @@ import { UserPlus, Trash2, Edit, Users, Upload, Pen, X, RotateCcw, Image, Buildi
 import ClinicLocationsTab from "@/components/clinic-locations-tab";
 import { format } from "date-fns";
 
+// Small manager for the referring-doctor list the Chrome extension uses.
+function ExtensionDoctorsManager() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [newName, setNewName] = useState("");
+  const [newProvider, setNewProvider] = useState("");
+
+  const { data: doctors = [] } = useQuery<{ id: number; name: string; providerNumber: string | null }[]>({
+    queryKey: ["/api/referring-doctors"],
+  });
+
+  const addDoctor = useMutation({
+    mutationFn: () => apiRequest("/api/referring-doctors", "POST", { name: newName.trim(), providerNumber: newProvider.trim() || null }),
+    onSuccess: () => {
+      setNewName(""); setNewProvider("");
+      queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] });
+      toast({ title: "Doctor added" });
+    },
+    onError: () => toast({ title: "Couldn't add the doctor", variant: "destructive" }),
+  });
+
+  const deleteDoctor = useMutation({
+    mutationFn: (id: number) => apiRequest(`/api/referring-doctors/${id}`, "DELETE"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/referring-doctors"] }),
+    onError: () => toast({ title: "Couldn't remove the doctor", variant: "destructive" }),
+  });
+
+  return (
+    <div className="border rounded-lg p-4 space-y-3">
+      <div>
+        <p className="font-semibold text-sm text-gray-800">Referring Doctors for the Extension</p>
+        <p className="text-xs text-gray-500">These doctors appear in the extension's "Referring Doctor" dropdown. Add each doctor with their Medicare provider number.</p>
+      </div>
+      <div className="flex gap-2">
+        <Input placeholder="Doctor's name (e.g. Dr Jane Smith)" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <Input placeholder="Provider number" className="max-w-[160px]" value={newProvider} onChange={(e) => setNewProvider(e.target.value)} />
+        <Button size="sm" disabled={!newName.trim() || addDoctor.isPending} onClick={() => addDoctor.mutate()}>
+          <Plus className="w-4 h-4 mr-1" /> Add
+        </Button>
+      </div>
+      {doctors.length > 0 ? (
+        <div className="divide-y border rounded-md">
+          {doctors.map((d) => (
+            <div key={d.id} className="flex items-center justify-between px-3 py-2 text-sm">
+              <span>{d.name}{d.providerNumber ? <span className="text-gray-500 ml-2">#{d.providerNumber}</span> : null}</span>
+              <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Remove ${d.name} from the list?`)) deleteDoctor.mutate(d.id); }}>
+                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400">No doctors yet — add the doctors who commonly refer to you.</p>
+      )}
+    </div>
+  );
+}
+
 export default function Clinic() {
   const { isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
@@ -1989,6 +2047,7 @@ export default function Clinic() {
                     <li>Pin the extension, open a patient in your practice software, click the icon and sign in with your staff login</li>
                   </ol>
                 </div>
+                <ExtensionDoctorsManager />
               </CardContent>
             </Card>
           </TabsContent>

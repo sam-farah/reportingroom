@@ -895,6 +895,8 @@ export const scanRequests = pgTable("scan_requests", {
   preferredReportDeliveryNote: text("preferred_report_delivery_note"),
   // How the patientId on this request came to be linked: 'auto_match' | 'created_new' | 'manual_link'
   patientLinkSource: varchar("patient_link_source", { length: 20 }),
+  // Display name of the signed-in staff member who created the request.
+  createdByName: varchar("created_by_name", { length: 200 }),
   // Filename (in file_blobs / uploads) of the original scanned referral PDF/image
   // this request was created from, if it was imported via the AI PDF reader.
   sourcePdfFilename: varchar("source_pdf_filename", { length: 255 }),
