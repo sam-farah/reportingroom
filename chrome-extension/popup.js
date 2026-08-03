@@ -144,9 +144,36 @@ function extractPatientFromPage() {
   }
   if (dob) out.dob = dob[3] + "-" + dob[2] + "-" + dob[1]; // yyyy-mm-dd
 
-  // Name: "Mr/Mrs/Ms/Miss/Mx/Dr Firstname Lastname" — first occurrence
-  const nm = text.match(/\b(?:Mr|Mrs|Ms|Miss|Mx|Dr)\.?\s+([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){1,2})\b/);
-  if (nm) out.name = nm[1];
+  // Name. Prefer a name in the same small block of the page as the DOB
+  // (e.g. Clinic to Cloud's patient card) — pages often list other people
+  // (signed-in user, appointment list) elsewhere.
+  const nameRe = /\b(?:Mr|Mrs|Ms|Miss|Mx)\.?\s+([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){1,2})\b/;
+  const nameReDr = /\b(?:Mr|Mrs|Ms|Miss|Mx|Dr)\.?\s+([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){1,2})\b/;
+
+  function nameNearDob(dobRaw) {
+    if (!document.body || !document.createTreeWalker) return null;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node, anchor = null;
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue && node.nodeValue.indexOf(dobRaw) !== -1) { anchor = node.parentElement; break; }
+    }
+    if (!anchor) return null;
+    // Walk up a few levels; stop before the block gets so big it spans the page.
+    let el = anchor;
+    for (let i = 0; el && i < 8; i++, el = el.parentElement) {
+      const t = el.innerText || "";
+      if (t.length > 1200) break;
+      const m = t.match(nameRe) || t.match(nameReDr);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  if (!sel && dob) out.name = nameNearDob(dob[0]);
+  if (!out.name) {
+    const nm = text.match(nameRe) || text.match(nameReDr);
+    if (nm) out.name = nm[1];
+  }
 
   return out;
 }
