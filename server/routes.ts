@@ -10167,6 +10167,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dateOfBirth: request.patientDob,
         phone: request.patientPhone || null,
         email: request.patientEmail || null,
+        medicareNumber: request.patientMedicareNumber || null,
+        medicareIrn: request.patientMedicareIrn || null,
         clinicId,
       } as any);
 

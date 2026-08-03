@@ -840,6 +840,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     queryKey: ["/api/scan-durations"],
   });
 
+  // Scan requests — used to prefill the inline "New Patient File" form with the
+  // details captured by the referral (chrome extension / referrer portal) when
+  // the appointment being edited was scheduled from a request.
+  const { data: allScanRequests = [] } = useQuery<any[]>({
+    queryKey: ["/api/scan-requests"],
+  });
+
   const [patientSearch, setPatientSearch] = useState("");
   const [showPatientResults, setShowPatientResults] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -2740,7 +2747,36 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                             {searchedPatients.length === 0 ? (
                               <div
                                 className="p-3 flex items-center gap-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer"
-                                onClick={() => { setNewPatientForm(prev => ({ ...prev, firstName: patientSearch.split(" ")[0] || "", lastName: patientSearch.split(" ").slice(1).join(" ") || "" })); setIsCreatingPatient(true); setShowPatientResults(false); }}
+                                onClick={() => {
+                                  // If this appointment was scheduled from a scan
+                                  // request, carry the referral's patient details
+                                  // across instead of starting from blank fields.
+                                  const linkedReq = editingAppointment
+                                    ? allScanRequests.find((r) => r.scheduledAppointmentId === editingAppointment.id)
+                                    : undefined;
+                                  const nameMatchReq = !linkedReq
+                                    ? allScanRequests.find((r) => !r.patientId && (r.patientName || "").trim().toLowerCase() === patientSearch.trim().toLowerCase())
+                                    : undefined;
+                                  const req = linkedReq || nameMatchReq;
+                                  const normDob = (dob: string): string => {
+                                    const dmy = dob.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+                                    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+                                    const iso = dob.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                    return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : "";
+                                  };
+                                  setNewPatientForm(prev => ({
+                                    ...prev,
+                                    firstName: capitalizeWords(patientSearch.split(" ")[0] || ""),
+                                    lastName: capitalizeWords(patientSearch.split(" ").slice(1).join(" ") || ""),
+                                    dateOfBirth: req?.patientDob ? normDob(req.patientDob) : prev.dateOfBirth,
+                                    phone: req?.patientPhone || prev.phone,
+                                    email: req?.patientEmail || prev.email,
+                                    medicareNumber: req?.patientMedicareNumber || prev.medicareNumber,
+                                    medicareIrn: req?.patientMedicareIrn || prev.medicareIrn,
+                                  }));
+                                  setIsCreatingPatient(true);
+                                  setShowPatientResults(false);
+                                }}
                               >
                                 <UserPlus className="w-4 h-4" />
                                 No match — create new patient file for &ldquo;{patientSearch}&rdquo;
