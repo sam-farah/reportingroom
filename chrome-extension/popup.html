@@ -50,7 +50,8 @@
   <div id="view-form" class="hidden">
     <div class="topbar"><span id="whoami"></span><a id="btn-logout">Sign out</a></div>
     <button id="btn-read" class="secondary" style="margin-top:0">Read patient from this page</button>
-    <p class="hint">Tip: if it doesn't pick everything up, highlight the patient details on the page first, then click again.</p>
+    <button id="btn-read-pdf" class="secondary" style="margin-top:6px">Read on-screen PDF (AI)</button>
+    <p class="hint">Tip: if it doesn't pick everything up, highlight the patient details on the page first, then click again. For details shown inside a PDF (e.g. a registration form), make sure they're visible on screen and use "Read on-screen PDF".</p>
 
     <label>Patient Name</label>
     <input id="f-name" placeholder="e.g. Barry Towns">
@@ -60,6 +61,10 @@
     </div>
     <label>Email</label>
     <input id="f-email" type="email">
+    <div class="row">
+      <div style="flex:3"><label>Medicare Number</label><input id="f-medicare" inputmode="numeric" placeholder="1234 56789 1"></div>
+      <div style="flex:1"><label>IRN</label><input id="f-medicare-irn" inputmode="numeric" maxlength="1" placeholder="1"></div>
+    </div>
     <label>Scan Type</label>
     <select id="f-scantype"></select>
     <label>Urgency</label>

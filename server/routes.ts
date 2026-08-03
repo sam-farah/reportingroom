@@ -8723,6 +8723,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Normalise + validate an Australian Medicare card number (10 digits,
+  // first digit 2-6, 9th digit is the official checksum). Returns digits-only
+  // or null — invalid values are dropped rather than stored.
+  function normaliseMedicareNumber(raw: unknown): string | null {
+    if (typeof raw !== "string" && typeof raw !== "number") return null;
+    const digits = String(raw).replace(/\D/g, "");
+    if (!/^[2-6]\d{9}$/.test(digits)) return null;
+    const d = digits.split("").map(Number);
+    const check = (d[0] + 3 * d[1] + 7 * d[2] + 9 * d[3] + d[4] + 3 * d[5] + 7 * d[6] + 9 * d[7]) % 10;
+    return check === d[8] ? digits : null;
+  }
+  function normaliseMedicareIrn(raw: unknown): string | null {
+    const s = String(raw ?? "").trim();
+    return /^[1-9]$/.test(s) ? s : null;
+  }
+
+  // Simple per-user rate limit for the screenshot-AI endpoint (paid AI call).
+  const screenshotExtractHits = new Map<string, number[]>();
+
+  // Chrome extension: read patient/request details out of a screenshot of the
+  // current tab (used when the details live in an on-screen PDF the extension
+  // can't read as text). Returns the same extraction shape as the upload route.
+  app.post('/api/extension/extract-screenshot', isAuthenticated, async (req: any, res) => {
+    try {
+      // Rate limit: 10 AI reads per user per 5 minutes.
+      const userKey = String(req.user?.id ?? req.ip);
+      const now = Date.now();
+      const hits = (screenshotExtractHits.get(userKey) || []).filter((t) => now - t < 5 * 60_000);
+      if (hits.length >= 10) {
+        return res.status(429).json({ message: "Too many screen reads — please wait a few minutes." });
+      }
+      hits.push(now);
+      screenshotExtractHits.set(userKey, hits);
+
+      const image = req.body?.image;
+      const m = typeof image === "string"
+        ? image.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/)
+        : null;
+      if (!m) return res.status(400).json({ message: "Missing or unsupported screenshot" });
+      const mimeType = m[1];
+      const base64Image = m[2];
+      // ~8MB decoded cap — a captureVisibleTab PNG is well under this.
+      if (base64Image.length > 11_000_000) {
+        return res.status(400).json({ message: "Screenshot too large" });
+      }
+      const canonicalScanTypes = CANONICAL_SCAN_TYPES.map((s) => s.name);
+      const extracted = await extractScanRequestFromImage(base64Image, mimeType, canonicalScanTypes);
+      const validScanTypes = extracted.scanTypes.filter((s) => canonicalScanTypes.includes(s));
+      res.json({
+        extracted: {
+          ...extracted,
+          scanTypes: validScanTypes,
+          patientMedicareNumber: normaliseMedicareNumber(extracted.patientMedicareNumber),
+          patientMedicareIrn: normaliseMedicareIrn(extracted.patientMedicareIrn),
+        },
+      });
+    } catch (error) {
+      console.error("Extension screenshot extract error:", error);
+      res.status(500).json({ message: "Couldn't read the screenshot. Please enter the details manually." });
+    }
+  });
+
   // Owner/admin: create a staff account directly (no invitation email needed).
   // The new user gets a temporary password chosen by the admin and must have a
   // valid mobile number — the SMS sign-in code is mandatory for everyone.
@@ -10145,6 +10207,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const request = await storage.createScanRequest({
         ...req.body,
+        patientMedicareNumber: normaliseMedicareNumber(req.body.patientMedicareNumber),
+        patientMedicareIrn: normaliseMedicareIrn(req.body.patientMedicareIrn),
         clinicId,
         patientId: req.body.patientId ?? autoPatientId ?? null,
         patientLinkSource: req.body.patientId ? "manual_link" : (autoPatientId ? "auto_match" : null),
@@ -10167,6 +10231,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!existing || existing.clinicId !== clinicId) return res.status(404).json({ error: "Not found" });
       // If the patientId is being changed (linked or re-linked), record it as a manual link
       const body: any = { ...req.body };
+      if ("patientMedicareNumber" in body) body.patientMedicareNumber = normaliseMedicareNumber(body.patientMedicareNumber);
+      if ("patientMedicareIrn" in body) body.patientMedicareIrn = normaliseMedicareIrn(body.patientMedicareIrn);
       if (body.patientId !== undefined && body.patientId !== existing.patientId) {
         body.patientLinkSource = body.patientId ? "manual_link" : null;
       }

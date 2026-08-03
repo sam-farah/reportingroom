@@ -70,6 +70,8 @@ type RequestFormData = {
   patientDob: string;
   patientPhone: string;
   patientEmail: string;
+  patientMedicareNumber: string | null;
+  patientMedicareIrn: string | null;
   referringDoctorName: string;
   referringDoctorProviderNumber: string;
   scanTypes: string[];
@@ -91,6 +93,8 @@ const blankRequest = (): RequestFormData => ({
   patientDob: "",
   patientPhone: "",
   patientEmail: "",
+  patientMedicareNumber: null,
+  patientMedicareIrn: null,
   referringDoctorName: "",
   referringDoctorProviderNumber: "",
   scanTypes: [],
@@ -685,6 +689,8 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
         patientDob: x.patientDob || "",
         patientPhone: x.patientPhone || "",
         patientEmail: x.patientEmail || "",
+        patientMedicareNumber: x.patientMedicareNumber || null,
+        patientMedicareIrn: x.patientMedicareIrn || null,
         referringDoctorName: x.referringDoctorName ? capitalizeWords(x.referringDoctorName) : "",
         referringDoctorProviderNumber: x.referringDoctorProviderNumber || "",
         scanTypes: Array.isArray(x.scanTypes) ? x.scanTypes : [],
@@ -724,6 +730,8 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
       patientDob: r.patientDob ?? "",
       patientPhone: r.patientPhone ?? "",
       patientEmail: r.patientEmail ?? "",
+      patientMedicareNumber: r.patientMedicareNumber ?? null,
+      patientMedicareIrn: r.patientMedicareIrn ?? null,
       referringDoctorName: r.referringDoctorName ?? "",
       referringDoctorProviderNumber: r.referringDoctorProviderNumber ?? "",
       scanTypes: r.scanTypes ?? [],
@@ -1372,6 +1380,14 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                   <Label>Email</Label>
                   <Input type="email" value={requestForm.patientEmail} onChange={e => setRequestForm(p => ({ ...p, patientEmail: e.target.value }))} disabled={!!requestForm.patientId} />
                 </div>
+                <div>
+                  <Label>Medicare Number</Label>
+                  <Input inputMode="numeric" placeholder="1234 56789 1" value={requestForm.patientMedicareNumber ?? ""} onChange={e => setRequestForm(p => ({ ...p, patientMedicareNumber: e.target.value || null }))} />
+                </div>
+                <div>
+                  <Label>Medicare IRN</Label>
+                  <Input inputMode="numeric" maxLength={1} placeholder="1" value={requestForm.patientMedicareIrn ?? ""} onChange={e => setRequestForm(p => ({ ...p, patientMedicareIrn: e.target.value || null }))} />
+                </div>
               </div>
             </div>
 
@@ -1564,6 +1580,12 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                   {viewingRequest.patientDob && <p className="text-sm text-gray-600">DOB: {fmtDate(viewingRequest.patientDob)}</p>}
                   {viewingRequest.patientPhone && <p className="text-sm text-gray-600 flex items-center gap-1"><Phone className="w-3 h-3" />{viewingRequest.patientPhone}</p>}
                   {viewingRequest.patientEmail && <p className="text-sm text-gray-600 flex items-center gap-1"><Mail className="w-3 h-3" />{viewingRequest.patientEmail}</p>}
+                  {viewingRequest.patientMedicareNumber && (
+                    <p className="text-sm text-gray-600">
+                      Medicare: {viewingRequest.patientMedicareNumber.replace(/^(\d{4})(\d{5})(\d)$/, "$1 $2 $3")}
+                      {viewingRequest.patientMedicareIrn ? ` — ${viewingRequest.patientMedicareIrn}` : ""}
+                    </p>
+                  )}
                 </div>
                 {viewingRequest.referringDoctorName && (() => {
                   const linkedDoctor = viewingRequest.referringDoctorId

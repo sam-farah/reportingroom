@@ -141,6 +141,8 @@ export interface ScanRequestExtraction {
   patientDob: string | null;
   patientPhone: string | null;
   patientEmail: string | null;
+  patientMedicareNumber: string | null;
+  patientMedicareIrn: string | null;
   referringDoctorName: string | null;
   referringDoctorProviderNumber: string | null;
   scanTypes: string[];
@@ -180,6 +182,8 @@ export async function extractScanRequestFromImage(
 - Patient date of birth (look for "DOB", "D.O.B", "Date of Birth"). Return it EXACTLY as written (e.g. "22-7-52", "15/03/1985"). Do not reformat.
 - Patient phone number
 - Patient email
+- Patient Medicare card number (10 digits, often printed as "1234 56789 1", look for "Medicare", "Medicare No"). Return digits only, no spaces. Do NOT confuse it with a phone number, IHI (16 digits) or provider number.
+- Patient Medicare IRN (the individual reference number, a single digit 1-9 printed next to the patient's name on the card or after the Medicare number, e.g. the "- 1" in "1234 56789 1 - 1")
 - Referring doctor's name (look for "Dr", "Referring Doctor", "From", signature block)
 - Referring doctor's provider number (Medicare provider number)
 - Requested scan type(s)
@@ -191,7 +195,7 @@ export async function extractScanRequestFromImage(
 ${scanTypeList}
 
 Return JSON exactly in this shape:
-{ "patientName": string|null, "patientDob": string|null, "patientPhone": string|null, "patientEmail": string|null, "referringDoctorName": string|null, "referringDoctorProviderNumber": string|null, "scanTypes": string[], "urgency": string|null, "clinicalIndication": string|null, "clinicalHistory": string|null, "notes": string|null, "requestDate": string|null, "requestDateConfident": boolean, "confidence": number }
+{ "patientName": string|null, "patientDob": string|null, "patientPhone": string|null, "patientEmail": string|null, "patientMedicareNumber": string|null, "patientMedicareIrn": string|null, "referringDoctorName": string|null, "referringDoctorProviderNumber": string|null, "scanTypes": string[], "urgency": string|null, "clinicalIndication": string|null, "clinicalHistory": string|null, "notes": string|null, "requestDate": string|null, "requestDateConfident": boolean, "confidence": number }
 
 requestDate must be in ISO format YYYY-MM-DD (convert whatever format is written, e.g. "12/03/2026" or "3rd March 2026", to ISO). requestDateConfident is true only if you are confident requestDate is correct and unambiguous. Use null for any field you cannot find. confidence is your overall extraction confidence 0-1. Do not invent data that is not present in the document.`
         },
@@ -225,6 +229,12 @@ requestDate must be in ISO format YYYY-MM-DD (convert whatever format is written
       patientDob: result.patientDob || null,
       patientPhone: result.patientPhone || null,
       patientEmail: result.patientEmail || null,
+      patientMedicareNumber: typeof result.patientMedicareNumber === "string" && /^\d{10}$/.test(result.patientMedicareNumber.replace(/\s/g, ""))
+        ? result.patientMedicareNumber.replace(/\s/g, "")
+        : null,
+      patientMedicareIrn: typeof result.patientMedicareIrn === "string" && /^[1-9]$/.test(result.patientMedicareIrn.trim())
+        ? result.patientMedicareIrn.trim()
+        : (typeof result.patientMedicareIrn === "number" && result.patientMedicareIrn >= 1 && result.patientMedicareIrn <= 9 ? String(result.patientMedicareIrn) : null),
       referringDoctorName: result.referringDoctorName || null,
       referringDoctorProviderNumber: result.referringDoctorProviderNumber || null,
       scanTypes: Array.isArray(result.scanTypes) ? result.scanTypes.filter((s: any) => typeof s === "string") : [],

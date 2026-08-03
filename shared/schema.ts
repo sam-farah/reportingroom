@@ -873,6 +873,8 @@ export const scanRequests = pgTable("scan_requests", {
   patientDob: varchar("patient_dob", { length: 20 }),
   patientPhone: varchar("patient_phone", { length: 50 }),
   patientEmail: varchar("patient_email", { length: 200 }),
+  patientMedicareNumber: varchar("patient_medicare_number", { length: 15 }),
+  patientMedicareIrn: varchar("patient_medicare_irn", { length: 2 }),
   referringDoctorName: varchar("referring_doctor_name", { length: 200 }),
   referringDoctorProviderNumber: varchar("referring_doctor_provider_number", { length: 50 }),
   referringDoctorEmail: varchar("referring_doctor_email", { length: 200 }),

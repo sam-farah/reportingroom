@@ -117,7 +117,7 @@ async function loadScanTypes() {
 function extractPatientFromPage() {
   const sel = ((window.getSelection && String(window.getSelection())) || "").trim();
   const text = sel.length > 0 ? sel : (document.body ? document.body.innerText : "");
-  const out = { name: null, dob: null, phone: null, email: null, usedSelection: sel.length > 0 };
+  const out = { name: null, dob: null, phone: null, email: null, medicare: null, medicareIrn: null, usedSelection: sel.length > 0 };
   if (!text) return out;
 
   // Email
@@ -127,6 +127,18 @@ function extractPatientFromPage() {
   // AU mobile (04xx xxx xxx or +61 4xx ...)
   const ph = text.match(/(?:\+61[\s-]?4|04)\d{2}[\s-]?\d{3}[\s-]?\d{3}/);
   if (ph) out.phone = ph[0].replace(/[\s-]/g, "");
+
+  // Medicare card number: 10 digits (starts 2-6), validated with the official
+  // check digit so we never mistake a phone/IHI/ID for it. Optional IRN after.
+  for (const m of text.matchAll(/\b([2-6]\d{3})[ ]?(\d{5})[ ]?(\d)(?:\s*[-/]?\s*([1-9]))?\b/g)) {
+    const d = (m[1] + m[2] + m[3]).split("").map(Number);
+    const check = (d[0] + 3 * d[1] + 7 * d[2] + 9 * d[3] + d[4] + 3 * d[5] + 7 * d[6] + 9 * d[7]) % 10;
+    if (check === d[8]) {
+      out.medicare = m[1] + m[2] + m[3];
+      if (m[4]) out.medicareIrn = m[4];
+      break;
+    }
+  }
 
   // Dates dd/mm/yyyy
   const dates = [...text.matchAll(/\b(\d{2})\/(\d{2})\/(\d{4})\b/g)];
@@ -192,8 +204,10 @@ async function readPage(silent) {
     if (p.dob) $("f-dob").value = p.dob;
     if (p.phone) $("f-phone").value = p.phone;
     if (p.email) $("f-email").value = p.email;
+    if (p.medicare) $("f-medicare").value = p.medicare;
+    if (p.medicareIrn) $("f-medicare-irn").value = p.medicareIrn;
     if (!silent) {
-      const found = ["name", "dob", "phone", "email"].filter((k) => p[k]).length;
+      const found = ["name", "dob", "phone", "email", "medicare"].filter((k) => p[k]).length;
       msg(found
         ? "Picked up " + found + " detail" + (found > 1 ? "s" : "") + (p.usedSelection ? " from your highlighted text." : " from the page.")
         : "Couldn't find patient details. Try highlighting them on the page first, then click again.",
@@ -205,6 +219,46 @@ async function readPage(silent) {
 }
 
 $("btn-read").addEventListener("click", () => readPage(false));
+
+// ---------- read an on-screen PDF via a screenshot + AI ----------
+
+$("btn-read-pdf").addEventListener("click", async () => {
+  const btn = $("btn-read-pdf");
+  btn.disabled = true;
+  msg("Reading the screen…", "ok");
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab({ format: "png" });
+    if (!dataUrl) throw new Error("Couldn't capture the screen");
+    const data = await api("/api/extension/extract-screenshot", "POST", { image: dataUrl });
+    const x = (data && data.extracted) || {};
+    if (x.patientName) $("f-name").value = x.patientName;
+    if (x.patientDob) {
+      // Server returns the DOB as written; convert dd/mm/yyyy-ish to yyyy-mm-dd for the date input.
+      const m = String(x.patientDob).match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+      if (m) {
+        let y = +m[3]; if (y < 100) y += y > new Date().getFullYear() % 100 ? 1900 : 2000;
+        $("f-dob").value = y + "-" + String(m[2]).padStart(2, "0") + "-" + String(m[1]).padStart(2, "0");
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(x.patientDob)) {
+        $("f-dob").value = x.patientDob;
+      }
+    }
+    if (x.patientPhone) $("f-phone").value = x.patientPhone;
+    if (x.patientEmail) $("f-email").value = x.patientEmail;
+    if (x.patientMedicareNumber) $("f-medicare").value = x.patientMedicareNumber;
+    if (x.patientMedicareIrn) $("f-medicare-irn").value = x.patientMedicareIrn;
+    if (Array.isArray(x.scanTypes) && x.scanTypes[0]) {
+      const sel = $("f-scantype");
+      for (const o of sel.options) if (o.value === x.scanTypes[0]) { sel.value = o.value; break; }
+    }
+    if (x.clinicalIndication) $("f-notes").value = x.clinicalIndication;
+    const found = ["patientName", "patientDob", "patientPhone", "patientEmail", "patientMedicareNumber"].filter((k) => x[k]).length;
+    msg(found ? "Read " + found + " detail" + (found > 1 ? "s" : "") + " from the screen." : "Couldn't find patient details on the screen. Make sure they're visible, then try again.", found ? "ok" : "err");
+  } catch (e) {
+    msg("Couldn't read the screen: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // ---------- submit ----------
 
@@ -223,6 +277,8 @@ $("btn-submit").addEventListener("click", async () => {
       patientDob: $("f-dob").value || null,
       patientPhone: $("f-phone").value.trim() || null,
       patientEmail: $("f-email").value.trim() || null,
+      patientMedicareNumber: $("f-medicare").value.replace(/\D/g, "") || null,
+      patientMedicareIrn: $("f-medicare-irn").value.trim() || null,
       scanTypes: [$("f-scantype").value],
       urgency: $("f-urgency").value,
       clinicalIndication: $("f-notes").value.trim() || null,
