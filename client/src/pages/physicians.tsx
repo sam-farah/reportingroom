@@ -1958,6 +1958,39 @@ export default function Clinic() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Chrome extension download */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Download className="w-5 h-5" />
+                  Chrome Extension — Scan Requests
+                </CardTitle>
+                <CardDescription>
+                  Read patient details straight off your practice software (e.g. Clinic to Cloud) and save a scan request to the patient's file in one click.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  onClick={() => window.open("/api/extension/download", "_blank")}
+                >
+                  <Download className="w-4 h-4" />
+                  Download Extension (.zip)
+                </Button>
+                <div className="bg-gray-50 border rounded-lg p-4 text-sm space-y-2">
+                  <p className="font-semibold text-gray-800">Install Instructions</p>
+                  <ol className="list-decimal list-inside space-y-1 text-gray-600">
+                    <li>Download and unzip the file — you'll get a <strong>chrome-extension</strong> folder</li>
+                    <li>In Chrome, open <code className="bg-gray-200 px-1 rounded">chrome://extensions</code></li>
+                    <li>Turn on <strong>Developer mode</strong> (top right)</li>
+                    <li>Click <strong>Load unpacked</strong> and choose the unzipped folder</li>
+                    <li>Pin the extension, open a patient in your practice software, click the icon and sign in with your staff login</li>
+                  </ol>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
 

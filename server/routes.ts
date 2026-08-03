@@ -8696,6 +8696,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Download the Chrome extension as a zip (any signed-in staff member).
+  app.get('/api/extension/download', isAuthenticated, async (_req: any, res) => {
+    try {
+      const path = await import("path");
+      const fs = await import("fs");
+      const dir = path.resolve(process.cwd(), "chrome-extension");
+      if (!fs.existsSync(dir)) {
+        return res.status(404).json({ message: "Extension package not found" });
+      }
+      const archiver = (await import("archiver")).default;
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", 'attachment; filename="reportingroom-chrome-extension.zip"');
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      archive.on("error", (err: any) => {
+        console.error("Extension zip error:", err);
+        if (!res.headersSent) res.status(500).json({ message: "Failed to build zip" });
+        else res.end();
+      });
+      archive.pipe(res);
+      archive.directory(dir, "chrome-extension");
+      await archive.finalize();
+    } catch (error) {
+      console.error("Extension download error:", error);
+      if (!res.headersSent) res.status(500).json({ message: "Failed to download extension" });
+    }
+  });
+
   // Owner/admin: create a staff account directly (no invitation email needed).
   // The new user gets a temporary password chosen by the admin and must have a
   // valid mobile number — the SMS sign-in code is mandatory for everyone.
