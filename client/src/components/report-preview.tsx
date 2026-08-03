@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { resolveUrl } from "@/lib/api";
 import type { Report, Physician, Clinic } from "@shared/schema";
 
 interface ReportPreviewProps {
@@ -178,7 +179,7 @@ export default function ReportPreview({ report, physician, logoFile, onReportUpd
               />
             ) : clinic?.logoUrl ? (
               <img 
-                src={clinic.logoUrl} 
+                src={resolveUrl(clinic.logoUrl)} 
                 alt="Clinic Logo" 
                 className="w-full h-full object-contain rounded-lg"
               />

@@ -1955,7 +1955,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 ) : clinic?.logoUrl ? (
                   <div className="border rounded-lg p-4 bg-gray-50 flex flex-col items-center gap-4">
                     <img
-                      src={clinic.logoUrl}
+                      src={resolveUrl(clinic.logoUrl)}
                       alt="Clinic Logo (fallback)"
                       className="max-h-32 max-w-full object-contain"
                     />
@@ -2008,7 +2008,7 @@ export default function AdminPanel({ onNavigateToTemplates }: { onNavigateToTemp
                 >
                   {(clinic?.kioskLogoUrl || clinic?.logoUrl) && (
                     <img
-                      src={clinic.kioskLogoUrl || clinic.logoUrl || ''}
+                      src={resolveUrl(clinic.kioskLogoUrl || clinic.logoUrl || '')}
                       alt="Logo Preview"
                       className="max-h-16 max-w-[200px] object-contain mb-4"
                     />

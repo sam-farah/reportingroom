@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useChatSocket } from "@/hooks/useChatSocket";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { resolveUrl } from "@/lib/api";
 import UserPanel from "@/components/user-panel";
 import AdminPanel from "@/components/admin-panel";
 import ReportingRoom from "./reporting-room";
@@ -211,7 +212,7 @@ export default function Dashboard() {
           {/* Logo + clinic name */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {kioskSettings?.kioskLogoUrl ? (
-              <img src={kioskSettings.kioskLogoUrl} alt={kioskSettings.clinicName || "Clinic"} className="h-7 w-auto max-w-[100px] object-contain flex-shrink-0" />
+              <img src={resolveUrl(kioskSettings.kioskLogoUrl)} alt={kioskSettings.clinicName || "Clinic"} className="h-7 w-auto max-w-[100px] object-contain flex-shrink-0" />
             ) : (
               <img src={logoIconPath} alt="Reporting Room" className="h-6 w-6 flex-shrink-0" />
             )}
