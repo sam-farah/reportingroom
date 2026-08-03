@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { isPencilKitAvailable, presentPencilCanvas, addPencilAutosaveListener } from "@/lib/pencilkit";
 import type { WorksheetTemplate, DigitalWorksheet, Sonographer, Patient } from "@shared/schema";
@@ -314,8 +314,9 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
       
       toast({
         title: "Draft Report Created",
-        description: "Your drawing has been saved as a draft report",
+        description: "The AI summary is being written in the background — it will appear on the report shortly",
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
       setCurrentWorksheet(null);
       setSelectedTemplate(null);
       setShowCreateDraftDialog(false);

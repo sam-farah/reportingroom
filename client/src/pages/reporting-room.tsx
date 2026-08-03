@@ -249,6 +249,19 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const { data: reports = [], isLoading: reportsLoading } = useQuery<Report[]>({
     queryKey: ["/api/reports/recent"],
     retry: false,
+    // While any draft is still waiting for its background AI analysis
+    // (placeholder text present), poll so the findings/impression appear
+    // as soon as the server finishes writing them.
+    refetchInterval: (query) => {
+      const data = query.state.data as Report[] | undefined;
+      // Must exactly match the server-side placeholder markers written by
+      // POST /api/digital-worksheets/:id/create-draft-report.
+      const AI_PENDING_FINDINGS_MARKER = "AI analysis of the worksheet drawing is in progress — findings will appear here shortly. You can start editing now; your edits will be kept.";
+      const AI_PENDING_IMPRESSION_MARKER = "AI analysis in progress — the impression will appear here shortly.";
+      return data?.some(r => r.isDraft && !r.isFinalized && (r.findings === AI_PENDING_FINDINGS_MARKER || r.impression === AI_PENDING_IMPRESSION_MARKER))
+        ? 4000
+        : false;
+    },
   });
 
   // Fetch all templates for selection

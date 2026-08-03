@@ -298,6 +298,7 @@ export interface IStorage {
   getDigitalWorksheetsForClinic(clinicId: number, opts?: { draftsOnly?: boolean }): Promise<DigitalWorksheet[]>;
   getDraftDigitalWorksheets(): Promise<DigitalWorksheet[]>;
   createDraftReport(data: any): Promise<Report>;
+  applyDraftAiContent(id: number, content: { findings: string; impression: string }, markers: { findings: string; impression: string }): Promise<void>;
 
   // Legend entries operations
   getAllLegendEntries(): Promise<LegendEntry[]>;
@@ -1336,6 +1337,30 @@ export class DatabaseStorage implements IStorage {
       .from(digitalWorksheets)
       .where(eq(digitalWorksheets.isDraft, true))
       .orderBy(digitalWorksheets.updatedAt);
+  }
+
+  // Atomically write background-AI content into a draft report WITHOUT
+  // clobbering user edits: the row is locked (SELECT ... FOR UPDATE) so a
+  // concurrent PATCH either lands before (markers gone → we skip that field)
+  // or waits until we commit. Only fields still exactly equal to their
+  // placeholder marker are overwritten, and never on finalized/non-draft rows.
+  async applyDraftAiContent(
+    id: number,
+    content: { findings: string; impression: string },
+    markers: { findings: string; impression: string },
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(reports).where(eq(reports.id, id)).for("update");
+      if (!row) return;
+      const current = FieldEncryption.decryptFields(row) as Report;
+      if (!current.isDraft || current.isFinalized) return;
+      const updates: Partial<InsertReport> = {};
+      if (current.findings === markers.findings) updates.findings = content.findings;
+      if (current.impression === markers.impression) updates.impression = content.impression;
+      if (Object.keys(updates).length === 0) return;
+      const encryptedUpdates = FieldEncryption.encryptFields(updates);
+      await tx.update(reports).set(encryptedUpdates).where(eq(reports.id, id));
+    });
   }
 
   async createDraftReport(reportData: any): Promise<Report> {

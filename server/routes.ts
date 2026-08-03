@@ -8030,6 +8030,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Placeholder text written into a brand-new draft while the AI analysis of
+  // the drawing runs in the background. The background task only overwrites
+  // fields that still exactly equal these markers, so user edits always win.
+  const AI_PENDING_FINDINGS_MARKER = "AI analysis of the worksheet drawing is in progress — findings will appear here shortly. You can start editing now; your edits will be kept.";
+  const AI_PENDING_IMPRESSION_MARKER = "AI analysis in progress — the impression will appear here shortly.";
+
   app.post("/api/digital-worksheets/:id/create-draft-report", isAuthenticated, async (req: any, res) => {
     try {
       console.log("Creating draft report for worksheet ID:", req.params.id);
@@ -8075,28 +8081,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Analyze the drawing using AI if canvas data is available
-      let aiGeneratedFindings = '';
-      let aiGeneratedImpression = '';
-      
-      if (worksheet.drawingData) {
-        try {
-          console.log("Analyzing drawing with AI...");
-          const base64Image = worksheet.drawingData.replace(/^data:image\/[a-z]+;base64,/, '');
-          
-          // Get legend entries to help interpret the drawing
-          const legendEntries = await storage.getAllLegendEntries();
-          console.log("Retrieved legend entries for analysis:", legendEntries.length);
-          
-          const analysisResult = await analyzeVascularDrawing(base64Image, templateName, (worksheet as any).studyType || '', legendEntries);
-          aiGeneratedFindings = analysisResult.findings;
-          aiGeneratedImpression = analysisResult.impression;
-          console.log("AI analysis completed successfully with legend context");
-        } catch (aiError) {
-          console.warn("AI analysis failed, using template content:", aiError);
-          // Fall back to template-based content if AI fails
-        }
-      }
+      // AI analysis of the drawing now runs in the BACKGROUND (see below,
+      // after the response is sent) so the draft report appears instantly
+      // instead of making the sonographer wait 20-30s for OpenAI. The draft
+      // is created with a recognisable placeholder; the background task only
+      // overwrites the placeholder if the user hasn't edited it meanwhile.
+      const willRunAi = Boolean(worksheet.drawingData);
+
+      const fallbackFindings = `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`;
+      const fallbackImpression = `${templateName} study completed. Awaiting physician interpretation.\n\nRECOMMENDATIONS:\n- Physician review and interpretation required\n- Clinical correlation recommended\n- Follow-up as clinically indicated`;
       
       const draftLinkedPatient = worksheet.patientId ? await storage.getPatient(worksheet.patientId) : null;
 
@@ -8212,8 +8205,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         writtenConsentAt: draftWrittenConsentAt,
         studyType: worksheet.studyType || templateName.replace('Template', '').trim() || 'Vascular Study',
         indication: `${templateName} ultrasound examination requested. Patient presented for vascular assessment.`,
-        findings: aiGeneratedFindings || `${templateName} ultrasound study performed using digital drawing interface.\n\nTechnical Quality: Adequate for interpretation\nVessel Patency: [To be interpreted by physician]\nFlow Characteristics: [To be interpreted by physician]\nCompressibility: [To be interpreted by physician]\n\nDigital annotations and measurements completed by ${sonographer?.name || 'sonographer'}. Canvas data contains detailed anatomical markings and findings for physician review.`,
-        impression: aiGeneratedImpression || `${templateName} study completed. Awaiting physician interpretation.\n\nRECOMMENDATIONS:\n- Physician review and interpretation required\n- Clinical correlation recommended\n- Follow-up as clinically indicated`,
+        findings: willRunAi ? AI_PENDING_FINDINGS_MARKER : fallbackFindings,
+        impression: willRunAi ? AI_PENDING_IMPRESSION_MARKER : fallbackImpression,
         sonographerId: worksheet.sonographerId,
         physicianId: draftPhysicianId,
         patientId: worksheet.patientId,
@@ -8235,6 +8228,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.json(draftReport);
+
+      // ── Background AI analysis (after the response) ──
+      if (willRunAi && worksheet.drawingData) {
+        (async () => {
+          try {
+            console.log(`Background AI analysis started for report ${draftReport.id}...`);
+            const base64Image = worksheet.drawingData!.replace(/^data:image\/[a-z]+;base64,/, "");
+            const legendEntries = await storage.getAllLegendEntries();
+            let findings = fallbackFindings;
+            let impression = fallbackImpression;
+            try {
+              const analysisResult = await analyzeVascularDrawing(base64Image, templateName, (worksheet as any).studyType || "", legendEntries);
+              if (analysisResult.findings) findings = analysisResult.findings;
+              if (analysisResult.impression) impression = analysisResult.impression;
+              console.log(`Background AI analysis completed for report ${draftReport.id}`);
+            } catch (aiError) {
+              console.warn(`Background AI analysis failed for report ${draftReport.id}, using template content:`, aiError);
+            }
+            // Atomic, row-locked write: only fields still exactly equal to
+            // their placeholder marker are overwritten, and never on a
+            // finalized/non-draft report — user edits always win.
+            await storage.applyDraftAiContent(
+              draftReport.id,
+              { findings, impression },
+              { findings: AI_PENDING_FINDINGS_MARKER, impression: AI_PENDING_IMPRESSION_MARKER },
+            );
+          } catch (bgError) {
+            console.error(`Background AI analysis task failed for report ${draftReport.id}:`, bgError);
+          }
+        })();
+      }
     } catch (error) {
       console.error("Error creating draft report:", error);
       console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
