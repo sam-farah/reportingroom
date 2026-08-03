@@ -10097,10 +10097,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const clinicId = req.user?.clinicId;
       if (!clinicId) return res.status(400).json({ error: "No clinic" });
+      // A caller-supplied patientId must belong to this clinic (PHI isolation).
+      if (req.body.patientId) {
+        const patient = await storage.getPatient(Number(req.body.patientId));
+        if (!patient || patient.clinicId !== clinicId) {
+          return res.status(400).json({ error: "Invalid patient" });
+        }
+      }
+      // If the caller didn't link a patient, try an automatic match on
+      // full name + DOB (or full name + phone) within this clinic.
+      let autoPatientId: number | null = null;
+      if (!req.body.patientId && req.body.patientName) {
+        const matched = await storage.findMatchingPatient(
+          clinicId,
+          String(req.body.patientName),
+          req.body.patientDob || null,
+          req.body.patientPhone || null,
+        );
+        if (matched) autoPatientId = matched.id;
+      }
       const request = await storage.createScanRequest({
         ...req.body,
         clinicId,
-        patientLinkSource: req.body.patientId ? "manual_link" : null,
+        patientId: req.body.patientId ?? autoPatientId ?? null,
+        patientLinkSource: req.body.patientId ? "manual_link" : (autoPatientId ? "auto_match" : null),
       });
       // Auto-archive to patient file if linked to a patient
       if (request.patientId) {

@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "ReportingRoom Scan Request",
+  "version": "1.0",
+  "description": "Read patient details from the current page (e.g. Clinic to Cloud) and save a scan request straight into ReportingRoom.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://reportingroom.net/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Save scan request to ReportingRoom"
+  }
+}

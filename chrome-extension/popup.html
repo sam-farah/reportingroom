@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; width: 360px; margin: 0; background: #f8fafc; color: #0f172a; }
+  .wrap { padding: 14px; }
+  h1 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 6px; }
+  h1 .dot { width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; display: inline-block; }
+  label { display: block; font-size: 11px; font-weight: 600; color: #475569; margin: 8px 0 3px; }
+  input, select, textarea { width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; background: #fff; }
+  textarea { resize: vertical; min-height: 48px; }
+  button { width: 100%; margin-top: 12px; padding: 9px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.secondary { background: #e2e8f0; color: #0f172a; }
+  button:disabled { opacity: .6; cursor: default; }
+  .msg { margin-top: 10px; font-size: 12px; padding: 8px; border-radius: 6px; display: none; }
+  .msg.err { display: block; background: #fee2e2; color: #b91c1c; }
+  .msg.ok { display: block; background: #dcfce7; color: #15803d; }
+  .row { display: flex; gap: 8px; }
+  .row > div { flex: 1; }
+  .hint { font-size: 11px; color: #64748b; margin-top: 6px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .topbar span { font-size: 11px; color: #64748b; }
+  .topbar a { font-size: 11px; color: #2563eb; cursor: pointer; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="dot"></span> ReportingRoom — Scan Request</h1>
+
+  <!-- Step: login -->
+  <div id="view-login" class="hidden">
+    <label>Email</label>
+    <input id="login-email" type="email" autocomplete="username">
+    <label>Password</label>
+    <input id="login-password" type="password" autocomplete="current-password">
+    <button id="btn-login">Sign In</button>
+    <p class="hint">Uses your normal staff login. A code will be sent to your mobile.</p>
+  </div>
+
+  <!-- Step: 2FA code -->
+  <div id="view-code" class="hidden">
+    <label>Enter the 6-digit code sent to <span id="phone-hint"></span></label>
+    <input id="login-code" inputmode="numeric" maxlength="6" placeholder="123456">
+    <button id="btn-verify">Verify</button>
+  </div>
+
+  <!-- Step: request form -->
+  <div id="view-form" class="hidden">
+    <div class="topbar"><span id="whoami"></span><a id="btn-logout">Sign out</a></div>
+    <button id="btn-read" class="secondary" style="margin-top:0">Read patient from this page</button>
+    <p class="hint">Tip: if it doesn't pick everything up, highlight the patient details on the page first, then click again.</p>
+
+    <label>Patient Name</label>
+    <input id="f-name" placeholder="e.g. Barry Towns">
+    <div class="row">
+      <div><label>Date of Birth</label><input id="f-dob" type="date"></div>
+      <div><label>Mobile</label><input id="f-phone" placeholder="04xx xxx xxx"></div>
+    </div>
+    <label>Email</label>
+    <input id="f-email" type="email">
+    <label>Scan Type</label>
+    <select id="f-scantype"></select>
+    <label>Urgency</label>
+    <select id="f-urgency">
+      <option value="routine">Routine</option>
+      <option value="urgent">Urgent</option>
+    </select>
+    <label>Clinical Indication / Notes</label>
+    <textarea id="f-notes"></textarea>
+    <button id="btn-submit">Save Request to ReportingRoom</button>
+  </div>
+
+  <div id="msg" class="msg"></div>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>
