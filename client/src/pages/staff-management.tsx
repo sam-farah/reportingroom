@@ -51,6 +51,19 @@ const inviteSchema = z.object({
 
 type InviteFormData = z.infer<typeof inviteSchema>;
 
+const addStaffSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  phoneNumber: z.string().min(8, "A mobile number is required for the SMS sign-in code"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["admin", "sonographer"], {
+    required_error: "Please select a role",
+  }),
+});
+
+type AddStaffFormData = z.infer<typeof addStaffSchema>;
+
 interface Invitation {
   id: number;
   email: string;
@@ -192,6 +205,38 @@ export default function StaffManagement() {
     inviteMutation.mutate(data);
   };
 
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const addForm = useForm<AddStaffFormData>({
+    resolver: zodResolver(addStaffSchema),
+    defaultValues: { email: "", firstName: "", lastName: "", phoneNumber: "", password: "", role: "sonographer" },
+  });
+
+  const addStaffMutation = useMutation({
+    mutationFn: async (data: AddStaffFormData) => {
+      return await apiRequest("/api/staff", "POST", data);
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Account Created",
+        description: `${data?.email || "The new team member"} can now sign in with the password you set.`,
+      });
+      addForm.reset();
+      setIsAddDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Create Account",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onAddSubmit = (data: AddStaffFormData) => {
+    addStaffMutation.mutate(data);
+  };
+
   if (!user) {
     return <div>Please log in to manage staff.</div>;
   }
@@ -204,6 +249,123 @@ export default function StaffManagement() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Staff Management</h1>
             <p className="text-gray-600">Manage your clinic's staff members and invitations</p>
           </div>
+          <div className="flex items-center gap-2">
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Staff
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Staff Member</DialogTitle>
+                <DialogDescription>
+                  Create the account directly — no invitation email. You choose their starting password and they can change it later.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...addForm}>
+                <form onSubmit={addForm.handleSubmit(onAddSubmit)} className="space-y-4">
+                  <FormField
+                    control={addForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email Address</FormLabel>
+                        <FormControl>
+                          <Input placeholder="staff@example.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={addForm.control}
+                      name="firstName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>First Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Optional" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={addForm.control}
+                      name="lastName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Last Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Optional" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={addForm.control}
+                    name="phoneNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mobile Number</FormLabel>
+                        <FormControl>
+                          <Input placeholder="04xx xxx xxx" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={addForm.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Starting Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" autoComplete="new-password" placeholder="At least 6 characters" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={addForm.control}
+                    name="role"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Role</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a role" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="sonographer">Sonographer</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex justify-end space-x-2 pt-4">
+                    <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={addStaffMutation.isPending}>
+                      {addStaffMutation.isPending ? "Creating..." : "Create Account"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
           <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
             <DialogTrigger asChild>
               <Button className="medical-btn-primary">
@@ -270,6 +432,7 @@ export default function StaffManagement() {
               </Form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
       </div>
 

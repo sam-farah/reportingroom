@@ -8696,6 +8696,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Owner/admin: create a staff account directly (no invitation email needed).
+  // The new user gets a temporary password chosen by the admin and must have a
+  // valid mobile number — the SMS sign-in code is mandatory for everyone.
+  app.post('/api/staff', isAuthenticated, async (req: any, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      if (!currentUser?.clinicId) {
+        return res.status(400).json({ message: "User not associated with a clinic" });
+      }
+      if (currentUser.role !== 'clinic_owner' && currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Only clinic owners and admins can manage staff" });
+      }
+
+      const { email, password, firstName, lastName, phoneNumber, role } = req.body;
+      const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return res.status(400).json({ message: "A valid email is required" });
+      }
+      if (!password || typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+      if (!role || !['admin', 'sonographer'].includes(role)) {
+        return res.status(400).json({ message: "Valid role (admin or sonographer) is required" });
+      }
+      const phone = normalisePhone(phoneNumber);
+      if (!phone) {
+        return res.status(400).json({ message: "A valid mobile number is required (it's used for the SMS sign-in code)" });
+      }
+
+      const existingUser = await storage.getUserByEmail(cleanEmail);
+      if (existingUser) {
+        return res.status(409).json({ message: "An account with this email already exists" });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      const user = await storage.upsertUser({
+        id: crypto.randomUUID(),
+        email: cleanEmail,
+        firstName: (typeof firstName === "string" && firstName.trim()) || null,
+        lastName: (typeof lastName === "string" && lastName.trim()) || null,
+        phoneNumber: phone,
+        passwordHash,
+        role,
+        isActive: true,
+        clinicId: currentUser.clinicId,
+        joinedAt: new Date(),
+      } as any);
+
+      const { passwordHash: _ph, twoFactorCodeHash, twoFactorCodeExpiresAt, twoFactorAttempts, twoFactorLastSentAt, ...safe } = user as any;
+      res.status(201).json(safe);
+    } catch (error) {
+      console.error("Error creating staff account:", error);
+      res.status(500).json({ message: "Failed to create staff account" });
+    }
+  });
+
   // Update the signed-in user's own mobile number (used for the SMS sign-in code)
   app.patch('/api/auth/profile', isAuthenticated, async (req: any, res) => {
     try {
