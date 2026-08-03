@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { APP_BUILD_LABEL } from "@/lib/version";
 import {
   Loader2,
   LogIn,
@@ -375,6 +376,9 @@ export default function LoginPage() {
                 <ShieldCheck className="h-4 w-4 flex-shrink-0 text-slate-400" />
                 Access is by invitation only. Contact your clinic administrator for access.
               </div>
+              <p className="mt-3 text-center text-[11px] text-slate-400">
+                Build {APP_BUILD_LABEL}
+              </p>
             </>
           )}
 
