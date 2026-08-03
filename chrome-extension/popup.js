@@ -167,7 +167,23 @@ async function loadDoctors() {
 
 // This function is serialized and injected into the current tab. It must be
 // fully self-contained (no closures over popup scope).
-function extractPatientFromPage() {
+async function extractPatientFromPage() {
+  // Clinic to Cloud hides Medicare/health-fund details behind a "Show More"
+  // toggle. If the details aren't visible yet, click the toggle and give the
+  // page a moment to render before reading. (If "Medicare" is already in the
+  // page text the section is expanded — don't click, that would collapse it.)
+  try {
+    if (document.body && !/medicare/i.test(document.body.innerText || "")) {
+      const toggles = Array.from(document.querySelectorAll("a, button, span, div")).filter(
+        (el) => /^\s*show\s*more\s*$/i.test(el.textContent || "") && el.offsetParent !== null,
+      );
+      if (toggles.length) {
+        toggles.forEach((t) => t.click());
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }
+  } catch {}
+
   const sel = ((window.getSelection && String(window.getSelection())) || "").trim();
   const text = sel.length > 0 ? sel : (document.body ? document.body.innerText : "");
   const out = { name: null, dob: null, phone: null, email: null, medicare: null, medicareIrn: null, usedSelection: sel.length > 0 };
@@ -183,7 +199,8 @@ function extractPatientFromPage() {
 
   // Medicare card number: 10 digits (starts 2-6), validated with the official
   // check digit so we never mistake a phone/IHI/ID for it. Optional IRN after.
-  for (const m of text.matchAll(/\b([2-6]\d{3})[ ]?(\d{5})[ ]?(\d)(?:\s*[-/]?\s*([1-9]))?\b/g)) {
+  // Accepts "3246 46456 4", "3246-46456-4", or "3246464564", optional IRN after.
+  for (const m of text.matchAll(/\b([2-6]\d{3})[ -]?(\d{5})[ -]?(\d)(?:\s*[-/]?\s*([1-9]))?\b/g)) {
     const d = (m[1] + m[2] + m[3]).split("").map(Number);
     const check = (d[0] + 3 * d[1] + 7 * d[2] + 9 * d[3] + d[4] + 3 * d[5] + 7 * d[6] + 9 * d[7]) % 10;
     if (check === d[8]) {
