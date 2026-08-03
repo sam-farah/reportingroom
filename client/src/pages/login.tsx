@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { APP_BUILD_LABEL } from "@/lib/version";
+import GlobeCanvas from "@/components/globe-canvas";
 import {
   Loader2,
   LogIn,
@@ -184,6 +185,8 @@ export default function LoginPage() {
         {/* decorative glow blobs */}
         <div className="pointer-events-none absolute -top-24 -left-24 h-96 w-96 rounded-full bg-blue-500/20 blur-3xl" />
         <div className="pointer-events-none absolute bottom-0 right-0 h-[28rem] w-[28rem] translate-x-1/3 translate-y-1/3 rounded-full bg-teal-400/20 blur-3xl" />
+        {/* rotating connected-dots globe behind the headline */}
+        <GlobeCanvas className="absolute left-1/2 top-1/2 h-[46rem] w-[46rem] -translate-x-[62%] -translate-y-1/2 opacity-70" />
         {/* subtle vascular pulse line */}
         <svg
           className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 w-full opacity-[0.12]"
