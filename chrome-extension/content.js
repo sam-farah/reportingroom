@@ -1,30 +1,34 @@
 // ReportingRoom — tick bookings that already have a referral.
 //
-// Runs on the Clinic to Cloud scheduler. For each booking row on screen it
-// reads the patient's display name and phone number, asks ReportingRoom which
-// of them already have a scan request dated for the day being viewed, and draws
-// a red tick over the bottom-right of the ones that do.
+// Runs on the Clinic to Cloud practice scheduler (a Kendo UI scheduler served by
+// their ASP.NET app). For each patient booking on screen it reads the name, date
+// of birth and phone, asks ReportingRoom which of them already have a scan
+// request dated for the day being viewed, and draws a red tick over the
+// bottom-right of the ones that do.
 //
-// This overlays a third-party clinical system, and a tick against a booking
-// that was never referred would cause staff to skip real work. So:
+// This overlays a third-party clinical system, and a tick against a booking that
+// was never referred would cause staff to skip real work. So:
 //
-//  * It FAILS CLOSED. If the day being viewed can't be established beyond
-//    doubt, if the bookings can't be read, or if the lookup fails, no ticks are
-//    drawn at all and the pill in the corner says why. An absence of ticks must
-//    never be mistaken for "nothing outstanding".
+//  * It FAILS CLOSED. If the day on screen can't be established beyond doubt, if
+//    the bookings can't be read, or if the lookup fails, no ticks are drawn at
+//    all and the pill in the corner says why. An absence of ticks must never be
+//    mistaken for "nothing outstanding".
 //  * It never assumes today. A wrong date is a wrong answer, not a near miss.
-//  * It never modifies the host page. Ticks live in one overlay layer of our
-//    own, positioned over the rows, so the scheduler's own scripts can re-render
-//    freely without tripping over foreign nodes.
+//  * It never modifies the host page. Ticks live in one overlay layer of our own,
+//    so the scheduler can re-render freely without tripping over foreign nodes.
 //
-// The scheduler's markup is not published and can change without notice, so row
-// detection is structural rather than selector-based.
+// Selectors below come from the scheduler's actual markup:
+//   - each patient booking is `div.appt-tmpl`, whose `data-title` tooltip holds
+//     "Full Name:", "Birthday:" and "Phone:" in <strong> tags
+//   - a cancelled booking renders a sibling `div.cancelled-appt`
+//   - the selected day is on `#location-current-date[data-location-date]`
+//     (dd/mm/yyyy) and in the `?date=yyyymmdd` link beside it
 
 (() => {
   "use strict";
 
   const TICK = "\u2713";
-  const RESCAN_DEBOUNCE_MS = 600;
+  const RESCAN_DEBOUNCE_MS = 500;
   const MAX_ROWS = 300;
 
   let overlay = null;
@@ -47,12 +51,11 @@
   };
 
   const pad = (n) => String(n).padStart(2, "0");
-  const toISO = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
 
-  function validISO(y, m, d) {
+  function buildDate(y, m, d) {
     if (m < 1 || m > 12 || d < 1 || d > 31) return null;
     if (y < 2000 || y > 2100) return null;
-    return toISO(y, m, d);
+    return `${y}-${pad(m)}-${pad(d)}`;
   }
 
   function prettyDate(iso) {
@@ -62,32 +65,38 @@
     });
   }
 
-  /** Every date we can read out of a string, as ISO. Australian day-first. */
+  /** "04/08/2026" — Australian day-first, as the scheduler writes it. */
+  function parseDMY(text) {
+    const m = (text || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? buildDate(+m[3], +m[2], +m[1]) : null;
+  }
+
+  /** "...?date=20260804" */
+  function parseCompact(text) {
+    const m = (text || "").match(/(20\d{2})(\d{2})(\d{2})/);
+    return m ? buildDate(+m[1], +m[2], +m[3]) : null;
+  }
+
+  /** Every date in a free-text label, for Kendo's own current-range caption. */
   function datesIn(text) {
     const out = [];
     let m;
 
-    const iso = /\b(\d{4})-(\d{2})-(\d{2})\b/g;
-    while ((m = iso.exec(text))) {
-      const v = validISO(+m[1], +m[2], +m[3]);
-      if (v) out.push(v);
-    }
-
     const dMonY = /\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+(\d{4})\b/gi;
     while ((m = dMonY.exec(text))) {
-      const v = validISO(+m[3], MONTHS[m[2].toLowerCase().slice(0, 3)], +m[1]);
+      const v = buildDate(+m[3], MONTHS[m[2].toLowerCase().slice(0, 3)], +m[1]);
       if (v) out.push(v);
     }
 
     const monDY = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b/gi;
     while ((m = monDY.exec(text))) {
-      const v = validISO(+m[3], MONTHS[m[1].toLowerCase().slice(0, 3)], +m[2]);
+      const v = buildDate(+m[3], MONTHS[m[1].toLowerCase().slice(0, 3)], +m[2]);
       if (v) out.push(v);
     }
 
     const numeric = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g;
     while ((m = numeric.exec(text))) {
-      const v = validISO(+m[3], +m[2], +m[1]); // day first
+      const v = buildDate(+m[3], +m[2], +m[1]); // day first
       if (v) out.push(v);
     }
 
@@ -95,86 +104,117 @@
   }
 
   /**
-   * Which day is on screen. The address bar is trusted first — it is the one
-   * place the scheduler states the selected day unambiguously. Falling back to
-   * the page text is only safe when the top of the page mentions exactly one
-   * date; two competing dates means we do not know, and we say so.
+   * Which day is on screen. Several independent places on the page state it, and
+   * they must all agree — if the header and the address bar disagree, the page
+   * is mid-navigation or we have misread it, and we would rather show nothing.
    */
   function resolveDate() {
-    const fromUrl = datesIn(decodeURIComponent(location.href));
-    const uniqueUrl = [...new Set(fromUrl)];
-    if (uniqueUrl.length === 1) return { date: uniqueUrl[0], source: "url" };
+    const found = new Set();
 
-    const header = (document.body.innerText || "").slice(0, 3000);
-    const unique = [...new Set(datesIn(header))];
-    if (unique.length === 1) return { date: unique[0], source: "page" };
-    return { date: null, source: unique.length > 1 ? "ambiguous" : "none" };
+    const header = document.querySelector("#location-current-date[data-location-date]");
+    if (header) {
+      const d = parseDMY(header.getAttribute("data-location-date"));
+      if (d) found.add(d);
+    }
+
+    const link = document.querySelector("a.js-header-current-date[href*='date=']");
+    if (link) {
+      const d = parseCompact(link.getAttribute("href"));
+      if (d) found.add(d);
+    }
+
+    const param = new URLSearchParams(location.search).get("date");
+    if (param) {
+      const d = parseCompact(param);
+      if (d) found.add(d);
+    }
+
+    // Kendo's own caption between the prev/next arrows. A range view spells out
+    // two dates here, which is positive evidence we are NOT on a single day —
+    // treat that as a stop, not as a source to ignore. It is the backstop for
+    // schedulerView() failing to recognise the view.
+    const nav = document.querySelector(".k-nav-current");
+    if (nav) {
+      const dates = [...new Set(datesIn(nav.textContent || ""))];
+      if (dates.length > 1) return { date: null, state: "range" };
+      if (dates.length === 1) found.add(dates[0]);
+    }
+
+    const list = [...found];
+    if (list.length === 1) return { date: list[0], state: "ok" };
+    return { date: null, state: list.length > 1 ? "disagree" : "none" };
+  }
+
+  /**
+   * Kendo puts the active view on the widget root as `k-scheduler-dayview`,
+   * `k-scheduler-monthview` and so on. Only a single-day view can be ticked
+   * against a single date.
+   */
+  function schedulerView() {
+    const root = document.querySelector(".k-scheduler");
+    if (root) {
+      for (const cls of root.classList) {
+        const m = /^k-scheduler-(\w+)view$/.exec(cls);
+        if (m) return m[1].toLowerCase();
+      }
+    }
+    const selected = document.querySelector(
+      ".k-scheduler-navigation .k-state-selected a[data-name], .k-scheduler-views .k-state-selected a[data-name]"
+    );
+    if (selected) return (selected.getAttribute("data-name") || "").toLowerCase();
+    return null;
   }
 
   // ---------- reading the booking rows ----------
 
-  function looksLikePhone(text) {
-    const t = (text || "").trim();
-    if (!t || t.length > 22) return false;
-    if (!/^[\d\s+()\-]+$/.test(t)) return false;
-    const digits = t.replace(/\D/g, "");
-    return digits.length >= 9 && digits.length <= 12;
+  function decodeEntities(text) {
+    const el = document.createElement("textarea");
+    el.innerHTML = text;
+    return el.value;
   }
 
-  function extractName(rowText, phoneText) {
-    let s = (rowText || "").replace(phoneText, " ");
-    s = s.replace(/\d{1,2}:\d{2}\s*(?:AM|PM)/gi, " ");   // 09:44 AM
-    s = s.replace(/\(\s*\d+\s*h[^)]*\)/gi, " ");          // (5h 25m)
-    s = s.replace(/\b\d[\d\s.-]*/g, " ");                 // any other digits
-
-    // Prefer a titled name — that is unambiguously the patient.
-    let m = s.match(
-      /\b(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof)\.?\s+[A-Z][\w'’-]+(?:\s+\([A-Za-z'’-]+\))?(?:\s+[A-Z][\w'’-]+)*/
+  /** Pull "Full Name", "Birthday" or "Phone" out of a booking's data-title. */
+  function titleField(title, label) {
+    const re = new RegExp(
+      `${label}\\s*:\\s*(?:<strong>|&lt;strong&gt;)?([\\s\\S]*?)(?:<\\/strong>|&lt;\\/strong&gt;|<br|&lt;br|$)`,
+      "i"
     );
-    if (m) return m[0].trim();
-
-    // Otherwise the first run of two or more capitalised words.
-    m = s.match(/\b[A-Z][a-z'’-]+(?:\s+\([A-Za-z'’-]+\))?(?:\s+[A-Z][a-z'’-]+)+/);
-    return m ? m[0].trim() : null;
-  }
-
-  // Walk up from the phone to the smallest ancestor that also carries a name.
-  function findRowContainer(phoneNode, phoneText) {
-    let el = phoneNode.parentElement;
-    for (let i = 0; i < 6 && el && el !== document.body; i++) {
-      const text = el.innerText || "";
-      // A booking row is a small amount of text. Anything large means we have
-      // climbed past the row into the day column or the whole grid.
-      if (text.length > 0 && text.length < 400 && extractName(text, phoneText)) return el;
-      el = el.parentElement;
-    }
-    return null;
+    const m = title.match(re);
+    if (!m) return null;
+    const value = decodeEntities(m[1]).trim();
+    return value || null;
   }
 
   /**
-   * One entry per booking on screen. Deliberately NOT de-duplicated by patient:
-   * two bookings for the same person on the same day are two rows and must both
-   * be ticked, or the second looks outstanding.
+   * One entry per patient booking on screen. Deliberately NOT de-duplicated by
+   * patient: two bookings for the same person on the same day are two rows and
+   * must both be ticked, or the second looks outstanding.
    */
   function collectRows() {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const rows = [];
-    const seenEls = new Set();
 
-    let node;
-    while ((node = walker.nextNode())) {
-      const raw = node.nodeValue;
-      if (!looksLikePhone(raw)) continue;
+    for (const el of document.querySelectorAll("div.appt-tmpl")) {
+      const title = el.getAttribute("data-title") || "";
 
-      const phoneText = raw.trim();
-      const container = findRowContainer(node, phoneText);
-      if (!container || seenEls.has(container)) continue;
+      // Only patient bookings carry a full name. Blocked-out time and group
+      // bookings don't, and neither needs a referral.
+      const rawName = titleField(title, "Full Name");
+      if (!rawName) continue;
 
-      const name = extractName(container.innerText || "", phoneText);
+      // A cancelled booking renders this marker alongside the template.
+      const parent = el.parentElement;
+      if (parent && parent.querySelector(":scope > .cancelled-appt")) continue;
+
+      // "Daniela Tasker 63yrs" -> "Daniela Tasker"
+      const name = rawName.replace(/\s*\d+\s*yrs?\s*$/i, "").trim();
       if (!name) continue;
 
-      seenEls.add(container);
-      rows.push({ name, phone: phoneText, el: container });
+      rows.push({
+        el,
+        name,
+        dob: titleField(title, "Birthday"),
+        phone: titleField(title, "Phone"),
+      });
     }
 
     return rows;
@@ -274,27 +314,33 @@
       return;
     }
 
+    const view = schedulerView();
+    if (view && view !== "day") {
+      failClosed("ReportingRoom: referral ticks only work in Day view. Switch to Day to see them.");
+      return;
+    }
+
     const rows = collectRows();
     if (!rows.length) {
-      failClosed("ReportingRoom: couldn't read any bookings on this page, so no referral ticks are shown.");
+      failClosed("ReportingRoom: no patient bookings found on this page, so no referral ticks are shown.");
       return;
     }
     if (rows.length > MAX_ROWS) {
-      failClosed(`ReportingRoom: too many bookings on screen (${rows.length}). No ticks shown — narrow the view to a single day.`);
+      failClosed(`ReportingRoom: too many bookings on screen (${rows.length}). No ticks shown.`);
       return;
     }
 
-    const { date, source } = resolveDate();
+    const { date, state } = resolveDate();
     if (!date) {
-      failClosed(
-        source === "ambiguous"
-          ? "ReportingRoom: more than one date on this page, so we can't tell which day you're viewing. No ticks shown."
-          : "ReportingRoom: couldn't tell which day this page is showing. No ticks shown."
-      );
+      const reason = {
+        range: "ReportingRoom: referral ticks only work in Day view. Switch to Day to see them.",
+        disagree: "ReportingRoom: this page shows more than one date, so we can't tell which day you're viewing. No ticks shown.",
+      }[state] || "ReportingRoom: couldn't tell which day this page is showing. No ticks shown.";
+      failClosed(reason);
       return;
     }
 
-    const queryKey = date + "::" + rows.map((r) => `${r.name}|${r.phone}`).join(",");
+    const queryKey = date + "::" + rows.map((r) => `${r.name}|${r.dob}|${r.phone}`).join(",");
     if (queryKey === lastQueryKey) {
       // Same day, same bookings — reuse the answer, but redraw against the rows
       // just collected. The old row elements may have been recycled underneath us.
@@ -307,7 +353,7 @@
       reply = await chrome.runtime.sendMessage({
         type: "rr-referral-status",
         date,
-        rows: rows.map((r) => ({ name: r.name, phone: r.phone })),
+        rows: rows.map((r) => ({ name: r.name, dob: r.dob, phone: r.phone })),
       });
     } catch {
       reply = { ok: false, reason: "unreachable" };
@@ -328,8 +374,8 @@
     drawTicks(rows, matched);
     setPill(
       "ok",
-      `ReportingRoom: ${matched.length} of ${rows.length} bookings referred for ${prettyDate(date)}` +
-        (source === "url" ? "." : " (date read off the page — check it matches).")
+      `ReportingRoom: ${matched.length} of ${rows.length} bookings referred for ${prettyDate(date)}.` +
+        (view ? "" : " (couldn't confirm Day view)")
     );
   }
 
@@ -357,7 +403,7 @@
   });
   observer.observe(document.body, { childList: true, subtree: true });
 
-  // Single-page navigation between days does not reload the script.
+  // Moving between days does not always reload the script.
   let lastHref = location.href;
   setInterval(() => {
     if (location.href !== lastHref) {

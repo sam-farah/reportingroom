@@ -8910,14 +8910,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Chrome extension: which of the bookings on the practice scheduler already
   // have a referral entered for the day being viewed?
   //
-  // The extension sends the name and phone it can read off each row; we answer
-  // with nothing but the row positions that matched, so no patient detail is
-  // echoed back into the practice-software page.
+  // The extension sends the name, date of birth and phone it can read off each
+  // row; we answer with nothing but the row positions that matched, so no
+  // patient detail is echoed back into the practice-software page.
   const referralStatusSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD"),
     rows: z.array(z.object({
       name: z.string().min(1).max(200),
-      phone: z.string().min(1).max(40),
+      phone: z.string().max(40).nullish(),
+      dob: z.string().max(40).nullish(),
     })).max(300),
   });
 
@@ -8933,22 +8934,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const all = await storage.getScanRequests(clinicId);
       const onDate = all.filter((r) => (r.requestDate || "").slice(0, 10) === date);
 
-      // Collect the phone on the referral AND the one on the linked patient
-      // file. They genuinely do differ — a referral can be saved carrying the
-      // previous patient's mobile — and accepting either recovers that booking
-      // without loosening the match, since the name must still agree.
+      // Collect the phone and date of birth from the referral AND from the
+      // linked patient file. They genuinely do differ — a referral can be saved
+      // carrying the previous patient's mobile — and accepting either recovers
+      // that booking without loosening the match, since the name must still agree.
       const patientIds = Array.from(new Set(onDate.map((r) => r.patientId).filter((id): id is number => !!id)));
-      const patientPhones = new Map<number, string | null>();
+      const patientDetails = new Map<number, { phone: string | null; dob: string | null }>();
       await Promise.all(patientIds.map(async (id) => {
         const patient = await storage.getPatient(id);
         // Re-check the clinic: the id came off a row we are about to trust.
-        if (patient && patient.clinicId === clinicId) patientPhones.set(id, patient.phone ?? null);
+        if (patient && patient.clinicId === clinicId) {
+          patientDetails.set(id, { phone: patient.phone ?? null, dob: patient.dateOfBirth ?? null });
+        }
       }));
 
-      const referrals = onDate.map((r) => ({
-        patientName: r.patientName,
-        phones: [r.patientPhone, r.patientId ? patientPhones.get(r.patientId) : null],
-      }));
+      const referrals = onDate.map((r) => {
+        const linked = r.patientId ? patientDetails.get(r.patientId) : undefined;
+        return {
+          patientName: r.patientName,
+          phones: [r.patientPhone, linked?.phone],
+          dobs: [r.patientDob, linked?.dob],
+        };
+      });
 
       res.json({
         date,

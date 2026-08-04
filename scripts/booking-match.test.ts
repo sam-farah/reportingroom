@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { normalisePhone, parseName, namesMatch, matchBookings } from "../server/services/bookingMatch";
+import { normalisePhone, normaliseDob, parseName, namesMatch, matchBookings } from "../server/services/bookingMatch";
 
 // ---------- phone normalisation ----------
 // The formats below are all real shapes found in the production scan_requests
@@ -13,8 +13,22 @@ import { normalisePhone, parseName, namesMatch, matchBookings } from "../server/
   assert.strictEqual(normalisePhone("+61408644474"), "0408644474");
   assert.strictEqual(normalisePhone("0061408644474"), "0408644474");
   assert.strictEqual(normalisePhone(null), "");
-  // Same person, two formats, must compare equal
   assert.strictEqual(normalisePhone("0425 858 262"), normalisePhone("0425858262"));
+}
+
+// ---------- date of birth normalisation ----------
+// The database stores ISO; the scheduler renders "dd MMMM, yyyy".
+{
+  assert.strictEqual(normaliseDob("1975-08-04"), "1975-08-04");
+  assert.strictEqual(normaliseDob("04 August, 1975"), "1975-08-04");
+  assert.strictEqual(normaliseDob("4 August 1975"), "1975-08-04");
+  assert.strictEqual(normaliseDob("August 4, 1975"), "1975-08-04");
+  assert.strictEqual(normaliseDob("04/08/1975"), "1975-08-04"); // day first
+  assert.strictEqual(normaliseDob("1947-01-08"), "1947-01-08");
+  assert.strictEqual(normaliseDob(""), "");
+  assert.strictEqual(normaliseDob(null), "");
+  assert.strictEqual(normaliseDob("not a date"), "");
+  assert.strictEqual(normaliseDob("1975-13-04"), "", "impossible month is rejected");
 }
 
 // ---------- name parsing ----------
@@ -57,72 +71,95 @@ import { normalisePhone, parseName, namesMatch, matchBookings } from "../server/
 }
 
 // ---------- end to end ----------
+// A booking matches when the name agrees AND at least one of date of birth or
+// phone agrees.
 {
   const rows = [
-    { name: "Mrs Daniela Tasker", phone: "0408644474" },
-    { name: "Mr Barry Towns", phone: "0419 004 421" },
-    { name: "Mr Luigino (Gino) Briganti", phone: "0425 858 262" },
-    { name: "Mr Dominic Love", phone: "0415937803" },
+    { name: "Mrs Daniela Tasker", dob: "04 August, 1975", phone: "0408644474" },
+    { name: "Mr Barry Towns", dob: "08 January, 1947", phone: "0419 004 421" },
+    { name: "Mr Luigino (Gino) Briganti", dob: "21 December, 1959", phone: "0425 858 262" },
+    { name: "Mr Dominic Love", dob: "15 April, 1977", phone: "0415937803" },
   ];
   const referrals = [
-    { patientName: "Daniela Tasker", phones: ["+61 408 644 474"] },
-    { patientName: "Gino Briganti", phones: ["0425858262"] },
-    { patientName: "Dominic Love", phones: ["0499 999 999"] }, // right name, wrong phone
+    { patientName: "Daniela Tasker", phones: ["+61 408 644 474"], dobs: ["1975-08-04"] },
+    { patientName: "Gino Briganti", phones: ["0425858262"], dobs: [] },
+    // right name, but neither the phone nor the DOB agrees
+    { patientName: "Dominic Love", phones: ["0499 999 999"], dobs: ["1980-01-01"] },
   ];
   assert.deepStrictEqual(matchBookings(rows, referrals), [0, 2]);
 }
 
-// A referral for a family member on the same phone must not tick the other's row
+// Date of birth alone corroborates the name, so a referral saved with the wrong
+// phone still ticks.
 {
-  const rows = [{ name: "Mrs Daniela Tasker", phone: "0408644474" }];
-  const referrals = [{ patientName: "David Tasker", phones: ["0408644474"] }];
+  const rows = [{ name: "Mrs Amanda Hurdle", dob: "12 March, 1962", phone: "0401 857 328" }];
+  const referrals = [{ patientName: "Amanda Hurdle", phones: ["0408644474"], dobs: ["1962-03-12"] }];
+  assert.deepStrictEqual(matchBookings(rows, referrals), [0], "DOB must corroborate when the phone is wrong");
+}
+
+// Real production collision: two different patients on one phone number. The
+// name check is what stops the wrong one ticking.
+{
+  const rows = [{ name: "Mrs Daniela Tasker", dob: "04 August, 1975", phone: "0408644474" }];
+  const referrals = [{ patientName: "Amanda Hurdle", phones: ["0408644474"], dobs: ["1962-03-12"] }];
   assert.deepStrictEqual(matchBookings(rows, referrals), []);
 }
 
-// Real case from production: a referral was saved carrying a DIFFERENT patient's
-// mobile, while the linked patient file held the right one. The correct phone
-// must recover the booking, and the wrong one must not tick the other patient.
+// A shared date of birth is not enough on its own either.
 {
-  const rows = [
-    { name: "Mrs Daniela Tasker", phone: "0408644474" },
-    { name: "Mrs Amanda Hurdle", phone: "0401 857 328" },
-  ];
-  const referrals = [
-    { patientName: "Daniela Tasker", phones: ["0408644474", "0408644474"] },
-    // referral phone is Tasker's; patient file phone is Hurdle's own
-    { patientName: "Amanda Hurdle", phones: ["0408644474", "0401857328"] },
-  ];
-  assert.deepStrictEqual(matchBookings(rows, referrals), [0, 1]);
+  const rows = [{ name: "Mr David Tasker", dob: "04 August, 1975", phone: "0400000001" }];
+  const referrals = [{ patientName: "Daniela Tasker", phones: ["0400000002"], dobs: ["1975-08-04"] }];
+  assert.deepStrictEqual(matchBookings(rows, referrals), [], "same DOB and surname, different person");
 }
 
 // Two bookings for the same patient on the same day must BOTH be ticked,
 // otherwise the second one looks outstanding.
 {
   const rows = [
-    { name: "Mrs Daniela Tasker", phone: "0408644474" },
-    { name: "Mr Barry Towns", phone: "0419004421" },
-    { name: "Mrs Daniela Tasker", phone: "0408644474" },
+    { name: "Mrs Daniela Tasker", dob: "04 August, 1975", phone: "0408644474" },
+    { name: "Mr Barry Towns", dob: "08 January, 1947", phone: "0419004421" },
+    { name: "Mrs Daniela Tasker", dob: "04 August, 1975", phone: "0408644474" },
   ];
-  const referrals = [{ patientName: "Daniela Tasker", phones: ["0408644474"] }];
+  const referrals = [{ patientName: "Daniela Tasker", phones: ["0408644474"], dobs: ["1975-08-04"] }];
   assert.deepStrictEqual(matchBookings(rows, referrals), [0, 2]);
 }
 
 // Unusable data is skipped rather than matched loosely
 {
-  const rows = [{ name: "Mrs Daniela Tasker", phone: "123" }];
-  const referrals = [{ patientName: "Daniela Tasker", phones: ["123"] }];
-  assert.deepStrictEqual(matchBookings(rows, referrals), [], "too-short phone must not match");
+  assert.deepStrictEqual(
+    matchBookings(
+      [{ name: "Mrs Daniela Tasker", dob: null, phone: "123" }],
+      [{ patientName: "Daniela Tasker", phones: ["123"], dobs: [] }],
+    ),
+    [],
+    "too-short phone must not match",
+  );
 
   assert.deepStrictEqual(
-    matchBookings([{ name: "Daniela Tasker", phone: "0408644474" }], [{ patientName: null, phones: ["0408644474"] }]),
+    matchBookings(
+      [{ name: "Daniela Tasker", dob: "04 August, 1975", phone: "0408644474" }],
+      [{ patientName: null, phones: ["0408644474"], dobs: ["1975-08-04"] }],
+    ),
     [],
     "referral with no name must not match",
   );
 
   assert.deepStrictEqual(
-    matchBookings([{ name: "Daniela Tasker", phone: "0408644474" }], [{ patientName: "Daniela Tasker", phones: [null, undefined, ""] }]),
+    matchBookings(
+      [{ name: "Daniela Tasker", dob: null, phone: null }],
+      [{ patientName: "Daniela Tasker", phones: ["0408644474"], dobs: ["1975-08-04"] }],
+    ),
     [],
-    "referral with no usable phone must not match on name alone",
+    "a name with nothing to corroborate it must not match",
+  );
+
+  assert.deepStrictEqual(
+    matchBookings(
+      [{ name: "Daniela Tasker", dob: "04 August, 1975", phone: "0408644474" }],
+      [{ patientName: "Daniela Tasker", phones: [null, ""], dobs: [null, undefined] }],
+    ),
+    [],
+    "referral with no usable identifier must not match on name alone",
   );
 }
 

@@ -39,12 +39,14 @@ says anything other than the day you are viewing, the ticks cannot be trusted.
 It also tells you when nobody is signed in or the check failed, because an
 absence of ticks must never be mistaken for "nothing left to do".
 
-Bookings are matched on **mobile number plus name**, since the scheduler shows
-nothing else identifying. Both have to agree, which is deliberate: a tick on a
-booking that was never referred would cause someone to skip real work, whereas a
-missing tick only prompts a manual check. A referral saved against the wrong
-mobile will therefore not tick — the fix is to correct the number on the
-referral or the patient's file.
+Ticks only appear in **Day view**, since a tick is only meaningful against one
+particular day.
 
-Only the name and mobile shown on the scheduler are sent to ReportingRoom, and
-the reply contains nothing but which rows matched.
+A booking is matched when the **name agrees** and then **either the date of birth
+or the mobile number** agrees as well. Needing a second identifier is deliberate:
+a tick on a booking that was never referred would cause someone to skip real
+work, whereas a missing tick only prompts a manual check. Households share phone
+numbers and families share surnames, so neither is trusted on its own.
+
+Only the name, date of birth and mobile shown on the scheduler are sent to
+ReportingRoom, and the reply contains nothing but which rows matched.
