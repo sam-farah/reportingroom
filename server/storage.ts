@@ -3135,6 +3135,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getChatChannelsForUser(clinicId: number, userId: string): Promise<ChatChannelSummary[]> {
+    // Public (non-private) channels are open to the whole clinic: auto-join
+    // any the user isn't in yet, so every staff member (sonographers included)
+    // sees them without needing a manual invite. Covers existing channels and
+    // new hires alike.
+    const publicChannels = await db.select({ id: chatChannels.id }).from(chatChannels)
+      .where(and(
+        eq(chatChannels.clinicId, clinicId),
+        eq(chatChannels.type, "channel"),
+        eq(chatChannels.isPrivate, false),
+      ));
+    for (const pc of publicChannels) {
+      if (!(await this.isChatChannelMember(pc.id, userId))) {
+        await this.addChatChannelMembers(pc.id, [userId]);
+      }
+    }
+
     const memberships = await db.select().from(chatChannelMembers)
       .innerJoin(chatChannels, eq(chatChannelMembers.channelId, chatChannels.id))
       .where(and(eq(chatChannelMembers.userId, userId), eq(chatChannels.clinicId, clinicId)));
