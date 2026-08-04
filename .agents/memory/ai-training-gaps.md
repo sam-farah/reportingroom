@@ -1,30 +1,62 @@
 ---
 name: AI training pipeline gaps
-description: Why the "global training" feature underperforms despite the UI showing it as active, and the parked fix list the owner deferred.
+description: How training examples are selected for the report-generation prompt, and the cross-clinic scoping hole that is still open.
 ---
 
-# What's wrong
+# FIXED (Aug 2026) — selection is now scan-type matched
 
-The training pipeline is wired end-to-end (training_pairs table populated, auto-import after distribution, audit sweep every 60s) but the prompt-building step in `server/services/openai.ts` (`generateReportFromWorksheet`) silently throws most of it away:
+Examples are chosen by `selectTrainingExamples` in `server/services/scanCategories.ts`:
+canonicalise the free-text scan label, take only same-category pairs, prefer ones with
+stored text, newest first. `TRAINING_EXAMPLE_COUNT` examples at `TRAINING_EXCERPT_CHARS`
+each. Selection happens BEFORE the text/OCR prep so unused pairs cost nothing.
 
-1. `trainingData.slice(0, 3)` — only 3 examples sent regardless of how many exist.
-2. No scan-type / category filtering — the 3 are whichever 3 the route happened to return first (effectively "most recent"), so a Carotid generation can be shown 3 Lower Limb Venous excerpts.
-3. Each example truncated to `substring(0, 400)` — covers indication + start of findings only, the impression/follow-up style is never seen.
-4. Categories are free-text from `studyType` so the same scan appears under 4+ labels (e.g. "Lower Limb Venous" vs "...Duplex" vs "...Duplex Ultrasound" vs "...Ultrasound"). Even adding a filter would miss most relevant pairs without normalisation.
-5. Manual (non-auto-imported) training pairs can have NULL `report_text` and silently provide nothing when chosen.
-6. No edit-distance / "AI accuracy" metric is stored, so degradation is invisible until users notice.
+Rules that must not be quietly broken:
+- **No cross-type fallback.** Zero same-type matches ⇒ zero examples, deliberately. In a
+  clinical prompt a mismatched example is worse than none: it hands the model anatomy and
+  phrasing that belong to a different study. The scan-type content template still applies.
+- **Filter before slice.** Slicing first lets text-less pairs consume the few slots and
+  then get dropped, silently shrinking the example count to zero.
+- **Order matters in the rule list — first match wins.** Interventions before generic limb
+  rules; mapping before fistula; pressure indices before fistula; never treat a bare
+  "iliac" as aorto-iliac (pelvic/ovarian venous mention it). Covered by
+  `scripts/scan-categories.test.ts`, which asserts against the real production labels.
+- Don't trust a training status badge that reports pool size. It stayed at "ACTIVE (236)"
+  through the entire period when three fixed July-2025 examples were reaching the prompt.
 
-**Why:** The original implementation (commit `5988e62`, Jul 2025) worked at ~5 pairs of a single scan type, so "top 3 most recent" happened to be relevant. As the pool grew and diversified, the slice + lack of filter became dilution. A later prompt refactor (Mar 2026) shortened example excerpts to 400 chars, compounding the issue. UI status badge says "✅ ACTIVE (N examples)" which only confirms loading, not effective injection.
+# STILL OPEN — training pairs are global across clinics
 
-**How to apply:** Before touching report-generation behaviour, remember the owner is risk-averse about regressions here — get explicit go-ahead before changing the prompt. Don't assume the training UI's "active" status reflects quality.
+`training_pairs` has no clinic column and `getAllTrainingPairs()` is system-wide, so one
+clinic's real reports can be injected as style references while generating another
+clinic's report. Harmless while only one clinic exists; a PHI leak the day a second is
+onboarded — treat as a launch blocker for clinic two.
+**Why it isn't already fixed:** scoping at read time via `source_report_id → reports.clinicId`
+would discard most of the pool, because a large share of `reports` rows have NULL clinicId.
+A real fix needs a clinic column on the table plus a deliberate backfill of the legacy rows.
 
-# Parked fix list (in priority order)
+# How the original failure happened (worth not repeating)
 
-1. **Filter by scan type before slicing.** Match worksheet's detected scan type to pair category (after normalisation in step 3); fall back to "any" only if no matches. Biggest single win.
-2. **Send more, longer examples.** 3 → 8 examples, 400 → ~1500 chars per excerpt so the AI sees impression phrasing and follow-up language, not just indication openings.
-3. **Normalise category names.** Either a canonical-label lookup applied on read, or a one-off migration collapsing the variants (case-insensitive substring match against a canonical list like "Lower Limb Venous Duplex", "Carotid Duplex", etc.).
-4. **Backfill or delete broken pairs.** The handful of manual pairs with NULL report_text either need OCR re-run or removal.
-5. **Add edit-tracking.** Snapshot the AI's original `{findings, impression}` at generation time onto the report row (e.g. `aiOriginalFindings`, `aiOriginalImpression`), compare to finalised text, surface a per-scan-type "% retained" metric. This is the only way to measure whether fixes 1-4 actually moved the needle.
+The collecting side worked from day one and the pool grew steadily, so every dashboard
+signal looked healthy. The prompt-building step quietly discarded nearly all of it: an
+unordered `getAllTrainingPairs()` plus a `slice(0, 3)` meant heap order decided the
+examples, which pinned the AI to the three oldest rows in the table for a year. It was
+only noticeable as "reports don't seem to be improving".
+**Why:** the original code was written when ~5 pairs of one scan type existed, so "the
+first 3" happened to be right. Nothing re-examined that assumption as the pool diversified.
+**How to apply:** treat any un-ORDER-BY'd query feeding a `slice`/`LIMIT` as a bug. Judge a
+data pipeline by what reaches the consumer, never by what the collector reports.
+
+**Owner context:** risk-averse about report-generation regressions — get explicit go-ahead
+before changing prompt content or example selection.
+
+# Still parked
+
+- **Backfill or delete the text-less pairs.** A handful of 2025 manual pairs have NULL
+  `report_text` and need an OCR pass over their scanned image at generation time. Selection
+  now deprioritises them, so they mostly cost nothing — but they are dead weight.
+- **Add edit-tracking.** Snapshot the AI's original `{findings, impression}` onto the report
+  row at generation time, diff against the finalised text, surface a per-scan-type
+  "% retained" metric. Without it there is still no way to *measure* generation quality —
+  which is why this failure survived so long.
 
 # Quick diagnostic queries
 

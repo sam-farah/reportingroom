@@ -44,7 +44,8 @@ import {
   insertRecurringExpenseSchema,
   recurringExpenseFieldsSchema,
 } from "@shared/schema";
-import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage, extractScanRequestFromImage } from "./services/openai";
+import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage, extractScanRequestFromImage, TRAINING_EXAMPLE_COUNT } from "./services/openai";
+import { selectTrainingExamples } from "./services/scanCategories";
 import { convertPdfToImage, convertPdfToImages, convertPdfToPngFile, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
 import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
@@ -6337,12 +6338,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("Image file read successfully, base64 length:", base64Image.length, "mime:", imageMimeType);
       }
 
+      // Which study are we reporting? Resolved BEFORE the training data is
+      // loaded so we only ever prepare examples of the same scan type.
+      const { contentTemplateScanType } = req.body;
+      const effectiveScanType = contentTemplateScanType || (worksheet as any).studyType;
+
       // Get GLOBAL training data for context - affects ALL users system-wide
       const allTrainingData = await storage.getAllTrainingPairs();
-      console.log("🌍 GLOBAL TRAINING DATA - affects all users system-wide:", allTrainingData.length, "examples");
-      
-      // Extract actual text content from training report images using OCR
-      const enhancedTrainingData = await Promise.all(allTrainingData.map(async (pair) => {
+      const selection = selectTrainingExamples(allTrainingData, effectiveScanType, TRAINING_EXAMPLE_COUNT);
+      console.log(
+        `🌍 Training pool: ${allTrainingData.length} pairs | scan type: ${effectiveScanType || 'unknown'} | ` +
+        `matched category: ${selection.category ?? 'none'} (${selection.matchedScanType ? 'same scan type' : 'NO same-type examples — none will be sent'}) | ` +
+        `selected: ${selection.examples.length}`,
+      );
+
+      // Only the SELECTED pairs are prepared. Pairs without stored report text
+      // need an OCR pass over their scanned image, and doing that across the
+      // whole table cost one vision call per pair on every single generation —
+      // for examples that were then discarded before reaching the prompt.
+      const enhancedTrainingData = await Promise.all(selection.examples.map(async (pair) => {
         console.log(`🔍 Processing training pair ${pair.id}: ${pair.category} (${pair.complexityLevel})${pair.autoImported ? " [auto-imported]" : ""}`);
         
         let extractedReportText: string | null = null;
@@ -6393,27 +6407,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       console.log("Generating report with OCR data:", ocrData);
-      console.log("🌍 GLOBAL TRAINING INTEGRATION:", trainingData.length > 0 ? 
-        `✅ ACTIVE (${trainingData.length} global examples affecting ALL users)` : 
-        '❌ INACTIVE (no global training data)');
-      
-      // Log detailed training data being sent to AI
-      if (trainingData.length > 0) {
-        console.log("🔥 TRAINING DATA DETAILS - CRITICAL FOR AI:");
-        trainingData.forEach((pair, index) => {
-          console.log(`  ${index + 1}. Category: ${pair.category}, Complexity: ${pair.complexityLevel}, Uploaded: ${new Date(pair.uploadedAt).toLocaleDateString()}`);
-          console.log(`      Training files: ${pair.worksheetUrl} + ${pair.reportUrl}`);
+
+      // Log what the AI is ACTUALLY being shown. The old log reported the size
+      // of the whole training table, which stayed reassuringly large while only
+      // a handful of unrelated examples reached the prompt.
+      const usable = trainingData.filter(p => p.extractedReportText);
+      if (usable.length > 0) {
+        console.log(`✅ TRAINING ACTIVE — ${usable.length} example(s) in the prompt (pool of ${allTrainingData.length}):`);
+        usable.forEach((pair, index) => {
+          console.log(`  ${index + 1}. #${pair.id} ${pair.category} (${pair.complexityLevel}) — ${pair.extractedReportText!.length} chars, ${new Date(pair.uploadedAt).toLocaleDateString()}`);
         });
-        console.log("🚨 AI MUST use these GLOBAL training patterns for consistent clinical findings across ALL users!");
+      } else if (!selection.matchedScanType) {
+        console.log(`⚠️  TRAINING SKIPPED — no previous "${effectiveScanType || 'unknown'}" reports in the pool of ${allTrainingData.length}. Examples of a different study would mislead more than they help, so none were sent; the scan-type template still applies.`);
       } else {
-        console.log("⚠️  NO TRAINING DATA - AI will use default knowledge only");
+        console.log(`⚠️  TRAINING INACTIVE — same-type pairs found but none had usable text (pool of ${allTrainingData.length})`);
       }
-      
+
       // Look up per-scan-type content template for this clinic
-      // If the client passed a specific scan type override, use that; otherwise auto-detect from worksheet
+      // (effectiveScanType was resolved above, before the training lookup)
       let contentTemplate = null;
-      const { contentTemplateScanType } = req.body;
-      const effectiveScanType = contentTemplateScanType || (worksheet as any).studyType;
       if (user?.clinicId && effectiveScanType) {
         contentTemplate = await storage.getScanTypeContentTemplate(user.clinicId, effectiveScanType);
         if (contentTemplateScanType) {
@@ -6421,7 +6433,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, imageMimeType, contentTemplate);
+      const reportData = await generateReportFromWorksheet(base64Image, ocrData, trainingData, imageMimeType, contentTemplate, {
+        matchedScanType: selection.matchedScanType,
+        category: selection.category,
+        poolSize: allTrainingData.length,
+      });
       console.log("Report generated successfully with training context:", reportData.studyType);
       
       // Create report in storage — inherit patientId and UR number from the worksheet if already linked
