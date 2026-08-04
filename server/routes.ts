@@ -45,7 +45,7 @@ import {
   recurringExpenseFieldsSchema,
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage, extractScanRequestFromImage } from "./services/openai";
-import { convertPdfToImage, convertPdfToImages, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
+import { convertPdfToImage, convertPdfToImages, convertPdfToPngFile, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
 import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
 import { createBackupArchive, getBackupInfo } from "./services/backup";
@@ -3965,14 +3965,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const fileUrl = `/uploads/${req.file.filename}`;
-      // Await DB backup before responding — prevents file loss on server restart
+      // Await DB backup of the original upload before responding — prevents
+      // file loss on server restart.
       await saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname);
 
+      // PDFs are rasterised to PNG at upload time. Downstream everything treats
+      // a worksheet as an image (viewer, drawing/labelling, OCR, report PDF),
+      // and a PDF can't be rendered in an <img> or drawn on. The original PDF
+      // stays in the DB blob store as a backup.
+      let storedFilename = req.file.filename;
+      let storedOriginalName = req.file.originalname;
+      const looksPdf = isPdfFile(req.file.originalname) || req.file.mimetype === "application/pdf";
+      if (looksPdf) {
+        try {
+          const pngPath = await convertPdfToPngFile(req.file.path);
+          storedFilename = path.basename(pngPath);
+          storedOriginalName = req.file.originalname.replace(/\.pdf$/i, "") + ".png";
+          await saveFileToDB(storedFilename, pngPath, "image/png", storedOriginalName);
+          try { fs.unlinkSync(req.file.path); } catch { /* keep going */ }
+        } catch (convErr) {
+          console.error("PDF→image conversion failed on worksheet upload:", convErr);
+          // The original PDF is already safe in the DB blob store; drop the
+          // local temp file so failed uploads don't accumulate on disk.
+          try { fs.unlinkSync(req.file.path); } catch { /* best effort */ }
+          return res.status(422).json({
+            error: "We couldn't read that PDF. Please try saving it as a JPG or PNG and uploading again.",
+          });
+        }
+      }
+
+      const fileUrl = `/uploads/${storedFilename}`;
       const orientation = req.body?.orientation === "landscape" ? "landscape" : "portrait";
       const worksheet = await storage.createWorksheet({
-        filename: req.file.filename,
-        originalName: req.file.originalname,
+        filename: storedFilename,
+        originalName: storedOriginalName,
         fileUrl,
         patientName: null,
         patientDob: null,
@@ -3998,17 +4024,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getWorksheet(id);
       if (!existing) return res.status(404).json({ error: "Worksheet not found" });
 
-      const newFilename = req.file.filename;
+      // Persist the uploaded file in the DB blob store before responding.
+      await saveFileToDB(req.file.filename, req.file.path, req.file.mimetype, req.file.originalname);
+
+      // Same as the upload route: PDFs are rasterised to PNG so the worksheet
+      // stays displayable and drawable.
+      let newFilename = req.file.filename;
+      const replacementIsPdf = isPdfFile(req.file.originalname) || req.file.mimetype === "application/pdf";
+      if (replacementIsPdf) {
+        try {
+          const pngPath = await convertPdfToPngFile(req.file.path);
+          newFilename = path.basename(pngPath);
+          await saveFileToDB(newFilename, pngPath, "image/png", req.file.originalname.replace(/\.pdf$/i, "") + ".png");
+          try { fs.unlinkSync(req.file.path); } catch { /* best effort */ }
+        } catch (convErr) {
+          console.error("PDF→image conversion failed on worksheet replace:", convErr);
+          try { fs.unlinkSync(req.file.path); } catch { /* best effort */ }
+          return res.status(422).json({
+            error: "We couldn't read that PDF. Please try saving it as a JPG or PNG and uploading again.",
+          });
+        }
+      }
       const newFileUrl = `/uploads/${newFilename}`;
 
-      // Persist the new file in the DB blob store before responding.
-      await saveFileToDB(newFilename, req.file.path, req.file.mimetype, req.file.originalname);
-
-      // Point the worksheet record at the new file. originalName is left intact
-      // so the patient file viewer keeps the same display title.
+      // Point the worksheet record at the new file. originalName is normally
+      // left intact so the patient file viewer keeps the same display title —
+      // but a stored file is never a PDF any more, so any lingering ".pdf"
+      // name must be corrected (downstream code decides "is this a PDF?" from
+      // originalName and would try to re-convert the PNG).
+      const nameNeedsFixing = replacementIsPdf || isPdfFile(existing.originalName || "");
       const updated = await storage.updateWorksheet(id, {
         filename: newFilename,
         fileUrl: newFileUrl,
+        ...(nameNeedsFixing
+          ? { originalName: (existing.originalName || req.file.originalname).replace(/\.pdf$/i, "") + ".png" }
+          : {}),
       } as any);
 
       // Best-effort cleanup of the old file on disk (DB blob retained as backup).

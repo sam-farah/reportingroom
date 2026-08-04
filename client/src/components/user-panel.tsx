@@ -492,7 +492,7 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
               <div className="w-full">
                 <FileUpload
                   onFileUploaded={handleWorksheetUploaded}
-                  accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
+                  accept="image/*,application/pdf,.pdf"
                   maxSize={10 * 1024 * 1024}
                 />
                 <p className="text-xs text-gray-500 mt-2">

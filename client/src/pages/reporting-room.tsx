@@ -1137,7 +1137,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
   const promptExtraPageUpload = () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*,.pdf";
+    input.accept = "image/*,application/pdf,.pdf";
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) uploadExtraPage(file);
@@ -2511,7 +2511,7 @@ export default function ReportingRoom({ initialOpenReportId, onReportOpened, onS
                     onClick={() => {
                       const input = document.createElement("input");
                       input.type = "file";
-                      input.accept = "image/*,.pdf";
+                      input.accept = "image/*,application/pdf,.pdf";
                       input.onchange = (e) => {
                         const file = (e.target as HTMLInputElement).files?.[0];
                         if (file) handleReuploadWorksheet(file);
