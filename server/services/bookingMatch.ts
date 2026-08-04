@@ -1,0 +1,181 @@
+/**
+ * Matching a row on the practice scheduler (Clinic to Cloud) against a scan
+ * request in ReportingRoom.
+ *
+ * The booking list gives us only a display name and a phone number — no date of
+ * birth, no UR number — so that pair has to carry the whole match.
+ *
+ * A FALSE match is the dangerous direction here. The result is drawn as a tick
+ * next to a booking, and a tick on a booking that was never referred would lead
+ * staff to skip real work. A missed match only makes them check by hand. So the
+ * rule is deliberately strict: the phone AND the name must both agree.
+ */
+
+/**
+ * Digits only, with Australian country codes folded back to the local form so
+ * "+61 408 644 474", "0408 644 474" and "0408644474" all compare equal.
+ */
+export function normalisePhone(raw: string | null | undefined): string {
+  let digits = (raw ?? "").replace(/\D/g, "");
+  if (digits.startsWith("0061")) digits = digits.slice(4);
+  else if (digits.startsWith("61") && digits.length >= 11) digits = digits.slice(2);
+  if (digits.length === 9 && !digits.startsWith("0")) digits = "0" + digits;
+  return digits;
+}
+
+export function isUsablePhone(normalised: string): boolean {
+  return normalised.length >= 9 && normalised.length <= 12;
+}
+
+const TITLES = new Set([
+  "mr", "mrs", "ms", "miss", "mx", "dr", "doctor", "prof", "professor",
+  "sr", "snr", "jr", "jnr", "master", "rev", "sister", "matron",
+]);
+
+export interface NameParts {
+  surname: string;
+  given: string[];
+}
+
+/**
+ * Splits a display name into a surname plus every given name we can see.
+ *
+ * A parenthesised nickname is kept as an additional given name rather than
+ * discarded: the scheduler shows "Mr Luigino (Gino) Briganti" while the
+ * referral may well have been entered as "Gino Briganti".
+ */
+export function parseName(raw: string | null | undefined): NameParts | null {
+  let s = (raw ?? "").toLowerCase();
+
+  const nicknames: string[] = [];
+  s = s.replace(/\(([^)]*)\)/g, (_m, inner: string) => {
+    nicknames.push(inner);
+    return " ";
+  });
+
+  const clean = (t: string) =>
+    t
+      .split(/\s+/)
+      .map((w) => w.replace(/[^a-z'-]/g, ""))
+      .filter(Boolean)
+      .filter((w) => !TITLES.has(w));
+
+  const tokens = clean(s);
+  if (tokens.length === 0) return null;
+
+  const surname = tokens[tokens.length - 1];
+  const given = tokens.slice(0, -1).concat(nicknames.flatMap(clean));
+  return { surname, given };
+}
+
+/**
+ * Short forms treated as the same given name. This is a curated list on purpose.
+ *
+ * The obvious shortcut — "one name is a prefix of the other" — is unsafe here,
+ * because families share a phone number and the phone is half the match.
+ * "Dan" is a prefix of both Daniel and Daniela, so a prefix rule would tick a
+ * booking for the wrong member of a household. Add entries as real cases turn
+ * up rather than reaching for a general rule.
+ */
+const NICKNAMES = new Map<string, string>(Object.entries({
+  bob: "robert", robbie: "robert", rob: "robert",
+  bill: "william", billy: "william", will: "william",
+  dave: "david", davey: "david",
+  mike: "michael", mick: "michael", micky: "michael",
+  chris: "christopher",
+  matt: "matthew",
+  dan: "daniel", danny: "daniel",
+  tim: "timothy",
+  tony: "anthony",
+  steve: "stephen", steven: "stephen",
+  jim: "james", jimmy: "james",
+  joe: "joseph",
+  tom: "thomas", tommy: "thomas",
+  nick: "nicholas",
+  pete: "peter",
+  rick: "richard", ricky: "richard",
+  ron: "ronald",
+  ken: "kenneth",
+  greg: "gregory",
+  jeff: "jeffrey", geoff: "jeffrey", geoffrey: "jeffrey",
+  ed: "edward", eddie: "edward", ted: "edward",
+  alex: "alexander",
+  ben: "benjamin",
+  andy: "andrew",
+  sue: "susan", susie: "susan",
+  liz: "elizabeth", lizzie: "elizabeth", beth: "elizabeth", betty: "elizabeth",
+  kate: "katherine", katie: "katherine", kathy: "katherine", catherine: "katherine",
+  maggie: "margaret", peggy: "margaret",
+  jenny: "jennifer",
+  vicky: "victoria",
+  angie: "angela",
+  barb: "barbara",
+  deb: "deborah", debbie: "deborah",
+  terry: "terence",
+  ray: "raymond",
+  don: "donald",
+  gerry: "gerald", jerry: "gerald",
+  larry: "lawrence",
+}));
+
+const canonicalGiven = (n: string): string => NICKNAMES.get(n) ?? n;
+
+/** True only on an exact given name, or a known short form of the same name. */
+function givenNameEqual(a: string, b: string): boolean {
+  return a === b || canonicalGiven(a) === canonicalGiven(b);
+}
+
+export function namesMatch(a: NameParts, b: NameParts): boolean {
+  if (a.surname !== b.surname) return false;
+  // Fail closed on a surname-only record. With a shared household phone, the
+  // surname alone is not evidence of who the booking belongs to.
+  if (a.given.length === 0 || b.given.length === 0) return false;
+  return a.given.some((x) => b.given.some((y) => givenNameEqual(x, y)));
+}
+
+export interface BookingRow {
+  name: string;
+  phone: string;
+}
+
+export interface ReferralRecord {
+  patientName: string | null;
+  /**
+   * Every phone number this referral could legitimately be reached on: the one
+   * typed onto the referral itself, and the one on the patient's file.
+   *
+   * Both are needed because they do drift apart in practice — a referral has
+   * been seen carrying the previous patient's mobile while the linked patient
+   * file held the right one. Accepting either recovers that referral without
+   * weakening anything, since the name still has to match as well.
+   */
+  phones: Array<string | null | undefined>;
+}
+
+/**
+ * Returns the indexes of `rows` that have a matching referral in `referrals`.
+ * `referrals` should already be narrowed to the clinic and the date in question.
+ */
+export function matchBookings(rows: BookingRow[], referrals: ReferralRecord[]): number[] {
+  const prepared = referrals
+    .map((r) => ({
+      phones: new Set(r.phones.map(normalisePhone).filter(isUsablePhone)),
+      name: parseName(r.patientName),
+    }))
+    .filter((r) => r.name !== null && r.phones.size > 0);
+
+  const matched: number[] = [];
+  rows.forEach((row, index) => {
+    const phone = normalisePhone(row.phone);
+    if (!isUsablePhone(phone)) return;
+    const name = parseName(row.name);
+    if (!name) return;
+
+    const hit = prepared.some(
+      (r) => r.phones.has(phone) && namesMatch(name, r.name as NameParts)
+    );
+    if (hit) matched.push(index);
+  });
+
+  return matched;
+}

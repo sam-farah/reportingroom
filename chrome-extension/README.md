@@ -26,3 +26,25 @@ automatically; otherwise it lands on the Requests page for linking.
 
 The request appears on the Requests page immediately, already linked to the
 patient's file when an exact match is found.
+
+## Referral ticks on the scheduler
+
+On the Clinic to Cloud scheduler the extension marks every booking that already
+has a referral for the day you are looking at with a small **red tick** in the
+bottom-right of the row. No tick means no referral has been entered for that day.
+
+A pill in the bottom-right corner of the screen always says which date the ticks
+refer to, and how many of the bookings on screen are covered. Read it — if it
+says anything other than the day you are viewing, the ticks cannot be trusted.
+It also tells you when nobody is signed in or the check failed, because an
+absence of ticks must never be mistaken for "nothing left to do".
+
+Bookings are matched on **mobile number plus name**, since the scheduler shows
+nothing else identifying. Both have to agree, which is deliberate: a tick on a
+booking that was never referred would cause someone to skip real work, whereas a
+missing tick only prompts a manual check. A referral saved against the wrong
+mobile will therefore not tick — the fix is to correct the number on the
+referral or the patient's file.
+
+Only the name and mobile shown on the scheduler are sent to ReportingRoom, and
+the reply contains nothing but which rows matched.

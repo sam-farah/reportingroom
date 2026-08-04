@@ -46,6 +46,7 @@ import {
 } from "@shared/schema";
 import { extractPatientDataFromWorksheet, generateReportFromWorksheet, analyzeVascularDrawing, extractTextFromImage, extractScanRequestFromImage, TRAINING_EXAMPLE_COUNT } from "./services/openai";
 import { selectTrainingExamples } from "./services/scanCategories";
+import { matchBookings } from "./services/bookingMatch";
 import { convertPdfToImage, convertPdfToImages, convertPdfToPngFile, isPdfFile, PDFTOPPM_AVAILABLE } from "./services/pdfConverter";
 import { syncDocumentToPatientFolder, syncReportToPatientFolder } from "./services/fileSync";
 import { archiveScanRequestToPatientFile } from "./services/scanRequestArchive";
@@ -8903,6 +8904,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Extension screenshot extract error:", error);
       res.status(500).json({ message: "Couldn't read the screenshot. Please enter the details manually." });
+    }
+  });
+
+  // Chrome extension: which of the bookings on the practice scheduler already
+  // have a referral entered for the day being viewed?
+  //
+  // The extension sends the name and phone it can read off each row; we answer
+  // with nothing but the row positions that matched, so no patient detail is
+  // echoed back into the practice-software page.
+  const referralStatusSchema = z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD"),
+    rows: z.array(z.object({
+      name: z.string().min(1).max(200),
+      phone: z.string().min(1).max(40),
+    })).max(300),
+  });
+
+  app.post('/api/extension/referral-status', isAuthenticated, async (req: any, res) => {
+    try {
+      const clinicId = req.user?.clinicId;
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+
+      const parsed = referralStatusSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid request" });
+      const { date, rows } = parsed.data;
+
+      const all = await storage.getScanRequests(clinicId);
+      const onDate = all.filter((r) => (r.requestDate || "").slice(0, 10) === date);
+
+      // Collect the phone on the referral AND the one on the linked patient
+      // file. They genuinely do differ — a referral can be saved carrying the
+      // previous patient's mobile — and accepting either recovers that booking
+      // without loosening the match, since the name must still agree.
+      const patientIds = Array.from(new Set(onDate.map((r) => r.patientId).filter((id): id is number => !!id)));
+      const patientPhones = new Map<number, string | null>();
+      await Promise.all(patientIds.map(async (id) => {
+        const patient = await storage.getPatient(id);
+        // Re-check the clinic: the id came off a row we are about to trust.
+        if (patient && patient.clinicId === clinicId) patientPhones.set(id, patient.phone ?? null);
+      }));
+
+      const referrals = onDate.map((r) => ({
+        patientName: r.patientName,
+        phones: [r.patientPhone, r.patientId ? patientPhones.get(r.patientId) : null],
+      }));
+
+      res.json({
+        date,
+        matched: matchBookings(rows, referrals),
+        referralsOnDate: onDate.length,
+      });
+    } catch (error) {
+      console.error("Referral status lookup error:", error);
+      res.status(500).json({ message: "Couldn't check referrals" });
     }
   });
 

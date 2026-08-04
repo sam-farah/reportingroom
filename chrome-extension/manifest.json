@@ -1,11 +1,23 @@
 {
   "manifest_version": 3,
   "name": "ReportingRoom Scan Request",
-  "version": "1.0",
-  "description": "Read patient details from the current page (e.g. Clinic to Cloud) and save a scan request straight into ReportingRoom.",
+  "version": "1.1",
+  "description": "Read patient details from the current page (e.g. Clinic to Cloud) and save a scan request straight into ReportingRoom. Also ticks bookings that already have a referral.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
-    "https://reportingroom.net/*"
+    "https://reportingroom.net/*",
+    "https://www.clinictocloud.com.au/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.clinictocloud.com.au/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
   ],
   "action": {
     "default_popup": "popup.html",
