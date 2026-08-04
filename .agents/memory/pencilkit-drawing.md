@@ -71,5 +71,17 @@ UIKit hides the floating tool palette the moment the PKCanvasView stops being fi
 **Why:** the BUILD #7 discard-confirmation alert killed the palette after "Keep Drawing" — user report "u killed my pencil kit tools".
 **How to apply:** call `restoreToolPicker()` (setVisible(true, forFirstResponder:) + becomeFirstResponder, guarded by !sessionEnded) from every alert-dismiss handler, and it also runs on `didBecomeActiveNotification` for app switches.
 
+## drawing-canvas.tsx templates are code-drawn, not images — size them from the renderer
+The Aorto-Iliac / Lower Limb forms in `drawing-canvas.tsx` are painted by hand in JS
+(one row per vessel segment), unlike draw.tsx's DB-backed template images. Their natural
+size is therefore implied by the renderer's arithmetic (`first row top + rows × (rowH + gap)`),
+and it is TALL PORTRAIT. Rendering them into a fixed landscape box silently paints the
+lower half off-canvas — and since that canvas was also the Apple Pencil background, the
+pencil surface showed a cut-off form.
+**How to apply:** keep a natural width/height per template and fit surfaces to it; build the
+PencilKit background from a fresh off-screen render at the natural size (never by exporting
+the scaled-down on-screen preview). If you scale a renderer, EVERY coordinate must scale —
+a hard-coded `margin` left unscaled desyncs the table borders from the field positions.
+
 ## Dropped Done-resolve log signature (root cause of the lost drawings)
 Autosave PUT(s) present, NO PUT after Done, worksheet still in /resumable, no web error toast = the present() promise never settled — see capacitor-plugin-call-retention.md. The web import path was never the culprit.
