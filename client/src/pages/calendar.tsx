@@ -805,7 +805,11 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   // Reschedule via drag is desktop-only; touch users use the Reschedule button instead.
   const [isCoarsePointer] = useState(() => {
     if (typeof window === "undefined") return false;
-    return window.matchMedia?.("(pointer: coarse)").matches || "ontouchstart" in window;
+    // Only treat the device as touch-first when its PRIMARY pointer is coarse
+    // (iPad, touch display). A desktop that merely *supports* touch (or a
+    // browser exposing ontouchstart) still has a fine primary pointer and
+    // keeps drag + resize.
+    return !!window.matchMedia?.("(pointer: coarse)").matches;
   });
 
   const [formData, setFormData] = useState({
