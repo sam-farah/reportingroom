@@ -83,5 +83,21 @@ PencilKit background from a fresh off-screen render at the natural size (never b
 the scaled-down on-screen preview). If you scale a renderer, EVERY coordinate must scale —
 a hard-coded `margin` left unscaled desyncs the table borders from the field positions.
 
+## Crash-recovery differs between the two drawing UIs — by necessity
+draw.tsx recovers by streaming native `autosave` snapshots onto an EXISTING worksheet
+row, so nothing is ever ambiguous. drawing-canvas.tsx has no row — the worksheet is
+*created* from whatever the pencil sheet returns — so the same trick isn't available;
+it keeps the newest snapshot in memory and uses it only when the native call actually
+rejects.
+**Why:** the plugin exposes no per-session id and no trustworthy terminal event, so the
+web layer cannot tell "sheet vanished without settling" from "session still running".
+Any UI that offers to recover on that guess (a banner, a timeout) can be tapped during
+the normal Done window — where the native side emits an autosave *before* the result
+crosses the bridge — and will throw away the authoritative drawing. Reject that design.
+**How to apply:** recover in the `catch` only; never resurrect after a `cancelled`
+rejection (native already showed a Discard confirmation); capture the template at launch,
+not at event-arrival. Making this genuinely robust requires adding session ids + a
+terminal event to PencilKitPlugin.swift first.
+
 ## Dropped Done-resolve log signature (root cause of the lost drawings)
 Autosave PUT(s) present, NO PUT after Done, worksheet still in /resumable, no web error toast = the present() promise never settled — see capacitor-plugin-call-retention.md. The web import path was never the culprit.
