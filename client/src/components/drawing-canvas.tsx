@@ -5,7 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Palette, Eraser, RotateCcw, Save, Maximize2, X, ZoomIn, ZoomOut, Minimize, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { isPencilKitAvailable, presentPencilCanvas } from '@/lib/pencilkit';
+import { isPencilKitAvailable, presentPencilCanvas, addPencilAutosaveListener } from '@/lib/pencilkit';
 
 interface DrawingCanvasProps {
   onWorksheetCreated: (imageData: string, templateName: string) => void;
@@ -18,6 +18,12 @@ const VASCULAR_TEMPLATES = {
 } as const;
 
 type TemplateKey = keyof typeof VASCULAR_TEMPLATES;
+
+/** A crash-recovery copy of an in-progress Apple Pencil drawing. */
+interface PencilSnapshot {
+  dataUrl: string;
+  template: TemplateKey;
+}
 
 // Natural size of each template at scale 1, in logical pixels.
 //
@@ -538,6 +544,75 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
 
   const hasPencilKit = isPencilKitAvailable();
 
+  // ---- Apple Pencil interruption safety net --------------------------------
+  //
+  // The main worksheet screen (pages/draw.tsx) already has one, but it works by
+  // streaming autosave snapshots onto an existing worksheet row. This screen has
+  // no such row: the worksheet is *created* from whatever the pencil sheet hands
+  // back. So if that hand-back never happens — a native error, an interruption
+  // that tears the sheet down, a dropped bridge result — there is nothing on the
+  // server and the sonographer's drawing is simply gone.
+  //
+  // The native plugin already emits debounced "autosave" snapshots while the
+  // canvas is open, flushes one the instant the app is backgrounded, and flushes
+  // again just before Done. Nothing here was listening to them. We now keep the
+  // newest snapshot for the live session and fall back to it whenever the
+  // session ends without a usable result.
+  //
+  // Two deliberate limitations, both because the plugin has no per-session id
+  // and no terminal "session ended" event the web layer can trust:
+  //  - The snapshot is held in memory only. Persisting a half-finished worksheet
+  //    to browser storage would leave patient data at rest outside the
+  //    encrypted server store, which isn't a trade worth making here.
+  //  - Recovery runs only when the native call actually rejects. If the sheet
+  //    were ever to disappear without settling its promise, there is no signal
+  //    to distinguish that from a session still in progress, and guessing would
+  //    risk discarding a real drawing mid-save. Closing and reopening the panel
+  //    resets the launch guard.
+  const nativeSessionActiveRef = useRef(false);
+  const pencilKitBusyRef = useRef(false);
+  const lastSnapshotRef = useRef<PencilSnapshot | null>(null);
+
+  // The template chosen when the sheet was launched. The autosave listener must
+  // not read the live selection — changing the dropdown mid-session would
+  // relabel a drawing that was made on a different form.
+  const sessionTemplateRef = useRef<TemplateKey>(selectedTemplate);
+
+  /** Reads and clears the recovery snapshot — it may only ever be used once. */
+  const takePencilSnapshot = (): PencilSnapshot | null => {
+    const snapshot = lastSnapshotRef.current;
+    lastSnapshotRef.current = null;
+    return snapshot;
+  };
+
+  // The parent's handler is captured in a ref so a session that outlives the
+  // current render (the "add page" dialog closes itself on save) never calls a
+  // stale closure.
+  const onWorksheetCreatedRef = useRef(onWorksheetCreated);
+  useEffect(() => {
+    onWorksheetCreatedRef.current = onWorksheetCreated;
+  });
+
+  useEffect(() => {
+    if (!hasPencilKit) return;
+    let disposed = false;
+    let handle: Awaited<ReturnType<typeof addPencilAutosaveListener>> = null;
+    addPencilAutosaveListener((dataUrl) => {
+      // Ignore snapshots that land after this component is gone, or after
+      // Done/Cancel — from that point the returned drawing (or the user's
+      // explicit discard) is the truth.
+      if (disposed || !nativeSessionActiveRef.current) return;
+      lastSnapshotRef.current = { dataUrl, template: sessionTemplateRef.current };
+    }).then((h) => {
+      if (disposed) h?.remove();
+      else handle = h;
+    });
+    return () => {
+      disposed = true;
+      handle?.remove();
+    };
+  }, [hasPencilKit]);
+
   // The fullscreen surface is sized to the viewport, so it has to follow
   // rotation, split-view resizes and keyboard changes on the iPad.
   const [viewportHeight, setViewportHeight] = useState(
@@ -570,21 +645,54 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
 
   // Open native PencilKit canvas with the current template rendered as background.
   const openPencilKit = async () => {
-    if (pencilKitPending) return;
+    if (pencilKitBusyRef.current) return;
+    pencilKitBusyRef.current = true;
     setPencilKitPending(true);
+    const templateName = VASCULAR_TEMPLATES[selectedTemplate].name;
+    // Fresh session — any snapshot from a previous one is spent.
+    takePencilSnapshot();
+    sessionTemplateRef.current = selectedTemplate;
+    nativeSessionActiveRef.current = true;
     try {
       // Render the template fresh at full size rather than exporting the small
       // on-screen preview — the preview is scaled down to fit its box, so using
       // it gave Apple Pencil a low-resolution background.
       const bgDataUrl = renderTemplateDataUrl(selectedTemplate) ?? compactRef.current?.toDataURL() ?? undefined;
-      const result = await presentPencilCanvas({ backgroundDataUrl: bgDataUrl });
-      onWorksheetCreated(result.dataUrl, VASCULAR_TEMPLATES[selectedTemplate].name);
-      toast({ title: 'Worksheet Created', description: `${VASCULAR_TEMPLATES[selectedTemplate].name} worksheet has been created successfully` });
-    } catch (err: any) {
-      if (err?.message !== 'cancelled') {
-        toast({ title: 'PencilKit Error', description: err?.message ?? 'Unknown error', variant: 'destructive' });
+      let result: { dataUrl: string };
+      try {
+        result = await presentPencilCanvas({ backgroundDataUrl: bgDataUrl });
+      } finally {
+        nativeSessionActiveRef.current = false;
       }
+      // Done returned the authoritative composite — the recovery copy is spent.
+      takePencilSnapshot();
+      onWorksheetCreatedRef.current(result.dataUrl, templateName);
+      toast({ title: 'Worksheet Created', description: `${templateName} worksheet has been created successfully` });
+    } catch (err: any) {
+      nativeSessionActiveRef.current = false;
+      const rescued = takePencilSnapshot();
+
+      if (err?.message === 'cancelled') {
+        // Not an error. The native sheet already asks "Discard this drawing?"
+        // whenever strokes exist, so a cancel here is a confirmed discard —
+        // resurrecting the strokes from a snapshot would override the user.
+        return;
+      }
+      if (rescued) {
+        // The session ended without handing back a drawing. Save the last
+        // autosaved snapshot instead: losing the preview is recoverable,
+        // losing the sonographer's marks is not.
+        onWorksheetCreatedRef.current(rescued.dataUrl, VASCULAR_TEMPLATES[rescued.template].name);
+        toast({
+          title: 'Drawing recovered',
+          description: 'The Apple Pencil screen closed unexpectedly, so your last autosaved drawing was kept.',
+        });
+        return;
+      }
+      toast({ title: 'PencilKit Error', description: err?.message ?? 'Unknown error', variant: 'destructive' });
     } finally {
+      nativeSessionActiveRef.current = false;
+      pencilKitBusyRef.current = false;
       setPencilKitPending(false);
     }
   };
