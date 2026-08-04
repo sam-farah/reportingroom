@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -133,6 +134,46 @@ export default function Dashboard() {
     retry: false,
   });
 
+  // ── Default location ──────────────────────────────────────────────
+  // The site this person normally works from. It is saved against their user
+  // account, so the calendar opens on it and new bookings start there. null
+  // means the clinic's main location, exactly as it does on an appointment.
+  const { data: clinicLocationsList = [] } = useQuery<{ id: number; name: string; isActive: boolean }[]>({
+    queryKey: ["/api/clinic-locations"],
+    retry: false,
+  });
+  const { data: clinicData } = useQuery<{ mainLocationName?: string }>({
+    queryKey: ["/api/clinic"],
+    retry: false,
+  });
+  const activeLocations = clinicLocationsList.filter(l => l.isActive !== false);
+  const mainLocationName = clinicData?.mainLocationName || "Main location";
+
+  // Show the choice immediately while it saves, rather than waiting for the
+  // user record to come back. undefined = nothing in flight.
+  const [pendingLocationId, setPendingLocationId] = useState<number | null | undefined>(undefined);
+  const savedLocationId = (user as any)?.defaultLocationId ?? null;
+  const shownLocationId = pendingLocationId !== undefined ? pendingLocationId : savedLocationId;
+  // A location that has since been removed or switched off falls back to main.
+  const effectiveLocationId =
+    shownLocationId != null && activeLocations.some(l => l.id === shownLocationId) ? shownLocationId : null;
+
+  const saveDefaultLocation = useMutation({
+    mutationFn: async (locationId: number | null) => {
+      const res = await apiRequest("/api/auth/default-location", "PATCH", { locationId });
+      return await res.json();
+    },
+    onSuccess: () => {
+      setPendingLocationId(undefined);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Default location saved", description: "Your calendar and new bookings will start here." });
+    },
+    onError: () => {
+      setPendingLocationId(undefined);
+      toast({ title: "Couldn't save your location", description: "Please try again.", variant: "destructive" });
+    },
+  });
+
   const { data: scanRequests } = useQuery<{ status: string }[]>({
     queryKey: ["/api/scan-requests"],
     retry: false,
@@ -228,6 +269,32 @@ export default function Dashboard() {
 
           {/* Kiosk + user info + logout */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {activeLocations.length > 0 && (
+              <Select
+                value={effectiveLocationId == null ? "main" : String(effectiveLocationId)}
+                onValueChange={(v) => {
+                  const next = v === "main" ? null : parseInt(v);
+                  setPendingLocationId(next);
+                  saveDefaultLocation.mutate(next);
+                }}
+              >
+                <SelectTrigger
+                  className="h-7 w-auto min-w-[120px] max-w-[190px] text-xs px-2 gap-1"
+                  title="The location you work from. Your calendar and new bookings start here."
+                  data-testid="select-default-location"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">{mainLocationName}</SelectItem>
+                  {activeLocations.map(loc => (
+                    <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
             <Button
               variant="ghost"
               size="sm"

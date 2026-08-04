@@ -753,7 +753,7 @@ function PatientApptSearchDialog({
 }
 
 export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppointmentId, onAppointmentEditConsumed }: { onOpenPatient?: (patientId: number) => void; onBeginStudy?: (patientId: number | null, patientName: string, tab?: "upload" | "draw", physicianId?: number | null) => void; initialEditAppointmentId?: number | null; onAppointmentEditConsumed?: () => void }) {
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>(() => window.innerWidth < 768 ? "day" : "week");
@@ -1036,6 +1036,29 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
       setSelectedLocationId(null);
     }
   }, [clinicLocationsList]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Open on the location this user works from (set in the header). Once they
+  // switch location here we stop following it, so their in-page choice is never
+  // yanked back from under them.
+  const locationChosenHere = useRef(false);
+  const preferredLocationId = (user as any)?.defaultLocationId ?? null;
+  useEffect(() => {
+    if (locationChosenHere.current) return;
+    setSelectedLocationId(
+      preferredLocationId != null && activeLocations.some((l) => l.id === preferredLocationId)
+        ? preferredLocationId
+        : null
+    );
+  }, [preferredLocationId, clinicLocationsList]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Use this for every location picker on this page. Marking the choice as
+  // made here is what stops the effect above snapping the calendar back to the
+  // saved default on the next refetch — looking at the wrong site's day is
+  // exactly the mistake this feature must not introduce.
+  const chooseLocationHere = (value: string) => {
+    locationChosenHere.current = true;
+    setSelectedLocationId(value === "main" ? null : parseInt(value));
+  };
 
   const { data: rawAppointments = [], isLoading: appointmentsLoading } = useQuery<Appointment[]>({
     queryKey: ["/api/appointments", startDate.toISOString(), endDate.toISOString()],
@@ -2026,7 +2049,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
             {activeLocations.length > 0 && (
               <Select
                 value={selectedLocationId == null ? "main" : String(selectedLocationId)}
-                onValueChange={(v) => setSelectedLocationId(v === "main" ? null : parseInt(v))}
+                onValueChange={chooseLocationHere}
               >
                 <SelectTrigger className="w-[220px]" data-testid="select-calendar-location">
                   <MapPin className="w-4 h-4 mr-2 text-gray-500" />
@@ -2062,7 +2085,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
             {activeLocations.length > 0 && (
               <Select
                 value={selectedLocationId == null ? "main" : String(selectedLocationId)}
-                onValueChange={(v) => setSelectedLocationId(v === "main" ? null : parseInt(v))}
+                onValueChange={chooseLocationHere}
               >
                 <SelectTrigger className="h-8 max-w-[140px] text-xs" data-testid="select-calendar-location-mobile">
                   <SelectValue />

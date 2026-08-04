@@ -13,3 +13,6 @@ description: How additional clinic locations / per-location calendars work and t
 - Deleting a location moves its appointments/events back to null (main) in `storage.deleteClinicLocation`; there is deliberately no DB FK.
 - New booking flows must set locationId explicitly or they silently land on main (scan-request scheduling and referrer portal still do this — tasks #27/#28 cover it).
 - Calendar UI filters client-side by `(row.locationId ?? null) === selectedLocationId`.
+- `users.defaultLocationId` is the per-user "site I work from" (same NULL = main convention, so "never chose" and "chose main" need no extra flag). It seeds the calendar's location and the scan-request scheduling form. `deleteClinicLocation` clears it like it clears appointments.
+- Keep `resolveLocationId` permissive about **inactive** locations: appointments at a deactivated site must keep their location when edited. Narrow to active-only at the specific call site (e.g. the default-location preference), never in the shared helper.
+- When a page seeds its location from a saved preference, the "user picked one here" ref must be set inside the picker's own handler, or the seeding effect snaps the view back on the next refetch.

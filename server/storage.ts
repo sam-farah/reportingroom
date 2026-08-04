@@ -200,6 +200,7 @@ export interface IStorage {
   upsertUser(user: UpsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   updateUserPhone(userId: string, phoneNumber: string | null): Promise<User | undefined>;
+  updateUserDefaultLocation(userId: string, locationId: number | null): Promise<User | undefined>;
   setUserTwoFactorCode(userId: string, codeHash: string, expiresAt: Date): Promise<void>;
   clearUserTwoFactorCode(userId: string): Promise<void>;
   incrementTwoFactorAttempts(userId: string): Promise<number>;
@@ -612,6 +613,18 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return (result as any)[0] as User;
+  }
+
+  // The user's preferred clinic location. NULL means the main location — the
+  // same meaning it has on appointments — so "never chose one" and "chose main"
+  // need no separate flag.
+  async updateUserDefaultLocation(userId: string, locationId: number | null): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ defaultLocationId: locationId, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return user;
   }
 
   async updateUserPhone(userId: string, phoneNumber: string | null): Promise<User | undefined> {
@@ -2364,6 +2377,9 @@ export class DatabaseStorage implements IStorage {
     // before removing it (no DB-level FK, so do it explicitly).
     await db.update(appointments).set({ locationId: null }).where(eq(appointments.locationId, id));
     await db.update(calendarEvents).set({ locationId: null }).where(eq(calendarEvents.locationId, id));
+    // Staff who had this as their default location go back to main too, or they
+    // would keep booking against a site that no longer exists.
+    await db.update(users).set({ defaultLocationId: null }).where(eq(users.defaultLocationId, id));
     await db.delete(clinicLocations).where(eq(clinicLocations.id, id));
   }
 

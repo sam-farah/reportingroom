@@ -84,6 +84,7 @@ export const users = pgTable("users", {
   twoFactorLastSentAt: timestamp("two_factor_last_sent_at"),
   profileImageUrl: varchar("profile_image_url"),
   clinicId: integer("clinic_id").references(() => clinics.id),
+  defaultLocationId: integer("default_location_id"), // Which clinic location this user normally works from. NULL = the main location, same convention as appointments.locationId; deliberately no FK (see clinic_locations).
   role: varchar("role", { length: 50 }).notNull().default('sonographer'),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),

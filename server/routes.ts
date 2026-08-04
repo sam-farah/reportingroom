@@ -9045,6 +9045,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Remember which clinic location this user normally works from, so the
+  // calendar opens on it and new bookings default to it.
+  app.patch('/api/auth/default-location', isAuthenticated, async (req: any, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      if (!currentUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      // resolveLocationId returns null for anything that isn't a live location
+      // of THIS clinic, so a foreign or stale id quietly becomes "main" rather
+      // than pinning someone to another clinic's site.
+      const locationId = await resolveLocationId(currentUser.clinicId ?? null, req.body?.locationId);
+      // A switched-off site is not somewhere to start new bookings from.
+      // resolveLocationId itself is deliberately left permissive, because
+      // existing appointments at a deactivated site must keep their location
+      // when they are edited — only this preference is narrowed.
+      let preferred: number | null = null;
+      if (locationId != null) {
+        const loc = await storage.getClinicLocation(locationId);
+        preferred = loc?.isActive ? locationId : null;
+      }
+      const updated = await storage.updateUserDefaultLocation(currentUser.id, preferred);
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json({ defaultLocationId: updated.defaultLocationId ?? null });
+    } catch (error) {
+      console.error("Error updating default location:", error);
+      res.status(500).json({ message: "Failed to save your default location" });
+    }
+  });
+
   // Owner/admin: set a staff member's mobile number (clinic-scoped)
   app.patch('/api/staff/:id', isAuthenticated, async (req: any, res) => {
     try {

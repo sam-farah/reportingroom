@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/useAuth";
 import { capitalizeWords } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -343,6 +344,7 @@ function PatientMatchAudit({ requestId, onOpenPatient, onOpenPatientDetails }: {
 
 export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOpenPatient?: (patientId: number) => void; onOpenPatientDetails?: (patientId: number) => void } = {}) {
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // ── Requests state ────────────────────────────────────────────────
   const [requestSearch, setRequestSearch] = useState("");
@@ -399,6 +401,13 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
     queryKey: ["/api/clinic-locations"],
   });
   const activeLocations = clinicLocationsList.filter(l => l.isActive);
+  // New bookings start at the location this user works from (chosen in the
+  // header). Falls back to main if that location has since been removed.
+  const preferredLocationId = (user as any)?.defaultLocationId ?? null;
+  const defaultLocationValue =
+    preferredLocationId != null && activeLocations.some(l => l.id === preferredLocationId)
+      ? String(preferredLocationId)
+      : "main";
 
   // Day's appointments for the selected booking date
   const { data: dayAppointments = [] } = useQuery<Appointment[]>({
@@ -1777,7 +1786,7 @@ export default function Requests({ onOpenPatient, onOpenPatientDetails }: { onOp
                           physicianId: "",
                           sonographerId: "",
                           notes: viewingRequest.notes || "",
-                          locationId: "main",
+                          locationId: defaultLocationValue,
                         });
                         setSchedulingRequest(viewingRequest);
                         setViewingStep("schedule");
