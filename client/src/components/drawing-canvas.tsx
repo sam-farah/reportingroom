@@ -19,10 +19,38 @@ const VASCULAR_TEMPLATES = {
 
 type TemplateKey = keyof typeof VASCULAR_TEMPLATES;
 
+// Natural size of each template at scale 1, in logical pixels.
+//
+// The renderers below lay out a tall portrait form (a header block plus one row
+// per vessel segment). These numbers are the size the form actually needs — get
+// them wrong and the bottom segments are simply painted off-canvas. That is what
+// used to happen to Aorto-Iliac and the Lower Limb forms: they were rendered
+// into a 600x400 landscape canvas, so roughly half of every form was cut off,
+// including in the image handed to Apple Pencil as its background.
+//
+// Height = first segment top (140) + segmentCount * (segmentHeight + 4 gap),
+// plus a bottom margin. Width covers the right-most field (margin + 460 + text).
+const TEMPLATE_LAYOUT: Record<TemplateKey, { width: number; height: number }> = {
+  'lower-limb-arterial': { width: 620, height: 700 },  // 9 segments @ 55
+  'lower-limb-venous': { width: 620, height: 930 },    // 11 segments @ 65
+  'aorto-iliac': { width: 620, height: 880 },          // 9 segments @ 75
+};
+
+/** Fits a template's natural size into `availableHeight`, preserving aspect. */
+function fitTemplate(template: TemplateKey, availableHeight: number) {
+  const natural = TEMPLATE_LAYOUT[template];
+  const scale = availableHeight / natural.height;
+  return {
+    width: Math.round(natural.width * scale),
+    height: Math.round(availableHeight),
+    scale,
+  };
+}
+
 // ---------- Template renderers (unchanged drawing logic, just extracted) ----------
 
 function drawLowerLimbArterialTemplate(ctx: CanvasRenderingContext2D, width: number, height: number, scale: number) {
-  const margin = 40;
+  const margin = 40 * scale;
   ctx.fillStyle = '#000000';
   ctx.font = `${Math.round(18 * scale)}px Arial`;
   ctx.fillText('LOWER LIMB ARTERIAL ULTRASOUND', margin, 35 * scale);
@@ -49,7 +77,7 @@ function drawLowerLimbArterialTemplate(ctx: CanvasRenderingContext2D, width: num
 }
 
 function drawLowerLimbVenousTemplate(ctx: CanvasRenderingContext2D, width: number, height: number, scale: number) {
-  const margin = 40;
+  const margin = 40 * scale;
   ctx.fillStyle = '#000000';
   ctx.font = `${Math.round(18 * scale)}px Arial`;
   ctx.fillText('LOWER LIMB VENOUS DUPLEX', margin, 35 * scale);
@@ -75,7 +103,7 @@ function drawLowerLimbVenousTemplate(ctx: CanvasRenderingContext2D, width: numbe
 }
 
 function drawAortoIliacTemplate(ctx: CanvasRenderingContext2D, width: number, height: number, scale: number) {
-  const margin = 40;
+  const margin = 40 * scale;
   ctx.fillStyle = '#000000';
   ctx.font = `${Math.round(18 * scale)}px Arial`;
   ctx.fillText('AORTO-ILIAC ULTRASOUND', margin, 35 * scale);
@@ -111,7 +139,30 @@ function paintTemplate(ctx: CanvasRenderingContext2D, width: number, height: num
   ctx.restore();
 }
 
+/**
+ * Renders a template on its own off-screen canvas at its full natural size and
+ * returns a PNG data URL.
+ *
+ * Used for the Apple Pencil background: the on-screen preview is a small,
+ * scaled-down copy, so exporting that gave PencilKit a low-resolution image.
+ * Rendering fresh at 2x gives a crisp, complete form — and because the native
+ * side crops its export to the background's aspect ratio, the drawing that
+ * comes back is a correctly-proportioned portrait worksheet.
+ */
+function renderTemplateDataUrl(template: TemplateKey, scale = 2): string | null {
+  const natural = TEMPLATE_LAYOUT[template];
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(natural.width * scale);
+  canvas.height = Math.round(natural.height * scale);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  paintTemplate(ctx, canvas.width, canvas.height, template, scale);
+  return canvas.toDataURL('image/png');
+}
+
 // ---------- Shared drawing surface with smoothing, HiDPI, pinch-zoom ----------
+
+const COMPACT_HEIGHT = 460;
 
 interface DrawingSurfaceProps {
   template: TemplateKey;
@@ -123,6 +174,8 @@ interface DrawingSurfaceProps {
   templateScale: number;
   surfaceRef: React.MutableRefObject<DrawingSurfaceHandle | null>;
   onZoomChange?: (zoom: number) => void;
+  /** When false the surface is display-only (no strokes, no pinch). */
+  interactive?: boolean;
   className?: string;
   containerClassName?: string;
 }
@@ -137,7 +190,7 @@ export interface DrawingSurfaceHandle {
   getZoom: () => number;
 }
 
-function DrawingSurface({ template, tool, strokeColor, strokeWidth, logicalWidth, logicalHeight, templateScale, surfaceRef, onZoomChange, className, containerClassName }: DrawingSurfaceProps) {
+function DrawingSurface({ template, tool, strokeColor, strokeWidth, logicalWidth, logicalHeight, templateScale, surfaceRef, onZoomChange, interactive = true, className, containerClassName }: DrawingSurfaceProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -449,11 +502,11 @@ function DrawingSurface({ template, tool, strokeColor, strokeWidth, logicalWidth
       >
         <canvas
           ref={canvasRef}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onPointerLeave={(e) => {
+          onPointerDown={interactive ? onPointerDown : undefined}
+          onPointerMove={interactive ? onPointerMove : undefined}
+          onPointerUp={interactive ? onPointerUp : undefined}
+          onPointerCancel={interactive ? onPointerUp : undefined}
+          onPointerLeave={!interactive ? undefined : (e) => {
             // Only end if this pointer was tracked and there are no others
             if (activePointersRef.current.has(e.pointerId)) {
               activePointersRef.current.delete(e.pointerId);
@@ -485,6 +538,27 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
 
   const hasPencilKit = isPencilKitAvailable();
 
+  // The fullscreen surface is sized to the viewport, so it has to follow
+  // rotation, split-view resizes and keyboard changes on the iPad.
+  const [viewportHeight, setViewportHeight] = useState(
+    typeof window !== 'undefined' ? window.innerHeight : 900,
+  );
+  useEffect(() => {
+    const onResize = () => setViewportHeight(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+
+  // Both surfaces are sized from the template's natural aspect so the whole
+  // form is visible — previously they used fixed landscape boxes that cut the
+  // taller forms (Aorto-Iliac, Lower Limb) off part-way down.
+  const compactLayout = fitTemplate(selectedTemplate, COMPACT_HEIGHT);
+  const fullLayout = fitTemplate(selectedTemplate, Math.max(400, viewportHeight - 220));
+
   const saveFromFullscreen = () => {
     const data = fullRef.current?.toDataURL();
     if (!data) return;
@@ -496,10 +570,13 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
 
   // Open native PencilKit canvas with the current template rendered as background.
   const openPencilKit = async () => {
+    if (pencilKitPending) return;
     setPencilKitPending(true);
     try {
-      // Render the template to a data URL to use as PencilKit background.
-      const bgDataUrl = compactRef.current?.toDataURL() ?? undefined;
+      // Render the template fresh at full size rather than exporting the small
+      // on-screen preview — the preview is scaled down to fit its box, so using
+      // it gave Apple Pencil a low-resolution background.
+      const bgDataUrl = renderTemplateDataUrl(selectedTemplate) ?? compactRef.current?.toDataURL() ?? undefined;
       const result = await presentPencilCanvas({ backgroundDataUrl: bgDataUrl });
       onWorksheetCreated(result.dataUrl, VASCULAR_TEMPLATES[selectedTemplate].name);
       toast({ title: 'Worksheet Created', description: `${VASCULAR_TEMPLATES[selectedTemplate].name} worksheet has been created successfully` });
@@ -572,22 +649,34 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
           )}
         </div>
 
-        <div className="border border-gray-300 rounded-lg overflow-hidden" style={{ height: 320 }}>
+        <div
+          className="border border-gray-300 rounded-lg overflow-hidden flex justify-center"
+          style={{ height: COMPACT_HEIGHT }}
+          onClick={hasPencilKit ? openPencilKit : undefined}
+        >
           <DrawingSurface
             template={selectedTemplate}
             tool={currentTool}
             strokeColor={strokeColor}
             strokeWidth={strokeWidth}
-            logicalWidth={600}
-            logicalHeight={400}
-            templateScale={1}
+            logicalWidth={compactLayout.width}
+            logicalHeight={compactLayout.height}
+            templateScale={compactLayout.scale}
             surfaceRef={compactRef}
             onZoomChange={setZoomBadge}
-            containerClassName="w-full h-full bg-white"
-            className="cursor-crosshair"
+            // On the iPad the real drawing surface is Apple Pencil, so this is a
+            // read-only preview — tapping it opens the pencil canvas instead of
+            // leaving stray finger marks that PencilKit would never see.
+            interactive={!hasPencilKit}
+            containerClassName="h-full bg-white"
+            className={hasPencilKit ? 'cursor-pointer' : 'cursor-crosshair'}
           />
         </div>
-        <p className="text-xs text-gray-500">Tip: pinch with two fingers to zoom on a tablet. Open Full Screen for detailed work.</p>
+        <p className="text-xs text-gray-500">
+          {hasPencilKit
+            ? 'Tap the worksheet to draw with Apple Pencil.'
+            : 'Tip: pinch with two fingers to zoom on a tablet. Open Full Screen for detailed work.'}
+        </p>
       </div>
 
       <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
@@ -641,9 +730,9 @@ export default function DrawingCanvas({ onWorksheetCreated }: DrawingCanvasProps
                 tool={currentTool}
                 strokeColor={strokeColor}
                 strokeWidth={strokeWidth}
-                logicalWidth={1200}
-                logicalHeight={800}
-                templateScale={1.5}
+                logicalWidth={fullLayout.width}
+                logicalHeight={fullLayout.height}
+                templateScale={fullLayout.scale}
                 surfaceRef={fullRef}
                 containerClassName="w-full h-full flex items-start justify-center p-4"
                 className="border-2 border-gray-300 shadow-lg cursor-crosshair"
