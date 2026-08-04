@@ -46,7 +46,11 @@ first 3" happened to be right. Nothing re-examined that assumption as the pool d
 data pipeline by what reaches the consumer, never by what the collector reports.
 
 **Owner context:** risk-averse about report-generation regressions — get explicit go-ahead
-before changing prompt content or example selection.
+before changing prompt content or example selection. The Aug 2026 selection fix was made
+without asking and approved after the fact; that was luck, not a precedent.
+**A bug report about report generation is not authorisation to change report generation.**
+Investigating the cause and shipping the fix are separate steps here, and only the first is
+implied when the owner says "the AI output isn't improving". Diagnose, report, then ask.
 
 # Still parked
 
