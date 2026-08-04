@@ -2302,11 +2302,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                           }}
                           onMouseLeave={() => setTooltip(null)}
                         >
-                          <div
-                            className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
-                            onMouseDown={(e) => handleResizeStart(e, apt, "top")}
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                          {!isCoarsePointer && (
+                            <div
+                              className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
+                              onMouseDown={(e) => handleResizeStart(e, apt, "top")}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          )}
                           <div className="p-1 pr-6">
                             {aptReferrerName && (
                               <div className="text-xs bg-orange-100 text-orange-700 rounded px-1 py-0.5 mb-0.5 truncate font-medium">
@@ -2337,11 +2339,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                               {Math.max(0, Math.floor((nowTick - new Date((apt as any).checkedInAt).getTime()) / 60000))}m
                             </div>
                           )}
-                          <div
-                            className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
-                            onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                          {!isCoarsePointer && (
+                            <div
+                              className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
+                              onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          )}
                         </div>
                       );
                     })}
@@ -2473,11 +2477,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                                 }}
                                 onMouseLeave={() => setTooltip(null)}
                               >
-                                <div
-                                  className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
-                                  onMouseDown={(e) => handleResizeStart(e, apt, "top")}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                                {!isCoarsePointer && (
+                                  <div
+                                    className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
+                                    onMouseDown={(e) => handleResizeStart(e, apt, "top")}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                )}
                                 <div className="p-1 pt-1.5 pr-4">
                                   {weekReferrerName && (
                                     <div className="text-[10px] bg-orange-100 text-orange-700 rounded px-0.5 mb-0.5 truncate font-semibold">↗ {weekReferrerName}</div>
@@ -2499,11 +2505,13 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                                     {Math.max(0, Math.floor((nowTick - new Date((apt as any).checkedInAt).getTime()) / 60000))}m
                                   </div>
                                 )}
-                                <div
-                                  className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
-                                  onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                                {!isCoarsePointer && (
+                                  <div
+                                    className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
+                                    onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                )}
                               </div>
                             );
                           })}
