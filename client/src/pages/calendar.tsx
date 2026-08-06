@@ -26,6 +26,7 @@ import { AobSignDialog } from "@/components/aob-sign-dialog";
 import { AobItemsDialog, type AobLineItem } from "@/components/aob-items-dialog";
 import { formatCents } from "@shared/mbs";
 import { selectCurrentAobForm } from "@shared/aob";
+import { Capacitor } from "@capacitor/core";
 
 async function fetchAsDataUrl(url: string): Promise<string | null> {
   try {
@@ -801,15 +802,20 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
   }, []);
   const [draggingAppointment, setDraggingAppointment] = useState<Appointment | null>(null);
   const [resizingAppointment, setResizingAppointment] = useState<{ apt: Appointment; edge: "top" | "bottom" } | null>(null);
-  // Coarse-pointer (touch) devices don't get reliable native HTML5 drag-and-drop —
-  // it fires accidentally when the user is just scrolling/tapping small slots.
-  // Reschedule via drag is desktop-only; touch users use the Reschedule button instead.
-  const [isCoarsePointer] = useState(() => {
+  // Dragging an appointment to reschedule it, and dragging its edges to resize
+  // it, are pointer-precise interactions that misfire on touch — scrolling the
+  // day or tapping a small slot flings the appointment across the screen.
+  // Touch users reschedule with the Reschedule button instead.
+  const [dragInteractionsDisabled] = useState(() => {
     if (typeof window === "undefined") return false;
-    // Only treat the device as touch-first when its PRIMARY pointer is coarse
-    // (iPad, touch display). A desktop that merely *supports* touch (or a
-    // browser exposing ontouchstart) still has a fine primary pointer and
-    // keeps drag + resize.
+    // The iPad app is always touch-first. Its primary pointer reports as FINE
+    // whenever a Magic Keyboard trackpad or an Apple Pencil is paired, so the
+    // media query below never caught it and dragging stayed switched on.
+    if (Capacitor.isNativePlatform()) return true;
+    // In a browser, only treat the device as touch-first when its PRIMARY
+    // pointer is coarse. A desktop that merely *supports* touch (or a browser
+    // exposing ontouchstart) still has a fine primary pointer and keeps drag
+    // and resize.
     return !!window.matchMedia?.("(pointer: coarse)").matches;
   });
 
@@ -2310,10 +2316,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                       return (
                         <div
                           key={apt.id}
-                          draggable={!isCoarsePointer}
+                          draggable={!dragInteractionsDisabled}
                           onDragStart={(e) => handleDragStart(e, apt)}
                           onDragEnd={handleDragEnd}
-                          className={`absolute rounded cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
+                          className={`absolute rounded ${dragInteractionsDisabled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"} border overflow-hidden z-10 ${
                             apt.status === "cancelled"
                               ? "bg-gray-50 text-gray-400 border-gray-200 border-l-4 border-l-red-500 opacity-75"
                               : `left-1 right-1 ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`
@@ -2330,7 +2336,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                           }}
                           onMouseLeave={() => setTooltip(null)}
                         >
-                          {!isCoarsePointer && (
+                          {!dragInteractionsDisabled && (
                             <div
                               className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
                               onMouseDown={(e) => handleResizeStart(e, apt, "top")}
@@ -2367,7 +2373,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                               {Math.max(0, Math.floor((nowTick - new Date((apt as any).checkedInAt).getTime()) / 60000))}m
                             </div>
                           )}
-                          {!isCoarsePointer && (
+                          {!dragInteractionsDisabled && (
                             <div
                               className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-black/10 z-10"
                               onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
@@ -2482,10 +2488,10 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                             return (
                               <div
                                 key={apt.id}
-                                draggable={!isCoarsePointer}
+                                draggable={!dragInteractionsDisabled}
                                 onDragStart={(e) => handleDragStart(e, apt)}
                                 onDragEnd={handleDragEnd}
-                                className={`absolute rounded text-xs cursor-grab active:cursor-grabbing border overflow-hidden z-10 ${
+                                className={`absolute rounded text-xs ${dragInteractionsDisabled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"} border overflow-hidden z-10 ${
                                   apt.status === "cancelled"
                                     ? "bg-gray-50 text-gray-400 border-gray-200 border-l-4 border-l-red-500 opacity-75"
                                     : `left-0 right-0 mx-0.5 ${STATUS_COLORS[apt.status] || STATUS_COLORS.scheduled}`
@@ -2505,7 +2511,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                                 }}
                                 onMouseLeave={() => setTooltip(null)}
                               >
-                                {!isCoarsePointer && (
+                                {!dragInteractionsDisabled && (
                                   <div
                                     className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
                                     onMouseDown={(e) => handleResizeStart(e, apt, "top")}
@@ -2533,7 +2539,7 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
                                     {Math.max(0, Math.floor((nowTick - new Date((apt as any).checkedInAt).getTime()) / 60000))}m
                                   </div>
                                 )}
-                                {!isCoarsePointer && (
+                                {!dragInteractionsDisabled && (
                                   <div
                                     className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-black/10 z-10"
                                     onMouseDown={(e) => handleResizeStart(e, apt, "bottom")}
