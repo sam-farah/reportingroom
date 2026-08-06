@@ -25,6 +25,7 @@ import MbsBillingSummary, { MbsItemBadges } from "@/components/mbs-billing-summa
 import { AobSignDialog } from "@/components/aob-sign-dialog";
 import { AobItemsDialog, type AobLineItem } from "@/components/aob-items-dialog";
 import { formatCents } from "@shared/mbs";
+import { selectCurrentAobForm } from "@shared/aob";
 
 async function fetchAsDataUrl(url: string): Promise<string | null> {
   try {
@@ -1229,9 +1230,9 @@ export default function Calendar({ onOpenPatient, onBeginStudy, initialEditAppoi
     queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"],
     enabled: !!viewingAppointment?.id,
   });
-  // Forms are returned newest-first; act on the newest, since staff can generate
-  // a fresh form on demand (e.g. to correct a mistake) which supersedes older ones.
-  const latestAobForm = aobForms.length > 0 ? aobForms[0] : null;
+  // Forms come back newest-first. selectCurrentAobForm is shared with the
+  // server so both agree on which form represents the visit.
+  const latestAobForm = useMemo(() => selectCurrentAobForm(aobForms), [aobForms]);
 
   const handleAobSigned = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/appointments", viewingAppointment?.id, "assessment-of-benefit"] });

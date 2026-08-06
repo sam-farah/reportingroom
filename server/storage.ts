@@ -384,6 +384,7 @@ export interface IStorage {
   getAssessmentOfBenefitForm(id: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormByReportId(reportId: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormsByAppointmentId(appointmentId: number): Promise<AssessmentOfBenefitForm[]>;
+  linkAssessmentOfBenefitFormToReport(id: number, reportId: number): Promise<AssessmentOfBenefitForm | undefined>;
   getAssessmentOfBenefitFormsByClinicId(clinicId: number): Promise<AssessmentOfBenefitForm[]>;
   getPendingAssessmentOfBenefitFormsByClinic(clinicId: number): Promise<AssessmentOfBenefitForm[]>;
   deleteSupersededPendingAobForms(appointmentId: number, clinicId: number, exceptId: number): Promise<number>;
@@ -1933,6 +1934,23 @@ export class DatabaseStorage implements IStorage {
       .from(assessmentOfBenefitForms)
       .where(eq(assessmentOfBenefitForms.appointmentId, appointmentId))
       .orderBy(desc(assessmentOfBenefitForms.createdAt));
+  }
+
+  // Attaches an existing form to the report that was written for that visit, so
+  // the report screen can reach it too. Only fills an empty reportId — never
+  // steals a form that already belongs to another report.
+  async linkAssessmentOfBenefitFormToReport(id: number, reportId: number): Promise<AssessmentOfBenefitForm | undefined> {
+    const [updated] = await db
+      .update(assessmentOfBenefitForms)
+      .set({ reportId })
+      .where(
+        and(
+          eq(assessmentOfBenefitForms.id, id),
+          isNull(assessmentOfBenefitForms.reportId),
+        ),
+      )
+      .returning();
+    return updated;
   }
 
   async getAssessmentOfBenefitFormsByClinicId(clinicId: number): Promise<AssessmentOfBenefitForm[]> {

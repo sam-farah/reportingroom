@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { resolveClinicTimeZone, DEFAULT_CLINIC_TIMEZONE, clinicIsoDate, isValidClinicTimeZone } from "@shared/timezones";
+import { selectCurrentAobForm } from "@shared/aob";
 import { eq, sql as drizzleSql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
 import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor, sendPatientConsentEmail } from "./email";
@@ -4516,10 +4517,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("Sono-complete: failed to auto-complete matching appointment", apptErr);
       }
 
+      // This visit may already have an Assignment of Benefit form — typically
+      // one the patient signed at check-in, which carries the item numbers and
+      // the signed document. Reuse it instead of adding a second form for the
+      // same visit: the appointment screen shows the current form, so a
+      // duplicate created here made a signed AoB look like it was never done.
+      // Just link it to this report so the report screen can reach it too.
+      const aobClinicId = user?.clinicId ?? report.clinicId ?? null;
+      let aobForm: Awaited<ReturnType<typeof storage.getAssessmentOfBenefitForm>> | null = null;
+      if (matchedAppointment && aobClinicId != null) {
+        try {
+          const existingForms = await storage.getAssessmentOfBenefitFormsByAppointmentId(matchedAppointment.id);
+          // Only this clinic's forms, and only ones not already spoken for by a
+          // different report — a second study on the same booking needs its own
+          // form rather than quietly sharing the first one's signed document.
+          const reusable = existingForms.filter(
+            (f) => f.clinicId === aobClinicId && (f.reportId == null || f.reportId === report.id),
+          );
+          const existingForm = selectCurrentAobForm(reusable);
+          if (existingForm?.reportId === report.id) {
+            aobForm = existingForm;
+          } else if (existingForm) {
+            // Returns nothing if another report claimed it first; fall through
+            // and create a fresh form rather than reporting someone else's.
+            aobForm = (await storage.linkAssessmentOfBenefitFormToReport(existingForm.id, report.id)) ?? null;
+          }
+        } catch (existingErr) {
+          console.warn("Sono-complete: failed to check for an existing Assignment of Benefit form", existingErr);
+        }
+      }
+      if (aobForm) {
+        return res.json({ ...report, appointmentCompleted, assessmentOfBenefitForm: aobForm });
+      }
+
       // Snapshot the data needed for the Assignment of Benefit form. Snapshotting
       // (rather than joining live at sign time) means the form stays accurate
       // even if the patient/physician/referrer records change later.
-      let aobForm = null;
       try {
         const patient = report.patientId ? await storage.getPatient(report.patientId) : undefined;
         const physician = report.physicianId ? await storage.getPhysician(report.physicianId) : undefined;
