@@ -5,6 +5,7 @@ import { db } from "./db";
 import { users } from "@shared/schema";
 import { resolveClinicTimeZone, DEFAULT_CLINIC_TIMEZONE, clinicIsoDate, isValidClinicTimeZone } from "@shared/timezones";
 import { selectCurrentAobForm } from "@shared/aob";
+import { findVisitAppointment, completeVisitAppointment, listVisitAppointments, resolveClinicPatientId } from "./visit-appointment";
 import { eq, sql as drizzleSql } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./auth";
 import { sendInvitationEmail, sendReportEmail, sendAppointmentReminder, sendPatientRegistrationEmail, sendExternalReferralNotification, sendPatientBookingConfirmation, sendReferralConfirmationToDoctor, sendPatientConsentEmail } from "./email";
@@ -4010,7 +4011,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orientation,
       });
 
-      res.json(worksheet);
+      // A worksheet arriving means the scan itself is finished, so the booking
+      // can be marked complete on the calendar straight away rather than
+      // waiting for the report to be written.
+      //
+      // Opt-in by design: only the sonographer's upload screen sends a patient.
+      // The labelling step and the re-upload flow reuse this same route, and
+      // neither should touch the calendar.
+      let appointmentCompleted: { id: number } | null = null;
+      try {
+        const patientId = await resolveClinicPatientId(req.body?.patientId, req.session.userId!);
+        if (patientId != null) {
+          // Fall back to today when the screen has no exam date yet (it's
+          // normally filled in by OCR, which runs after this upload).
+          const examDate = typeof req.body?.examDate === "string" ? req.body.examDate.trim() : "";
+          const completion = await completeVisitAppointment(patientId, examDate || new Date());
+          if (completion?.justCompleted) appointmentCompleted = { id: completion.appointment.id };
+        }
+      } catch (apptErr) {
+        // Never fail an upload over this — the worksheet is the important part.
+        console.warn("Worksheet upload: failed to complete the matching appointment", apptErr);
+      }
+
+      res.json({ ...worksheet, appointmentCompleted });
     } catch (error) {
       console.error("Upload error:", error);
       res.status(500).json({ error: "Failed to upload worksheet" });
@@ -4474,43 +4497,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const report = await storage.sonographerCompleteReport(id, completedBy);
       if (!report) return res.status(404).json({ error: "Report not found" });
 
-      // Auto-complete the matching appointment on the calendar (if one exists).
-      // We match by patientId + same calendar day as the report's exam date.
-      // We deliberately do NOT touch appointments that are already completed,
-      // cancelled, or no-show. The matched appointment (if any) also supplies
-      // the referring doctor snapshot for the Assignment of Benefit form.
+      // Auto-complete the matching appointment on the calendar (if one exists),
+      // matching by patientId + same calendar day as the report's exam date.
+      // Cancelled and no-show bookings are left alone.
+      //
+      // The booking is usually already completed by this point, because
+      // uploading the worksheet completes it. We still need to *find* it: it
+      // supplies the referring doctor snapshot for the Assignment of Benefit
+      // form, and the visit's existing AoB form is looked up through it. Hence
+      // finding and completing are separate steps.
       let appointmentCompleted: { id: number } | null = null;
       let matchedAppointment: Appointment | undefined;
       try {
         if (report.patientId && report.examDate) {
-          const examDate = new Date(report.examDate);
-          if (!isNaN(examDate.getTime())) {
-            const dayStart = new Date(examDate);
-            dayStart.setHours(0, 0, 0, 0);
-            const dayEnd = new Date(examDate);
-            dayEnd.setHours(23, 59, 59, 999);
-            const patientAppts = await storage.getPatientAppointments(report.patientId);
-            // Pick the appointment on the same day that is still "open"
-            // (not completed/cancelled/no-show). If multiple, take the
-            // earliest one — that's the booking the sonographer was working
-            // through.
-            const candidate = patientAppts
-              .filter((a) => {
-                const ad = new Date(a.appointmentDate);
-                return (
-                  ad >= dayStart &&
-                  ad <= dayEnd &&
-                  a.status !== "completed" &&
-                  a.status !== "cancelled" &&
-                  a.status !== "no_show"
-                );
-              })
-              .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())[0];
-            if (candidate) {
-              await storage.updateAppointment(candidate.id, { status: "completed" });
-              appointmentCompleted = { id: candidate.id };
-              matchedAppointment = candidate;
-            }
+          const completion = await completeVisitAppointment(report.patientId, report.examDate);
+          if (completion) {
+            matchedAppointment = completion.appointment;
+            // Only tell the sonographer we closed the booking if we actually
+            // did — otherwise the toast claims credit for the upload's work.
+            if (completion.justCompleted) appointmentCompleted = { id: completion.appointment.id };
           }
         }
       } catch (apptErr) {
@@ -5054,27 +5059,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         // Link (and complete) the same-day appointment if it wasn't matched at
-        // completion time. Mirrors the sono-complete matching logic: same
-        // calendar day as the exam, earliest still-open booking.
+        // completion time. Uses the shared visit matcher, so an appointment
+        // already completed by the worksheet upload is still found and linked
+        // here — otherwise the signed form would have no booking to hang off
+        // and the appointment screen would show nothing.
         if (resolvedAppointmentId == null && resolvedPatientId != null && report.examDate) {
           try {
-            const examDate = new Date(report.examDate);
-            if (!isNaN(examDate.getTime())) {
-              const dayStart = new Date(examDate); dayStart.setHours(0, 0, 0, 0);
-              const dayEnd = new Date(examDate); dayEnd.setHours(23, 59, 59, 999);
-              const patientAppts = await storage.getPatientAppointments(resolvedPatientId);
-              const candidate = patientAppts
-                .filter((a) => {
-                  const ad = new Date(a.appointmentDate);
-                  return ad >= dayStart && ad <= dayEnd &&
-                    a.status !== "completed" && a.status !== "cancelled" && a.status !== "no_show";
-                })
-                .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())[0];
-              if (candidate) {
-                await storage.updateAppointment(candidate.id, { status: "completed" });
-                resolvedAppointmentId = candidate.id;
-              }
-            }
+            const completion = await completeVisitAppointment(resolvedPatientId, report.examDate);
+            if (completion) resolvedAppointmentId = completion.appointment.id;
           } catch (apptErr) {
             console.warn("AoB sign: failed to link/complete matching appointment", apptErr);
           }
@@ -8259,19 +8251,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let draftSameDayAppointments: any[] = [];
       if (worksheet.patientId) {
         try {
-          const apts = (await storage.getPatientAppointments(worksheet.patientId)) || [];
-          const examDateStr = worksheet.examDate || new Date().toISOString().split('T')[0];
-          const examDate = new Date(examDateStr);
-          if (!isNaN(examDate.getTime())) {
-            const dayStart = new Date(examDate);
-            dayStart.setHours(0, 0, 0, 0);
-            const dayEnd = new Date(examDate);
-            dayEnd.setHours(23, 59, 59, 999);
-            draftSameDayAppointments = apts.filter((a: any) => {
-              const ad = new Date(a.appointmentDate);
-              return ad >= dayStart && ad <= dayEnd;
-            });
-          }
+          // Shared matcher: same calendar day in the CLINIC's timezone. Doing
+          // this on UTC days used to drop every morning booking, since 9am in
+          // Sydney is 11pm UTC the day before.
+          draftSameDayAppointments = await listVisitAppointments(
+            worksheet.patientId,
+            worksheet.examDate || new Date(),
+          );
         } catch (e) {
           console.warn('Failed to look up same-day appointments for draft report:', e);
         }
@@ -8283,7 +8269,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let draftPhysicianId: number | null = null;
       if (worksheet.patientId) {
         try {
-          const sameDayPhysician = draftSameDayAppointments.filter((a: any) => a.physicianId);
+          // Latest booking of the day that names a reporting doctor. The sort
+          // is explicit on purpose: this used to lean on the order the database
+          // happened to return rows in, so when the shared day-matcher started
+          // returning them earliest-first, a patient with two studies in a day
+          // would have quietly inherited the morning doctor for the afternoon
+          // study.
+          const sameDayPhysician = draftSameDayAppointments
+            .filter((a: any) => a.physicianId)
+            .sort((a: any, b: any) =>
+              new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()
+            );
           if (sameDayPhysician.length > 0) {
             draftPhysicianId = sameDayPhysician[0].physicianId;
           } else {
@@ -8387,7 +8383,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Don't fail the entire operation if this fails
       }
 
-      res.json(draftReport);
+      // A finished drawn worksheet means the scan is done, so close off the
+      // booking — the same thing an uploaded worksheet does. This is the right
+      // moment for the drawing flow: the worksheet row itself is created empty
+      // when the sonographer opens the template, long before the scan is over.
+      let appointmentCompleted: { id: number } | null = null;
+      if (worksheet.patientId) {
+        try {
+          const completion = await completeVisitAppointment(
+            worksheet.patientId,
+            worksheet.examDate || new Date(),
+          );
+          if (completion?.justCompleted) appointmentCompleted = { id: completion.appointment.id };
+        } catch (apptErr) {
+          console.warn("Draft report: failed to complete the matching appointment", apptErr);
+        }
+      }
+
+      res.json({ ...draftReport, appointmentCompleted });
 
       // ── Background AI analysis (after the response) ──
       if (willRunAi && worksheet.drawingData) {

@@ -11,9 +11,17 @@ interface FileUploadProps {
   onFileUploaded: (worksheet: Worksheet) => void;
   accept: string;
   maxSize: number;
+  /**
+   * The patient this worksheet belongs to. Sending it lets the server mark
+   * that day's booking as completed, since an arriving worksheet means the
+   * scan is done. Leave unset to upload without touching the calendar.
+   */
+  patientId?: number | null;
+  /** Exam date (yyyy-mm-dd) when known; the server assumes today otherwise. */
+  examDate?: string | null;
 }
 
-export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUploadProps) {
+export default function FileUpload({ onFileUploaded, accept, maxSize, patientId, examDate }: FileUploadProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -39,6 +47,8 @@ export default function FileUpload({ onFileUploaded, accept, maxSize }: FileUplo
       const formData = new FormData();
       formData.append('worksheet', file);
       formData.append('orientation', orientation);
+      if (patientId != null) formData.append('patientId', String(patientId));
+      if (examDate) formData.append('examDate', examDate);
 
       const response = await fetch('/api/worksheets/upload', {
         method: 'POST',

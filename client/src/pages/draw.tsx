@@ -317,6 +317,14 @@ export default function Draw({ preLinkedPatientId, preLinkedPatientName, onPreLi
         description: "The AI summary is being written in the background — it will appear on the report shortly",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/recent"] });
+      // Finishing the worksheet closes off the day's booking on the calendar.
+      if (report?.appointmentCompleted) {
+        queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+        toast({
+          title: "Appointment Completed",
+          description: "Today's booking for this patient has been marked complete on the calendar.",
+        });
+      }
       setCurrentWorksheet(null);
       setSelectedTemplate(null);
       setShowCreateDraftDialog(false);

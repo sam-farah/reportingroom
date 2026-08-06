@@ -332,10 +332,21 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
     },
   });
 
-  const handleWorksheetUploaded = (worksheet: Worksheet) => {
+  const handleWorksheetUploaded = (worksheet: Worksheet & { appointmentCompleted?: { id: number } | null }) => {
     setSelectedWorksheet(worksheet);
     setUploadStatus('uploaded');
-    
+
+    // The server closes off the day's booking once the worksheet lands. Say so,
+    // otherwise the calendar quietly changes underneath whoever is on reception.
+    if (worksheet.appointmentCompleted) {
+      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      toast({
+        title: "Appointment Completed",
+        description: "Today's booking for this patient has been marked complete on the calendar.",
+      });
+    }
+
+
     // Capture linked patient BEFORE any reset so we can pass it to OCR
     const capturedLinkedPatient = linkedPatient;
     
@@ -361,9 +372,12 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
       const blob = await response.blob();
       const file = new File([blob], `${templateName.replace(/\s+/g, '-')}-${Date.now()}.png`, { type: 'image/png' });
 
-      // Create FormData and upload
+      // Create FormData and upload. The linked patient goes up with it so the
+      // server can complete that day's booking, same as a photographed sheet.
       const formData = new FormData();
       formData.append('worksheet', file);
+      if (linkedPatient?.id != null) formData.append('patientId', String(linkedPatient.id));
+      if (examDate) formData.append('examDate', examDate);
 
       const uploadResponse = await fetch('/api/worksheets/upload', {
         method: 'POST',
@@ -494,6 +508,8 @@ export default function UserPanel({ preLinkedPatientId, preLinkedPatientName, pr
                   onFileUploaded={handleWorksheetUploaded}
                   accept="image/*,application/pdf,.pdf"
                   maxSize={10 * 1024 * 1024}
+                  patientId={linkedPatient?.id ?? null}
+                  examDate={examDate || null}
                 />
                 <p className="text-xs text-gray-500 mt-2">
                   Supports image files (JPEG, PNG, GIF, WebP) and PDF files. PDFs will be automatically converted to images for processing.

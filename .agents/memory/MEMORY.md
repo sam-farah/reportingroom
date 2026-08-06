@@ -35,4 +35,5 @@
 - [Stray require() in ESM server code](esm-stray-require.md) — `require(...)` inside real (executed) server TS silently throws at runtime since package.json is `"type":"module"`; tsc won't catch it.
 - [GitHub push](github-push.md) — repo sam-farah/reportingroom (public); platform gitPush fails (BRANCH_ALREADY_EXISTS); push via $GITHUB_TOKEN Basic extraheader; connector is proxy-only.
 - [Scheduler referral ticks](scheduler-referral-ticks.md) — C2C is a Kendo scheduler (get its page source); match name + (DOB or phone), never prefix/surname-only; never assume today; background-worker fetch, overlay ticks.
+- [Visit appointment matching](visit-appointment-matching.md) — one shared matcher; clinic-timezone day bounds (UTC loses morning bookings); finding ≠ completing; never fall back to cancelled/no_show.
 - [Capacitor plugin call retention](capacitor-plugin-call-retention.md) — never weak-capture a CAPPluginCall resolved after the method returns; keepAlive=true + strong capture, or the JS promise silently hangs while listener events keep working.
