@@ -66,5 +66,18 @@ Plain `npm run build` → native bundle with empty API base → login fails with
 it is the user's only visual freshness check. Full Mac flow: IPAD_HANDOFF.md
 (git pull → npm run build:ipad → npx cap sync ios → npx cap open ios).
 
+## Detecting "is this the iPad app?"
+Use `Capacitor.isNativePlatform()`. Do NOT infer it from `matchMedia("(pointer: coarse)")`:
+an iPad reports a **fine** primary pointer whenever a Magic Keyboard trackpad or an Apple
+Pencil is paired, which is the normal setup at this clinic (PencilKit is core to the workflow).
+
+**Why:** a coarse-pointer guard on calendar drag-and-drop silently never fired on their
+iPads, so appointments were being dragged all over the screen (found 2026-08-06).
+
+**How to apply:** for touch-first behaviour, check `isNativePlatform()` FIRST and keep the
+media query only as a browser fallback. Safe in the web bundle — it returns false there,
+and `@capacitor/core` is already imported by `main.tsx`. The value is fixed for the session,
+so a `useState` initialiser is fine; no listener needed.
+
 ## Relative fetch audit
 - Raw `fetch('/api/...')` resolves against capacitor://localhost in the native shell and silently fails. reporting-room.tsx is fully wrapped with resolveUrl() (July 2026, BUILD #7) — including the labelling, distribution, docx, and worksheet-pages paths. Other pages may still carry raw fetches; wrap with resolveUrl() + `credentials: 'include'` (cross-origin from the shell needs it).
