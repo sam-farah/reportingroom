@@ -192,10 +192,61 @@ async function loadTemplate(templatePath: string): Promise<{ buffer: Buffer; wid
   return { buffer, width: REF_WIDTH, height: targetHeight };
 }
 
+/**
+ * Works out which Medicare LSPN belongs on an Assignment of Benefit form.
+ *
+ * The LSPN identifies the PREMISES the scan was performed at, so it follows the
+ * calendar (location) the booking sits on — never the clinic's own number,
+ * which belongs to the main location alone.
+ *
+ * Always returns an explicit value: `null` means "print nothing". A blank field
+ * is a recoverable clerical gap; another site's number on a government billing
+ * document is not, so every uncertain path resolves to null rather than
+ * borrowing the main location's number.
+ */
+export async function resolveAobLspn(
+  clinicId: number | null | undefined,
+  appointment: { locationId?: number | null } | null | undefined,
+): Promise<string | null> {
+  if (clinicId == null) return null;
+  try {
+    const clinic = await storage.getClinic(clinicId);
+    if (!clinic) return null;
+
+    if (appointment) {
+      const locationId = (appointment as any).locationId ?? null;
+      if (locationId == null) return (clinic as any).locationSpecificPracticeNumber ?? null;
+      const location = await storage.getClinicLocation(locationId);
+      if (!location || location.clinicId !== clinicId) return null;
+      return (location as any).locationSpecificPracticeNumber ?? null;
+    }
+
+    // No appointment to go on. A clinic with no extra locations has only one
+    // possible premises, so its number is unambiguous; once extra locations
+    // exist we cannot tell which site the scan happened at, and print nothing.
+    const locations = await storage.getClinicLocations(clinicId);
+    return locations.length === 0 ? (clinic as any).locationSpecificPracticeNumber ?? null : null;
+  } catch (err) {
+    console.warn("AoB: failed to resolve the location's LSPN, leaving it blank", err);
+    return null;
+  }
+}
+
 export interface AobRenderOpts {
   aobForm: any;
   clinic: any;
   signatureDataUrl: string;
+  /**
+   * Medicare LSPN of the site the scan was performed at, resolved by the caller
+   * from the appointment's location (which calendar the booking sits on).
+   *
+   * `undefined` means the caller had no location to resolve (e.g. the preview
+   * script) and the clinic-level number is used. `null` or "" means that site
+   * genuinely has no LSPN recorded — the field then prints BLANK rather than
+   * borrowing the main location's number, which would attribute the service to
+   * the wrong premises on a government billing document.
+   */
+  lspn?: string | null;
 }
 
 // Renders a single copy ("practitioner" | "patient") of the Assessment of
@@ -253,7 +304,9 @@ export async function renderAobCopy(opts: AobRenderOpts, copy: "practitioner" | 
   const referralDateDigits = toDdMmYyDigits(aobForm.referralDate);
   const dateOfServiceDigits = toDdMmYyDigits(aobForm.dateOfService);
   const providerNumber = digitsAndLetters(aobForm.referringDoctorProviderNumber);
-  const lspn = digitsAndLetters(clinic?.locationSpecificPracticeNumber);
+  const lspn = digitsAndLetters(
+    opts.lspn !== undefined ? opts.lspn : clinic?.locationSpecificPracticeNumber
+  );
 
   // Medicare requires the services table to list items in descending order of
   // benefit assigned (highest benefit first) — this is also the order the

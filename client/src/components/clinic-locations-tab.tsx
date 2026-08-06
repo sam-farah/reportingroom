@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { MapPin, Plus, Edit, Trash2 } from "lucide-react";
 
-const emptyForm = { name: "", address: "", phone: "" };
+const emptyForm = { name: "", address: "", phone: "", locationSpecificPracticeNumber: "" };
 
 export default function ClinicLocationsTab() {
   const { toast } = useToast();
@@ -27,12 +27,16 @@ export default function ClinicLocationsTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [mainDialogOpen, setMainDialogOpen] = useState(false);
   const [mainNameForm, setMainNameForm] = useState("");
+  const [mainLspnForm, setMainLspnForm] = useState("");
 
   const mainNameMutation = useMutation({
-    mutationFn: async () => apiRequest("/api/clinic-locations/main", "PUT", { name: mainNameForm.trim() || null }),
+    mutationFn: async () => apiRequest("/api/clinic-locations/main", "PUT", {
+      name: mainNameForm.trim() || null,
+      locationSpecificPracticeNumber: mainLspnForm.trim() || null,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clinic"] });
-      toast({ title: "Main location renamed" });
+      toast({ title: "Main location updated" });
       setMainDialogOpen(false);
     },
     onError: (e: any) => toast({ title: "Error", description: e?.message || "Failed to rename main location", variant: "destructive" }),
@@ -75,7 +79,12 @@ export default function ClinicLocationsTab() {
   const openAdd = () => { setEditing(null); setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (loc: ClinicLocation) => {
     setEditing(loc);
-    setForm({ name: loc.name, address: loc.address || "", phone: loc.phone || "" });
+    setForm({
+      name: loc.name,
+      address: loc.address || "",
+      phone: loc.phone || "",
+      locationSpecificPracticeNumber: (loc as any).locationSpecificPracticeNumber || "",
+    });
     setDialogOpen(true);
   };
 
@@ -111,11 +120,20 @@ export default function ClinicLocationsTab() {
               <p className="text-sm text-gray-500">
                 {[clinic?.address, clinic?.phone].filter(Boolean).join(" · ") || "Uses your clinic's address from Clinic Settings"}
               </p>
+              <p className="text-sm text-gray-500" data-testid="text-main-location-lspn">
+                {(clinic as any)?.locationSpecificPracticeNumber
+                  ? `LSPN ${(clinic as any).locationSpecificPracticeNumber}`
+                  : "No LSPN set"}
+              </p>
             </div>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setMainNameForm(clinic?.mainLocationName || ""); setMainDialogOpen(true); }}
+              onClick={() => {
+                setMainNameForm(clinic?.mainLocationName || "");
+                setMainLspnForm((clinic as any)?.locationSpecificPracticeNumber || "");
+                setMainDialogOpen(true);
+              }}
               data-testid="button-edit-main-location"
             >
               <Edit className="w-4 h-4" />
@@ -135,6 +153,11 @@ export default function ClinicLocationsTab() {
                     <p className="font-medium text-gray-900 dark:text-white">{loc.name}</p>
                     <p className="text-sm text-gray-500">
                       {[loc.address, loc.phone].filter(Boolean).join(" · ") || "No address on file"}
+                    </p>
+                    <p className="text-sm text-gray-500" data-testid={`text-location-lspn-${loc.id}`}>
+                      {(loc as any).locationSpecificPracticeNumber
+                        ? `LSPN ${(loc as any).locationSpecificPracticeNumber}`
+                        : "No LSPN set"}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -191,6 +214,21 @@ export default function ClinicLocationsTab() {
                 data-testid="input-location-phone"
               />
             </div>
+            <div>
+              <Label htmlFor="location-lspn">Location Specific Practice Number (LSPN)</Label>
+              <Input
+                id="location-lspn"
+                placeholder="e.g. 123456AB"
+                value={form.locationSpecificPracticeNumber}
+                onChange={(e) => setForm((p) => ({ ...p, locationSpecificPracticeNumber: e.target.value }))}
+                data-testid="input-location-lspn"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Medicare's number for this site. Assignment of Benefit forms use the number of the
+                location the appointment was booked on. Left blank, the form prints nothing here
+                rather than another site's number.
+              </p>
+            </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button
@@ -208,9 +246,9 @@ export default function ClinicLocationsTab() {
       <Dialog open={mainDialogOpen} onOpenChange={setMainDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename Main Location</DialogTitle>
+            <DialogTitle>Edit Main Location</DialogTitle>
             <DialogDescription>
-              This name appears in the location dropdowns on the Calendar, when scheduling requests, and in the referrer portal. Its address and phone come from your Clinic Settings. Leave blank to use "Main location".
+              This name appears in the location dropdowns on the Calendar, when scheduling requests, and in the referrer portal. Its address and phone come from your Clinic Settings. Leave the name blank to use "Main location".
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -223,6 +261,20 @@ export default function ClinicLocationsTab() {
                 onChange={(e) => setMainNameForm(e.target.value)}
                 data-testid="input-main-location-name"
               />
+            </div>
+            <div>
+              <Label htmlFor="main-location-lspn">Location Specific Practice Number (LSPN)</Label>
+              <Input
+                id="main-location-lspn"
+                placeholder="e.g. 123456AB"
+                value={mainLspnForm}
+                onChange={(e) => setMainLspnForm(e.target.value)}
+                data-testid="input-main-location-lspn"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Medicare's number for this site. Assignment of Benefit forms for appointments booked
+                on this calendar use this number.
+              </p>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setMainDialogOpen(false)}>Cancel</Button>

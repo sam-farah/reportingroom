@@ -650,6 +650,12 @@ export const assessmentOfBenefitForms = pgTable("assessment_of_benefit_forms", {
   dateOfService: varchar("date_of_service", { length: 20 }),
   physicianName: varchar("physician_name", { length: 255 }),
   physicianProviderNumber: varchar("physician_provider_number", { length: 50 }),
+  // Medicare LSPN of the site the scan was performed at, captured when the form
+  // is created. Snapshotted rather than looked up at signing time because
+  // deleting a location moves its appointments back to the main calendar — a
+  // form pending signature would otherwise print the main site's number for a
+  // scan that happened elsewhere.
+  locationSpecificPracticeNumber: varchar("location_specific_practice_number", { length: 50 }),
   confirmedByName: varchar("confirmed_by_name", { length: 255 }),
   confirmedAt: timestamp("confirmed_at").defaultNow(),
   signedAt: timestamp("signed_at"),
@@ -803,6 +809,11 @@ export const clinicLocations = pgTable("clinic_locations", {
   name: varchar("name", { length: 200 }).notNull(),
   address: text("address"),
   phone: varchar("phone", { length: 50 }),
+  // Medicare LSPN for THIS site. The number identifies where the scan was
+  // physically performed, so it must not fall back to the clinic-level one
+  // (that belongs to the main location) — a wrong LSPN on an Assignment of
+  // Benefit form bills the service against the wrong premises.
+  locationSpecificPracticeNumber: varchar("location_specific_practice_number", { length: 50 }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });

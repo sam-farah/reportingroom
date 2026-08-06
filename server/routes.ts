@@ -54,7 +54,7 @@ import { createBackupArchive, getBackupInfo } from "./services/backup";
 import { autoTrainFromDistribution, getTrainingAuditSummary, sweepUntrainedDistributions } from "./services/auto-training";
 import { saveFileToDB, getFileFromDB, deleteFileFromDB, detectMimeType, backfillFilesToDB } from "./services/fileStorage";
 import { chatHub } from "./chat-ws";
-import { generateAssessmentOfBenefitDocument } from "./aob-form";
+import { generateAssessmentOfBenefitDocument, resolveAobLspn } from "./aob-form";
 import OpenAI from "openai";
 import { createReadStream } from "fs";
 import { z } from "zod";
@@ -4567,9 +4567,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.warn("Sono-complete: failed to look up scan request for referring doctor details", scanReqErr);
         }
 
+        // Capture the site's Medicare LSPN now, while we still know which
+        // calendar the booking sat on.
+        const performedAtLspn = await resolveAobLspn(clinicId, matchedAppointment ?? null);
+
         aobForm = await storage.createAssessmentOfBenefitForm({
           clinicId: clinicId ?? undefined,
           appointmentId: matchedAppointment?.id,
+          locationSpecificPracticeNumber: performedAtLspn,
           reportId: report.id,
           patientId: report.patientId ?? undefined,
           status: "pending_signature",
@@ -4907,9 +4912,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.warn("Appointment AoB: failed to look up scan request for referring doctor details", scanReqErr);
         }
 
+        // Capture the site's Medicare LSPN now, while we still know which
+        // calendar the booking sat on.
+        const performedAtLspn = await resolveAobLspn(user.clinicId, appointment);
+
         const aobForm = await storage.createAssessmentOfBenefitForm({
           clinicId: user.clinicId,
           appointmentId: appointment.id,
+          locationSpecificPracticeNumber: performedAtLspn,
           patientId: appointment.patientId ?? undefined,
           status: "pending_signature",
           items: normalizedItems,
@@ -5051,8 +5061,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ error: "This form has already been signed" });
       }
 
+      // The LSPN identifies the premises the scan was performed at. Prefer the
+      // number captured when the form was created — the booking may since have
+      // been moved, or its location deleted (which sends the appointment back
+      // to the main calendar). Only fall back to a live lookup for forms
+      // created before that snapshot existed. Never leave this undefined: the
+      // renderer treats undefined as "use the clinic's own number", which would
+      // be the wrong premises for a satellite scan.
+      let lspn: string | null = (claimed as any).locationSpecificPracticeNumber ?? null;
+      if (lspn == null) {
+        const lspnAppointmentId = claimed.appointmentId ?? resolvedAppointmentId;
+        const lspnAppointment = lspnAppointmentId != null
+          ? await storage.getAppointment(lspnAppointmentId).catch(() => undefined)
+          : undefined;
+        lspn = await resolveAobLspn(clinic?.id, lspnAppointment ?? null);
+      }
+
       try {
-        const { fileUrl, patientFileUrl } = await generateAssessmentOfBenefitDocument({ aobForm: claimed, clinic, signatureDataUrl });
+        const { fileUrl, patientFileUrl } = await generateAssessmentOfBenefitDocument({ aobForm: claimed, clinic, signatureDataUrl, lspn });
         const updated = await storage.finalizeAssessmentOfBenefitFormDocuments(id, fileUrl, patientFileUrl);
         res.json(updated);
       } catch (genErr) {
@@ -7696,7 +7722,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Unauthorized to update this clinic" });
       }
 
-      const { name, address, phone, fax, email, publicHolidayRegion, timezone, patientPortalUrl, locationSpecificPracticeNumber } = req.body;
+      // NOTE: locationSpecificPracticeNumber is deliberately NOT accepted here.
+      // It is the main location's Medicare billing identifier and is edited on
+      // the owner/admin-gated Locations routes; this endpoint is open to any
+      // authenticated member of the clinic.
+      const { name, address, phone, fax, email, publicHolidayRegion, timezone, patientPortalUrl } = req.body;
       
       if (!name || !email) {
         return res.status(400).json({ error: "Clinic name and email are required" });
@@ -7723,7 +7753,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email,
         ...(publicHolidayRegion !== undefined ? { publicHolidayRegion: publicHolidayRegion || null } : {}),
         ...(timezone !== undefined ? { timezone } : {}),
-        ...(locationSpecificPracticeNumber !== undefined ? { locationSpecificPracticeNumber: locationSpecificPracticeNumber || null } : {}),
         ...portalUrlPatch,
       } as any);
 
@@ -10081,6 +10110,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name,
         address: req.body?.address ? String(req.body.address) : null,
         phone: req.body?.phone ? String(req.body.phone) : null,
+        locationSpecificPracticeNumber: req.body?.locationSpecificPracticeNumber
+          ? String(req.body.locationSpecificPracticeNumber).trim()
+          : null,
       });
       res.status(201).json(location);
     } catch { res.status(500).json({ error: "Failed to create location" }); }
@@ -10097,7 +10129,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (role !== "owner" && role !== "admin") return res.status(403).json({ error: "Only clinic admins can manage locations" });
       const raw = req.body?.name;
       const name = raw === undefined || raw === null ? null : String(raw).trim() || null;
-      await storage.updateClinic(clinicId, { mainLocationName: name } as any);
+      const patch: any = { mainLocationName: name };
+      // The main location's LSPN lives on the clinic record, so it is edited
+      // here alongside its name — every site's number is then in one list.
+      if (req.body?.locationSpecificPracticeNumber !== undefined) {
+        patch.locationSpecificPracticeNumber = req.body.locationSpecificPracticeNumber
+          ? String(req.body.locationSpecificPracticeNumber).trim()
+          : null;
+      }
+      await storage.updateClinic(clinicId, patch);
       res.json({ success: true, mainLocationName: name });
     } catch { res.status(500).json({ error: "Failed to update main location" }); }
   });
@@ -10118,6 +10158,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       if (req.body?.address !== undefined) patch.address = req.body.address ? String(req.body.address) : null;
       if (req.body?.phone !== undefined) patch.phone = req.body.phone ? String(req.body.phone) : null;
+      if (req.body?.locationSpecificPracticeNumber !== undefined) {
+        patch.locationSpecificPracticeNumber = req.body.locationSpecificPracticeNumber
+          ? String(req.body.locationSpecificPracticeNumber).trim()
+          : null;
+      }
       if (req.body?.isActive !== undefined) patch.isActive = !!req.body.isActive;
       res.json(await storage.updateClinicLocation(id, patch));
     } catch { res.status(500).json({ error: "Failed to update location" }); }
